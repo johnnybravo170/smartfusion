@@ -4,6 +4,8 @@ import { notFound } from 'next/navigation';
 import { DeleteJobButton } from '@/components/features/jobs/delete-job-button';
 import { JobStatusBadge } from '@/components/features/jobs/job-status-badge';
 import { JobStatusSelect } from '@/components/features/jobs/job-status-select';
+import { PhotoGallery } from '@/components/features/photos/photo-gallery';
+import { PhotoUpload } from '@/components/features/photos/photo-upload';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getJob, listWorklogForJob } from '@/lib/db/queries/jobs';
@@ -185,9 +187,13 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             Photos
           </h2>
         </header>
-        <p className="text-sm text-muted-foreground">
-          Photo uploads coming in Phase 1C integration.
+        <p className="mb-4 text-xs text-muted-foreground">
+          Before, after, and progress photos for this job.
         </p>
+        <div className="space-y-4">
+          <PhotoUpload jobId={job.id} />
+          <PhotoGallery jobId={job.id} />
+        </div>
       </section>
 
       <section className="rounded-xl border bg-card p-5">

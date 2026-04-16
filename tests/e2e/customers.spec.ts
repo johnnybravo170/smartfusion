@@ -116,7 +116,9 @@ test.describe
       // --- 4. Back to list → row visible ---
       await page.getByRole('link', { name: /back to customers/i }).click();
       await page.waitForURL(/\/customers(\?.*)?$/);
-      await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible({
+        timeout: 5000,
+      });
 
       // --- 5. Search "acme" → visible. "xyz" → empty state ---
       const searchbox = page.getByRole('searchbox', { name: /search customers/i });
@@ -130,7 +132,9 @@ test.describe
       // Clear and ensure the row returns.
       await page.getByRole('link', { name: /clear filters/i }).click();
       await page.waitForURL(/\/customers$/);
-      await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible({
+        timeout: 5000,
+      });
 
       // --- 6. Type filter ---
       await page.getByRole('button', { name: 'Residential', exact: true }).click();

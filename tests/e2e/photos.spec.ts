@@ -11,7 +11,7 @@
  * Steps:
  *   1. Sign up a new tenant with a unique email.
  *   2. Pre-seed a customer + job via admin.
- *   3. Visit /photos-demo?job_id=<jobId>.
+ *   3. Visit /jobs/<jobId> (job detail page).
  *   4. Drop the fixture PNG into the file input.
  *   5. Click "Upload" → wait for the thumbnail to appear in the gallery.
  *   6. Admin DB query confirms the `photos` row exists with a matching
@@ -154,9 +154,9 @@ test.describe
       expect(job?.id).toBeTruthy();
       createdJobId = job?.id as string;
 
-      // --- 3. Visit demo page ---
-      await page.goto(`/photos-demo?job_id=${createdJobId}`);
-      await expect(page.getByRole('heading', { name: /photos \(preview\)/i })).toBeVisible();
+      // --- 3. Visit job detail page ---
+      await page.goto(`/jobs/${createdJobId}`);
+      await expect(page.getByRole('heading', { name: 'Photos', exact: true })).toBeVisible();
 
       // Gallery empty state visible before upload.
       await expect(page.locator('[data-slot="photo-gallery-empty"]')).toBeVisible();
