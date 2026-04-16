@@ -1,0 +1,157 @@
+'use server';
+
+/**
+ * Auth server actions: signup, login, magic link, logout.
+ *
+ * Signup is the bootstrap path for multi-tenancy. We create the auth user,
+ * tenant row, and tenant_member row inside a single action. The admin
+ * client is used because the user doesn't yet have a session — RLS would
+ * reject the inserts otherwise. If the tenant or member insert fails we
+ * roll back the auth user to avoid orphaned auth.users rows.
+ *
+ * See §13.1 and §8 Task 1.6 of PHASE_1_PLAN.md.
+ */
+
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
+import { loginSchema, magicLinkSchema, signupSchema } from '@/lib/validators/auth';
+
+export type ActionError = { error: string; fieldErrors?: Record<string, string[]> };
+
+async function originFromHeaders(): Promise<string> {
+  const h = await headers();
+  const origin = h.get('origin');
+  if (origin) return origin;
+  const host = h.get('host') ?? 'localhost:3000';
+  const proto = h.get('x-forwarded-proto') ?? 'http';
+  return `${proto}://${host}`;
+}
+
+export async function signupAction(input: {
+  email: string;
+  password: string;
+  businessName: string;
+}): Promise<ActionError | never> {
+  const parsed = signupSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      error: 'Invalid signup details.',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+  const { email, password, businessName } = parsed.data;
+
+  const admin = createAdminClient();
+
+  // 1. Create the auth user.
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (createErr || !created?.user) {
+    const msg = createErr?.message ?? 'Could not create user.';
+    // "already been registered" and variants — surface to the user.
+    return { error: msg };
+  }
+
+  const userId = created.user.id;
+
+  // 2 + 3. Create tenant + tenant_member. Roll back the auth user on failure.
+  try {
+    const { data: tenant, error: tenantErr } = await admin
+      .from('tenants')
+      .insert({ name: businessName })
+      .select('id')
+      .single();
+    if (tenantErr || !tenant) {
+      throw new Error(tenantErr?.message ?? 'Could not create tenant.');
+    }
+
+    const { error: memberErr } = await admin
+      .from('tenant_members')
+      .insert({ tenant_id: tenant.id, user_id: userId, role: 'owner' });
+    if (memberErr) {
+      // Tenant row exists but membership failed — delete the tenant too so
+      // we don't leak a dangling row. `deleted_at` soft-delete is fine but
+      // for this error path a hard delete keeps things tidy.
+      await admin.from('tenants').delete().eq('id', tenant.id);
+      throw new Error(memberErr.message);
+    }
+  } catch (err) {
+    await admin.auth.admin.deleteUser(userId).catch(() => {
+      // Nothing we can do if the rollback fails. The dangling auth user
+      // can be cleaned up manually.
+    });
+    const msg = err instanceof Error ? err.message : 'Signup failed.';
+    return { error: msg };
+  }
+
+  // 4. Sign the user in with the regular client so cookies are set.
+  const supabase = await createClient();
+  const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+  if (signInErr) {
+    return { error: `Account created but sign-in failed: ${signInErr.message}` };
+  }
+
+  redirect('/dashboard');
+}
+
+export async function loginAction(input: {
+  email: string;
+  password: string;
+}): Promise<ActionError | never> {
+  const parsed = loginSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      error: 'Invalid login details.',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+  const { email, password } = parsed.data;
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    return { error: error.message };
+  }
+
+  redirect('/dashboard');
+}
+
+export async function requestMagicLinkAction(input: {
+  email: string;
+}): Promise<ActionError | { success: true; email: string } | never> {
+  const parsed = magicLinkSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      error: 'Invalid email.',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+  const { email } = parsed.data;
+
+  const origin = await originFromHeaders();
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      // Only existing users; magic-link signup is deferred to Phase 2.
+      shouldCreateUser: false,
+      emailRedirectTo: `${origin}/callback`,
+    },
+  });
+  if (error) {
+    return { error: error.message };
+  }
+
+  return { success: true, email };
+}
+
+export async function logoutAction(): Promise<never> {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect('/login');
+}
