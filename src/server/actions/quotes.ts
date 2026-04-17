@@ -286,11 +286,22 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
       const { sendEmail } = await import('@/lib/email/send');
       const { quoteEmailHtml } = await import('@/lib/email/templates/quote-email');
 
-      const viewUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.smartfusion.ca'}/quotes/${input.quoteId}`;
+      // Use a signed PDF URL so the customer can download directly (no login).
+      // Falls back to the app URL if PDF wasn't generated.
+      let viewUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.smartfusion.ca'}/quotes/${input.quoteId}`;
+      if (pdfUrl) {
+        const pdfPath = `quotes/${tenant.id}/${input.quoteId}.pdf`;
+        const { data: signedData } = await supabase.storage
+          .from('quotes')
+          .createSignedUrl(pdfPath, 60 * 60 * 24 * 30); // 30 days
+        if (signedData?.signedUrl) {
+          viewUrl = signedData.signedUrl;
+        }
+      }
 
       const emailResult = await sendEmail({
         to: customer.email,
-        subject: `Quote from ${tenantData?.name ?? tenant.name} — ${formatCurrency(quote.total_cents)}`,
+        subject: `Quote from ${tenantData?.name ?? tenant.name}`,
         html: quoteEmailHtml({
           customerName: customer.name,
           businessName: tenantData?.name ?? tenant.name,
