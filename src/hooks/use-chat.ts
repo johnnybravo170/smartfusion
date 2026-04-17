@@ -14,6 +14,8 @@ export type UseChatReturn = {
   isLoading: boolean;
   isPanelOpen: boolean;
   activeTool: string | null;
+  /** The content of the most recently completed assistant message (set once streaming ends). */
+  latestCompleteResponse: string | null;
   sendMessage: (content: string) => void;
   togglePanel: () => void;
   clearHistory: () => void;
@@ -39,6 +41,7 @@ export function useChat(): UseChatReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [latestCompleteResponse, setLatestCompleteResponse] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Hydrate panel state from localStorage after mount.
@@ -78,6 +81,7 @@ export function useChat(): UseChatReturn {
       ]);
       setIsLoading(true);
       setActiveTool(null);
+      setLatestCompleteResponse(null);
 
       // Build the history to send: exclude any currently-streaming message.
       const history = [...messages, userMsg]
@@ -145,9 +149,14 @@ export function useChat(): UseChatReturn {
                   setActiveTool(null);
                   break;
                 case 'done':
-                  setMessages((prev) =>
-                    prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)),
-                  );
+                  setMessages((prev) => {
+                    const updated = prev.map((m) =>
+                      m.id === assistantId ? { ...m, isStreaming: false } : m,
+                    );
+                    const final = updated.find((m) => m.id === assistantId);
+                    if (final?.content) setLatestCompleteResponse(final.content);
+                    return updated;
+                  });
                   setIsLoading(false);
                   setActiveTool(null);
                   return;
@@ -170,9 +179,14 @@ export function useChat(): UseChatReturn {
         }
 
         // Stream ended without a `done` chunk; finalize anyway.
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)),
-        );
+        setMessages((prev) => {
+          const updated = prev.map((m) =>
+            m.id === assistantId ? { ...m, isStreaming: false } : m,
+          );
+          const final = updated.find((m) => m.id === assistantId);
+          if (final?.content) setLatestCompleteResponse(final.content);
+          return updated;
+        });
         setIsLoading(false);
         setActiveTool(null);
       } catch (err) {
@@ -195,5 +209,14 @@ export function useChat(): UseChatReturn {
     [isLoading, messages],
   );
 
-  return { messages, isLoading, isPanelOpen, activeTool, sendMessage, togglePanel, clearHistory };
+  return {
+    messages,
+    isLoading,
+    isPanelOpen,
+    activeTool,
+    latestCompleteResponse,
+    sendMessage,
+    togglePanel,
+    clearHistory,
+  };
 }
