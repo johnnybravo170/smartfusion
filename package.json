@@ -22,6 +22,9 @@
     "db:push": "supabase db push",
     "db:generate": "drizzle-kit generate",
     "smoke": "tsx scripts/smoke-foundation.ts",
+    "monitor": "bash scripts/monitor-health.sh",
+    "verify-deploy": "bash scripts/verify-deploy.sh",
+    "check-ci": "bash scripts/check-ci.sh",
     "prepare": "husky"
   },
   "lint-staged": {
