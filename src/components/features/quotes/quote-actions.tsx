@@ -38,6 +38,9 @@ export function SendQuoteButton({ quoteId }: { quoteId: string }) {
       const result = await sendQuoteAction({ quoteId });
       if (result.ok) {
         toast.success('Quote sent.');
+        if (result.warning) {
+          toast.warning(result.warning);
+        }
         router.refresh();
       } else {
         toast.error(result.error);

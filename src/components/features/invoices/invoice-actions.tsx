@@ -38,6 +38,9 @@ export function InvoiceActions({ invoiceId, status, paymentUrl }: Props) {
       const result = await sendInvoiceAction({ invoiceId });
       if (result.ok) {
         toast.success('Invoice sent! Payment link created.');
+        if (result.warning) {
+          toast.warning(result.warning);
+        }
         if (result.paymentUrl) {
           await navigator.clipboard.writeText(result.paymentUrl).catch(() => {});
           toast.info('Payment link copied to clipboard.');

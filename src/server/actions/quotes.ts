@@ -12,12 +12,16 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import type { CatalogEntryRow } from '@/lib/db/queries/service-catalog';
-import { calculateQuoteTotal, calculateSurfacePrice } from '@/lib/pricing/calculator';
+import {
+  calculateQuoteTotal,
+  calculateSurfacePrice,
+  formatCurrency,
+} from '@/lib/pricing/calculator';
 import { createClient } from '@/lib/supabase/server';
 import { emptyToNull, quoteCreateSchema, quoteUpdateSchema } from '@/lib/validators/quote';
 
 export type QuoteActionResult =
-  | { ok: true; id: string }
+  | { ok: true; id: string; warning?: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 const TAX_RATE = 0.05; // 5% GST
@@ -189,24 +193,23 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
   const supabase = await createClient();
   const now = new Date().toISOString();
 
+  // Load quote and tenant data (needed for PDF and email).
+  const { getQuote } = await import('@/lib/db/queries/quotes');
+  const quote = await getQuote(input.quoteId);
+  if (!quote) {
+    return { ok: false, error: 'Quote not found.' };
+  }
+
+  const { data: tenantData } = await supabase
+    .from('tenants')
+    .select('id, name, slug')
+    .eq('id', tenant.id)
+    .single();
+
   // Generate PDF.
   let pdfUrl: string | null = null;
   try {
-    // Dynamic import to keep the server action lean.
     const { generateQuotePdf } = await import('@/lib/pdf/quote-pdf');
-    const { getQuote } = await import('@/lib/db/queries/quotes');
-
-    const quote = await getQuote(input.quoteId);
-    if (!quote) {
-      return { ok: false, error: 'Quote not found.' };
-    }
-
-    // Get tenant details for PDF header.
-    const { data: tenantData } = await supabase
-      .from('tenants')
-      .select('id, name, slug')
-      .eq('id', tenant.id)
-      .single();
 
     const pdfBuffer = await generateQuotePdf(
       quote,
@@ -268,11 +271,51 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
     related_id: input.quoteId,
   });
 
-  // TODO: Phase 2 — Send email to customer via Resend.
+  // Email the quote to the customer.
+  let warning: string | undefined;
+  const customer = quote.customer;
+
+  if (customer?.email) {
+    try {
+      const { sendEmail } = await import('@/lib/email/send');
+      const { quoteEmailHtml } = await import('@/lib/email/templates/quote-email');
+
+      const viewUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.smartfusion.ca'}/quotes/${input.quoteId}`;
+
+      const emailResult = await sendEmail({
+        to: customer.email,
+        subject: `Quote from ${tenantData?.name ?? tenant.name} — ${formatCurrency(quote.total_cents)}`,
+        html: quoteEmailHtml({
+          customerName: customer.name,
+          businessName: tenantData?.name ?? tenant.name,
+          quoteNumber: input.quoteId.slice(0, 8),
+          totalFormatted: formatCurrency(quote.total_cents),
+          viewUrl,
+        }),
+      });
+
+      if (emailResult.ok) {
+        await supabase.from('worklog_entries').insert({
+          tenant_id: tenant.id,
+          entry_type: 'system',
+          title: 'Quote emailed',
+          body: `Quote #${input.quoteId.slice(0, 8)} emailed to ${customer.email}`,
+          related_type: 'quote',
+          related_id: input.quoteId,
+        });
+      } else {
+        console.error('Quote email failed:', emailResult.error);
+      }
+    } catch (emailErr) {
+      console.error('Quote email error:', emailErr);
+    }
+  } else {
+    warning = 'Customer has no email on file. Quote saved but not emailed.';
+  }
 
   revalidatePath('/quotes');
   revalidatePath(`/quotes/${input.quoteId}`);
-  return { ok: true, id: input.quoteId };
+  return { ok: true, id: input.quoteId, warning };
 }
 
 export async function acceptQuoteAction(input: { quoteId: string }): Promise<QuoteActionResult> {

@@ -12,6 +12,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { getStripe } from '@/lib/stripe/client';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -23,7 +24,7 @@ import {
 } from '@/lib/validators/invoice';
 
 export type InvoiceActionResult =
-  | { ok: true; id?: string; paymentUrl?: string }
+  | { ok: true; id?: string; paymentUrl?: string; warning?: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 /**
@@ -183,10 +184,10 @@ export async function sendInvoiceAction(input: {
     return { ok: false, error: 'Connect your Stripe account in Settings before sending invoices.' };
   }
 
-  // Load customer name for the checkout line item.
+  // Load customer for the checkout line item and email.
   const { data: customer } = await supabase
     .from('customers')
-    .select('name')
+    .select('name, email')
     .eq('id', invoice.customer_id)
     .single();
 
@@ -256,10 +257,50 @@ export async function sendInvoiceAction(input: {
     related_id: invoice.job_id,
   });
 
+  // Email the payment link to the customer.
+  const paymentUrl = session.url ?? undefined;
+  let warning: string | undefined;
+
+  if (customer?.email && paymentUrl) {
+    try {
+      const { sendEmail } = await import('@/lib/email/send');
+      const { invoiceEmailHtml } = await import('@/lib/email/templates/invoice-email');
+
+      const emailResult = await sendEmail({
+        to: customer.email,
+        subject: `Invoice from ${tenantRow?.name ?? 'your contractor'} — ${formatCurrency(totalCents)}`,
+        html: invoiceEmailHtml({
+          customerName: customer.name,
+          businessName: tenantRow?.name ?? 'your contractor',
+          invoiceNumber: invoice.id.slice(0, 8),
+          totalFormatted: formatCurrency(totalCents),
+          payUrl: paymentUrl,
+        }),
+      });
+
+      if (emailResult.ok) {
+        await supabase.from('worklog_entries').insert({
+          tenant_id: tenant.id,
+          entry_type: 'system',
+          title: 'Invoice emailed',
+          body: `Invoice #${invoice.id.slice(0, 8)} emailed to ${customer.email}`,
+          related_type: 'job',
+          related_id: invoice.job_id,
+        });
+      } else {
+        console.error('Invoice email failed:', emailResult.error);
+      }
+    } catch (emailErr) {
+      console.error('Invoice email error:', emailErr);
+    }
+  } else if (!customer?.email) {
+    warning = 'Customer has no email on file. Invoice saved but not emailed.';
+  }
+
   revalidatePath('/invoices');
   revalidatePath(`/invoices/${invoice.id}`);
   revalidatePath(`/jobs/${invoice.job_id}`);
-  return { ok: true, id: invoice.id, paymentUrl: session.url ?? undefined };
+  return { ok: true, id: invoice.id, paymentUrl, warning };
 }
 
 /**
