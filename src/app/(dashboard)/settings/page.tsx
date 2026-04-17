@@ -1,4 +1,4 @@
-import { ChevronRight, Ruler } from 'lucide-react';
+import { ChevronRight, Mic, Ruler } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { DataExportCard } from '@/components/features/settings/data-export-card';
@@ -60,6 +60,31 @@ async function ExportSection() {
   );
 }
 
+function VoiceSection() {
+  const isConfigured = !!process.env.ELEVENLABS_API_KEY && !!process.env.ELEVENLABS_VOICE_ID;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Mic className="size-5" />
+          <div>
+            <CardTitle>Voice</CardTitle>
+            <CardDescription>
+              {isConfigured
+                ? 'Using ElevenLabs for natural text-to-speech.'
+                : 'Using browser default voice. Configure ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID in environment variables to enable natural voice.'}
+            </CardDescription>
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Current: {isConfigured ? 'ElevenLabs' : 'Browser (default)'}
+        </p>
+      </CardHeader>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -98,6 +123,8 @@ export default function SettingsPage() {
       <Suspense fallback={<div className="h-32 animate-pulse rounded-xl border bg-card" />}>
         <ExportSection />
       </Suspense>
+
+      <VoiceSection />
     </div>
   );
 }
