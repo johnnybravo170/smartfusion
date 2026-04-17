@@ -126,6 +126,8 @@
     overflow: hidden;
     width: 100%;
     height: 100%;
+    touch-action: pan-y pinch-zoom;
+    -webkit-overflow-scrolling: touch;
   }
   body {
     @apply bg-background text-foreground;
