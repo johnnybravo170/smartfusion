@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { WorklogRowWithRelated } from '@/lib/db/queries/worklog';
 import { cn } from '@/lib/utils';
 import { type WorklogRelatedType, worklogRelatedTypeLabels } from '@/lib/validators/worklog';
@@ -67,6 +68,7 @@ export function WorklogEntry({
   entry: WorklogRowWithRelated;
   highlight?: string;
 }) {
+  const timezone = useTenantTimezone();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const isNote = entry.entry_type === 'note';
@@ -106,9 +108,9 @@ export function WorklogEntry({
         ) : null}
         <span
           className="ml-auto text-xs text-muted-foreground"
-          title={formatAbsolute(entry.created_at)}
+          title={formatAbsolute(entry.created_at, timezone)}
         >
-          {formatRelativeTime(entry.created_at)}
+          {formatRelativeTime(entry.created_at, undefined, timezone)}
         </span>
         {isNote ? (
           <AlertDialog>

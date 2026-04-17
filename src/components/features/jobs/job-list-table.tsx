@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import {
   Table,
@@ -7,14 +9,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
+import { formatDate, formatDateTime } from '@/lib/date/format';
 import type { JobWithCustomer } from '@/lib/db/queries/jobs';
 import { JobStatusBadge } from './job-status-badge';
-
-const dateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
-const dateFormatter = new Intl.DateTimeFormat('en-CA', { dateStyle: 'medium' });
 
 function truncate(value: string, max = 60) {
   if (value.length <= max) return value;
@@ -32,6 +30,7 @@ function notesPreview(notes: string | null): string {
  * Customers table pattern so the look-and-feel is consistent.
  */
 export function JobListTable({ jobs }: { jobs: JobWithCustomer[] }) {
+  const timezone = useTenantTimezone();
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
       <Table>
@@ -53,14 +52,14 @@ export function JobListTable({ jobs }: { jobs: JobWithCustomer[] }) {
                 </Link>
               </TableCell>
               <TableCell className="text-muted-foreground">
-                {job.scheduled_at ? dateTimeFormatter.format(new Date(job.scheduled_at)) : '—'}
+                {job.scheduled_at ? formatDateTime(job.scheduled_at, { timezone }) : '\u2014'}
               </TableCell>
               <TableCell>
                 <JobStatusBadge status={job.status} />
               </TableCell>
               <TableCell className="text-muted-foreground">{notesPreview(job.notes)}</TableCell>
               <TableCell className="text-muted-foreground">
-                {dateFormatter.format(new Date(job.created_at))}
+                {formatDate(job.created_at, { timezone })}
               </TableCell>
             </TableRow>
           ))}

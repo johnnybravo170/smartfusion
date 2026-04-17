@@ -11,7 +11,7 @@ export function formatDate(
 ): string {
   if (!date) return '\u2014';
   const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return '\u2014';
+  if (Number.isNaN(d.getTime())) return '\u2014';
 
   const tz = options?.timezone || DEFAULT_TZ;
   const style = options?.style || 'medium';
@@ -32,7 +32,7 @@ export function formatDateTime(
 ): string {
   if (!date) return '\u2014';
   const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return '\u2014';
+  if (Number.isNaN(d.getTime())) return '\u2014';
 
   const tz = options?.timezone || DEFAULT_TZ;
 
@@ -49,7 +49,7 @@ export function formatRelativeTime(
 ): string {
   if (!date) return '\u2014';
   const d = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(d.getTime())) return '\u2014';
+  if (Number.isNaN(d.getTime())) return '\u2014';
 
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();

@@ -5,6 +5,8 @@ import { useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
+import { formatDate } from '@/lib/date/format';
 import { requestExportAction } from '@/server/actions/export';
 
 type Props = {
@@ -13,6 +15,7 @@ type Props = {
 };
 
 export function DataExportCard({ lastExportUrl, lastExportDate }: Props) {
+  const timezone = useTenantTimezone();
   const [isPending, startTransition] = useTransition();
 
   function handleExport() {
@@ -59,7 +62,7 @@ export function DataExportCard({ lastExportUrl, lastExportDate }: Props) {
               className="underline"
               data-testid="last-export-link"
             >
-              {new Date(lastExportDate).toLocaleDateString()}
+              {formatDate(lastExportDate, { timezone })}
             </a>
           </p>
         )}

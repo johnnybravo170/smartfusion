@@ -55,10 +55,10 @@ export function InvoiceTable({ invoices }: { invoices: InvoiceWithCustomer[] }) 
                 <InvoiceStatusBadge status={inv.status as InvoiceStatus} />
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
-                {formatDate(inv.sent_at)}
+                {formatDate(inv.sent_at, { timezone })}
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
-                {formatDate(inv.paid_at)}
+                {formatDate(inv.paid_at, { timezone })}
               </TableCell>
             </TableRow>
           ))}

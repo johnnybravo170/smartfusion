@@ -1,12 +1,11 @@
+'use client';
+
 import { CalendarClock } from 'lucide-react';
 import Link from 'next/link';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
+import { formatDateTime } from '@/lib/date/format';
 import type { JobWithCustomer } from '@/lib/db/queries/jobs';
 import { cn } from '@/lib/utils';
-
-const dateFormatter = new Intl.DateTimeFormat('en-CA', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
 
 function truncate(value: string, max = 120) {
   if (value.length <= max) return value;
@@ -28,8 +27,9 @@ export function JobCard({
   className?: string;
   draggable?: boolean;
 }) {
+  const timezone = useTenantTimezone();
   const customerName = job.customer?.name ?? 'Unknown customer';
-  const scheduled = job.scheduled_at ? dateFormatter.format(new Date(job.scheduled_at)) : null;
+  const scheduled = job.scheduled_at ? formatDateTime(job.scheduled_at, { timezone }) : null;
   const notesPreview = job.notes ? truncate(job.notes.split('\n')[0] ?? '', 90) : null;
 
   return (

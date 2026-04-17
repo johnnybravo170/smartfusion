@@ -12,12 +12,13 @@ import { WorklogEntry } from './worklog-entry';
 
 function bucket(
   entries: WorklogRowWithRelated[],
+  timezone?: string,
 ): Array<{ label: string; items: WorklogRowWithRelated[] }> {
   const groups: Array<{ label: string; items: WorklogRowWithRelated[] }> = [];
   const now = new Date();
   let currentLabel: string | null = null;
   for (const entry of entries) {
-    const label = dayBucketLabel(entry.created_at, now);
+    const label = dayBucketLabel(entry.created_at, now, timezone);
     if (label !== currentLabel) {
       groups.push({ label, items: [] });
       currentLabel = label;
@@ -50,15 +51,17 @@ export function WorklogEmptyState({ variant = 'fresh' }: { variant?: 'fresh' | '
 export function WorklogList({
   entries,
   highlight,
+  timezone,
 }: {
   entries: WorklogRowWithRelated[];
   highlight?: string;
+  timezone?: string;
 }) {
   if (entries.length === 0) {
     return <WorklogEmptyState variant={highlight ? 'filtered' : 'fresh'} />;
   }
 
-  const groups = bucket(entries);
+  const groups = bucket(entries, timezone);
 
   return (
     <div className="flex flex-col gap-5">

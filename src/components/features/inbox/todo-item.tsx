@@ -25,6 +25,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { TodoRow } from '@/lib/db/queries/todos';
 import { cn } from '@/lib/utils';
 import { type TodoRelatedType, todoRelatedTypeLabels } from '@/lib/validators/todo';
@@ -39,6 +40,7 @@ const DUE_STYLES: Record<'overdue' | 'today' | 'upcoming' | 'none', string> = {
 };
 
 export function TodoItem({ todo }: { todo: TodoRow }) {
+  const timezone = useTenantTimezone();
   const router = useRouter();
   const [togglePending, startToggle] = useTransition();
   const [deletePending, startDelete] = useTransition();
@@ -94,7 +96,7 @@ export function TodoItem({ todo }: { todo: TodoRow }) {
           <div className="flex flex-wrap items-center gap-2">
             {todo.due_date ? (
               <Badge variant="outline" className={cn('font-medium border', DUE_STYLES[bucket])}>
-                {formatDueDate(todo.due_date)}
+                {formatDueDate(todo.due_date, undefined, timezone)}
               </Badge>
             ) : null}
             {todo.related_type ? (

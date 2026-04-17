@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import {
   Table,
@@ -7,11 +9,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
+import { formatDate } from '@/lib/date/format';
 import type { CustomerRow } from '@/lib/db/queries/customers';
 import type { CustomerType } from '@/lib/validators/customer';
 import { CustomerTypeBadge } from './customer-type-badge';
-
-const dateFormatter = new Intl.DateTimeFormat('en-CA', { dateStyle: 'medium' });
 
 function contactLine(customer: CustomerRow): string {
   if (customer.email) return customer.email;
@@ -32,6 +34,7 @@ function locationLine(customer: CustomerRow): string {
  * so the row-as-link affordance is obvious.
  */
 export function CustomerTable({ customers }: { customers: CustomerRow[] }) {
+  const timezone = useTenantTimezone();
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
       <Table>
@@ -64,7 +67,7 @@ export function CustomerTable({ customers }: { customers: CustomerRow[] }) {
               <TableCell className="text-muted-foreground">{contactLine(customer)}</TableCell>
               <TableCell className="text-muted-foreground">{locationLine(customer)}</TableCell>
               <TableCell className="text-muted-foreground">
-                {dateFormatter.format(new Date(customer.created_at))}
+                {formatDate(customer.created_at, { timezone })}
               </TableCell>
             </TableRow>
           ))}

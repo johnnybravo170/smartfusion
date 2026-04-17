@@ -6,22 +6,37 @@
  * "3d ago", or an absolute date (e.g. "Apr 14") for anything older than a
  * week. Callers pair the output with a `title` attribute that carries the
  * full ISO so hovering reveals precision.
+ *
+ * All formatters accept an optional `timezone` string (IANA) so dates
+ * render in the tenant's local time instead of the server's UTC.
  */
 
-const absoluteDateFormatter = new Intl.DateTimeFormat('en-CA', {
-  month: 'short',
-  day: 'numeric',
-});
+const DEFAULT_TZ = 'America/Vancouver';
 
-const absoluteDateYearFormatter = new Intl.DateTimeFormat('en-CA', {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
+function makeDateFormatter(tz: string) {
+  return new Intl.DateTimeFormat('en-CA', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: tz,
+  });
+}
 
-export function formatRelativeTime(iso: string, now: Date = new Date()): string {
+function makeDateYearFormatter(tz: string) {
+  return new Intl.DateTimeFormat('en-CA', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: tz,
+  });
+}
+
+export function formatRelativeTime(
+  iso: string,
+  now: Date = new Date(),
+  timezone: string = DEFAULT_TZ,
+): string {
   const ts = new Date(iso);
-  if (Number.isNaN(ts.getTime())) return '—';
+  if (Number.isNaN(ts.getTime())) return '\u2014';
 
   const diffMs = now.getTime() - ts.getTime();
   const diffSec = Math.round(diffMs / 1000);
@@ -36,31 +51,41 @@ export function formatRelativeTime(iso: string, now: Date = new Date()): string 
   if (diffDay < 7) return `${diffDay}d ago`;
 
   const sameYear = ts.getFullYear() === now.getFullYear();
-  const formatter = sameYear ? absoluteDateFormatter : absoluteDateYearFormatter;
+  const formatter = sameYear ? makeDateFormatter(timezone) : makeDateYearFormatter(timezone);
   return formatter.format(ts);
 }
 
-const absoluteTimestampFormatter = new Intl.DateTimeFormat('en-CA', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
+function makeTimestampFormatter(tz: string) {
+  return new Intl.DateTimeFormat('en-CA', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: tz,
+  });
+}
 
-export function formatAbsolute(iso: string): string {
+export function formatAbsolute(iso: string, timezone: string = DEFAULT_TZ): string {
   const ts = new Date(iso);
   if (Number.isNaN(ts.getTime())) return iso;
-  return absoluteTimestampFormatter.format(ts);
+  return makeTimestampFormatter(timezone).format(ts);
 }
 
 /**
  * Bucket for worklog grouping: 'Today' / 'Yesterday' / absolute date string.
  */
-const dayHeadingFormatter = new Intl.DateTimeFormat('en-CA', {
-  weekday: 'long',
-  month: 'short',
-  day: 'numeric',
-});
+function makeDayHeadingFormatter(tz: string) {
+  return new Intl.DateTimeFormat('en-CA', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    timeZone: tz,
+  });
+}
 
-export function dayBucketLabel(iso: string, now: Date = new Date()): string {
+export function dayBucketLabel(
+  iso: string,
+  now: Date = new Date(),
+  timezone: string = DEFAULT_TZ,
+): string {
   const ts = new Date(iso);
   if (Number.isNaN(ts.getTime())) return 'Unknown';
 
@@ -72,9 +97,9 @@ export function dayBucketLabel(iso: string, now: Date = new Date()): string {
 
   const sameYear = ts.getFullYear() === now.getFullYear();
   if (sameYear) {
-    return dayHeadingFormatter.format(ts);
+    return makeDayHeadingFormatter(timezone).format(ts);
   }
-  return absoluteDateYearFormatter.format(ts);
+  return makeDateYearFormatter(timezone).format(ts);
 }
 
 /**
@@ -100,13 +125,20 @@ export function todoDueBucket(
 /**
  * Human label for a due date like "Today", "Tomorrow", "Fri Apr 18".
  */
-const dueLabelFormatter = new Intl.DateTimeFormat('en-CA', {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-});
+function makeDueLabelFormatter(tz: string) {
+  return new Intl.DateTimeFormat('en-CA', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: tz,
+  });
+}
 
-export function formatDueDate(iso: string, now: Date = new Date()): string {
+export function formatDueDate(
+  iso: string,
+  now: Date = new Date(),
+  timezone: string = DEFAULT_TZ,
+): string {
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
   if (!y || !m || !d) return iso;
   const due = new Date(y, m - 1, d);
@@ -116,5 +148,5 @@ export function formatDueDate(iso: string, now: Date = new Date()): string {
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Tomorrow';
   if (diffDays === -1) return 'Yesterday';
-  return dueLabelFormatter.format(due);
+  return makeDueLabelFormatter(timezone).format(due);
 }

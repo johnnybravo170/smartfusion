@@ -8,12 +8,14 @@
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatDate } from '@/lib/date/format';
 import type { QuoteCustomerSummary, QuoteWithRelations } from '@/lib/db/queries/quotes';
 import { formatCurrency } from '@/lib/pricing/calculator';
 
 type TenantInfo = {
   id: string;
   name: string;
+  timezone?: string;
 };
 
 export async function generateQuotePdf(
@@ -44,9 +46,10 @@ export async function generateQuotePdf(
   doc.text(quoteNumber, pageWidth - margin, y, { align: 'right' });
   y += 4;
 
-  const dateStr = new Intl.DateTimeFormat('en-CA', { dateStyle: 'long' }).format(
-    new Date(quote.created_at),
-  );
+  const dateStr = formatDate(quote.created_at, {
+    timezone: tenant.timezone || 'America/Vancouver',
+    style: 'long',
+  });
   doc.text(`Date: ${dateStr}`, pageWidth - margin, y, { align: 'right' });
   y += 12;
 

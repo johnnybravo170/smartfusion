@@ -17,6 +17,7 @@ import { TodoForm } from '@/components/features/inbox/todo-form';
 import { TodoList } from '@/components/features/inbox/todo-list';
 import { WorklogFilters } from '@/components/features/inbox/worklog-filters';
 import { WorklogList } from '@/components/features/inbox/worklog-list';
+import { getCurrentTenant } from '@/lib/auth/helpers';
 import { countTodos, listTodos } from '@/lib/db/queries/todos';
 import { countWorklog, listWorklog, searchWorklog } from '@/lib/db/queries/worklog';
 import {
@@ -66,6 +67,9 @@ export default async function InboxPage({
   const query = parseString(sp.q);
   const entryType = parseEntryType(sp.entry_type);
   const relatedType = parseRelatedType(sp.related_type);
+
+  const tenant = await getCurrentTenant();
+  const timezone = tenant?.timezone || 'America/Vancouver';
 
   // Always fetch todo + worklog counts so the tab labels are accurate.
   const [todos, todoCount, worklogCountAll] = await Promise.all([
@@ -121,7 +125,11 @@ export default async function InboxPage({
               />
               <AddNoteDialog />
             </div>
-            <WorklogList entries={worklogEntries} highlight={query || undefined} />
+            <WorklogList
+              entries={worklogEntries}
+              highlight={query || undefined}
+              timezone={timezone}
+            />
           </>
         }
       />
