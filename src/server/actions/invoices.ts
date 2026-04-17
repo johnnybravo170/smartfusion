@@ -304,6 +304,116 @@ export async function sendInvoiceAction(input: {
 }
 
 /**
+ * Resend an already-sent invoice. Re-sends the email with the existing payment
+ * link. Does NOT create a new Stripe Checkout session.
+ */
+export async function resendInvoiceAction(input: {
+  invoiceId: string;
+}): Promise<InvoiceActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) {
+    return { ok: false, error: 'Not signed in or missing tenant.' };
+  }
+
+  const supabase = await createClient();
+
+  // Load invoice.
+  const { data: invoice, error: invErr } = await supabase
+    .from('invoices')
+    .select('id, status, amount_cents, tax_cents, job_id, customer_id, pdf_url')
+    .eq('id', input.invoiceId)
+    .is('deleted_at', null)
+    .single();
+
+  if (invErr || !invoice) {
+    return { ok: false, error: invErr?.message ?? 'Invoice not found.' };
+  }
+
+  if (invoice.status !== 'sent') {
+    return { ok: false, error: `Can only resend invoices with status "sent".` };
+  }
+
+  const paymentUrl = invoice.pdf_url;
+  if (!paymentUrl) {
+    return { ok: false, error: 'No payment link found. Send the invoice first.' };
+  }
+
+  // Load tenant name for email.
+  const { data: tenantRow } = await supabase
+    .from('tenants')
+    .select('name')
+    .eq('id', tenant.id)
+    .single();
+
+  // Load customer for email.
+  const { data: customer } = await supabase
+    .from('customers')
+    .select('name, email')
+    .eq('id', invoice.customer_id)
+    .single();
+
+  const totalCents = invoice.amount_cents + invoice.tax_cents;
+
+  // Update sent_at timestamp.
+  const now = new Date().toISOString();
+  await supabase.from('invoices').update({ sent_at: now, updated_at: now }).eq('id', invoice.id);
+
+  // Worklog entry.
+  await supabase.from('worklog_entries').insert({
+    tenant_id: tenant.id,
+    entry_type: 'system',
+    title: 'Invoice resent',
+    body: `Invoice #${invoice.id.slice(0, 8)} resent.`,
+    related_type: 'job',
+    related_id: invoice.job_id,
+  });
+
+  // Email the payment link to the customer.
+  let warning: string | undefined;
+
+  if (customer?.email) {
+    try {
+      const { sendEmail } = await import('@/lib/email/send');
+      const { invoiceEmailHtml } = await import('@/lib/email/templates/invoice-email');
+
+      const emailResult = await sendEmail({
+        to: customer.email,
+        subject: `Invoice from ${tenantRow?.name ?? 'your contractor'} — ${formatCurrency(totalCents)}`,
+        html: invoiceEmailHtml({
+          customerName: customer.name,
+          businessName: tenantRow?.name ?? 'your contractor',
+          invoiceNumber: invoice.id.slice(0, 8),
+          totalFormatted: formatCurrency(totalCents),
+          payUrl: paymentUrl,
+        }),
+      });
+
+      if (emailResult.ok) {
+        await supabase.from('worklog_entries').insert({
+          tenant_id: tenant.id,
+          entry_type: 'system',
+          title: 'Invoice emailed',
+          body: `Invoice #${invoice.id.slice(0, 8)} resent to ${customer.email}`,
+          related_type: 'job',
+          related_id: invoice.job_id,
+        });
+      } else {
+        console.error('Invoice resend email failed:', emailResult.error);
+      }
+    } catch (emailErr) {
+      console.error('Invoice resend email error:', emailErr);
+    }
+  } else {
+    warning = 'Customer has no email on file. Invoice not emailed.';
+  }
+
+  revalidatePath('/invoices');
+  revalidatePath(`/invoices/${invoice.id}`);
+  revalidatePath(`/jobs/${invoice.job_id}`);
+  return { ok: true, id: invoice.id, paymentUrl, warning };
+}
+
+/**
  * Void an invoice. Terminal state.
  */
 export async function voidInvoiceAction(input: {

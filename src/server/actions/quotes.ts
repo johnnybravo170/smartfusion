@@ -246,10 +246,16 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
   }
 
   // Update quote status.
+  // If re-sending (status is already sent/accepted/rejected), keep the current
+  // status but update sent_at and PDF. Only transition to 'sent' from 'draft'.
+  const currentStatus = quote.status as string;
+  const isResend = ['sent', 'accepted', 'rejected'].includes(currentStatus);
+  const newStatus = isResend ? currentStatus : 'sent';
+
   const { error } = await supabase
     .from('quotes')
     .update({
-      status: 'sent',
+      status: newStatus,
       sent_at: now,
       pdf_url: pdfUrl,
       updated_at: now,
@@ -265,8 +271,8 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
   await supabase.from('worklog_entries').insert({
     tenant_id: tenant.id,
     entry_type: 'system',
-    title: 'Quote sent',
-    body: `Quote #${input.quoteId.slice(0, 8)} marked as sent.`,
+    title: isResend ? 'Quote resent' : 'Quote sent',
+    body: `Quote #${input.quoteId.slice(0, 8)} ${isResend ? 'resent' : 'marked as sent'}.`,
     related_type: 'quote',
     related_id: input.quoteId,
   });

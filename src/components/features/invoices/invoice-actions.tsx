@@ -1,6 +1,6 @@
 'use client';
 
-import { Ban, CheckCircle, Copy, Loader2, Send } from 'lucide-react';
+import { Ban, CheckCircle, Copy, Loader2, Mail, Send } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import { toast } from 'sonner';
@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 import {
   markInvoicePaidAction,
+  resendInvoiceAction,
   sendInvoiceAction,
   voidInvoiceAction,
 } from '@/server/actions/invoices';
@@ -27,9 +28,10 @@ type Props = {
   invoiceId: string;
   status: InvoiceStatus;
   paymentUrl: string | null;
+  customerEmail: string | null;
 };
 
-export function InvoiceActions({ invoiceId, status, paymentUrl }: Props) {
+export function InvoiceActions({ invoiceId, status, paymentUrl, customerEmail }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -76,6 +78,21 @@ export function InvoiceActions({ invoiceId, status, paymentUrl }: Props) {
     });
   }
 
+  function handleResend() {
+    startTransition(async () => {
+      const result = await resendInvoiceAction({ invoiceId });
+      if (result.ok) {
+        toast.success('Invoice resent.');
+        if (result.warning) {
+          toast.warning(result.warning);
+        }
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
   function handleCopyLink() {
     if (!paymentUrl) return;
     navigator.clipboard.writeText(paymentUrl).then(
@@ -109,6 +126,34 @@ export function InvoiceActions({ invoiceId, status, paymentUrl }: Props) {
             Copy payment link
           </Button>
         )}
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" size="sm" disabled={isPending}>
+              {isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Mail className="size-3.5" />
+              )}
+              Resend
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Resend to {customerEmail ?? 'customer (no email on file)'}?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This will send another email with the invoice and payment link to the customer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleResend} disabled={isPending}>
+                Send
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="outline" size="sm" disabled={isPending}>

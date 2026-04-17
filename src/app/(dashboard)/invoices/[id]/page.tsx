@@ -150,6 +150,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         invoiceId={invoice.id}
         status={invoice.status as InvoiceStatus}
         paymentUrl={invoice.pdf_url}
+        customerEmail={invoice.customer?.email ?? null}
       />
 
       {/* Invoice-related worklog */}

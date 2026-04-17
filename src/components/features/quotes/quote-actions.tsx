@@ -5,7 +5,7 @@
  * transition (send, accept, reject, delete, convert to job).
  */
 
-import { Briefcase, Check, Download, Loader2, Send, Trash2, X } from 'lucide-react';
+import { Briefcase, Check, Download, Loader2, Mail, Send, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import { toast } from 'sonner';
@@ -53,6 +53,59 @@ export function SendQuoteButton({ quoteId }: { quoteId: string }) {
       {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
       Send
     </Button>
+  );
+}
+
+export function ResendQuoteButton({
+  quoteId,
+  customerEmail,
+}: {
+  quoteId: string;
+  customerEmail: string | null;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  function handleResend() {
+    startTransition(async () => {
+      const result = await sendQuoteAction({ quoteId });
+      if (result.ok) {
+        toast.success('Quote resent.');
+        if (result.warning) {
+          toast.warning(result.warning);
+        }
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="outline" size="sm" disabled={pending}>
+          {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5" />}
+          Resend
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            Resend to {customerEmail ?? 'customer (no email on file)'}?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            This will send another email with the quote to the customer.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleResend} disabled={pending}>
+            Send
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

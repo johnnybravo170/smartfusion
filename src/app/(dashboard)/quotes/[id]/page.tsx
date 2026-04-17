@@ -7,6 +7,7 @@ import {
   DeleteQuoteButton,
   DownloadPdfButton,
   RejectQuoteButton,
+  ResendQuoteButton,
   SendQuoteButton,
 } from '@/components/features/quotes/quote-actions';
 import { QuoteStatusBadge } from '@/components/features/quotes/quote-status-badge';
@@ -94,6 +95,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             <>
               <AcceptQuoteButton quoteId={quote.id} />
               <RejectQuoteButton quoteId={quote.id} />
+              <ResendQuoteButton quoteId={quote.id} customerEmail={quote.customer?.email ?? null} />
               <Button asChild variant="outline" size="sm">
                 <Link href={`/quotes/${quote.id}/edit`}>
                   <Pencil className="size-3.5" />
@@ -106,13 +108,19 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           {status === 'accepted' && (
             <>
               <ConvertToJobButton quoteId={quote.id} />
+              <ResendQuoteButton quoteId={quote.id} customerEmail={quote.customer?.email ?? null} />
               {quote.pdf_url && <DownloadPdfButton pdfUrl={quote.pdf_url} />}
             </>
           )}
           {status === 'rejected' && (
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/quotes/new?customer_id=${quote.customer_id}`}>Clone as new quote</Link>
-            </Button>
+            <>
+              <ResendQuoteButton quoteId={quote.id} customerEmail={quote.customer?.email ?? null} />
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/quotes/new?customer_id=${quote.customer_id}`}>
+                  Clone as new quote
+                </Link>
+              </Button>
+            </>
           )}
         </div>
       </header>
