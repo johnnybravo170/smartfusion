@@ -7,7 +7,7 @@
 
 'use client';
 
-import { Check, ClipboardCopy, Download, RefreshCw } from 'lucide-react';
+import { Check, ClipboardCopy, Download, RefreshCw, Share2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import type { SocialPostResponse } from '@/app/api/social-post/route';
@@ -47,6 +47,45 @@ export function SocialPostPreview({
     }
   }, [fullCaption]);
 
+  const handleShare = useCallback(async () => {
+    try {
+      // Copy caption to clipboard first (share sheet doesn't always support text + files together)
+      await navigator.clipboard.writeText(fullCaption);
+
+      // Fetch both images as files for the share sheet
+      const [beforeRes, afterRes] = await Promise.all([
+        fetch(post.beforeUrl),
+        fetch(post.afterUrl),
+      ]);
+      const [beforeBlob, afterBlob] = await Promise.all([beforeRes.blob(), afterRes.blob()]);
+
+      const files = [
+        new File([beforeBlob], 'before.jpg', { type: beforeBlob.type || 'image/jpeg' }),
+        new File([afterBlob], 'after.jpg', { type: afterBlob.type || 'image/jpeg' }),
+      ];
+
+      if (navigator.canShare?.({ files })) {
+        await navigator.share({
+          text: fullCaption,
+          files,
+        });
+        toast.success('Shared! Caption also copied to clipboard.');
+      } else {
+        // Fallback: just share text (older browsers or desktop)
+        await navigator.share({
+          text: fullCaption,
+        });
+        toast.success('Caption shared! Download images separately.');
+      }
+    } catch (e: unknown) {
+      // User cancelled the share sheet — not an error
+      if (e instanceof Error && e.name === 'AbortError') return;
+      toast.error('Sharing not available on this device. Use copy + download instead.');
+    }
+  }, [fullCaption, post.beforeUrl, post.afterUrl]);
+
+  const canShare = typeof navigator !== 'undefined' && !!navigator.share;
+
   const handleDownload = useCallback(
     async (url: string, label: string) => {
       try {
@@ -81,6 +120,12 @@ export function SocialPostPreview({
         )}
       </CardContent>
       <CardFooter className="flex flex-wrap gap-2">
+        {canShare && (
+          <Button size="sm" onClick={handleShare}>
+            <Share2 className="size-3.5" />
+            Share to Instagram
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={handleCopy}>
           {copied ? <Check className="size-3.5" /> : <ClipboardCopy className="size-3.5" />}
           {copied ? 'Copied' : 'Copy caption'}
