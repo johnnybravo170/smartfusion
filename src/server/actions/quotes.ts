@@ -288,7 +288,7 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
 
       // Use a signed PDF URL so the customer can download directly (no login).
       // Falls back to the app URL if PDF wasn't generated.
-      let viewUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.smartfusion.ca'}/quotes/${input.quoteId}`;
+      let viewUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io'}/quotes/${input.quoteId}`;
       if (pdfUrl) {
         const pdfPath = `quotes/${tenant.id}/${input.quoteId}.pdf`;
         const { data: signedData } = await supabase.storage

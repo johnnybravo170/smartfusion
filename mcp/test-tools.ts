@@ -1,5 +1,5 @@
 /**
- * Smoke test for the Smartfusion MCP server.
+ * Smoke test for the HeyHenry MCP server.
  *
  * Connects to the MCP server programmatically via stdio, calls every tool,
  * and verifies responses are non-empty.
@@ -34,7 +34,7 @@ const transport = new StdioClientTransport({
 });
 
 const client = new Client({
-  name: 'smartfusion-test',
+  name: 'heyhenry-test',
   version: '1.0.0',
 });
 
@@ -68,7 +68,7 @@ async function testTool(name: string, args: Record<string, unknown> = {}): Promi
   }
 }
 
-console.log('\nSmartfusion MCP Tool Tests');
+console.log('\nHeyHenry MCP Tool Tests');
 console.log('='.repeat(40));
 
 // List tools first

@@ -21,7 +21,7 @@ function parseQuery(value: string | string[] | undefined): string {
 }
 
 export const metadata = {
-  title: 'Customers — Smartfusion',
+  title: 'Customers — HeyHenry',
 };
 
 export default async function CustomersPage({

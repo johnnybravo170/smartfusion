@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { countJobsByStatus, getBoardData } from '@/lib/db/queries/jobs';
 
 export const metadata = {
-  title: 'Jobs — Smartfusion',
+  title: 'Jobs — HeyHenry',
 };
 
 export default async function JobsPage() {

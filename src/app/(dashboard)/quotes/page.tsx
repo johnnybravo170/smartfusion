@@ -16,7 +16,7 @@ function parseStatus(value: string | string[] | undefined): QuoteStatus | undefi
 }
 
 export const metadata = {
-  title: 'Quotes — Smartfusion',
+  title: 'Quotes — HeyHenry',
 };
 
 export default async function QuotesPage({

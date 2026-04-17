@@ -39,7 +39,7 @@ No drift. No pending migrations.
 
 ## 3. Remote deploy (Vercel)
 
-`GET https://smartfusion.vercel.app` → `HTTP/2 200`, served from Vercel, HTML renders `<h1>Smartfusion</h1>` + "build in progress" placeholder. HTTPS green, HSTS preload header present. No 500s.
+`GET https://smartfusion.vercel.app` → `HTTP/2 200`, served from Vercel, HTML renders `<h1>HeyHenry</h1>` + "build in progress" placeholder. HTTPS green, HSTS preload header present. No 500s.
 
 Deploy auto-triggered from `main` commit `b2a0edf`. Custom domain (`app.smartfusion.ca`) still needs to be connected — leaving that for Jonathan per Task 1.8 plan item.
 

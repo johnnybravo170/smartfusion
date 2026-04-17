@@ -8,7 +8,7 @@ import { listCatalogEntries } from '@/lib/db/queries/service-catalog';
 import { updateQuoteAction } from '@/server/actions/quotes';
 
 export const metadata = {
-  title: 'Edit quote — Smartfusion',
+  title: 'Edit quote — HeyHenry',
 };
 
 export default async function EditQuotePage({ params }: { params: Promise<{ id: string }> }) {

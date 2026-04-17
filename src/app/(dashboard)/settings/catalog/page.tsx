@@ -4,7 +4,7 @@ import { CatalogManager } from '@/components/features/settings/catalog-manager';
 import { listCatalogEntries } from '@/lib/db/queries/service-catalog';
 
 export const metadata = {
-  title: 'Service Catalog — Smartfusion',
+  title: 'Service Catalog — HeyHenry',
 };
 
 export default async function CatalogSettingsPage() {

@@ -1,7 +1,7 @@
 {
-  "name": "Smartfusion",
-  "short_name": "Smartfusion",
-  "description": "Operating system for local service contractors.",
+  "name": "HeyHenry",
+  "short_name": "HeyHenry",
+  "description": "The AI-powered operating system for local service contractors.",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#ffffff",

@@ -10,12 +10,12 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
       <main className="flex-1">{children}</main>
       <footer className="border-t py-4 text-center">
         <a
-          href="https://smartfusion.ca"
+          href="https://heyhenry.io"
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          Powered by Smartfusion
+          Powered by HeyHenry
         </a>
       </footer>
     </div>

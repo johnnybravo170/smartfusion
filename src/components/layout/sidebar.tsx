@@ -25,7 +25,7 @@ export function SidebarNav() {
       className="hidden w-64 shrink-0 border-r bg-background md:flex md:flex-col"
     >
       <div className="flex h-14 items-center border-b px-4">
-        <span className="text-sm font-semibold">Smartfusion</span>
+        <span className="text-sm font-semibold">HeyHenry</span>
       </div>
       <div className="flex-1 overflow-y-auto">
         <NavList />
@@ -64,7 +64,7 @@ export function MobileSidebarToggle() {
             aria-label="Navigation menu"
           >
             <div className="flex h-14 items-center justify-between border-b px-4">
-              <span className="text-sm font-semibold">Smartfusion</span>
+              <span className="text-sm font-semibold">HeyHenry</span>
               <Button
                 variant="ghost"
                 size="icon"

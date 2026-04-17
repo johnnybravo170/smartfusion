@@ -8,7 +8,7 @@ import { createQuoteAction } from '@/server/actions/quotes';
 type RawSearchParams = Record<string, string | string[] | undefined>;
 
 export const metadata = {
-  title: 'New quote — Smartfusion',
+  title: 'New quote — HeyHenry',
 };
 
 function parseCustomerId(value: string | string[] | undefined): string | null {

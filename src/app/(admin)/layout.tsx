@@ -24,7 +24,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     <div className="flex min-h-screen flex-col">
       <header className="flex h-14 items-center justify-between border-b bg-background px-4">
         <div className="flex items-center gap-6">
-          <span className="text-lg font-semibold">Smartfusion Admin</span>
+          <span className="text-lg font-semibold">HeyHenry Admin</span>
           <nav className="flex items-center gap-4 text-sm">
             <Link href="/admin" className="text-muted-foreground hover:text-foreground">
               Dashboard

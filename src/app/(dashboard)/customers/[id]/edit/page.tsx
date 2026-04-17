@@ -7,7 +7,7 @@ import type { CustomerCreateInput, CustomerType } from '@/lib/validators/custome
 import { type CustomerActionResult, updateCustomerAction } from '@/server/actions/customers';
 
 export const metadata = {
-  title: 'Edit customer — Smartfusion',
+  title: 'Edit customer — HeyHenry',
 };
 
 export default async function EditCustomerPage({ params }: { params: Promise<{ id: string }> }) {

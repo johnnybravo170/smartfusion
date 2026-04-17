@@ -54,7 +54,7 @@ export function leadNotificationHtml({
     </a>
   </p>
   <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-  <p style="color: #999; font-size: 12px;">Sent via Smartfusion</p>
+  <p style="color: #999; font-size: 12px;">Sent via HeyHenry</p>
 </body>
 </html>`;
 }

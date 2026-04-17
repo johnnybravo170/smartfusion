@@ -17,13 +17,13 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Smartfusion',
-  description: 'Operating system for local service contractors.',
+  title: 'HeyHenry',
+  description: 'The AI-powered operating system for local service contractors.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Smartfusion',
+    title: 'HeyHenry',
   },
   icons: {
     icon: '/icons/icon.svg',

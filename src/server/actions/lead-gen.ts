@@ -166,7 +166,7 @@ export async function submitLeadAction(input: {
     const operatorEmail = userData?.user?.email;
 
     if (operatorEmail) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.smartfusion.ca';
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io';
       const surfaceSummary = pricedSurfaces
         .map(
           (s) =>

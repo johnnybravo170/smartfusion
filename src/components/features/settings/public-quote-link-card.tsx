@@ -36,8 +36,7 @@ export function PublicQuoteLinkCard({ currentSlug, businessName }: PublicQuoteLi
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const appUrl =
-    typeof window !== 'undefined' ? window.location.origin : 'https://app.smartfusion.ca';
+  const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://app.heyhenry.io';
   const fullUrl = `${appUrl}/q/${slug}`;
 
   function handleSave() {

@@ -510,7 +510,7 @@ async function main() {
   console.log('\n[seed] DONE');
   console.log(`       tenant: ${tenant.name} (${tenantId})`);
   console.log(`       user:   ${email}`);
-  console.log('       visit https://smartfusion.vercel.app/dashboard (log in first)');
+  console.log('       visit https://app.heyhenry.io/dashboard (log in first)');
 
   await sql.end();
 }

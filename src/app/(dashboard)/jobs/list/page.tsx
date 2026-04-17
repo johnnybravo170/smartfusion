@@ -24,7 +24,7 @@ function parseCustomerId(value: string | string[] | undefined): string | null {
 }
 
 export const metadata = {
-  title: 'Job list — Smartfusion',
+  title: 'Job list — HeyHenry',
 };
 
 export default async function JobListPage({

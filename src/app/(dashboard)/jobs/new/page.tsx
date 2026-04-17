@@ -8,7 +8,7 @@ import { createJobAction } from '@/server/actions/jobs';
 type RawSearchParams = Record<string, string | string[] | undefined>;
 
 export const metadata = {
-  title: 'New job — Smartfusion',
+  title: 'New job — HeyHenry',
 };
 
 function parseCustomerId(value: string | string[] | undefined): string | null {

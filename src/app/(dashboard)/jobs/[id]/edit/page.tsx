@@ -8,7 +8,7 @@ import type { JobInput, JobStatus } from '@/lib/validators/job';
 import { type JobActionResult, updateJobAction } from '@/server/actions/jobs';
 
 export const metadata = {
-  title: 'Edit job — Smartfusion',
+  title: 'Edit job — HeyHenry',
 };
 
 /**

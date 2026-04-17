@@ -12,4 +12,4 @@ export function getResend(): Resend {
   return _resend;
 }
 
-export const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@smartfusion.ca';
+export const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@heyhenry.io';

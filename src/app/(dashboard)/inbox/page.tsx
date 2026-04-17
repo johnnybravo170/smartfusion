@@ -54,7 +54,7 @@ function parseTab(value: string | string[] | undefined): 'todos' | 'worklog' {
 }
 
 export const metadata = {
-  title: 'Inbox — Smartfusion',
+  title: 'Inbox — HeyHenry',
 };
 
 export default async function InboxPage({

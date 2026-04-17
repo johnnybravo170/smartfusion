@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { data: tenant } = await admin.from('tenants').select('name').eq('slug', slug).single();
 
   if (!tenant) {
-    return { title: 'Quote — Smartfusion' };
+    return { title: 'Quote — HeyHenry' };
   }
 
   return {

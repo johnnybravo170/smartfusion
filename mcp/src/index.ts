@@ -1,5 +1,5 @@
 /**
- * Smartfusion MCP Server
+ * HeyHenry MCP Server
  *
  * Standalone MCP server that exposes business data (customers, quotes, jobs,
  * invoices, todos, worklog, catalog) to Claude Desktop or any MCP-compatible
@@ -31,7 +31,7 @@ if (!TENANT_ID || !DATABASE_URL) {
 }
 
 const server = new McpServer({
-  name: 'smartfusion',
+  name: 'heyhenry',
   version: '1.0.0',
 });
 

@@ -1,6 +1,6 @@
-# Smartfusion MCP Server
+# HeyHenry MCP Server
 
-Standalone MCP (Model Context Protocol) server that connects Claude Desktop (or any MCP-compatible client) to a tenant's live Smartfusion business data. Operators can query customers, jobs, quotes, invoices, todos, and work log conversationally.
+Standalone MCP (Model Context Protocol) server that connects Claude Desktop (or any MCP-compatible client) to a tenant's live HeyHenry business data. Operators can query customers, jobs, quotes, invoices, todos, and work log conversationally.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 ```json
 {
   "mcpServers": {
-    "smartfusion": {
+    "heyhenry": {
       "command": "npx",
       "args": ["tsx", "/path/to/smartfusion/mcp/src/index.ts"],
       "env": {
