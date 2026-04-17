@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { CustomerPicker } from '@/components/features/customers/customer-picker';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -131,26 +132,14 @@ export function JobForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Customer</FormLabel>
-                <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pick a customer" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {customers.length === 0 ? (
-                      <SelectItem value="__none" disabled>
-                        No customers yet. Add one first.
-                      </SelectItem>
-                    ) : (
-                      customers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <FormControl>
+                  <CustomerPicker
+                    customers={customers}
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    placeholder="Pick a customer"
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

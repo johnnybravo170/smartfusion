@@ -10,6 +10,7 @@ import { MapPin, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { CustomerPicker } from '@/components/features/customers/customer-picker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -200,24 +201,12 @@ export function QuoteForm({
       {/* Customer picker */}
       <div className="rounded-xl border bg-card p-4">
         <span className="mb-2 block text-sm font-medium">Customer</span>
-        <Select value={customerId} onValueChange={setCustomerId}>
-          <SelectTrigger>
-            <SelectValue placeholder="Pick a customer" />
-          </SelectTrigger>
-          <SelectContent>
-            {customers.length === 0 ? (
-              <SelectItem value="__none" disabled>
-                No customers yet. Add one first.
-              </SelectItem>
-            ) : (
-              customers.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
+        <CustomerPicker
+          customers={customers}
+          value={customerId}
+          onChange={setCustomerId}
+          placeholder="Pick a customer"
+        />
       </div>
 
       {/* Map or toggle */}
