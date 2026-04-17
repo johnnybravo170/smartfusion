@@ -188,7 +188,6 @@ export const quoteTools: AiTool[] = [
             surface_type: s.surface_type,
             sqft: s.sqft,
             price_cents,
-            catalog_id: entry.id,
           });
         }
 
@@ -218,11 +217,9 @@ export const quoteTools: AiTool[] = [
         // Insert quote surfaces
         const surfaceRows = pricedSurfaces.map((s) => ({
           quote_id: quote.id,
-          tenant_id: tenant.id,
           surface_type: s.surface_type,
           sqft: s.sqft,
           price_cents: s.price_cents,
-          catalog_entry_id: s.catalog_id,
         }));
 
         const { error: surfErr } = await supabase.from('quote_surfaces').insert(surfaceRows);
