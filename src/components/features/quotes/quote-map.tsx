@@ -47,8 +47,8 @@ const MAP_CONTAINER_STYLE = {
   borderRadius: '0.75rem',
 };
 
-const DEFAULT_CENTER = { lat: 51.0447, lng: -114.0719 }; // Calgary
-const DEFAULT_ZOOM = 14;
+const DEFAULT_CENTER = { lat: 49.0504, lng: -122.3045 }; // Abbotsford BC
+const DEFAULT_ZOOM = 17;
 
 type DrawnPolygon = {
   id: string;
