@@ -14,8 +14,10 @@
  */
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Autocomplete, useJsApiLoader } from '@react-google-maps/api';
+import { MapPin } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState, useTransition } from 'react';
+import { useCallback, useMemo, useRef, useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -45,6 +47,8 @@ import {
   customerTypes,
 } from '@/lib/validators/customer';
 import type { CustomerActionResult } from '@/server/actions/customers';
+
+const LIBRARIES: 'places'[] = ['places'];
 
 export type CustomerFormDefaults = Partial<CustomerCreateInput> & { id?: string };
 
@@ -79,6 +83,12 @@ export function CustomerForm({
   const [pending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
 
+  const { isLoaded } = useJsApiLoader({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+    libraries: LIBRARIES,
+  });
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+
   const initialValues = useMemo<CustomerCreateInput>(
     () => ({
       ...EMPTY,
@@ -98,6 +108,36 @@ export function CustomerForm({
   });
 
   const watchedType = form.watch('type');
+
+  const onPlaceChanged = useCallback(() => {
+    const autocomplete = autocompleteRef.current;
+    if (!autocomplete) return;
+
+    const place = autocomplete.getPlace();
+    if (!place.address_components) return;
+
+    let streetNumber = '';
+    let route = '';
+    let city = '';
+    let province = '';
+    let postalCode = '';
+
+    for (const component of place.address_components) {
+      const type = component.types[0];
+      if (type === 'street_number') streetNumber = component.long_name;
+      else if (type === 'route') route = component.long_name;
+      else if (type === 'locality') city = component.long_name;
+      else if (type === 'administrative_area_level_1') province = component.short_name;
+      else if (type === 'postal_code') postalCode = component.long_name;
+    }
+
+    const addressLine1 = streetNumber ? `${streetNumber} ${route}` : route;
+
+    form.setValue('addressLine1', addressLine1, { shouldValidate: true });
+    form.setValue('city', city, { shouldValidate: true });
+    form.setValue('province', province, { shouldValidate: true });
+    form.setValue('postalCode', postalCode, { shouldValidate: true });
+  }, [form]);
 
   function onSubmit(values: CustomerCreateInput) {
     setFormError(null);
@@ -253,6 +293,28 @@ export function CustomerForm({
           <h2 className="md:col-span-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             {watchedType === 'agent' ? 'Brokerage address' : 'Service address'}
           </h2>
+          {isLoaded && (
+            <div className="md:col-span-2 flex items-center gap-2">
+              <MapPin className="size-4 shrink-0 text-muted-foreground" />
+              <Autocomplete
+                onLoad={(auto) => {
+                  autocompleteRef.current = auto;
+                }}
+                onPlaceChanged={onPlaceChanged}
+                options={{
+                  componentRestrictions: { country: 'ca' },
+                  fields: ['address_components', 'formatted_address'],
+                }}
+                className="flex-1"
+              >
+                <input
+                  type="text"
+                  placeholder="Search address..."
+                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </Autocomplete>
+            </div>
+          )}
           <FormField
             control={form.control}
             name="addressLine1"
