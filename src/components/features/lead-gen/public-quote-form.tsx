@@ -163,15 +163,9 @@ export function PublicQuoteForm({ tenantId, businessName, catalog }: PublicQuote
     return (
       <div className="flex flex-col gap-6">
         <div className="rounded-xl border bg-card p-4">
-          <h3 className="mb-1 text-sm font-medium">Your estimate</h3>
-          <p className="text-2xl font-bold tabular-nums">
-            {new Intl.NumberFormat('en-CA', {
-              style: 'currency',
-              currency: 'CAD',
-            }).format(totals.total_cents / 100)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {surfaces.length} surface{surfaces.length !== 1 ? 's' : ''} — includes 5% GST
+          <h3 className="mb-1 text-sm font-medium">Almost there!</h3>
+          <p className="text-sm text-muted-foreground">
+            Enter your details below and we'll show you your estimate instantly.
           </p>
         </div>
 
@@ -181,7 +175,7 @@ export function PublicQuoteForm({ tenantId, businessName, catalog }: PublicQuote
         </div>
 
         <Button type="button" variant="ghost" onClick={() => setStep('surfaces')}>
-          Back to estimate
+          Back
         </Button>
       </div>
     );
@@ -301,13 +295,14 @@ export function PublicQuoteForm({ tenantId, businessName, catalog }: PublicQuote
         </div>
       )}
 
-      {/* Surface breakdown */}
+      {/* Surface breakdown — pricing hidden until contact info submitted */}
       <SurfaceList
         surfaces={surfaces}
         subtotalCents={totals.subtotal_cents}
         taxCents={totals.tax_cents}
         totalCents={totals.total_cents}
         onRemove={handleSurfaceRemove}
+        showPricing={false}
       />
 
       {error ? (
@@ -323,7 +318,7 @@ export function PublicQuoteForm({ tenantId, businessName, catalog }: PublicQuote
         onClick={handleGetQuote}
         disabled={surfaces.length === 0}
       >
-        Get your estimate
+        Get your free estimate
       </Button>
     </div>
   );

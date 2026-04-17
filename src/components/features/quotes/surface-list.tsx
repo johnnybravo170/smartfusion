@@ -34,6 +34,7 @@ type SurfaceListProps = {
   totalCents: number;
   onRemove?: (id: string) => void;
   readOnly?: boolean;
+  showPricing?: boolean;
 };
 
 export function SurfaceList({
@@ -43,6 +44,7 @@ export function SurfaceList({
   totalCents,
   onRemove,
   readOnly = false,
+  showPricing = true,
 }: SurfaceListProps) {
   if (surfaces.length === 0) {
     return (
@@ -61,7 +63,7 @@ export function SurfaceList({
           <TableRow>
             <TableHead>Surface</TableHead>
             <TableHead className="text-right">Area (sq ft)</TableHead>
-            <TableHead className="text-right">Price</TableHead>
+            {showPricing && <TableHead className="text-right">Price</TableHead>}
             {!readOnly && <TableHead className="w-[50px]" />}
           </TableRow>
         </TableHeader>
@@ -80,9 +82,11 @@ export function SurfaceList({
                 )}
               </TableCell>
               <TableCell className="text-right tabular-nums">{s.sqft.toFixed(1)}</TableCell>
-              <TableCell className="text-right tabular-nums">
-                {formatCurrency(s.price_cents)}
-              </TableCell>
+              {showPricing && (
+                <TableCell className="text-right tabular-nums">
+                  {formatCurrency(s.price_cents)}
+                </TableCell>
+              )}
               {!readOnly && onRemove && (
                 <TableCell>
                   <Button
@@ -101,20 +105,27 @@ export function SurfaceList({
         </TableBody>
       </Table>
 
-      <div className="border-t px-4 py-3">
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Subtotal</span>
-          <span className="tabular-nums">{formatCurrency(subtotalCents)}</span>
+      {showPricing && (
+        <div className="border-t px-4 py-3">
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span className="tabular-nums">{formatCurrency(subtotalCents)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">GST (5%)</span>
+            <span className="tabular-nums">{formatCurrency(taxCents)}</span>
+          </div>
+          <div className="mt-1 flex justify-between border-t pt-2 text-base font-semibold">
+            <span>Total</span>
+            <span className="tabular-nums">{formatCurrency(totalCents)}</span>
+          </div>
         </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">GST (5%)</span>
-          <span className="tabular-nums">{formatCurrency(taxCents)}</span>
+      )}
+      {!showPricing && surfaces.length > 0 && (
+        <div className="border-t px-4 py-3 text-center">
+          <p className="text-sm text-muted-foreground">Enter your details to see your estimate.</p>
         </div>
-        <div className="mt-1 flex justify-between border-t pt-2 text-base font-semibold">
-          <span>Total</span>
-          <span className="tabular-nums">{formatCurrency(totalCents)}</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
