@@ -21,6 +21,7 @@ import {
 } from '@react-google-maps/api';
 import { Loader2, MapPin } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -38,6 +39,7 @@ import {
 } from '@/components/ui/select';
 import type { CatalogEntryRow } from '@/lib/db/queries/service-catalog';
 import { type CatalogEntry, calculateSurfacePrice } from '@/lib/pricing/calculator';
+import { fetchBuildingInsights } from '@/lib/solar/building-insights';
 
 const LIBRARIES: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places'];
 
@@ -111,6 +113,7 @@ export function QuoteMap({
   const onMapLoad = useCallback(
     (mapInstance: google.maps.Map) => {
       setMap(mapInstance);
+      mapInstance.setMapTypeId('hybrid');
 
       // Request user's location to center the map on their area.
       if (navigator.geolocation && existingPolygons.length === 0) {
@@ -144,8 +147,47 @@ export function QuoteMap({
       setZoom(19);
       map?.panTo(loc);
       map?.setZoom(19);
+
+      // Auto-detect roof area via Google Solar API.
+      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+      const roofEntry = catalog.find((c) => c.surface_type === 'roof');
+      if (apiKey && roofEntry) {
+        fetchBuildingInsights(loc.lat, loc.lng, apiKey).then((result) => {
+          if (!result.found) return;
+
+          const price_cents = calculateSurfacePrice(
+            { surface_type: 'roof', sqft: result.totalRoofSqft },
+            roofEntry as CatalogEntry,
+          );
+
+          const id = crypto.randomUUID();
+          const roofSurface: DrawnPolygon = {
+            id,
+            path: [],
+            sqft: result.totalRoofSqft,
+            surface_type: 'roof',
+            label: roofEntry.label,
+            price_cents,
+            polygon_geojson: null,
+          };
+
+          setPolygons((prev) => [...prev, roofSurface]);
+          onSurfaceAdd({
+            id,
+            surface_type: 'roof',
+            label: roofEntry.label,
+            sqft: result.totalRoofSqft,
+            price_cents,
+            polygon_geojson: null,
+          });
+
+          toast.success(
+            `Roof detected: ${result.totalRoofSqft.toLocaleString()} sqft (from Google Solar API). Remove it if not needed.`,
+          );
+        });
+      }
     }
-  }, [map]);
+  }, [map, catalog, onSurfaceAdd]);
 
   const onPolygonComplete = useCallback(
     (polygon: google.maps.Polygon) => {
@@ -257,8 +299,8 @@ export function QuoteMap({
         center={center}
         zoom={zoom}
         onLoad={onMapLoad}
-        mapTypeId="hybrid"
         options={{
+          mapTypeId: 'hybrid',
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: true,

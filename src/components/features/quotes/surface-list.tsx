@@ -69,8 +69,15 @@ export function SurfaceList({
           {surfaces.map((s) => (
             <TableRow key={s.id}>
               <TableCell className="font-medium">
-                {s.label ||
-                  s.surface_type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                <span>
+                  {s.label ||
+                    s.surface_type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                </span>
+                {s.polygon_geojson === null && (
+                  <span className="ml-2 text-xs italic text-muted-foreground">
+                    Auto-detected via Solar API
+                  </span>
+                )}
               </TableCell>
               <TableCell className="text-right tabular-nums">{s.sqft.toFixed(1)}</TableCell>
               <TableCell className="text-right tabular-nums">
