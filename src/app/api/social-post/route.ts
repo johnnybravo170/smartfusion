@@ -115,16 +115,36 @@ function findBeforeAfterPair(photos: PhotoWithUrl[]): {
 }
 
 function parseCaptionResponse(text: string): { caption: string; hashtags: string[] } {
-  // Strip markdown fences if the model wraps the JSON anyway
-  const cleaned = text
-    .replace(/```json\s*/g, '')
-    .replace(/```\s*/g, '')
-    .trim();
-  const parsed = JSON.parse(cleaned) as { caption: string; hashtags: string[] };
-  return {
-    caption: parsed.caption ?? '',
-    hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags : [],
-  };
+  // Claude with vision often wraps JSON in markdown fences or adds
+  // commentary before/after. Extract the JSON object robustly.
+  try {
+    // Try 1: strip markdown fences and parse
+    const stripped = text
+      .replace(/```json\s*/g, '')
+      .replace(/```\s*/g, '')
+      .trim();
+    const parsed = JSON.parse(stripped) as { caption: string; hashtags: string[] };
+    return {
+      caption: parsed.caption ?? '',
+      hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags : [],
+    };
+  } catch {
+    // Try 2: find JSON object in the text (Claude may add text around it)
+    const jsonMatch = text.match(/\{[\s\S]*"caption"[\s\S]*"hashtags"[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]) as { caption: string; hashtags: string[] };
+        return {
+          caption: parsed.caption ?? '',
+          hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags : [],
+        };
+      } catch {
+        // Fall through
+      }
+    }
+    // Try 3: just use the raw text as the caption
+    return { caption: text.trim(), hashtags: [] };
+  }
 }
 
 // ---------------------------------------------------------------------------
