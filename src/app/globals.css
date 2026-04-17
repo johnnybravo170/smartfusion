@@ -123,14 +123,17 @@
   }
   html {
     @apply font-sans;
-    overflow-x: hidden;
-    overscroll-behavior-x: none;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
   }
   body {
     @apply bg-background text-foreground;
     overflow-x: hidden;
-    overscroll-behavior-x: none;
-    max-width: 100vw;
-    max-width: 100dvw;
+    overflow-y: auto;
+    overscroll-behavior: none;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
   }
 }
