@@ -114,6 +114,7 @@ export function SocialPostGenerator({ jobId, businessName }: SocialPostGenerator
                   post={post}
                   businessName={businessName}
                   onRegenerate={() => generate('instagram')}
+                  onUpdate={(caption, hashtags) => setPost({ ...post, caption, hashtags })}
                   isRegenerating={loading}
                 />
               )}
@@ -124,6 +125,7 @@ export function SocialPostGenerator({ jobId, businessName }: SocialPostGenerator
                   post={post}
                   businessName={businessName}
                   onRegenerate={() => generate('facebook')}
+                  onUpdate={(caption, hashtags) => setPost({ ...post, caption, hashtags })}
                   isRegenerating={loading}
                 />
               )}

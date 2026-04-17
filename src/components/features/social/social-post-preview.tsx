@@ -7,8 +7,8 @@
 
 'use client';
 
-import { Check, ClipboardCopy, Download, RefreshCw, Share2 } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { Check, ClipboardCopy, Download, Pencil, RefreshCw, Share2 } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { SocialPostResponse } from '@/app/api/social-post/route';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ type SocialPostPreviewProps = {
   post: SocialPostResponse;
   businessName: string;
   onRegenerate: () => void;
+  onUpdate: (caption: string, hashtags: string[]) => void;
   isRegenerating: boolean;
 };
 
@@ -26,9 +27,14 @@ export function SocialPostPreview({
   post,
   businessName,
   onRegenerate,
+  onUpdate,
   isRegenerating,
 }: SocialPostPreviewProps) {
   const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editCaption, setEditCaption] = useState(post.caption);
+  const [editHashtags, setEditHashtags] = useState(post.hashtags.join(' '));
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const fullCaption = [
     post.caption,
@@ -110,13 +116,60 @@ export function SocialPostPreview({
       <CardContent className="space-y-3 pt-2">
         {/* Business name header (like IG) */}
         <p className="text-sm font-semibold">{businessName}</p>
-        {/* Caption */}
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">{post.caption}</p>
-        {/* Hashtags */}
-        {post.hashtags.length > 0 && (
-          <p className="text-sm text-blue-600 dark:text-blue-400">
-            {post.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ')}
-          </p>
+
+        {isEditing ? (
+          <div className="space-y-2">
+            <textarea
+              ref={textareaRef}
+              value={editCaption}
+              onChange={(e) => setEditCaption(e.target.value)}
+              className="w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring"
+              rows={3}
+            />
+            <input
+              value={editHashtags}
+              onChange={(e) => setEditHashtags(e.target.value)}
+              placeholder="#pressurewashing #abbotsford"
+              className="w-full rounded-lg border bg-background px-3 py-2 text-sm text-blue-600 focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  const tags = editHashtags
+                    .split(/[\s,]+/)
+                    .filter(Boolean)
+                    .map((t) => (t.startsWith('#') ? t : `#${t}`));
+                  onUpdate(editCaption, tags);
+                  setIsEditing(false);
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setEditCaption(post.caption);
+                  setEditHashtags(post.hashtags.join(' '));
+                  setIsEditing(false);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Caption */}
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">{post.caption}</p>
+            {/* Hashtags */}
+            {post.hashtags.length > 0 && (
+              <p className="text-sm text-blue-600 dark:text-blue-400">
+                {post.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ')}
+              </p>
+            )}
+          </>
         )}
       </CardContent>
       <CardFooter className="flex flex-wrap gap-2">
@@ -141,6 +194,23 @@ export function SocialPostPreview({
           <Download className="size-3.5" />
           Download images
         </Button>
+        {!isEditing && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setEditCaption(post.caption);
+              setEditHashtags(
+                post.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' '),
+              );
+              setIsEditing(true);
+              setTimeout(() => textareaRef.current?.focus(), 100);
+            }}
+          >
+            <Pencil className="size-3.5" />
+            Edit
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={onRegenerate} disabled={isRegenerating}>
           <RefreshCw className={`size-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
           Regenerate
