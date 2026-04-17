@@ -25,7 +25,7 @@ export function ChatPanel() {
       {/* Panel */}
       <aside
         className={cn(
-          'fixed top-0 right-0 z-50 flex h-full w-full flex-col border-l bg-background shadow-xl transition-transform duration-300 ease-in-out sm:w-[420px]',
+          'fixed top-0 right-0 z-50 flex h-full max-w-full w-full flex-col border-l bg-background shadow-xl transition-transform duration-300 ease-in-out sm:w-[420px]',
           isPanelOpen ? 'translate-x-0' : 'translate-x-full',
         )}
         aria-label="Chat with Henry"

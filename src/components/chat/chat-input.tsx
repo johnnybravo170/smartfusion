@@ -62,7 +62,7 @@ export function ChatInput({
           disabled={isLoading}
           onInput={resetHeight}
           onKeyDown={handleKeyDown}
-          className="flex-1 resize-none rounded-xl border bg-background px-3 py-2 text-sm leading-relaxed placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+          className="min-w-0 flex-1 resize-none rounded-xl border bg-background px-3 py-2 text-sm leading-relaxed placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
         />
         <button
           type="button"
