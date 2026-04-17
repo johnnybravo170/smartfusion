@@ -1,4 +1,7 @@
 import type { ReactNode } from 'react';
+import { ChatPanel } from '@/components/chat/chat-panel';
+import { ChatProvider } from '@/components/chat/chat-provider';
+import { ChatToggle } from '@/components/chat/chat-toggle';
 import { Header } from '@/components/layout/header';
 import { SidebarNav } from '@/components/layout/sidebar';
 import { getCurrentTenant } from '@/lib/auth/helpers';
@@ -15,14 +18,18 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const timezone = tenant?.timezone || 'America/Vancouver';
 
   return (
-    <div className="flex min-h-screen w-full">
-      <SidebarNav />
-      <div className="flex min-h-screen flex-1 flex-col">
-        <Header businessName={businessName} />
-        <TenantProvider timezone={timezone}>
-          <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
-        </TenantProvider>
+    <ChatProvider>
+      <div className="flex min-h-screen w-full">
+        <SidebarNav />
+        <div className="flex min-h-screen flex-1 flex-col">
+          <Header businessName={businessName} />
+          <TenantProvider timezone={timezone}>
+            <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+          </TenantProvider>
+        </div>
       </div>
-    </div>
+      <ChatToggle />
+      <ChatPanel />
+    </ChatProvider>
   );
 }
