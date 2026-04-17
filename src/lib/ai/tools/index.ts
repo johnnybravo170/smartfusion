@@ -4,12 +4,14 @@ import { customerTools } from './customers';
 import { dashboardTools, setDashboardTimezone } from './dashboard';
 import { invoiceTools, setInvoiceTimezone } from './invoices';
 import { jobTools } from './jobs';
+import { projectTools } from './projects';
 import { quoteTools } from './quotes';
+import { timeExpenseTools } from './time-expenses';
 import { todoTools } from './todos';
 import { worklogTools } from './worklog';
 
-/** All 24 tools registered for the AI chat. */
-export const allTools: AiTool[] = [
+/** Core tools available to all verticals. */
+const coreTools: AiTool[] = [
   ...dashboardTools,
   ...customerTools,
   ...quoteTools,
@@ -20,15 +22,28 @@ export const allTools: AiTool[] = [
   ...catalogTools,
 ];
 
+/** Renovation-specific tools (projects, budget, time/expense). */
+const renovationTools: AiTool[] = [...projectTools, ...timeExpenseTools];
+
+/** All 33 tools registered for the AI chat. */
+export const allTools: AiTool[] = [...coreTools, ...renovationTools];
+
 /** Build a handler lookup map for fast dispatch. */
 const handlerMap = new Map<string, AiTool['handler']>();
 for (const tool of allTools) {
   handlerMap.set(tool.definition.name, tool.handler);
 }
 
-/** Returns ToolDefinition[] for the Claude API `tools` parameter. */
-export function getToolDefinitions(): ToolDefinition[] {
-  return allTools.map((t) => t.definition);
+/**
+ * Returns ToolDefinition[] for the Claude API `tools` parameter.
+ * When vertical is provided, only returns tools relevant to that vertical.
+ */
+export function getToolDefinitions(vertical?: string): ToolDefinition[] {
+  if (vertical === 'renovation' || vertical === 'tile') {
+    return allTools.map((t) => t.definition);
+  }
+  // Pressure washing: core tools only
+  return coreTools.map((t) => t.definition);
 }
 
 /**

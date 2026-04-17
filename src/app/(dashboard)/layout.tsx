@@ -16,13 +16,14 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const tenant = await getCurrentTenant();
   const businessName = tenant?.name;
   const timezone = tenant?.timezone || 'America/Vancouver';
+  const vertical = tenant?.vertical || 'pressure_washing';
 
   return (
     <ChatProvider>
       <div className="flex min-h-screen w-full overflow-x-hidden">
-        <SidebarNav />
+        <SidebarNav vertical={vertical} />
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <Header businessName={businessName} />
+          <Header businessName={businessName} vertical={vertical} />
           <TenantProvider timezone={timezone}>
             <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6">{children}</main>
           </TenantProvider>

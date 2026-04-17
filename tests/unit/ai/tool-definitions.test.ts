@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { allTools, executeToolCall, getToolDefinitions } from '@/lib/ai/tools';
 
 describe('AI tool definitions', () => {
-  it('exports exactly 24 tools', () => {
-    expect(allTools).toHaveLength(24);
+  it('exports exactly 33 tools (24 core + 9 renovation)', () => {
+    expect(allTools).toHaveLength(33);
   });
 
   it('each tool has a name, description, and valid input_schema', () => {
@@ -24,8 +24,13 @@ describe('AI tool definitions', () => {
     expect(uniqueNames.size).toBe(names.length);
   });
 
-  it('getToolDefinitions returns ToolDefinition[] matching allTools', () => {
+  it('getToolDefinitions returns core tools (24) when no vertical specified', () => {
     const defs = getToolDefinitions();
+    expect(defs).toHaveLength(24);
+  });
+
+  it('getToolDefinitions returns all tools (33) for renovation vertical', () => {
+    const defs = getToolDefinitions('renovation');
     expect(defs).toHaveLength(allTools.length);
     for (let i = 0; i < defs.length; i++) {
       expect(defs[i].name).toBe(allTools[i].definition.name);
@@ -66,6 +71,16 @@ describe('AI tool definitions', () => {
       'search_worklog',
       'add_worklog_note',
       'list_catalog',
+      // Renovation tools
+      'list_projects',
+      'get_project',
+      'create_project',
+      'update_project_status',
+      'get_project_budget',
+      'log_time',
+      'log_expense',
+      'list_time_entries',
+      'list_expenses',
     ];
     const actualNames = allTools.map((t) => t.definition.name);
     for (const name of expectedNames) {

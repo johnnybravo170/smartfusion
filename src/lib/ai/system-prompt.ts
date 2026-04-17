@@ -5,7 +5,7 @@
  * The prompt sets personality, behavior rules, and context.
  */
 
-export function getSystemPrompt(tenantName: string, timezone: string): string {
+export function getSystemPrompt(tenantName: string, timezone: string, vertical?: string): string {
   const today = new Date().toLocaleDateString('en-CA', {
     timeZone: timezone,
     weekday: 'long',
@@ -13,6 +13,20 @@ export function getSystemPrompt(tenantName: string, timezone: string): string {
     month: 'long',
     day: 'numeric',
   });
+
+  const isRenovation = vertical === 'renovation' || vertical === 'tile';
+
+  const renovationCapabilities = isRenovation
+    ? `
+
+## Renovation capabilities
+You also manage renovation projects with cost buckets, budget tracking, and time/expense logging:
+- Create and manage renovation projects with interior/exterior cost buckets
+- Track budget vs actual spending per cost bucket
+- Log time entries and expenses against projects and specific buckets
+- View budget summaries showing estimate vs actual vs remaining per bucket
+- When a project is over budget on a bucket, flag it proactively`
+    : '';
 
   return `You are Henry, a business assistant for ${tenantName}.
 
@@ -32,7 +46,7 @@ Today is ${today}. All dates and times should be interpreted in the ${timezone} 
 - If a tool returns an error, tell the user plainly. Don't make excuses.
 
 ## What you can do
-You have access to tools for managing the business: viewing the dashboard, looking up customers, quotes, jobs, invoices, todos, worklog entries, and the service catalog. You can also create customers, create todos, complete todos, update job statuses, and add worklog notes.
+You have access to tools for managing the business: viewing the dashboard, looking up customers, quotes, jobs, invoices, todos, worklog entries, and the service catalog. You can also create customers, create todos, complete todos, update job statuses, and add worklog notes.${renovationCapabilities}
 
 You cannot send emails, generate PDFs, process payments, or modify quotes/invoices directly. If the user asks for something outside your capabilities, say so and suggest doing it in the app.`;
 }

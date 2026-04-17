@@ -93,8 +93,8 @@ export async function POST(request: Request) {
 
   // 3. Set up tools with tenant timezone
   setToolTimezone(tenant.timezone);
-  const systemPrompt = getSystemPrompt(tenant.name, tenant.timezone);
-  const toolDefinitions = getToolDefinitions();
+  const systemPrompt = getSystemPrompt(tenant.name, tenant.timezone, tenant.vertical);
+  const toolDefinitions = getToolDefinitions(tenant.vertical);
   const model = process.env.CHAT_MODEL || 'claude-sonnet-4-6';
 
   // 4. Create streaming response

@@ -12,13 +12,14 @@ import { MobileSidebarToggle } from './sidebar';
 
 type HeaderProps = {
   businessName?: string;
+  vertical?: string;
 };
 
-export function Header({ businessName }: HeaderProps) {
+export function Header({ businessName, vertical }: HeaderProps) {
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-3">
-        <MobileSidebarToggle />
+        <MobileSidebarToggle vertical={vertical} />
       </div>
 
       <DropdownMenu>

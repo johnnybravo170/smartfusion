@@ -1,0 +1,140 @@
+'use server';
+
+/**
+ * Server actions for time entry logging.
+ */
+
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
+import { createClient } from '@/lib/supabase/server';
+
+export type TimeEntryActionResult =
+  | { ok: true; id: string }
+  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+
+const timeEntrySchema = z.object({
+  project_id: z.string().uuid().optional().or(z.literal('')),
+  job_id: z.string().uuid().optional().or(z.literal('')),
+  bucket_id: z.string().uuid().optional().or(z.literal('')),
+  hours: z.coerce.number().positive({ message: 'Hours must be greater than 0.' }),
+  hourly_rate_cents: z.coerce.number().int().optional(),
+  notes: z.string().trim().max(2000).optional().or(z.literal('')),
+  entry_date: z.string().min(1, { message: 'Date is required.' }),
+});
+
+const timeEntryUpdateSchema = timeEntrySchema.extend({
+  id: z.string().uuid({ message: 'Invalid time entry id.' }),
+});
+
+export async function logTimeAction(input: {
+  project_id?: string;
+  job_id?: string;
+  bucket_id?: string;
+  hours: number;
+  hourly_rate_cents?: number;
+  notes?: string;
+  entry_date: string;
+}): Promise<TimeEntryActionResult> {
+  const parsed = timeEntrySchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Please fix the errors below.',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const projectId = parsed.data.project_id || null;
+  const jobId = parsed.data.job_id || null;
+  if (!projectId && !jobId) {
+    return { ok: false, error: 'A project or job is required.' };
+  }
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: 'Not authenticated.' };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('time_entries')
+    .insert({
+      tenant_id: tenant.id,
+      user_id: user.id,
+      project_id: projectId,
+      job_id: jobId,
+      bucket_id: parsed.data.bucket_id || null,
+      hours: parsed.data.hours,
+      hourly_rate_cents: parsed.data.hourly_rate_cents ?? null,
+      notes: parsed.data.notes?.trim() || null,
+      entry_date: parsed.data.entry_date,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? 'Failed to log time.' };
+  }
+
+  if (projectId) revalidatePath(`/projects/${projectId}`);
+  if (jobId) revalidatePath(`/jobs/${jobId}`);
+  return { ok: true, id: data.id };
+}
+
+export async function updateTimeEntryAction(input: {
+  id: string;
+  project_id?: string;
+  job_id?: string;
+  bucket_id?: string;
+  hours: number;
+  hourly_rate_cents?: number;
+  notes?: string;
+  entry_date: string;
+}): Promise<TimeEntryActionResult> {
+  const parsed = timeEntryUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Please fix the errors below.',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('time_entries')
+    .update({
+      project_id: parsed.data.project_id || null,
+      job_id: parsed.data.job_id || null,
+      bucket_id: parsed.data.bucket_id || null,
+      hours: parsed.data.hours,
+      hourly_rate_cents: parsed.data.hourly_rate_cents ?? null,
+      notes: parsed.data.notes?.trim() || null,
+      entry_date: parsed.data.entry_date,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', parsed.data.id);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  if (parsed.data.project_id) revalidatePath(`/projects/${parsed.data.project_id}`);
+  if (parsed.data.job_id) revalidatePath(`/jobs/${parsed.data.job_id}`);
+  return { ok: true, id: parsed.data.id };
+}
+
+export async function deleteTimeEntryAction(id: string): Promise<TimeEntryActionResult> {
+  if (!id) return { ok: false, error: 'Missing time entry id.' };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from('time_entries').delete().eq('id', id);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  return { ok: true, id };
+}

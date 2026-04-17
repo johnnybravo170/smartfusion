@@ -3,13 +3,14 @@
 import { Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { NAV_ITEMS } from '@/lib/constants/nav';
+import { getNavItems } from '@/lib/constants/nav';
 import { NavLink } from './nav-link';
 
-function NavList({ onNavigate }: { onNavigate?: () => void }) {
+function NavList({ vertical, onNavigate }: { vertical: string; onNavigate?: () => void }) {
+  const items = getNavItems(vertical);
   return (
     <nav aria-label="Primary" className="flex flex-col gap-1 p-3">
-      {NAV_ITEMS.map((item) => (
+      {items.map((item) => (
         <NavLink key={item.href} href={item.href} icon={item.icon} onNavigate={onNavigate}>
           {item.label}
         </NavLink>
@@ -18,7 +19,7 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function SidebarNav() {
+export function SidebarNav({ vertical = 'pressure_washing' }: { vertical?: string }) {
   return (
     <aside
       aria-label="Sidebar"
@@ -28,13 +29,13 @@ export function SidebarNav() {
         <span className="text-sm font-semibold">HeyHenry</span>
       </div>
       <div className="flex-1 overflow-y-auto">
-        <NavList />
+        <NavList vertical={vertical} />
       </div>
     </aside>
   );
 }
 
-export function MobileSidebarToggle() {
+export function MobileSidebarToggle({ vertical = 'pressure_washing' }: { vertical?: string }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -75,7 +76,7 @@ export function MobileSidebarToggle() {
               </Button>
             </div>
             <div className="overflow-y-auto">
-              <NavList onNavigate={() => setOpen(false)} />
+              <NavList vertical={vertical} onNavigate={() => setOpen(false)} />
             </div>
           </div>
         </div>
