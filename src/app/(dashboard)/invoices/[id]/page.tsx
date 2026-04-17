@@ -3,22 +3,14 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { InvoiceActions } from '@/components/features/invoices/invoice-actions';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
+import { getCurrentTenant } from '@/lib/auth/helpers';
+import { formatDateTime } from '@/lib/date/format';
 import { getInvoice } from '@/lib/db/queries/invoices';
 import { createClient } from '@/lib/supabase/server';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 
 function formatCad(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
-}
-
-const dateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
-
-function formatTimestamp(iso: string | null | undefined): string {
-  if (!iso) return '';
-  return dateTimeFormatter.format(new Date(iso));
 }
 
 function shortId(id: string) {
@@ -28,8 +20,11 @@ function shortId(id: string) {
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const invoice = await getInvoice(id);
+  const [invoice, tenant] = await Promise.all([getInvoice(id), getCurrentTenant()]);
   if (!invoice) notFound();
+  const tz = tenant?.timezone || 'America/Vancouver';
+  const formatTimestamp = (iso: string | null | undefined) =>
+    iso ? formatDateTime(iso, { timezone: tz }) : '';
 
   // Load worklog entries for this invoice's job.
   const supabase = await createClient();

@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
 import {
@@ -8,6 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
+import { formatDate } from '@/lib/date/format';
 import type { InvoiceWithCustomer } from '@/lib/db/queries/invoices';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 
@@ -15,16 +19,8 @@ function formatCad(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-const dateFormatter = new Intl.DateTimeFormat('en-CA', {
-  dateStyle: 'medium',
-});
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '';
-  return dateFormatter.format(new Date(iso));
-}
-
 export function InvoiceTable({ invoices }: { invoices: InvoiceWithCustomer[] }) {
+  const timezone = useTenantTimezone();
   return (
     <div className="rounded-xl border bg-card">
       <Table>

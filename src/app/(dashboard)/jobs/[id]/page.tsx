@@ -9,35 +9,12 @@ import { PhotoGallery } from '@/components/features/photos/photo-gallery';
 import { PhotoUpload } from '@/components/features/photos/photo-upload';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { getCurrentTenant } from '@/lib/auth/helpers';
+import { formatDateTime, formatRelativeTime } from '@/lib/date/format';
 import { getJob, listWorklogForJob } from '@/lib/db/queries/jobs';
-
-const dateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
-
-function formatTimestamp(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  return dateTimeFormatter.format(new Date(iso));
-}
 
 function shortId(id: string) {
   return id.slice(0, 8);
-}
-
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '—';
-  const diffMs = Date.now() - then;
-  const secs = Math.round(diffMs / 1000);
-  if (secs < 60) return 'just now';
-  const mins = Math.round(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return dateTimeFormatter.format(new Date(iso));
 }
 
 const QUOTE_STATUS_CLASS: Record<string, string> = {
@@ -58,8 +35,11 @@ const INVOICE_STATUS_CLASS: Record<string, string> = {
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const job = await getJob(id);
+  const [job, tenant] = await Promise.all([getJob(id), getCurrentTenant()]);
   if (!job) notFound();
+  const tz = tenant?.timezone || 'America/Vancouver';
+  const formatTimestamp = (iso: string | null | undefined): string =>
+    iso ? formatDateTime(iso, { timezone: tz }) : '\u2014';
 
   const worklog = await listWorklogForJob(id);
 
@@ -114,9 +94,19 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       </header>
 
       <section className="grid gap-4 rounded-xl border bg-card p-5 md:grid-cols-3">
-        <TimestampBlock icon={CalendarClock} label="Scheduled" value={job.scheduled_at} />
-        <TimestampBlock icon={CalendarClock} label="Started" value={job.started_at} />
-        <TimestampBlock icon={CalendarClock} label="Completed" value={job.completed_at} />
+        <TimestampBlock
+          icon={CalendarClock}
+          label="Scheduled"
+          value={job.scheduled_at}
+          timezone={tz}
+        />
+        <TimestampBlock icon={CalendarClock} label="Started" value={job.started_at} timezone={tz} />
+        <TimestampBlock
+          icon={CalendarClock}
+          label="Completed"
+          value={job.completed_at}
+          timezone={tz}
+        />
       </section>
 
       {job.quote ? (
@@ -229,7 +219,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{entry.title ?? 'Entry'}</span>
                   <span className="text-xs text-muted-foreground">
-                    {relativeTime(entry.created_at)}
+                    {formatRelativeTime(entry.created_at, { timezone: tz })}
                   </span>
                 </div>
                 {entry.body ? (
@@ -248,17 +238,21 @@ function TimestampBlock({
   icon: Icon,
   label,
   value,
+  timezone,
 }: {
   icon: typeof CalendarClock;
   label: string;
   value: string | null | undefined;
+  timezone: string;
 }) {
   return (
     <div className="flex items-start gap-3">
       <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
       <div className="flex flex-col">
         <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
-        <span className="text-sm text-foreground">{formatTimestamp(value)}</span>
+        <span className="text-sm text-foreground">
+          {value ? formatDateTime(value, { timezone }) : '\u2014'}
+        </span>
       </div>
     </div>
   );

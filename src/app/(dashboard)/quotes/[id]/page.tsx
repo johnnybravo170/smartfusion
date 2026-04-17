@@ -12,43 +12,21 @@ import {
 import { QuoteStatusBadge } from '@/components/features/quotes/quote-status-badge';
 import { SurfaceList } from '@/components/features/quotes/surface-list';
 import { Button } from '@/components/ui/button';
+import { getCurrentTenant } from '@/lib/auth/helpers';
+import { formatDateTime, formatRelativeTime } from '@/lib/date/format';
 import { getQuote, listWorklogForQuote } from '@/lib/db/queries/quotes';
 import type { QuoteStatus } from '@/lib/validators/quote';
-
-const dateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
-
-function formatTimestamp(iso: string | null | undefined): string {
-  if (!iso) return '\u2014';
-  return dateTimeFormatter.format(new Date(iso));
-}
 
 function shortId(id: string) {
   return id.slice(0, 8);
 }
 
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '\u2014';
-  const diffMs = Date.now() - then;
-  const secs = Math.round(diffMs / 1000);
-  if (secs < 60) return 'just now';
-  const mins = Math.round(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return dateTimeFormatter.format(new Date(iso));
-}
-
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const quote = await getQuote(id);
+  const [quote, tenant] = await Promise.all([getQuote(id), getCurrentTenant()]);
   if (!quote) notFound();
+  const tz = tenant?.timezone || 'America/Vancouver';
 
   const worklog = await listWorklogForQuote(id);
 
@@ -94,8 +72,8 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           </div>
           <p className="text-sm text-muted-foreground">
             Quote <span className="font-mono">#{shortId(quote.id)}</span> · Created{' '}
-            {formatTimestamp(quote.created_at)}
-            {quote.sent_at ? ` · Sent ${formatTimestamp(quote.sent_at)}` : ''}
+            {formatDateTime(quote.created_at, { timezone: tz })}
+            {quote.sent_at ? ` · Sent ${formatDateTime(quote.sent_at, { timezone: tz })}` : ''}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -207,7 +185,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{entry.title ?? 'Entry'}</span>
                   <span className="text-xs text-muted-foreground">
-                    {relativeTime(entry.created_at)}
+                    {formatRelativeTime(entry.created_at, { timezone: tz })}
                   </span>
                 </div>
                 {entry.body ? (

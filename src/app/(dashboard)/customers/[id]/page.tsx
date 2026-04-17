@@ -5,6 +5,8 @@ import { CustomerTypeBadge } from '@/components/features/customers/customer-type
 import { DeleteCustomerButton } from '@/components/features/customers/delete-customer-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { getCurrentTenant } from '@/lib/auth/helpers';
+import { formatDate as formatDateUtil } from '@/lib/date/format';
 import {
   type CustomerRow,
   getCustomer,
@@ -15,20 +17,14 @@ import {
 } from '@/lib/db/queries/customers';
 import type { CustomerType } from '@/lib/validators/customer';
 
-const dateFormatter = new Intl.DateTimeFormat('en-CA', { dateStyle: 'medium' });
 const currencyFormatter = new Intl.NumberFormat('en-CA', {
   style: 'currency',
   currency: 'CAD',
 });
 
 function formatCents(cents: number | null | undefined) {
-  if (cents === null || cents === undefined) return '—';
+  if (cents === null || cents === undefined) return '\u2014';
   return currencyFormatter.format(cents / 100);
-}
-
-function formatDate(iso: string | null | undefined) {
-  if (!iso) return '—';
-  return dateFormatter.format(new Date(iso));
 }
 
 function shortId(id: string) {
@@ -103,8 +99,10 @@ function addressLines(customer: CustomerRow): string | null {
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const customer = await getCustomer(id);
+  const [customer, tenant] = await Promise.all([getCustomer(id), getCurrentTenant()]);
   if (!customer) notFound();
+  const tz = tenant?.timezone || 'America/Vancouver';
+  const formatDate = (iso: string | null | undefined) => formatDateUtil(iso, { timezone: tz });
 
   const related = await getCustomerRelated(id);
 
@@ -166,9 +164,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
-        <RelatedQuotesCard quotes={related.quotes} />
-        <RelatedJobsCard jobs={related.jobs} />
-        <RelatedInvoicesCard invoices={related.invoices} />
+        <RelatedQuotesCard quotes={related.quotes} timezone={tz} />
+        <RelatedJobsCard jobs={related.jobs} timezone={tz} />
+        <RelatedInvoicesCard invoices={related.invoices} timezone={tz} />
       </div>
     </div>
   );
@@ -199,7 +197,7 @@ function SectionCard({
   );
 }
 
-function RelatedQuotesCard({ quotes }: { quotes: RelatedQuote[] }) {
+function RelatedQuotesCard({ quotes, timezone }: { quotes: RelatedQuote[]; timezone: string }) {
   return (
     <SectionCard title="Recent quotes" icon={FileText} count={quotes.length}>
       {quotes.length === 0 ? (
@@ -216,7 +214,9 @@ function RelatedQuotesCard({ quotes }: { quotes: RelatedQuote[] }) {
               </div>
               <div className="flex flex-col items-end">
                 <span className="font-medium">{formatCents(q.total_cents)}</span>
-                <span className="text-xs text-muted-foreground">{formatDate(q.created_at)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatDateUtil(q.created_at, { timezone })}
+                </span>
               </div>
             </li>
           ))}
@@ -226,7 +226,7 @@ function RelatedQuotesCard({ quotes }: { quotes: RelatedQuote[] }) {
   );
 }
 
-function RelatedJobsCard({ jobs }: { jobs: RelatedJob[] }) {
+function RelatedJobsCard({ jobs, timezone }: { jobs: RelatedJob[]; timezone: string }) {
   return (
     <SectionCard title="Recent jobs" icon={Calendar} count={jobs.length}>
       {jobs.length === 0 ? (
@@ -244,8 +244,8 @@ function RelatedJobsCard({ jobs }: { jobs: RelatedJob[] }) {
               <div className="flex flex-col items-end">
                 <span className="text-xs text-muted-foreground">
                   {j.scheduled_at
-                    ? `Scheduled ${formatDate(j.scheduled_at)}`
-                    : `Added ${formatDate(j.created_at)}`}
+                    ? `Scheduled ${formatDateUtil(j.scheduled_at, { timezone })}`
+                    : `Added ${formatDateUtil(j.created_at, { timezone })}`}
                 </span>
               </div>
             </li>
@@ -256,7 +256,13 @@ function RelatedJobsCard({ jobs }: { jobs: RelatedJob[] }) {
   );
 }
 
-function RelatedInvoicesCard({ invoices }: { invoices: RelatedInvoice[] }) {
+function RelatedInvoicesCard({
+  invoices,
+  timezone,
+}: {
+  invoices: RelatedInvoice[];
+  timezone: string;
+}) {
   return (
     <SectionCard title="Recent invoices" icon={Receipt} count={invoices.length}>
       {invoices.length === 0 ? (
@@ -275,7 +281,9 @@ function RelatedInvoicesCard({ invoices }: { invoices: RelatedInvoice[] }) {
                 <span className="font-medium">
                   {formatCents((inv.amount_cents ?? 0) + (inv.tax_cents ?? 0))}
                 </span>
-                <span className="text-xs text-muted-foreground">{formatDate(inv.created_at)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatDateUtil(inv.created_at, { timezone })}
+                </span>
               </div>
             </li>
           ))}

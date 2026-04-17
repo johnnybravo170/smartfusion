@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import {
   Table,
@@ -7,19 +9,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
+import { formatDate } from '@/lib/date/format';
 import type { QuoteWithCustomer } from '@/lib/db/queries/quotes';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import type { QuoteStatus } from '@/lib/validators/quote';
 import { QuoteStatusBadge } from './quote-status-badge';
 
-const dateFormatter = new Intl.DateTimeFormat('en-CA', { dateStyle: 'medium' });
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '\u2014';
-  return dateFormatter.format(new Date(iso));
-}
-
 export function QuoteTable({ quotes }: { quotes: QuoteWithCustomer[] }) {
+  const timezone = useTenantTimezone();
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
       <Table>
@@ -46,8 +44,12 @@ export function QuoteTable({ quotes }: { quotes: QuoteWithCustomer[] }) {
               <TableCell>
                 <QuoteStatusBadge status={q.status as QuoteStatus} />
               </TableCell>
-              <TableCell className="text-muted-foreground">{formatDate(q.sent_at)}</TableCell>
-              <TableCell className="text-muted-foreground">{formatDate(q.created_at)}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {formatDate(q.sent_at, { timezone })}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {formatDate(q.created_at, { timezone })}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
