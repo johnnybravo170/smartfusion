@@ -1,9 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { transcribeOnce } from '@/lib/voice/speech-to-text';
-import { speak, stopSpeaking } from '@/lib/voice/text-to-speech';
-import { createWakeWordDetector, type WakeWordDetector } from '@/lib/voice/wake-word';
+import type { WakeWordDetector } from '@/lib/voice/wake-word';
 
 export type VoiceState = 'off' | 'idle' | 'listening' | 'processing' | 'speaking';
 
@@ -38,9 +36,10 @@ export function useVoice(
   }, []);
 
   // Toggle voice mode on/off.
-  const toggleVoice = useCallback(() => {
+  const toggleVoice = useCallback(async () => {
     if (voiceEnabled) {
       wakeDetectorRef.current?.stop();
+      const { stopSpeaking } = await import('@/lib/voice/text-to-speech');
       stopSpeaking();
       setVoiceEnabled(false);
       setVoiceState('off');
@@ -54,33 +53,42 @@ export function useVoice(
   useEffect(() => {
     if (!voiceEnabled) return;
 
-    const detector = createWakeWordDetector(async () => {
-      // Wake word detected. Pause wake word while we listen for the command.
-      detector.stop();
-      setVoiceState('listening');
+    let cancelled = false;
 
-      try {
-        const transcript = await transcribeOnce();
-        if (transcript.trim()) {
-          setVoiceState('processing');
-          spokenResponseRef.current = null;
-          sendMessage(transcript);
-        } else {
+    (async () => {
+      const { createWakeWordDetector } = await import('@/lib/voice/wake-word');
+      if (cancelled) return;
+
+      const detector = createWakeWordDetector(async () => {
+        // Wake word detected. Pause wake word while we listen for the command.
+        detector.stop();
+        setVoiceState('listening');
+
+        try {
+          const { transcribeOnce } = await import('@/lib/voice/speech-to-text');
+          const transcript = await transcribeOnce();
+          if (transcript.trim()) {
+            setVoiceState('processing');
+            spokenResponseRef.current = null;
+            sendMessage(transcript);
+          } else {
+            setVoiceState('idle');
+            detector.start();
+          }
+        } catch {
+          // No speech detected or timeout.
           setVoiceState('idle');
           detector.start();
         }
-      } catch {
-        // No speech detected or timeout.
-        setVoiceState('idle');
-        detector.start();
-      }
-    });
+      });
 
-    wakeDetectorRef.current = detector;
-    detector.start();
+      wakeDetectorRef.current = detector;
+      detector.start();
+    })();
 
     return () => {
-      detector.stop();
+      cancelled = true;
+      wakeDetectorRef.current?.stop();
     };
   }, [voiceEnabled, sendMessage]);
 
@@ -98,19 +106,22 @@ export function useVoice(
     spokenResponseRef.current = latestCompleteResponse;
     setVoiceState('speaking');
 
-    speak(latestCompleteResponse).then(() => {
-      setVoiceState('idle');
-      // Resume wake-word detection after speaking.
-      wakeDetectorRef.current?.start();
-    });
+    import('@/lib/voice/text-to-speech').then(({ speak }) =>
+      speak(latestCompleteResponse).then(() => {
+        setVoiceState('idle');
+        // Resume wake-word detection after speaking.
+        wakeDetectorRef.current?.start();
+      }),
+    );
   }, [voiceEnabled, latestCompleteResponse, voiceState]);
 
   // Push-to-talk: start
-  const startPushToTalk = useCallback(() => {
+  const startPushToTalk = useCallback(async () => {
     if (!voiceEnabled) return;
 
     // Stop wake word while PTT is active.
     wakeDetectorRef.current?.stop();
+    const { stopSpeaking } = await import('@/lib/voice/text-to-speech');
     stopSpeaking();
 
     const SpeechRecognition =
@@ -164,7 +175,8 @@ export function useVoice(
     pttRecognitionRef.current = null;
   }, [sendMessage, voiceState]);
 
-  const handleStopSpeaking = useCallback(() => {
+  const handleStopSpeaking = useCallback(async () => {
+    const { stopSpeaking } = await import('@/lib/voice/text-to-speech');
     stopSpeaking();
     setVoiceState('idle');
     wakeDetectorRef.current?.start();

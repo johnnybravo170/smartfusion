@@ -9,7 +9,7 @@
  * runs under the same server client, so RLS on `storage.objects` applies.
  */
 
-import { getSignedUrl } from '@/lib/storage/photos';
+import { getSignedUrl, getSignedUrls } from '@/lib/storage/photos';
 import { createClient } from '@/lib/supabase/server';
 import type { PhotoTag } from '@/lib/validators/photo';
 
@@ -36,14 +36,16 @@ const PHOTO_COLUMNS =
   'id, tenant_id, job_id, storage_path, tag, caption, taken_at, created_at, updated_at';
 
 async function decorateWithUrls(rows: PhotoRow[]): Promise<PhotoWithUrl[]> {
-  // Sign URLs in parallel. One failed sign shouldn't nuke the whole gallery;
-  // `getSignedUrl` already returns `null` on error.
-  return Promise.all(
-    rows.map(async (row) => ({
-      ...row,
-      url: await getSignedUrl(row.storage_path),
-    })),
-  );
+  if (rows.length === 0) return [];
+
+  // Batch-sign all URLs in a single API call instead of N+1 individual requests.
+  const paths = rows.map((row) => row.storage_path);
+  const urlMap = await getSignedUrls(paths);
+
+  return rows.map((row) => ({
+    ...row,
+    url: urlMap.get(row.storage_path) ?? null,
+  }));
 }
 
 export async function listPhotosByJob(jobId: string): Promise<PhotoWithUrl[]> {

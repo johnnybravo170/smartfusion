@@ -67,6 +67,35 @@ export async function getSignedUrl(
 }
 
 /**
+ * Batch-signs temporary read URLs for multiple storage paths in a single
+ * API call. Returns a Map of path -> signedUrl. Paths that fail to sign
+ * are omitted from the map (callers render a broken-image placeholder).
+ */
+export async function getSignedUrls(
+  storagePaths: string[],
+  expiresIn: number = DEFAULT_SIGN_EXPIRES_SECONDS,
+): Promise<Map<string, string>> {
+  if (storagePaths.length === 0) return new Map();
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrls(storagePaths, expiresIn);
+
+  const urlMap = new Map<string, string>();
+  if (error || !data) return urlMap;
+
+  for (let i = 0; i < data.length; i++) {
+    const entry = data[i];
+    if (entry.signedUrl && !entry.error) {
+      // The API returns entries in the same order as the input paths.
+      urlMap.set(storagePaths[i], entry.signedUrl);
+    }
+  }
+  return urlMap;
+}
+
+/**
  * Deletes a storage object. The caller is expected to also delete the
  * companion `photos` row in the same action.
  */
