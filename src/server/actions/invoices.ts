@@ -12,7 +12,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
-import { stripe } from '@/lib/stripe/client';
+import { getStripe } from '@/lib/stripe/client';
 import { createClient } from '@/lib/supabase/server';
 import {
   canTransition,
@@ -196,7 +196,7 @@ export async function sendInvoiceAction(input: {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
   // Create a Stripe Checkout Session on the connected account.
-  const session = await stripe.checkout.sessions.create(
+  const session = await getStripe().checkout.sessions.create(
     {
       line_items: [
         {

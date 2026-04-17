@@ -12,7 +12,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
-import { stripe } from '@/lib/stripe/client';
+import { getStripe } from '@/lib/stripe/client';
 import { createClient } from '@/lib/supabase/server';
 
 export type StripeActionResult = { ok: true; url?: string } | { ok: false; error: string };
@@ -44,7 +44,7 @@ export async function createConnectOnboardingAction(): Promise<StripeActionResul
 
   // Create a new Connected account if we don't have one yet.
   if (!accountId) {
-    const account = await stripe.accounts.create({
+    const account = await getStripe().accounts.create({
       type: 'standard',
       metadata: { tenant_id: tenant.id },
     });
@@ -63,7 +63,7 @@ export async function createConnectOnboardingAction(): Promise<StripeActionResul
 
   // Build the onboarding URL.
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-  const accountLink = await stripe.accountLinks.create({
+  const accountLink = await getStripe().accountLinks.create({
     account: accountId,
     refresh_url: `${appUrl}/settings?stripe=refresh`,
     return_url: `${appUrl}/settings?stripe=success`,
@@ -100,7 +100,7 @@ export async function checkStripeStatusAction(): Promise<StripeActionResult> {
     return { ok: false, error: 'No Stripe account connected.' };
   }
 
-  const account = await stripe.accounts.retrieve(accountId);
+  const account = await getStripe().accounts.retrieve(accountId);
 
   if (account.charges_enabled && account.payouts_enabled) {
     const now = new Date().toISOString();

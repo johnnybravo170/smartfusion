@@ -11,7 +11,7 @@
  */
 
 import type Stripe from 'stripe';
-import { stripe } from '@/lib/stripe/client';
+import { getStripe } from '@/lib/stripe/client';
 import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: Request) {
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     if (!webhookSecret) {
       return new Response('STRIPE_WEBHOOK_SECRET not configured', { status: 500 });
     }
-    event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
+    event = getStripe().webhooks.constructEvent(body, sig, webhookSecret);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return new Response(`Webhook signature verification failed: ${message}`, { status: 400 });
