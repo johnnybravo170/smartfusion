@@ -1,0 +1,2 @@
+ALTER TABLE public.tenants
+  ADD COLUMN IF NOT EXISTS quote_validity_days INTEGER NOT NULL DEFAULT 30;

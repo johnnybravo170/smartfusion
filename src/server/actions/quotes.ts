@@ -202,7 +202,7 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
 
   const { data: tenantData } = await supabase
     .from('tenants')
-    .select('id, name, slug')
+    .select('id, name, slug, quote_validity_days')
     .eq('id', tenant.id)
     .single();
 
@@ -267,37 +267,23 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
     return { ok: false, error: `Failed to send quote: ${error.message}` };
   }
 
-  // Worklog entry.
-  await supabase.from('worklog_entries').insert({
-    tenant_id: tenant.id,
-    entry_type: 'system',
-    title: isResend ? 'Quote resent' : 'Quote sent',
-    body: `Quote #${input.quoteId.slice(0, 8)} ${isResend ? 'resent' : 'marked as sent'}.`,
-    related_type: 'quote',
-    related_id: input.quoteId,
-  });
+  // Load tenant validity setting for the email template.
+  const validityDays: number =
+    (tenantData as Record<string, unknown> | null)?.quote_validity_days != null
+      ? Number((tenantData as Record<string, unknown>).quote_validity_days)
+      : 30;
 
   // Email the quote to the customer.
   let warning: string | undefined;
   const customer = quote.customer;
+  let emailSent = false;
 
   if (customer?.email) {
     try {
       const { sendEmail } = await import('@/lib/email/send');
       const { quoteEmailHtml } = await import('@/lib/email/templates/quote-email');
 
-      // Use a signed PDF URL so the customer can download directly (no login).
-      // Falls back to the app URL if PDF wasn't generated.
-      let viewUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io'}/quotes/${input.quoteId}`;
-      if (pdfUrl) {
-        const pdfPath = `quotes/${tenant.id}/${input.quoteId}.pdf`;
-        const { data: signedData } = await supabase.storage
-          .from('quotes')
-          .createSignedUrl(pdfPath, 60 * 60 * 24 * 30); // 30 days
-        if (signedData?.signedUrl) {
-          viewUrl = signedData.signedUrl;
-        }
-      }
+      const viewUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io'}/view/${input.quoteId}`;
 
       const emailResult = await sendEmail({
         to: customer.email,
@@ -308,18 +294,12 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
           quoteNumber: input.quoteId.slice(0, 8),
           totalFormatted: formatCurrency(quote.total_cents),
           viewUrl,
+          validityDays,
         }),
       });
 
       if (emailResult.ok) {
-        await supabase.from('worklog_entries').insert({
-          tenant_id: tenant.id,
-          entry_type: 'system',
-          title: 'Quote emailed',
-          body: `Quote #${input.quoteId.slice(0, 8)} emailed to ${customer.email}`,
-          related_type: 'quote',
-          related_id: input.quoteId,
-        });
+        emailSent = true;
       } else {
         console.error('Quote email failed:', emailResult.error);
       }
@@ -329,6 +309,21 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
   } else {
     warning = 'Customer has no email on file. Quote saved but not emailed.';
   }
+
+  // Single worklog entry (merged "sent" + "emailed").
+  const quoteShortId = input.quoteId.slice(0, 8);
+  const worklogBody = emailSent
+    ? `Quote #${quoteShortId} sent via email to ${customer?.email}`
+    : `Quote #${quoteShortId} marked as sent (no email on file)`;
+
+  await supabase.from('worklog_entries').insert({
+    tenant_id: tenant.id,
+    entry_type: 'system',
+    title: isResend ? 'Quote resent' : 'Quote sent',
+    body: worklogBody,
+    related_type: 'quote',
+    related_id: input.quoteId,
+  });
 
   revalidatePath('/quotes');
   revalidatePath(`/quotes/${input.quoteId}`);

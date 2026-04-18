@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { CalendarFeedCard } from '@/components/features/settings/calendar-feed-card';
 import { DataExportCard } from '@/components/features/settings/data-export-card';
 import { PublicQuoteLinkCard } from '@/components/features/settings/public-quote-link-card';
+import { QuoteSettingsCard } from '@/components/features/settings/quote-settings-card';
 import { StripeConnectCard } from '@/components/features/settings/stripe-connect-card';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getCurrentTenant } from '@/lib/auth/helpers';
@@ -26,6 +27,22 @@ async function StripeSection() {
       stripeOnboardedAt={(data?.stripe_onboarded_at as string) ?? null}
     />
   );
+}
+
+async function QuoteSettingsSection() {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return null;
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('tenants')
+    .select('quote_validity_days')
+    .eq('id', tenant.id)
+    .single();
+
+  const validityDays = (data?.quote_validity_days as number) ?? 30;
+
+  return <QuoteSettingsCard currentValidityDays={validityDays} />;
 }
 
 async function PublicQuoteLinkSection() {
@@ -147,6 +164,10 @@ export default function SettingsPage() {
           </CardHeader>
         </Card>
       </Link>
+
+      <Suspense fallback={<div className="h-32 animate-pulse rounded-xl border bg-card" />}>
+        <QuoteSettingsSection />
+      </Suspense>
 
       <Suspense fallback={<div className="h-32 animate-pulse rounded-xl border bg-card" />}>
         <CalendarSection />

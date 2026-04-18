@@ -11,6 +11,37 @@ import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
 import { slugSchema } from '@/lib/validators/lead';
 
+export async function updateQuoteSettingsAction(input: {
+  quote_validity_days: number;
+}): Promise<{ ok: boolean; error?: string }> {
+  const days = Math.round(input.quote_validity_days);
+  if (!Number.isFinite(days) || days < 1 || days > 365) {
+    return { ok: false, error: 'Quote validity must be between 1 and 365 days.' };
+  }
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) {
+    return { ok: false, error: 'Not signed in or missing tenant.' };
+  }
+
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('tenants')
+    .update({
+      quote_validity_days: days,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', tenant.id);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath('/settings');
+  return { ok: true };
+}
+
 export async function updateTenantSlugAction(
   slug: string,
 ): Promise<{ ok: boolean; error?: string }> {

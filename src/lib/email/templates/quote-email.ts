@@ -4,12 +4,14 @@ export function quoteEmailHtml({
   quoteNumber,
   totalFormatted,
   viewUrl,
+  validityDays = 30,
 }: {
   customerName: string;
   businessName: string;
   quoteNumber: string;
   totalFormatted: string;
   viewUrl: string;
+  validityDays?: number;
 }): string {
   return `<!DOCTYPE html>
 <html>
@@ -22,7 +24,7 @@ export function quoteEmailHtml({
       View Quote
     </a>
   </p>
-  <p style="color: #666; font-size: 14px;">Quote #${quoteNumber} is valid for 30 days.</p>
+  <p style="color: #666; font-size: 14px;">Quote #${quoteNumber} is valid for ${validityDays} days.</p>
   <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
   <p style="color: #999; font-size: 12px;">Sent via HeyHenry</p>
 </body>
