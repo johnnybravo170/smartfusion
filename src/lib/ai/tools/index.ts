@@ -1,5 +1,6 @@
 import type { AiTool, ToolDefinition } from '../types';
 import { catalogTools } from './catalog';
+import { changeOrderTools } from './change-orders';
 import { customerTools } from './customers';
 import { dashboardTools, setDashboardTimezone } from './dashboard';
 import { invoiceTools, setInvoiceTimezone } from './invoices';
@@ -22,10 +23,10 @@ const coreTools: AiTool[] = [
   ...catalogTools,
 ];
 
-/** Renovation-specific tools (projects, budget, time/expense). */
-const renovationTools: AiTool[] = [...projectTools, ...timeExpenseTools];
+/** Renovation-specific tools (projects, budget, time/expense, change orders). */
+const renovationTools: AiTool[] = [...projectTools, ...timeExpenseTools, ...changeOrderTools];
 
-/** All 33 tools registered for the AI chat. */
+/** All 37 tools registered for the AI chat. */
 export const allTools: AiTool[] = [...coreTools, ...renovationTools];
 
 /** Build a handler lookup map for fast dispatch. */

@@ -1,10 +1,14 @@
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ChangeOrderList } from '@/components/features/change-orders/change-order-list';
 import { MemoUpload } from '@/components/features/memos/memo-upload';
+import { PortalToggle } from '@/components/features/portal/portal-toggle';
+import { PortalUpdateForm } from '@/components/features/portal/portal-update-form';
 import { BudgetSummaryCard } from '@/components/features/projects/budget-summary';
 import { CostBucketsTable } from '@/components/features/projects/cost-buckets-table';
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
+import { getChangeOrderSummaryForProject, listChangeOrders } from '@/lib/db/queries/change-orders';
 import { listExpenses } from '@/lib/db/queries/expenses';
 import { getBudgetVsActual } from '@/lib/db/queries/project-buckets';
 import { getProject } from '@/lib/db/queries/projects';
@@ -19,7 +23,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: project ? `${project.name} — HeyHenry` : 'Project — HeyHenry' };
 }
 
-type Tab = 'overview' | 'buckets' | 'time' | 'memos';
+type Tab = 'overview' | 'buckets' | 'time' | 'memos' | 'change-orders' | 'portal';
 
 export default async function ProjectDetailPage({
   params,
@@ -51,11 +55,40 @@ export default async function ProjectDetailPage({
     listExpenses({ project_id: id, limit: 100 }),
   ]);
 
+  // Load change orders + summary for badge
+  const [changeOrders, coSummary] = await Promise.all([
+    listChangeOrders(id),
+    getChangeOrderSummaryForProject(id),
+  ]);
+
+  // Load portal updates
+  const { data: portalUpdates } = await supabase
+    .from('project_portal_updates')
+    .select('id, type, title, body, photo_url, created_at')
+    .eq('project_id', id)
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  // Access portal columns via raw query since they aren't in the typed ProjectRow yet
+  const { data: portalData } = await supabase
+    .from('projects')
+    .select('portal_slug, portal_enabled')
+    .eq('id', id)
+    .single();
+
+  const portalEnabled = (portalData?.portal_enabled as boolean) ?? false;
+  const portalSlug = (portalData?.portal_slug as string | null) ?? null;
+
+  const coLabel =
+    coSummary.pending_count > 0 ? `Change Orders (${coSummary.pending_count})` : 'Change Orders';
+
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'buckets', label: 'Cost Buckets' },
     { key: 'time', label: 'Time & Expenses' },
+    { key: 'change-orders', label: coLabel },
     { key: 'memos', label: 'Memos' },
+    { key: 'portal', label: 'Portal' },
   ];
 
   return (
@@ -222,6 +255,20 @@ export default async function ProjectDetailPage({
         </div>
       ) : null}
 
+      {tab === 'change-orders' ? (
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <Link
+              href={`/projects/${id}/change-orders/new`}
+              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              New Change Order
+            </Link>
+          </div>
+          <ChangeOrderList changeOrders={changeOrders} projectId={id} />
+        </div>
+      ) : null}
+
       {tab === 'memos' ? (
         <MemoUpload
           projectId={id}
@@ -233,6 +280,52 @@ export default async function ProjectDetailPage({
             created_at: m.created_at as string,
           }))}
         />
+      ) : null}
+
+      {tab === 'portal' ? (
+        <div className="space-y-6">
+          <PortalToggle projectId={id} portalEnabled={portalEnabled} portalSlug={portalSlug} />
+
+          {portalEnabled ? (
+            <>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Portal Updates</h3>
+                <PortalUpdateForm projectId={id} />
+              </div>
+
+              {(portalUpdates ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No portal updates yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {(portalUpdates ?? []).map((u) => {
+                    const ud = u as Record<string, unknown>;
+                    return (
+                      <div key={ud.id as string} className="rounded-md border p-3">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+                            {ud.type as string}
+                          </span>
+                          <span className="text-sm font-medium">{ud.title as string}</span>
+                          <span className="ml-auto text-xs text-muted-foreground">
+                            {new Date(ud.created_at as string).toLocaleDateString('en-CA', {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                        {ud.body ? (
+                          <p className="mt-1 text-sm text-muted-foreground">{ud.body as string}</p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

@@ -1,0 +1,155 @@
+import { createAdminClient } from '@/lib/supabase/admin';
+import { ApprovalForm } from './approval-form';
+
+export const metadata = {
+  title: 'Change Order — HeyHenry',
+};
+
+export default async function ApprovalPage({ params }: { params: Promise<{ code: string }> }) {
+  const { code } = await params;
+  const admin = createAdminClient();
+
+  // Look up change order by approval code
+  const { data: co } = await admin
+    .from('change_orders')
+    .select(
+      `id, title, description, reason, cost_impact_cents, timeline_impact_days,
+       status, approved_by_name, approved_at, declined_at, declined_reason, approval_code,
+       projects:project_id (name, customers:customer_id (name)),
+       tenants:tenant_id (name)`,
+    )
+    .eq('approval_code', code)
+    .single();
+
+  if (!co) {
+    return (
+      <div className="mx-auto max-w-lg py-20 text-center">
+        <h1 className="text-2xl font-semibold">Change Order Not Found</h1>
+        <p className="mt-2 text-muted-foreground">
+          This link may have expired or the change order may have been voided.
+        </p>
+      </div>
+    );
+  }
+
+  const coData = co as Record<string, unknown>;
+  const project = coData.projects as Record<string, unknown> | null;
+  const tenant = coData.tenants as Record<string, unknown> | null;
+  const customerRaw = project?.customers as Record<string, unknown> | null;
+  const projectName = (project?.name as string) ?? 'Project';
+  const businessName = (tenant?.name as string) ?? 'Your Contractor';
+
+  // Already responded
+  if (coData.status === 'approved') {
+    return (
+      <div className="mx-auto max-w-lg py-20 text-center">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+          <svg
+            className="h-8 w-8 text-emerald-600"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <h1 className="text-2xl font-semibold">Already Approved</h1>
+        <p className="mt-2 text-muted-foreground">
+          This change order was approved by {coData.approved_by_name as string} on{' '}
+          {new Date(coData.approved_at as string).toLocaleDateString('en-CA', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+          .
+        </p>
+      </div>
+    );
+  }
+
+  if (coData.status === 'declined') {
+    return (
+      <div className="mx-auto max-w-lg py-20 text-center">
+        <h1 className="text-2xl font-semibold">Change Order Declined</h1>
+        <p className="mt-2 text-muted-foreground">
+          This change order was declined.
+          {coData.declined_reason ? ` Reason: ${coData.declined_reason}` : ''}
+        </p>
+      </div>
+    );
+  }
+
+  if (coData.status === 'voided') {
+    return (
+      <div className="mx-auto max-w-lg py-20 text-center">
+        <h1 className="text-2xl font-semibold">Change Order Voided</h1>
+        <p className="mt-2 text-muted-foreground">
+          This change order has been cancelled by the contractor.
+        </p>
+      </div>
+    );
+  }
+
+  if (coData.status !== 'pending_approval') {
+    return (
+      <div className="mx-auto max-w-lg py-20 text-center">
+        <h1 className="text-2xl font-semibold">Not Available</h1>
+        <p className="mt-2 text-muted-foreground">
+          This change order is not currently awaiting approval.
+        </p>
+      </div>
+    );
+  }
+
+  const costCents = coData.cost_impact_cents as number;
+  const costFormatted = new Intl.NumberFormat('en-CA', {
+    style: 'currency',
+    currency: 'CAD',
+  }).format(Math.abs(costCents) / 100);
+  const costSign = costCents >= 0 ? '+' : '-';
+
+  const timelineDays = coData.timeline_impact_days as number;
+
+  return (
+    <div className="mx-auto max-w-lg px-4 py-12">
+      <div className="mb-8 text-center">
+        <p className="text-sm font-medium text-muted-foreground">{businessName}</p>
+        <h1 className="mt-1 text-2xl font-semibold">Change Order</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{projectName}</p>
+      </div>
+
+      <div className="rounded-lg border p-6 space-y-5">
+        <div>
+          <h2 className="text-lg font-semibold">{coData.title as string}</h2>
+          <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">
+            {coData.description as string}
+          </p>
+          {coData.reason ? (
+            <p className="mt-2 text-sm text-muted-foreground">Reason: {coData.reason as string}</p>
+          ) : null}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 rounded-md bg-muted/50 p-4">
+          <div>
+            <p className="text-xs text-muted-foreground">Cost Impact</p>
+            <p className="text-xl font-semibold">
+              {costSign}
+              {costFormatted}
+            </p>
+            <p className="text-xs text-muted-foreground">to project total</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Timeline Impact</p>
+            <p className="text-xl font-semibold">
+              {timelineDays === 0
+                ? 'None'
+                : `${timelineDays > 0 ? '+' : ''}${timelineDays} day${Math.abs(timelineDays) === 1 ? '' : 's'}`}
+            </p>
+          </div>
+        </div>
+
+        <ApprovalForm approvalCode={code} />
+      </div>
+    </div>
+  );
+}

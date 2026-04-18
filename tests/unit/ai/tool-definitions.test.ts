@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { allTools, executeToolCall, getToolDefinitions } from '@/lib/ai/tools';
 
 describe('AI tool definitions', () => {
-  it('exports exactly 33 tools (24 core + 9 renovation)', () => {
-    expect(allTools).toHaveLength(33);
+  it('exports exactly 37 tools (24 core + 9 renovation + 4 change orders)', () => {
+    expect(allTools).toHaveLength(37);
   });
 
   it('each tool has a name, description, and valid input_schema', () => {
