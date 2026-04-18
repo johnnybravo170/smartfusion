@@ -14,6 +14,8 @@
 
 import { GoogleGenAI, type LiveServerMessage, Modality, type Session } from '@google/genai';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { CLIENT_TOOL_NAMES } from '@/lib/henry/client-tools';
+import { useHenryScreen } from '@/lib/henry/screen-context';
 
 export type HenryMessage = {
   id: string;
@@ -81,6 +83,71 @@ function float32ToPcm16Base64(input: Float32Array): string {
   return btoa(binary);
 }
 
+/**
+ * Dispatch a client-side tool call against the current screen context.
+ * Returns a human-readable string result for Gemini to reason about.
+ */
+function runClientTool(
+  name: string,
+  args: Record<string, unknown>,
+  screen: ReturnType<typeof useHenryScreen>,
+): string {
+  if (name === 'get_current_screen_context') {
+    const form = screen.form;
+    return JSON.stringify({
+      route: screen.route,
+      form: form
+        ? {
+            formId: form.formId,
+            title: form.title,
+            fields: form.fields.map((f) => ({
+              name: f.name,
+              label: f.label,
+              type: f.type,
+              description: f.description,
+              options: f.options,
+              currentValue: f.currentValue ?? null,
+            })),
+            canSubmit: Boolean(form.submit),
+          }
+        : null,
+    });
+  }
+
+  if (name === 'fill_current_form') {
+    const form = screen.form;
+    if (!form) {
+      return 'No form is currently registered on this screen. Use a regular tool (e.g. create_customer) instead.';
+    }
+    const fields = Array.isArray(args.fields)
+      ? (args.fields as Array<{ name?: unknown; value?: unknown }>)
+      : [];
+    const results: string[] = [];
+    for (const f of fields) {
+      const fname = typeof f.name === 'string' ? f.name : '';
+      const fvalue = f.value == null ? '' : String(f.value);
+      if (!fname) {
+        results.push(`(skipped) missing name`);
+        continue;
+      }
+      const ok = form.setField(fname, fvalue);
+      results.push(`${fname}: ${ok ? 'set' : 'not accepted (unknown field?)'}`);
+    }
+    return `Filled ${fields.length} field(s): ${results.join('; ')}`;
+  }
+
+  if (name === 'submit_current_form') {
+    const form = screen.form;
+    if (!form) return 'No form registered on this screen.';
+    if (!form.submit)
+      return 'This form does not support programmatic submit; ask the operator to tap the submit button.';
+    form.submit();
+    return 'Form submitted.';
+  }
+
+  return `Unknown client tool: ${name}`;
+}
+
 /** base64 PCM16 little-endian → Float32 in [-1,1]. Uses a plain ArrayBuffer so it
  * satisfies Web Audio's copyToChannel type signature. */
 function pcm16Base64ToFloat32(b64: string): Float32Array<ArrayBuffer> {
@@ -107,6 +174,13 @@ export function useHenry(): UseHenryReturn {
   const [isSupported, setIsSupported] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const clearError = useCallback(() => setError(null), []);
+
+  // Screen context: current route + registered form. Stored in refs so the
+  // handleToolCall callback always reads the latest values without needing
+  // to be recreated (and thereby tearing down the active session).
+  const screen = useHenryScreen();
+  const screenRef = useRef(screen);
+  screenRef.current = screen;
 
   const sessionRef = useRef<Session | null>(null);
   const inputAudioCtxRef = useRef<AudioContext | null>(null);
@@ -191,6 +265,14 @@ export function useHenry(): UseHenryReturn {
           const name = fc.name ?? '';
           setActiveTool(name);
           try {
+            // Client-side tools (screen awareness) run in-process: they
+            // inspect / mutate React state, so a server round-trip would
+            // be wrong.
+            if (CLIENT_TOOL_NAMES.has(name)) {
+              const output = runClientTool(name, fc.args ?? {}, screenRef.current);
+              return { id: fc.id, name, response: { output } };
+            }
+
             const res = await fetch('/api/henry/tool', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

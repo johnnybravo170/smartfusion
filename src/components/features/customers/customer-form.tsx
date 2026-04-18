@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useHenryForm } from '@/hooks/use-henry-form';
 import {
   type CustomerCreateInput,
   type CustomerType,
@@ -108,6 +109,68 @@ export function CustomerForm({
   });
 
   const watchedType = form.watch('type');
+
+  // Watch every field we want Henry to see + be able to populate.
+  const watched = form.watch();
+
+  // Register this form with Henry so voice dictation on /customers/new (or
+  // /customers/[id]/edit) fills fields instead of invoking create_customer.
+  useHenryForm({
+    formId: mode === 'create' ? 'customer-create' : `customer-edit-${defaults?.id ?? ''}`,
+    title: mode === 'create' ? 'Creating a new customer' : 'Editing customer details',
+    fields: [
+      {
+        name: 'type',
+        label: 'Customer type',
+        type: 'enum',
+        options: [...customerTypes],
+        description: 'residential = homeowner, commercial = business, agent = realtor',
+        currentValue: watched.type,
+      },
+      {
+        name: 'name',
+        label: 'Full name / business / agent name',
+        type: 'text',
+        currentValue: watched.name,
+      },
+      { name: 'phone', label: 'Phone', type: 'tel', currentValue: watched.phone },
+      { name: 'email', label: 'Email', type: 'email', currentValue: watched.email },
+      {
+        name: 'addressLine1',
+        label: 'Street address',
+        type: 'text',
+        currentValue: watched.addressLine1,
+      },
+      { name: 'city', label: 'City', type: 'text', currentValue: watched.city },
+      {
+        name: 'province',
+        label: 'Province (2-letter, e.g. BC, ON)',
+        type: 'text',
+        currentValue: watched.province,
+      },
+      { name: 'postalCode', label: 'Postal code', type: 'text', currentValue: watched.postalCode },
+      { name: 'notes', label: 'Notes', type: 'textarea', currentValue: watched.notes },
+    ],
+    setField: (name, value) => {
+      const allowed: (keyof CustomerCreateInput)[] = [
+        'type',
+        'name',
+        'phone',
+        'email',
+        'addressLine1',
+        'city',
+        'province',
+        'postalCode',
+        'notes',
+      ];
+      if (!(allowed as string[]).includes(name)) return false;
+      form.setValue(name as keyof CustomerCreateInput, value, { shouldValidate: true });
+      return true;
+    },
+    submit: () => {
+      void form.handleSubmit(onSubmit)();
+    },
+  });
 
   const onPlaceChanged = useCallback(() => {
     const autocomplete = autocompleteRef.current;

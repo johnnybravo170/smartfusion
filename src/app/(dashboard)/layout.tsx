@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/header';
 import { SidebarNav } from '@/components/layout/sidebar';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { TenantProvider } from '@/lib/auth/tenant-context';
+import { HenryScreenProvider } from '@/lib/henry/screen-context';
 
 // All dashboard routes require the authenticated user's tenant context. They
 // cannot be statically prerendered (would try to run Supabase client without
@@ -19,18 +20,22 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const vertical = tenant?.vertical || 'pressure_washing';
 
   return (
-    <ChatProvider>
-      <div className="flex min-h-screen w-full overflow-x-hidden">
-        <SidebarNav vertical={vertical} />
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <Header businessName={businessName} vertical={vertical} />
-          <TenantProvider timezone={timezone}>
-            <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6">{children}</main>
-          </TenantProvider>
+    <HenryScreenProvider>
+      <ChatProvider>
+        <div className="flex min-h-screen w-full overflow-x-hidden">
+          <SidebarNav vertical={vertical} />
+          <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+            <Header businessName={businessName} vertical={vertical} />
+            <TenantProvider timezone={timezone}>
+              <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6">
+                {children}
+              </main>
+            </TenantProvider>
+          </div>
         </div>
-      </div>
-      <ChatToggle />
-      <ChatPanel />
-    </ChatProvider>
+        <ChatToggle />
+        <ChatPanel />
+      </ChatProvider>
+    </HenryScreenProvider>
   );
 }

@@ -22,6 +22,7 @@ import { getSystemPrompt } from '@/lib/ai/system-prompt';
 import { allTools } from '@/lib/ai/tools';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { toGeminiFunctionDeclarations } from '@/lib/henry/adapter';
+import { clientFunctionDeclarations } from '@/lib/henry/client-tools';
 
 // Live-capable models for this API key (confirmed via ListModels): only the
 // 2.5 Flash native-audio family supports bidiGenerateContent on v1alpha/v1beta.
@@ -41,7 +42,7 @@ export async function POST() {
     }
 
     const systemPrompt = getSystemPrompt(tenant.name, tenant.timezone, tenant.vertical);
-    const tools = toGeminiFunctionDeclarations(allTools);
+    const tools = [...toGeminiFunctionDeclarations(allTools), ...clientFunctionDeclarations];
 
     return Response.json({
       token: apiKey,
