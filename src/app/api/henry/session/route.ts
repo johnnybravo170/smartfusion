@@ -23,7 +23,10 @@ import { allTools } from '@/lib/ai/tools';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { toGeminiFunctionDeclarations } from '@/lib/henry/adapter';
 
-const LIVE_MODEL = 'gemini-live-2.5-flash-preview';
+// `gemini-2.0-flash-live-preview-04-09` is the older-but-confirmed Live model.
+// `gemini-live-2.5-flash-preview` was registered for a while but returns "not
+// found for API version v1main" as of this writing — likely temporary.
+const LIVE_MODEL = 'gemini-2.0-flash-live-preview-04-09';
 
 export async function POST() {
   try {
