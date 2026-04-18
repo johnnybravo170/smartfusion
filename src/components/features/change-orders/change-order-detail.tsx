@@ -74,14 +74,34 @@ export function ChangeOrderDetail({
               Send for Approval
             </button>
           ) : null}
-          {co.status === 'draft' || co.status === 'pending_approval' ? (
+          {co.status === 'draft' ? (
+            <button
+              type="button"
+              onClick={async () => {
+                if (!confirm('Delete this change order? This cannot be undone.')) return;
+                setLoading(true);
+                const { deleteChangeOrderAction } = await import('@/server/actions/change-orders');
+                const result = await deleteChangeOrderAction(co.id);
+                setLoading(false);
+                if (!result.ok) { toast.error(result.error ?? 'Failed'); return; }
+                toast.success('Change order deleted.');
+                router.back();
+                router.refresh();
+              }}
+              disabled={loading}
+              className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              Delete
+            </button>
+          ) : null}
+          {co.status === 'pending_approval' ? (
             <button
               type="button"
               onClick={handleVoid}
               disabled={loading}
               className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
             >
-              Void
+              Cancel
             </button>
           ) : null}
         </div>

@@ -402,3 +402,37 @@ export async function voidChangeOrderAction(
   revalidatePath(`/projects/${projectId}`);
   return { ok: true, id: changeOrderId };
 }
+
+export async function deleteChangeOrderAction(
+  changeOrderId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+
+  // Only allow deleting draft COs
+  const { data: co } = await supabase
+    .from('change_orders')
+    .select('status')
+    .eq('id', changeOrderId)
+    .eq('tenant_id', tenant.id)
+    .single();
+
+  if (!co) return { ok: false, error: 'Change order not found.' };
+  if ((co as Record<string, unknown>).status !== 'draft') {
+    return { ok: false, error: 'Only draft change orders can be deleted. Use Cancel for pending ones.' };
+  }
+
+  const { error } = await supabase
+    .from('change_orders')
+    .delete()
+    .eq('id', changeOrderId)
+    .eq('tenant_id', tenant.id);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/jobs');
+  revalidatePath('/projects');
+  return { ok: true };
+}
