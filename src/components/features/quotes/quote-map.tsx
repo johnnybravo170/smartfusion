@@ -327,9 +327,9 @@ export function QuoteMap({
             polygonOptions: {
               fillColor: '#3b82f6',
               fillOpacity: 0.3,
-              strokeColor: '#3b82f6',
-              strokeWeight: 2,
-              editable: false,
+              strokeColor: '#2563eb',
+              strokeWeight: 3,
+              editable: true,
             },
           }}
           onPolygonComplete={onPolygonComplete}
@@ -343,8 +343,10 @@ export function QuoteMap({
             options={{
               fillColor: '#3b82f6',
               fillOpacity: 0.25,
-              strokeColor: '#3b82f6',
-              strokeWeight: 2,
+              strokeColor: '#2563eb',
+              strokeWeight: 3,
+              editable: true,
+              draggable: false,
               clickable: true,
             }}
             onClick={() => handleRemovePolygon(p.id)}
