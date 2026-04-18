@@ -5,32 +5,41 @@
  * dictation ("fill in my name, it's Mike Dawson") populates the fields
  * instead of going through a CRUD tool.
  *
- * Usage inside a form component:
- *   useHenryForm({
- *     formId: 'customer-create',
- *     title: 'Creating a new customer',
- *     fields: [
- *       { name: 'name', label: 'Full name', type: 'text', currentValue: form.watch('name') },
- *       ...
- *     ],
- *     setField: (name, value) => { form.setValue(name as keyof Input, value); return true; },
- *     submit: () => form.handleSubmit(onSubmit)(),
- *   });
+ * Implementation note: the caller passes a fresh `reg` object every render
+ * (new closures for setField/submit, new fields array). We register ONCE on
+ * mount with a stable wrapper whose properties are getters pointing at a
+ * ref — so Henry always reads the latest values without forcing the context
+ * to re-render every time a field changes.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { type HenryFormRegistration, useHenryScreen } from '@/lib/henry/screen-context';
 
 export function useHenryForm(reg: HenryFormRegistration) {
   const { register, unregister } = useHenryScreen();
 
-  // Re-register whenever any of the field values or the registration itself
-  // changes so Henry's view of the form is always fresh. JSON.stringify is
-  // a deliberate deep-compare trigger so callers don't have to memoize the
-  // fields array every render.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: deep-compare trigger
+  // Always-fresh reference to whatever the caller passed this render.
+  const regRef = useRef(reg);
+  regRef.current = reg;
+
   useEffect(() => {
-    register(reg);
-    return () => unregister(reg.formId);
-  }, [register, unregister, reg, JSON.stringify(reg.fields)]);
+    const formId = regRef.current.formId;
+
+    // Stable wrapper whose reads go through the ref. Registered once on
+    // mount; unregistered on unmount.
+    const stable: HenryFormRegistration = {
+      formId,
+      get title() {
+        return regRef.current.title;
+      },
+      get fields() {
+        return regRef.current.fields;
+      },
+      setField: (name, value) => regRef.current.setField(name, value),
+      submit: () => regRef.current.submit?.(),
+    };
+
+    register(stable);
+    return () => unregister(formId);
+  }, [register, unregister]);
 }
