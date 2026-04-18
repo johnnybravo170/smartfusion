@@ -96,7 +96,10 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "no-scrollbar max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
+        // max-h responsive: taller on mobile so the keyboard doesn't clip it
+        // touch-pan-y + overscroll-contain: iOS Safari lets you scroll the
+        // list without the page/popover intercepting the gesture
+        "no-scrollbar max-h-[50vh] touch-pan-y scroll-py-1 overflow-x-hidden overflow-y-auto overscroll-contain outline-none sm:max-h-72",
         className
       )}
       {...props}
