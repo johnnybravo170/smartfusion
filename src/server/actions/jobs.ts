@@ -379,3 +379,22 @@ export async function deleteJobAction(id: string): Promise<JobActionResult | nev
   revalidatePath('/jobs/list');
   redirect('/jobs');
 }
+
+export async function rescheduleJobAction(
+  jobId: string,
+  scheduledAt: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('jobs')
+    .update({ scheduled_at: scheduledAt, updated_at: new Date().toISOString() })
+    .eq('id', jobId)
+    .is('deleted_at', null);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath('/jobs');
+  revalidatePath('/jobs/calendar');
+  return { ok: true };
+}

@@ -1,4 +1,6 @@
 import { ArrowLeft, CalendarClock, Camera, FileText, Pencil, Receipt } from 'lucide-react';
+import { InlineScheduler } from '@/components/features/jobs/inline-scheduler';
+import { rescheduleJobAction } from '@/server/actions/jobs';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { GenerateInvoiceButton } from '@/components/features/invoices/generate-invoice-button';
@@ -95,11 +97,11 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       </header>
 
       <section className="grid gap-4 rounded-xl border bg-card p-5 md:grid-cols-3">
-        <TimestampBlock
-          icon={CalendarClock}
-          label="Scheduled"
-          value={job.scheduled_at}
+        <InlineScheduler
+          jobId={job.id}
+          scheduledAt={job.scheduled_at}
           timezone={tz}
+          action={rescheduleJobAction}
         />
         <TimestampBlock icon={CalendarClock} label="Started" value={job.started_at} timezone={tz} />
         <TimestampBlock
@@ -111,23 +113,25 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       </section>
 
       {job.quote ? (
-        <section className="flex items-center justify-between rounded-xl border bg-card p-4">
-          <div className="flex items-center gap-3">
-            <FileText className="size-4 text-muted-foreground" aria-hidden />
-            <div className="flex flex-col">
-              <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                Linked quote
-              </span>
-              <span className="font-mono text-sm">#{shortId(job.quote.id)}</span>
+        <Link href={`/quotes/${job.quote.id}`} className="block">
+          <section className="flex items-center justify-between rounded-xl border bg-card p-4 transition-colors hover:bg-muted/50">
+            <div className="flex items-center gap-3">
+              <FileText className="size-4 text-muted-foreground" aria-hidden />
+              <div className="flex flex-col">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Linked quote
+                </span>
+                <span className="font-mono text-sm">#{shortId(job.quote.id)}</span>
+              </div>
             </div>
-          </div>
-          <Badge
-            variant="secondary"
-            className={`font-medium ${QUOTE_STATUS_CLASS[job.quote.status] ?? 'bg-muted'}`}
-          >
-            {job.quote.status}
-          </Badge>
-        </section>
+            <Badge
+              variant="secondary"
+              className={`font-medium ${QUOTE_STATUS_CLASS[job.quote.status] ?? 'bg-muted'}`}
+            >
+              {job.quote.status}
+            </Badge>
+          </section>
+        </Link>
       ) : null}
 
       <section className="rounded-xl border bg-card p-4">
