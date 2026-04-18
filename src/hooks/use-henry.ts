@@ -394,11 +394,9 @@ export function useHenry(): UseHenryReturn {
     }
     const { token, model, systemPrompt, tools } = sessionConfig;
 
-    // 2. Open Gemini Live WebSocket using the ephemeral token.
-    const ai = new GoogleGenAI({
-      apiKey: token,
-      httpOptions: { apiVersion: 'v1alpha' },
-    });
+    // 2. Open Gemini Live WebSocket. `token` is the raw API key during private
+    // beta — see note in /api/henry/session for the security tradeoff.
+    const ai = new GoogleGenAI({ apiKey: token });
 
     try {
       const session = await ai.live.connect({
