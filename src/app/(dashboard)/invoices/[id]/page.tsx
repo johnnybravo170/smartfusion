@@ -1,15 +1,17 @@
-import { ArrowLeft, Briefcase, User } from 'lucide-react';
+import { ArrowLeft, Briefcase, Copy, User } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { InvoiceActions } from '@/components/features/invoices/invoice-actions';
 import { InvoiceLineItems } from '@/components/features/invoices/invoice-line-items';
 import { InvoiceNote } from '@/components/features/invoices/invoice-note';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
+import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime } from '@/lib/date/format';
 import { getInvoice } from '@/lib/db/queries/invoices';
 import { createClient } from '@/lib/supabase/server';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
+import { duplicateInvoiceAction } from '@/server/actions/invoices';
 
 function formatCad(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -28,8 +30,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const formatTimestamp = (iso: string | null | undefined) =>
     iso ? formatDateTime(iso, { timezone: tz }) : '';
 
-  // Load worklog entries for this invoice's job.
+  // Check if tenant has Stripe connected.
   const supabase = await createClient();
+  const { data: tenantRow } = await supabase
+    .from('tenants')
+    .select('stripe_account_id')
+    .eq('id', tenant?.id ?? '')
+    .maybeSingle();
+  const hasStripe = !!tenantRow?.stripe_account_id;
+
+  // Load worklog entries for this invoice's job.
   const { data: worklog } = await supabase
     .from('worklog_entries')
     .select('id, entry_type, title, body, created_at')
@@ -67,6 +77,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             Created {formatTimestamp(invoice.created_at)}
           </p>
         </div>
+        {(invoice.status === 'paid' || invoice.status === 'void') && (
+          <DuplicateInvoiceButton invoiceId={invoice.id} />
+        )}
       </header>
 
       {/* Amount breakdown */}
@@ -136,6 +149,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
           <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
             Paid on {formatTimestamp(invoice.paid_at)}
+            {(invoice as Record<string, unknown>).payment_method
+              ? ` via ${(invoice as Record<string, unknown>).payment_method}`
+              : ''}
           </p>
         </section>
       )}
@@ -160,6 +176,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         status={invoice.status as InvoiceStatus}
         paymentUrl={invoice.pdf_url}
         customerEmail={invoice.customer?.email ?? null}
+        hasStripe={hasStripe}
       />
 
       {/* Invoice-related worklog */}
@@ -188,5 +205,24 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </section>
       )}
     </div>
+  );
+}
+
+function DuplicateInvoiceButton({ invoiceId }: { invoiceId: string }) {
+  async function action() {
+    'use server';
+    const result = await duplicateInvoiceAction({ invoiceId });
+    if (!result.ok) throw new Error(result.error);
+    const { redirect } = await import('next/navigation');
+    redirect(`/invoices/${result.id}`);
+  }
+
+  return (
+    <form action={action}>
+      <Button type="submit" variant="outline" size="sm">
+        <Copy className="size-3.5" />
+        Duplicate
+      </Button>
+    </form>
   );
 }

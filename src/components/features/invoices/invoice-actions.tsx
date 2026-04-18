@@ -2,7 +2,7 @@
 
 import { Ban, CheckCircle, Copy, Loader2, Mail, Send } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -16,6 +16,13 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 import {
   markInvoicePaidAction,
@@ -24,22 +31,38 @@ import {
   voidInvoiceAction,
 } from '@/server/actions/invoices';
 
+const PAYMENT_METHODS = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'cheque', label: 'Cheque' },
+  { value: 'e-transfer', label: 'E-transfer' },
+  { value: 'stripe', label: 'Stripe' },
+  { value: 'other', label: 'Other' },
+] as const;
+
 type Props = {
   invoiceId: string;
   status: InvoiceStatus;
   paymentUrl: string | null;
   customerEmail: string | null;
+  hasStripe?: boolean;
 };
 
-export function InvoiceActions({ invoiceId, status, paymentUrl, customerEmail }: Props) {
+export function InvoiceActions({
+  invoiceId,
+  status,
+  paymentUrl,
+  customerEmail,
+  hasStripe = true,
+}: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [paymentMethod, setPaymentMethod] = useState('e-transfer');
 
   function handleSend() {
     startTransition(async () => {
       const result = await sendInvoiceAction({ invoiceId });
       if (result.ok) {
-        toast.success('Invoice sent! Payment link created.');
+        toast.success('Invoice sent!');
         if (result.warning) {
           toast.warning(result.warning);
         }
@@ -68,9 +91,9 @@ export function InvoiceActions({ invoiceId, status, paymentUrl, customerEmail }:
 
   function handleMarkPaid() {
     startTransition(async () => {
-      const result = await markInvoicePaidAction({ invoiceId });
+      const result = await markInvoicePaidAction({ invoiceId, paymentMethod });
       if (result.ok) {
-        toast.success('Invoice marked as paid.');
+        toast.success(`Invoice marked as paid via ${paymentMethod}.`);
         router.refresh();
       } else {
         toast.error(result.error);
@@ -169,9 +192,23 @@ export function InvoiceActions({ invoiceId, status, paymentUrl, customerEmail }:
             <AlertDialogHeader>
               <AlertDialogTitle>Mark invoice as paid?</AlertDialogTitle>
               <AlertDialogDescription>
-                Use this for cash, e-transfer, or other off-Stripe payments. This cannot be undone.
+                Select the payment method. This cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <div className="py-2">
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.filter((m) => hasStripe || m.value !== 'stripe').map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={handleMarkPaid} disabled={isPending}>

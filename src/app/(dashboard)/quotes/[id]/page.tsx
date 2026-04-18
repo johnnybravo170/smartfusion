@@ -207,3 +207,22 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     </div>
   );
 }
+
+function DuplicateQuoteButton({ quoteId }: { quoteId: string }) {
+  async function action() {
+    'use server';
+    const result = await duplicateQuoteAction({ quoteId });
+    if (!result.ok) throw new Error(result.error);
+    const { redirect } = await import('next/navigation');
+    redirect(`/quotes/${result.id}`);
+  }
+
+  return (
+    <form action={action}>
+      <Button type="submit" variant="outline" size="sm">
+        <Copy className="size-3.5" />
+        Duplicate
+      </Button>
+    </form>
+  );
+}
