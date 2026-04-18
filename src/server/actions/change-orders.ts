@@ -96,10 +96,10 @@ export async function sendChangeOrderAction(
 
   const supabase = await createClient();
 
-  // Load the change order
+  // Load the change order with project OR job context
   const { data: co, error: coErr } = await supabase
     .from('change_orders')
-    .select('*, projects:project_id (id, name, customer_id, customers:customer_id (name, email))')
+    .select('*, projects:project_id (id, name, customer_id, customers:customer_id (name, email)), jobs:job_id (id, customer_id, customers:customer_id (name, email))')
     .eq('id', changeOrderId)
     .single();
 
@@ -112,13 +112,14 @@ export async function sendChangeOrderAction(
     return { ok: false, error: 'Only draft change orders can be sent.' };
   }
 
-  // Extract project + customer info
+  // Extract customer info from project or job (whichever this CO is linked to)
   const project = coData.projects as Record<string, unknown> | null;
-  const projectName = (project?.name as string) ?? 'Project';
-  const projectId = (project?.id as string) ?? '';
-  const customerRaw = project?.customers as Record<string, unknown> | null;
+  const job = coData.jobs as Record<string, unknown> | null;
+  const projectName = (project?.name as string) ?? 'Job';
+  const projectId = (project?.id as string) ?? (job?.id as string) ?? '';
+  const customerRaw = (project?.customers ?? job?.customers) as Record<string, unknown> | null;
   const customerEmail = customerRaw?.email as string | null;
-  const customerName = (customerRaw?.name as string) ?? 'Homeowner';
+  const customerName = (customerRaw?.name as string) ?? 'Customer';
 
   // Update status
   const { error: updateErr } = await supabase
