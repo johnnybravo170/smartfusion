@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useHenryForm } from '@/hooks/use-henry-form';
 import type { CatalogEntryRow } from '@/lib/db/queries/service-catalog';
 import {
   type CatalogEntry,
@@ -103,6 +104,51 @@ export function QuoteForm({
   const totals = useMemo(() => {
     return calculateQuoteTotal(surfaces, TAX_RATE);
   }, [surfaces]);
+
+  const selectedCustomer = customers.find((c) => c.id === customerId);
+
+  useHenryForm({
+    formId: mode === 'create' ? 'quote-create' : `quote-edit-${defaults?.id ?? ''}`,
+    title: mode === 'create' ? 'Creating a new quote' : 'Editing a quote',
+    fields: [
+      {
+        name: 'customer_id',
+        label: 'Customer',
+        type: 'text',
+        description:
+          'Give the customer name; setField resolves to the UUID. If no match, call list_customers first.',
+        currentValue: selectedCustomer?.name ?? customerId,
+      },
+      {
+        name: 'notes',
+        label: 'Notes (visible to the customer)',
+        type: 'textarea',
+        currentValue: notes,
+      },
+    ],
+    setField: (name, value) => {
+      if (name === 'customer_id') {
+        if (customers.some((c) => c.id === value)) {
+          setCustomerId(value);
+          return true;
+        }
+        const needle = value.trim().toLowerCase();
+        const match = customers.find((c) => c.name.toLowerCase().includes(needle));
+        if (match) {
+          setCustomerId(match.id);
+          return true;
+        }
+        return false;
+      }
+      if (name === 'notes') {
+        setNotes(value);
+        return true;
+      }
+      return false;
+    },
+    // Surfaces are drawn on a map or entered numerically — not safe to submit
+    // programmatically from voice yet. Operator submits manually.
+  });
 
   const handleSurfaceAdd = useCallback(
     (surface: {

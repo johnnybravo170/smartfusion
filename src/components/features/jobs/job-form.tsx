@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useHenryForm } from '@/hooks/use-henry-form';
 import { type JobInput, jobCreateSchema, jobStatuses, jobStatusLabels } from '@/lib/validators/job';
 import type { JobActionResult } from '@/server/actions/jobs';
 
@@ -86,6 +87,61 @@ export function JobForm({
     resolver: zodResolver(jobCreateSchema as any),
     defaultValues: initialValues,
     mode: 'onBlur',
+  });
+
+  const watched = form.watch();
+  const selectedCustomer = customers.find((c) => c.id === watched.customer_id);
+
+  useHenryForm({
+    formId: mode === 'create' ? 'job-create' : `job-edit-${defaults?.id ?? ''}`,
+    title: mode === 'create' ? 'Creating a new job' : 'Editing a job',
+    fields: [
+      {
+        name: 'customer_id',
+        label: 'Customer',
+        type: 'text',
+        description:
+          'Customer reference. Give the customer name; setField resolves to the UUID. If no match, call list_customers first.',
+        currentValue: selectedCustomer?.name ?? watched.customer_id,
+      },
+      {
+        name: 'status',
+        label: 'Status',
+        type: 'enum',
+        options: [...jobStatuses],
+        currentValue: watched.status,
+      },
+      {
+        name: 'scheduled_at',
+        label: 'Scheduled for (ISO datetime, e.g. 2026-04-22T14:00)',
+        type: 'text',
+        currentValue: watched.scheduled_at,
+      },
+      { name: 'notes', label: 'Notes', type: 'textarea', currentValue: watched.notes },
+    ],
+    setField: (name, value) => {
+      if (name === 'customer_id') {
+        // Accept either UUID or a (possibly partial) customer name.
+        if (customers.some((c) => c.id === value)) {
+          form.setValue('customer_id', value, { shouldValidate: true });
+          return true;
+        }
+        const needle = value.trim().toLowerCase();
+        const match = customers.find((c) => c.name.toLowerCase().includes(needle));
+        if (match) {
+          form.setValue('customer_id', match.id, { shouldValidate: true });
+          return true;
+        }
+        return false;
+      }
+      const allowed: (keyof JobInput)[] = ['status', 'scheduled_at', 'notes'];
+      if (!(allowed as string[]).includes(name)) return false;
+      form.setValue(name as keyof JobInput, value, { shouldValidate: true });
+      return true;
+    },
+    submit: () => {
+      void form.handleSubmit(onSubmit)();
+    },
   });
 
   function onSubmit(values: JobInput) {

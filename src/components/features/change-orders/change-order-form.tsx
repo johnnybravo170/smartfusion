@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useHenryForm } from '@/hooks/use-henry-form';
 import type { CostBucketSummary } from '@/lib/db/queries/projects';
 import { createChangeOrderAction, sendChangeOrderAction } from '@/server/actions/change-orders';
 
@@ -67,6 +68,57 @@ export function ChangeOrderForm({
       prev.includes(bucketId) ? prev.filter((id) => id !== bucketId) : [...prev, bucketId],
     );
   }
+
+  useHenryForm({
+    formId: `change-order-create-${projectId ?? jobId ?? 'unknown'}`,
+    title: 'Creating a change order',
+    fields: [
+      { name: 'title', label: 'Title', type: 'text', currentValue: title },
+      { name: 'description', label: 'Description', type: 'textarea', currentValue: description },
+      {
+        name: 'reason',
+        label: 'Reason (why this change is happening)',
+        type: 'text',
+        currentValue: reason,
+      },
+      {
+        name: 'cost_dollars',
+        label: 'Cost impact in dollars (negative for credit)',
+        type: 'number',
+        currentValue: costDollars,
+      },
+      {
+        name: 'timeline_days',
+        label: 'Timeline impact in days (negative to shorten)',
+        type: 'number',
+        currentValue: timelineDays,
+      },
+    ],
+    setField: (name, value) => {
+      if (name === 'title') {
+        setTitle(value);
+        return true;
+      }
+      if (name === 'description') {
+        setDescription(value);
+        return true;
+      }
+      if (name === 'reason') {
+        setReason(value);
+        return true;
+      }
+      if (name === 'cost_dollars') {
+        setCostDollars(value);
+        return true;
+      }
+      if (name === 'timeline_days') {
+        setTimelineDays(value);
+        return true;
+      }
+      return false;
+    },
+    // Two submit buttons (draft vs send); operator picks which — don't auto-submit.
+  });
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">

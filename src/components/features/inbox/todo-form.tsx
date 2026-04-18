@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useHenryForm } from '@/hooks/use-henry-form';
 import {
   type TodoRelatedType,
   todoRelatedTypeLabels,
@@ -42,6 +43,35 @@ export function TodoForm() {
   const dueId = useId();
   const relatedTypeId = useId();
   const relatedIdId = useId();
+
+  useHenryForm({
+    formId: 'todo-quick-add',
+    title: 'Quick-adding a todo on the inbox',
+    fields: [
+      { name: 'title', label: 'Todo title', type: 'text', currentValue: title },
+      {
+        name: 'due_date',
+        label: 'Due date (YYYY-MM-DD)',
+        type: 'text',
+        currentValue: dueDate,
+      },
+    ],
+    setField: (name, value) => {
+      if (name === 'title') {
+        setTitle(value);
+        return true;
+      }
+      if (name === 'due_date') {
+        setDueDate(value);
+        if (value) setExpanded(true);
+        return true;
+      }
+      return false;
+    },
+    // Prefer the server-side create_todo tool for direct creates. The form
+    // exists mostly so Henry CAN fill it when the operator is already on
+    // the inbox and clearly wants to review before committing.
+  });
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

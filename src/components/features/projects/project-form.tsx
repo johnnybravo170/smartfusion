@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useHenryForm } from '@/hooks/use-henry-form';
 import { type ProjectInput, projectCreateSchema } from '@/lib/validators/project';
 import type { ProjectActionResult } from '@/server/actions/projects';
 
@@ -66,6 +67,85 @@ export function ProjectForm({
   const form = useForm({
     resolver: zodResolver(projectCreateSchema),
     defaultValues: { ...EMPTY, ...defaults },
+  });
+
+  const watched = form.watch();
+  const selectedCustomer = customers.find((c) => c.id === watched.customer_id);
+
+  useHenryForm({
+    formId: mode === 'create' ? 'project-create' : `project-edit-${defaults?.id ?? ''}`,
+    title: mode === 'create' ? 'Creating a new renovation project' : 'Editing a project',
+    fields: [
+      {
+        name: 'customer_id',
+        label: 'Customer',
+        type: 'text',
+        description:
+          'Give the customer name; setField resolves to the UUID. If no match, call list_customers first.',
+        currentValue: selectedCustomer?.name ?? watched.customer_id,
+      },
+      { name: 'name', label: 'Project name', type: 'text', currentValue: watched.name },
+      {
+        name: 'description',
+        label: 'Description / scope overview',
+        type: 'textarea',
+        currentValue: watched.description,
+      },
+      {
+        name: 'start_date',
+        label: 'Start date (YYYY-MM-DD)',
+        type: 'text',
+        currentValue: watched.start_date,
+      },
+      {
+        name: 'target_end_date',
+        label: 'Target end date (YYYY-MM-DD)',
+        type: 'text',
+        currentValue: watched.target_end_date,
+      },
+      {
+        name: 'management_fee_rate',
+        label: 'Management fee rate (decimal, e.g. 0.12 for 12%)',
+        type: 'number',
+        currentValue:
+          typeof watched.management_fee_rate === 'number' ? watched.management_fee_rate : null,
+      },
+    ],
+    setField: (name, value) => {
+      if (name === 'customer_id') {
+        if (customers.some((c) => c.id === value)) {
+          form.setValue('customer_id', value, { shouldValidate: true });
+          return true;
+        }
+        const needle = value.trim().toLowerCase();
+        const match = customers.find((c) => c.name.toLowerCase().includes(needle));
+        if (match) {
+          form.setValue('customer_id', match.id, { shouldValidate: true });
+          return true;
+        }
+        return false;
+      }
+      if (name === 'management_fee_rate') {
+        const n = Number.parseFloat(value);
+        if (Number.isNaN(n)) return false;
+        // Accept either decimal (0.12) or percent (12). Stored as decimal.
+        const decimal = n > 1 ? n / 100 : n;
+        form.setValue('management_fee_rate', decimal, { shouldValidate: true });
+        return true;
+      }
+      const allowed: (keyof ProjectInput)[] = [
+        'name',
+        'description',
+        'start_date',
+        'target_end_date',
+      ];
+      if (!(allowed as string[]).includes(name)) return false;
+      form.setValue(name as keyof ProjectInput, value, { shouldValidate: true });
+      return true;
+    },
+    submit: () => {
+      void form.handleSubmit(onSubmit)();
+    },
   });
 
   function onSubmit(values: ProjectInput) {
