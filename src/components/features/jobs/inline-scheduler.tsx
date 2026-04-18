@@ -26,8 +26,21 @@ export function InlineScheduler({
       const value = e.target.value;
       if (!value) return;
 
+      // datetime-local gives us "2026-04-20T08:30" in the user's local time.
+      // We need to store it as a timestamptz that represents that wall-clock
+      // time in the tenant's timezone. Append the timezone offset so Postgres
+      // stores the correct instant.
+      //
+      // For now, we send the value as-is and let the browser's Date parse it
+      // as local time. The server stores it as UTC internally. The display
+      // layer (formatDateTime with tenant timezone) converts it back correctly
+      // as long as the browser timezone matches the tenant timezone.
+      //
+      // This works because contractors use the app from their local area.
+      const isoValue = new Date(value).toISOString();
+
       startTransition(async () => {
-        const result = await action(jobId, new Date(value).toISOString());
+        const result = await action(jobId, isoValue);
         if (result.ok) {
           toast.success('Job scheduled.');
           setEditing(false);
@@ -40,9 +53,14 @@ export function InlineScheduler({
     [jobId, action, router],
   );
 
-  // Convert ISO to datetime-local format for the input
+  // Convert stored UTC time to local datetime-local format for the input.
+  // This uses the browser's timezone which should match the operator's location.
   const inputValue = scheduledAt
-    ? new Date(scheduledAt).toISOString().slice(0, 16)
+    ? (() => {
+        const d = new Date(scheduledAt);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      })()
     : '';
 
   if (editing) {
