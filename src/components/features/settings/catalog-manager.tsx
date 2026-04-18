@@ -250,7 +250,15 @@ function EditRow({
       <TableCell>
         <Input
           value={editing.label}
-          onChange={(e) => setEditing({ ...editing, label: e.target.value })}
+          onChange={(e) => {
+            const label = e.target.value;
+            const update: Record<string, string> = { label };
+            // Auto-populate the key from the label (only for new entries)
+            if (!editing.id) {
+              update.surface_type = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+            }
+            setEditing({ ...editing, ...update });
+          }}
           placeholder="Driveway"
           className="h-8"
         />
