@@ -13,7 +13,7 @@ export function portalInviteEmailHtml({
 <html>
 <body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
   <h2 style="color: #0a0a0a;">Your Project Portal</h2>
-  <p>Hi ${customerName},</p>
+  <p>Hi ${customerName.split(' ')[0]},</p>
   <p>${businessName} has set up a project portal for <strong>${projectName}</strong>. You can track your project's progress at any time.</p>
 
   <p>

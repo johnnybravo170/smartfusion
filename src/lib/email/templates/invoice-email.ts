@@ -15,7 +15,7 @@ export function invoiceEmailHtml({
 <html>
 <body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
   <h2 style="color: #0a0a0a;">Invoice from ${businessName}</h2>
-  <p>Hi ${customerName},</p>
+  <p>Hi ${customerName.split(' ')[0]},</p>
   <p>${businessName} has sent you an invoice for <strong>${totalFormatted}</strong>.</p>
   <p>
     <a href="${payUrl}" style="display: inline-block; padding: 12px 24px; background: #0a0a0a; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">
