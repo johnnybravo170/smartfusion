@@ -15,8 +15,9 @@ import { allTools } from '@/lib/ai/tools';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { toGeminiFunctionDeclarations } from '@/lib/henry/adapter';
 
-// Gemini 2.5 Flash native-audio preview is the Live API model with tool calling.
-const LIVE_MODEL = 'gemini-2.5-flash-native-audio-preview-09-2025';
+// Gemini Live 2.5 Flash preview: supports tool calling + audio in/out + transcripts.
+// Model identifier per @google/genai SDK docstrings (Live.connect examples).
+const LIVE_MODEL = 'gemini-live-2.5-flash-preview';
 
 export async function POST() {
   const tenant = await getCurrentTenant();
