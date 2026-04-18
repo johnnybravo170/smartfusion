@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { allTools, executeToolCall, getToolDefinitions } from '@/lib/ai/tools';
 
 describe('AI tool definitions', () => {
-  it('exports exactly 37 tools (24 core + 9 renovation + 4 change orders)', () => {
-    expect(allTools).toHaveLength(37);
+  it('exports exactly 38 tools (25 core + 9 renovation + 4 change orders)', () => {
+    expect(allTools).toHaveLength(38);
   });
 
   it('each tool has a name, description, and valid input_schema', () => {
@@ -24,9 +24,9 @@ describe('AI tool definitions', () => {
     expect(uniqueNames.size).toBe(names.length);
   });
 
-  it('getToolDefinitions returns core tools (24) when no vertical specified', () => {
+  it('getToolDefinitions returns core tools (25) when no vertical specified', () => {
     const defs = getToolDefinitions();
-    expect(defs).toHaveLength(24);
+    expect(defs).toHaveLength(25);
   });
 
   it('getToolDefinitions returns all tools (33) for renovation vertical', () => {
@@ -71,6 +71,7 @@ describe('AI tool definitions', () => {
       'search_worklog',
       'add_worklog_note',
       'list_catalog',
+      'send_sms',
       // Renovation tools
       'list_projects',
       'get_project',

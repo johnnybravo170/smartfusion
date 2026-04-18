@@ -7,6 +7,7 @@ import { invoiceTools, setInvoiceTimezone } from './invoices';
 import { jobTools } from './jobs';
 import { projectTools } from './projects';
 import { quoteTools } from './quotes';
+import { smsTools } from './sms';
 import { timeExpenseTools } from './time-expenses';
 import { todoTools } from './todos';
 import { worklogTools } from './worklog';
@@ -21,6 +22,7 @@ const coreTools: AiTool[] = [
   ...todoTools,
   ...worklogTools,
   ...catalogTools,
+  ...smsTools,
 ];
 
 /** Renovation-specific tools (projects, budget, time/expense, change orders). */
