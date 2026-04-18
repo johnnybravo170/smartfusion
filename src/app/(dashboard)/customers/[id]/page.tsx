@@ -164,8 +164,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
-        <RelatedQuotesCard quotes={related.quotes} timezone={tz} />
-        <RelatedJobsCard jobs={related.jobs} timezone={tz} />
+        <RelatedQuotesCard quotes={related.quotes} timezone={tz} customerId={customer.id} />
+        <RelatedJobsCard jobs={related.jobs} timezone={tz} customerId={customer.id} />
         <RelatedInvoicesCard invoices={related.invoices} timezone={tz} />
       </div>
     </div>
@@ -176,11 +176,15 @@ function SectionCard({
   title,
   icon: Icon,
   count,
+  actionHref,
+  actionLabel,
   children,
 }: {
   title: string;
   icon: typeof FileText;
   count: number;
+  actionHref?: string;
+  actionLabel?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -189,17 +193,25 @@ function SectionCard({
         <div className="flex items-center gap-2">
           <Icon className="size-4 text-muted-foreground" aria-hidden />
           <h2 className="text-sm font-semibold">{title}</h2>
+          <span className="text-xs text-muted-foreground">{count}</span>
         </div>
-        <span className="text-xs text-muted-foreground">{count}</span>
+        {actionHref && (
+          <Link
+            href={actionHref}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            + {actionLabel || 'New'}
+          </Link>
+        )}
       </header>
       {children}
     </section>
   );
 }
 
-function RelatedQuotesCard({ quotes, timezone }: { quotes: RelatedQuote[]; timezone: string }) {
+function RelatedQuotesCard({ quotes, timezone, customerId }: { quotes: RelatedQuote[]; timezone: string; customerId: string }) {
   return (
-    <SectionCard title="Recent quotes" icon={FileText} count={quotes.length}>
+    <SectionCard title="Recent quotes" icon={FileText} count={quotes.length} actionHref={`/quotes/new?customer_id=${customerId}`} actionLabel="New quote">
       {quotes.length === 0 ? (
         <p className="text-sm text-muted-foreground">No quotes yet.</p>
       ) : (
@@ -229,9 +241,9 @@ function RelatedQuotesCard({ quotes, timezone }: { quotes: RelatedQuote[]; timez
   );
 }
 
-function RelatedJobsCard({ jobs, timezone }: { jobs: RelatedJob[]; timezone: string }) {
+function RelatedJobsCard({ jobs, timezone, customerId }: { jobs: RelatedJob[]; timezone: string; customerId: string }) {
   return (
-    <SectionCard title="Recent jobs" icon={Calendar} count={jobs.length}>
+    <SectionCard title="Recent jobs" icon={Calendar} count={jobs.length} actionHref={`/jobs/new?customer_id=${customerId}`} actionLabel="New job">
       {jobs.length === 0 ? (
         <p className="text-sm text-muted-foreground">No jobs yet.</p>
       ) : (

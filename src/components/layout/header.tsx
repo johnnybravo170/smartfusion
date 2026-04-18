@@ -1,3 +1,4 @@
+import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +23,14 @@ export function Header({ businessName, vertical }: HeaderProps) {
         <MobileSidebarToggle vertical={vertical} />
       </div>
 
+      <div className="flex items-center gap-2">
+        <Button asChild size="sm" className="gap-1">
+          <Link href="/quotes/new">
+            <Plus className="size-3.5" />
+            <span className="hidden sm:inline">New Quote</span>
+          </Link>
+        </Button>
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" aria-label="User menu">
@@ -43,6 +52,7 @@ export function Header({ businessName, vertical }: HeaderProps) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
     </header>
   );
 }
