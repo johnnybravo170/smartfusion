@@ -14,15 +14,29 @@
 
 import { z } from 'zod';
 
-export const photoTags = ['before', 'after', 'progress', 'other', 'concern'] as const;
+export const photoTags = [
+  'before',
+  'after',
+  'progress',
+  'damage',
+  'materials',
+  'equipment',
+  'serial',
+  'concern',
+  'other',
+] as const;
 export type PhotoTag = (typeof photoTags)[number];
 
 export const photoTagLabels: Record<PhotoTag, string> = {
   before: 'Before',
   after: 'After',
   progress: 'Progress',
-  other: 'Other',
+  damage: 'Damage',
+  materials: 'Materials',
+  equipment: 'Equipment',
+  serial: 'Serial / Model',
   concern: 'Concern / Flag',
+  other: 'Other',
 };
 
 /**

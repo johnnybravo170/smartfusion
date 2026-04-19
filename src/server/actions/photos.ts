@@ -186,6 +186,49 @@ export async function updatePhotoAction(formData: FormData): Promise<PhotoAction
 }
 
 /**
+ * Accept Henry's suggested tag: promote `ai_tag` into the canonical `tag`
+ * field. Used by the "Henry thinks: X" pill on the photo card when the
+ * operator taps to confirm. If `caption` is still blank and Henry has a
+ * caption, promote that too.
+ *
+ * Always-legal operation (does not require a specific source state), since
+ * the user can reassign at will via the regular update action.
+ */
+export async function acceptAiTagAction(photoId: string): Promise<PhotoActionResult> {
+  if (!photoId || typeof photoId !== 'string') {
+    return { ok: false, error: 'photoId is required' };
+  }
+  const supabase = await createClient();
+
+  const { data: row, error: readErr } = await supabase
+    .from('photos')
+    .select('id, job_id, ai_tag, ai_caption, caption')
+    .eq('id', photoId)
+    .maybeSingle();
+  if (readErr || !row) {
+    return { ok: false, error: readErr?.message ?? 'Photo not found.' };
+  }
+  if (!row.ai_tag) {
+    return { ok: false, error: 'Henry has no suggestion for this photo yet.' };
+  }
+
+  const patch: Record<string, string | null> = {
+    tag: row.ai_tag as string,
+    updated_at: new Date().toISOString(),
+  };
+  if (!row.caption && row.ai_caption) {
+    patch.caption = row.ai_caption as string;
+    patch.caption_source = 'ai';
+  }
+
+  const { error: updErr } = await supabase.from('photos').update(patch).eq('id', photoId);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  if (row.job_id) revalidatePath(`/jobs/${row.job_id}`);
+  return { ok: true, id: photoId };
+}
+
+/**
  * Derive a safe file extension from a File. We default to `.jpg` when the
  * name has no recognisable suffix (camera captures on iOS sometimes come in
  * without one). The extension is purely cosmetic — the bucket enforces no

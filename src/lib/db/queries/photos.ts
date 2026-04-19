@@ -13,6 +13,13 @@ import { getSignedUrl, getSignedUrls } from '@/lib/storage/photos';
 import { createClient } from '@/lib/supabase/server';
 import type { PhotoTag } from '@/lib/validators/photo';
 
+export type PhotoQualityFlags = {
+  blurry?: boolean;
+  too_dark?: boolean;
+  low_contrast?: boolean;
+  notes?: string;
+};
+
 export type PhotoRow = {
   id: string;
   tenant_id: string;
@@ -23,6 +30,13 @@ export type PhotoRow = {
   taken_at: string | null;
   created_at: string;
   updated_at: string;
+  ai_tag: PhotoTag | null;
+  ai_tag_confidence: number | null;
+  ai_caption: string | null;
+  ai_caption_confidence: number | null;
+  caption_source: 'user' | 'ai' | 'hybrid';
+  quality_flags: PhotoQualityFlags;
+  ai_processed_at: string | null;
 };
 
 export type PhotoWithUrl = PhotoRow & { url: string | null };
@@ -33,7 +47,7 @@ export type PhotoListFilters = {
 };
 
 const PHOTO_COLUMNS =
-  'id, tenant_id, job_id, storage_path, tag, caption, taken_at, created_at, updated_at';
+  'id, tenant_id, job_id, storage_path, tag, caption, taken_at, created_at, updated_at, ai_tag, ai_tag_confidence, ai_caption, ai_caption_confidence, caption_source, quality_flags, ai_processed_at';
 
 async function decorateWithUrls(rows: PhotoRow[]): Promise<PhotoWithUrl[]> {
   if (rows.length === 0) return [];
