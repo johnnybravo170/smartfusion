@@ -24,6 +24,28 @@ Ship `/admin/*` — Jonathan's command center inside `app.heyhenry.io`. Phase A 
 - Admin Henry tool surface (impersonate, issue_credit, blast_operators) — Phase F.
 - Per-tenant drilldown in analytics — Phase B stretch, ok to defer.
 
+## Phase C design constraints (locked in, will carry forward)
+
+The marketing brain's email + workflow engine must be **MCP-first** for workflow creation. Jonathan's primary interface for spinning up new sequences is Claude (via MCP), not a UI builder. Voice-based workflow creation from the Hey Henry app is nice-to-have, not required. Visual workflow builder is a read/edit surface on top of what Claude/Henry builds, not the primary creation interface.
+
+Required tool surface (exposed via MCP + Gemini function declarations):
+- `create_sequence`, `create_step`, `update_sequence`, `pause_sequence`, `list_sequences`
+- `trigger_event(event_name, payload)` fires matching sequences
+- `segment(filter_dsl)` returns audience ids
+- `broadcast(template, audience, schedule)`
+- `preview_sequence` — Claude can inspect a dry-run before arming
+
+Required features at launch:
+- Native email (Resend) + SMS (Twilio) — already wired
+- Multi-step sequences with delays + conditional branches
+- Event bus for triggers (job_completed, quote_sent, invoice_paid, customer_inactive_Nd, ...)
+- Template system (MJML or Handlebars)
+- **Import-from-AWeber** on day one — PG is first migration target ($1,300/yr AWeber cost killed)
+- Deliverability baseline: SPF/DKIM/DMARC, bounce/complaint webhooks, suppression list, CAN-SPAM/CASL/GDPR unsubs
+- Attribution hooks for Phase C's attribution pipeline
+
+See the vault: "Email System Build-vs-Buy — PG analysis + Hey Henry Phase C implication (April 2026)" for full research + reasoning.
+
 ---
 
 ## Phase A — Foundation
