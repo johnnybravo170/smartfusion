@@ -14,9 +14,12 @@
 -- Extend `tag` vocabulary + add v2 columns to `photos`.
 -- ---------------------------------------------------------------------------
 
+-- Extend existing enum. 0010 was (before/after/progress/other), 0034 added
+-- 'concern'. v2 adds damage/materials/equipment/serial — keep 'concern' for
+-- back-compat (existing prod rows use it).
 ALTER TABLE public.photos DROP CONSTRAINT IF EXISTS photos_tag_check;
 ALTER TABLE public.photos ADD CONSTRAINT photos_tag_check
-  CHECK (tag IN ('before', 'after', 'progress', 'damage', 'materials', 'equipment', 'serial', 'other'));
+  CHECK (tag IN ('before', 'after', 'progress', 'damage', 'materials', 'equipment', 'serial', 'concern', 'other'));
 
 ALTER TABLE public.photos
   ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES public.customers(id) ON DELETE SET NULL,
@@ -35,7 +38,7 @@ ALTER TABLE public.photos
 
   -- AI layer (populated by Phase 2 worker, nullable until then)
   ADD COLUMN IF NOT EXISTS ai_tag TEXT
-    CHECK (ai_tag IS NULL OR ai_tag IN ('before', 'after', 'progress', 'damage', 'materials', 'equipment', 'serial', 'other')),
+    CHECK (ai_tag IS NULL OR ai_tag IN ('before', 'after', 'progress', 'damage', 'materials', 'equipment', 'serial', 'concern', 'other')),
   ADD COLUMN IF NOT EXISTS ai_tag_confidence NUMERIC(4, 3) CHECK (ai_tag_confidence IS NULL OR (ai_tag_confidence >= 0 AND ai_tag_confidence <= 1)),
   ADD COLUMN IF NOT EXISTS ai_caption TEXT,
   ADD COLUMN IF NOT EXISTS ai_caption_confidence NUMERIC(4, 3) CHECK (ai_caption_confidence IS NULL OR (ai_caption_confidence >= 0 AND ai_caption_confidence <= 1)),
