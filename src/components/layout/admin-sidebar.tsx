@@ -1,14 +1,14 @@
 'use client';
 
-import { BarChart3, LayoutDashboard, Users } from 'lucide-react';
+import { BarChart3, LayoutDashboard, Mail, Users } from 'lucide-react';
 import { NavLink } from './nav-link';
 
 const ADMIN_NAV = [
   { href: '/admin/overview', label: 'Overview', icon: LayoutDashboard },
   { href: '/admin/tenants', label: 'Tenants', icon: Users },
   { href: '/admin/henry', label: 'Henry', icon: BarChart3 },
+  { href: '/admin/ar/sequences', label: 'Autoresponder', icon: Mail },
   // Placeholders for later phases:
-  // { href: '/admin/marketing', label: 'Marketing', icon: Megaphone },
   // { href: '/admin/affiliates', label: 'Affiliates', icon: Handshake },
   // { href: '/admin/social', label: 'Social', icon: Share2 },
 ];
