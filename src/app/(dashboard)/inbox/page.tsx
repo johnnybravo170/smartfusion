@@ -10,6 +10,8 @@
  * Spec: PHASE_1_PLAN.md §8 Track E.
  */
 
+import { Mail } from 'lucide-react';
+import Link from 'next/link';
 import { AddNoteDialog } from '@/components/features/inbox/add-note-dialog';
 import { InboxTabs } from '@/components/features/inbox/inbox-tabs';
 import { TodoEmptyState } from '@/components/features/inbox/todo-empty-state';
@@ -72,10 +74,22 @@ export default async function InboxPage({
   const timezone = tenant?.timezone || 'America/Vancouver';
 
   // Always fetch todo + worklog counts so the tab labels are accurate.
-  const [todos, todoCount, worklogCountAll] = await Promise.all([
+  const [todos, todoCount, worklogCountAll, inboundReview] = await Promise.all([
     listTodos({ limit: 200 }),
     countTodos(),
     countWorklog(),
+    tenant
+      ? (await import('@/lib/supabase/server'))
+          .createClient()
+          .then((c) =>
+            c
+              .from('inbound_emails')
+              .select('id', { count: 'exact', head: true })
+              .eq('tenant_id', tenant.id)
+              .in('status', ['needs_review', 'pending', 'processing', 'error']),
+          )
+          .then((r) => r.count ?? 0)
+      : Promise.resolve(0),
   ]);
 
   // Work-log entries: only fetched when the tab is active (tiny optimisation;
@@ -100,9 +114,23 @@ export default async function InboxPage({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
-        <p className="text-sm text-muted-foreground">Your working memory and task list.</p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
+          <p className="text-sm text-muted-foreground">Your working memory and task list.</p>
+        </div>
+        <Link
+          href="/inbox/email"
+          className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm hover:bg-muted/50"
+        >
+          <Mail className="size-4" />
+          <span>Email inbox</span>
+          {inboundReview > 0 && (
+            <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs font-medium">
+              {inboundReview}
+            </span>
+          )}
+        </Link>
       </header>
 
       <InboxTabs
