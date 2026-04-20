@@ -248,6 +248,120 @@ Respond with ONLY valid JSON in this exact format:
 }
 
 /**
+ * Rewrite a memo's ai_extraction.work_items array, dropping the item at
+ * `itemIndex`. Used when a work item is either added to cost lines or
+ * dismissed.
+ */
+async function removeWorkItemAtIndex(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  memoId: string,
+  itemIndex: number,
+): Promise<{ ok: true; projectId: string } | { ok: false; error: string }> {
+  const { data: memo, error } = await supabase
+    .from('project_memos')
+    .select('id, project_id, ai_extraction')
+    .eq('id', memoId)
+    .maybeSingle();
+
+  if (error || !memo) return { ok: false, error: 'Memo not found.' };
+
+  const extraction = (memo.ai_extraction as Record<string, unknown>) ?? {};
+  const items = Array.isArray(extraction.work_items)
+    ? [...(extraction.work_items as unknown[])]
+    : [];
+  if (itemIndex < 0 || itemIndex >= items.length) {
+    return { ok: false, error: 'Work item index out of range.' };
+  }
+  items.splice(itemIndex, 1);
+
+  const { error: updateErr } = await supabase
+    .from('project_memos')
+    .update({ ai_extraction: { ...extraction, work_items: items } })
+    .eq('id', memoId);
+
+  if (updateErr) return { ok: false, error: updateErr.message };
+  return { ok: true, projectId: memo.project_id as string };
+}
+
+export type MemoItemCostLineInput = {
+  memoId: string;
+  itemIndex: number;
+  bucket_id: string;
+  category: 'material' | 'labour' | 'sub' | 'equipment' | 'overhead';
+  label: string;
+  qty: number;
+  unit: string;
+  unit_cost_cents: number;
+};
+
+/**
+ * Create a project_cost_lines row from a memo work item, then remove that
+ * item from the memo's extracted list.
+ */
+export async function addMemoItemToCostLinesAction(
+  input: MemoItemCostLineInput,
+): Promise<MemoDeleteResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  if (!input.label.trim()) return { ok: false, error: 'Label is required.' };
+  if (!input.bucket_id) return { ok: false, error: 'Bucket is required.' };
+  if (input.qty <= 0) return { ok: false, error: 'Quantity must be positive.' };
+
+  const supabase = await createClient();
+
+  // Look up the memo for project_id (scoped to tenant via RLS).
+  const { data: memo, error: loadErr } = await supabase
+    .from('project_memos')
+    .select('id, project_id')
+    .eq('id', input.memoId)
+    .maybeSingle();
+
+  if (loadErr || !memo) return { ok: false, error: 'Memo not found.' };
+
+  const line_cost_cents = Math.round(input.qty * input.unit_cost_cents);
+  const { error: insertErr } = await supabase.from('project_cost_lines').insert({
+    project_id: memo.project_id,
+    bucket_id: input.bucket_id,
+    category: input.category,
+    label: input.label.trim(),
+    qty: input.qty,
+    unit: input.unit.trim() || 'ls',
+    unit_cost_cents: input.unit_cost_cents,
+    unit_price_cents: input.unit_cost_cents,
+    markup_pct: 0,
+    line_cost_cents,
+    line_price_cents: line_cost_cents,
+  });
+
+  if (insertErr) return { ok: false, error: insertErr.message };
+
+  const removed = await removeWorkItemAtIndex(supabase, input.memoId, input.itemIndex);
+  if (!removed.ok) return removed;
+
+  revalidatePath(`/projects/${memo.project_id}`);
+  return { ok: true };
+}
+
+/**
+ * Remove a work item from a memo without adding it anywhere.
+ */
+export async function dismissMemoItemAction(
+  memoId: string,
+  itemIndex: number,
+): Promise<MemoDeleteResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+  const removed = await removeWorkItemAtIndex(supabase, memoId, itemIndex);
+  if (!removed.ok) return removed;
+
+  revalidatePath(`/projects/${removed.projectId}`);
+  return { ok: true };
+}
+
+/**
  * Delete a memo row and its audio file from storage.
  */
 export async function deleteMemoAction(memoId: string): Promise<MemoDeleteResult> {

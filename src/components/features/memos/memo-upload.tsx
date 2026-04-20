@@ -8,16 +8,48 @@
  * mapped to cost buckets.
  */
 
-import { Loader2, Mic, MicOff, Trash2, Upload } from 'lucide-react';
+import { Loader2, Mic, MicOff, Trash2, Upload, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  addMemoItemToCostLinesAction,
   deleteMemoAction,
+  dismissMemoItemAction,
   transcribeMemoAction,
   uploadMemoAction,
 } from '@/server/actions/project-memos';
+
+type BucketOption = {
+  id: string;
+  name: string;
+  section: string;
+};
+
+type WorkItem = {
+  area: string;
+  description: string;
+  suggested_bucket: string;
+  section: string;
+};
+
+type CostCategory = 'material' | 'labour' | 'sub' | 'equipment' | 'overhead';
+const CATEGORIES: { value: CostCategory; label: string }[] = [
+  { value: 'material', label: 'Material' },
+  { value: 'labour', label: 'Labour' },
+  { value: 'sub', label: 'Sub' },
+  { value: 'equipment', label: 'Equipment' },
+  { value: 'overhead', label: 'Overhead' },
+];
 
 type MemoRow = {
   id: string;
@@ -30,9 +62,10 @@ type MemoRow = {
 type MemoUploadProps = {
   projectId: string;
   memos: MemoRow[];
+  buckets: BucketOption[];
 };
 
-export function MemoUpload({ projectId, memos }: MemoUploadProps) {
+export function MemoUpload({ projectId, memos, buckets }: MemoUploadProps) {
   const router = useRouter();
   const [isRecording, setIsRecording] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -255,31 +288,27 @@ export function MemoUpload({ projectId, memos }: MemoUploadProps) {
                   </div>
 
                   {memo.ai_extraction &&
-                  Array.isArray((memo.ai_extraction as Record<string, unknown>).work_items) ? (
+                  Array.isArray((memo.ai_extraction as Record<string, unknown>).work_items) &&
+                  ((memo.ai_extraction as Record<string, unknown>).work_items as unknown[]).length >
+                    0 ? (
                     <div>
-                      <h4 className="text-xs font-medium text-muted-foreground mb-1">
-                        Extracted Work Items
+                      <h4 className="text-xs font-medium text-muted-foreground mb-2">
+                        Extracted Work Items — review, edit, and add to estimate
                       </h4>
-                      <ul className="space-y-1">
+                      <div className="space-y-2">
                         {(
-                          (memo.ai_extraction as Record<string, unknown>).work_items as Array<{
-                            area: string;
-                            description: string;
-                            suggested_bucket: string;
-                            section: string;
-                          }>
-                        ).map((item) => (
-                          <li
-                            key={`${item.section}-${item.suggested_bucket}-${item.area}`}
-                            className="text-sm rounded bg-muted/50 px-2 py-1"
-                          >
-                            <span className="font-medium">{item.area}</span>: {item.description}
-                            <span className="text-xs text-muted-foreground ml-2">
-                              [{item.section} / {item.suggested_bucket}]
-                            </span>
-                          </li>
+                          (memo.ai_extraction as Record<string, unknown>).work_items as WorkItem[]
+                        ).map((item, index) => (
+                          <WorkItemRow
+                            key={`${memo.id}-${item.section}-${item.suggested_bucket}-${item.area}-${item.description}`}
+                            memoId={memo.id}
+                            itemIndex={index}
+                            item={item}
+                            buckets={buckets}
+                            onDone={() => router.refresh()}
+                          />
                         ))}
-                      </ul>
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -292,6 +321,149 @@ export function MemoUpload({ projectId, memos }: MemoUploadProps) {
           No memos yet. Record or upload audio from a site walk-through.
         </p>
       )}
+    </div>
+  );
+}
+
+type WorkItemRowProps = {
+  memoId: string;
+  itemIndex: number;
+  item: WorkItem;
+  buckets: BucketOption[];
+  onDone: () => void;
+};
+
+function WorkItemRow({ memoId, itemIndex, item, buckets, onDone }: WorkItemRowProps) {
+  const defaultLabel = item.area ? `${item.area}: ${item.description}` : item.description;
+
+  // Try to find a bucket matching suggested_bucket name (case-insensitive)
+  // inside the same section, then fall back to any section match, then none.
+  const suggestedLower = item.suggested_bucket.toLowerCase();
+  const sectionLower = item.section.toLowerCase();
+  const matchedBucket =
+    buckets.find(
+      (b) => b.name.toLowerCase() === suggestedLower && b.section.toLowerCase() === sectionLower,
+    ) ??
+    buckets.find((b) => b.name.toLowerCase() === suggestedLower) ??
+    null;
+
+  const [label, setLabel] = useState(defaultLabel);
+  const [bucketId, setBucketId] = useState<string>(matchedBucket?.id ?? '');
+  const [category, setCategory] = useState<CostCategory>('sub');
+  const [qty, setQty] = useState('1');
+  const [unit, setUnit] = useState('ls');
+  const [unitCostDollars, setUnitCostDollars] = useState('');
+  const [isPending, startTransition] = useTransition();
+
+  function handleAdd() {
+    const qtyNum = Number(qty);
+    const unitCostCents = Math.round(Number(unitCostDollars || '0') * 100);
+    if (!label.trim()) return toast.error('Label is required.');
+    if (!bucketId) return toast.error('Pick a bucket.');
+    if (!Number.isFinite(qtyNum) || qtyNum <= 0) return toast.error('Quantity must be positive.');
+
+    startTransition(async () => {
+      const result = await addMemoItemToCostLinesAction({
+        memoId,
+        itemIndex,
+        bucket_id: bucketId,
+        category,
+        label: label.trim(),
+        qty: qtyNum,
+        unit: unit.trim() || 'ls',
+        unit_cost_cents: unitCostCents,
+      });
+      if (result.ok) {
+        toast.success('Added to estimate.');
+        onDone();
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  function handleDismiss() {
+    startTransition(async () => {
+      const result = await dismissMemoItemAction(memoId, itemIndex);
+      if (result.ok) {
+        onDone();
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+      <div className="text-xs text-muted-foreground">
+        AI suggestion: <span className="font-medium">{item.section}</span> /{' '}
+        <span className="font-medium">{item.suggested_bucket}</span>
+      </div>
+      <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Line item" />
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+        <Select value={bucketId} onValueChange={setBucketId}>
+          <SelectTrigger className="col-span-2">
+            <SelectValue placeholder="Bucket" />
+          </SelectTrigger>
+          <SelectContent>
+            {buckets.length === 0 ? (
+              <SelectItem value="__none" disabled>
+                No buckets — create some first
+              </SelectItem>
+            ) : (
+              buckets.map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {b.section}: {b.name}
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+        <Select value={category} onValueChange={(v) => setCategory(v as CostCategory)}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORIES.map((c) => (
+              <SelectItem key={c.value} value={c.value}>
+                {c.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          type="number"
+          min="0"
+          step="0.01"
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          placeholder="Qty"
+        />
+        <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="Unit" />
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min="0"
+          step="0.01"
+          value={unitCostDollars}
+          onChange={(e) => setUnitCostDollars(e.target.value)}
+          placeholder="Unit cost ($)"
+          className="max-w-[180px]"
+        />
+        <Button size="sm" onClick={handleAdd} disabled={isPending}>
+          {isPending ? <Loader2 className="size-3 animate-spin" /> : 'Add to estimate'}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={handleDismiss}
+          disabled={isPending}
+          aria-label="Dismiss"
+        >
+          <X className="size-4" />
+        </Button>
+      </div>
     </div>
   );
 }

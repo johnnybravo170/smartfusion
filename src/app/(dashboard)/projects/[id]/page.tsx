@@ -297,6 +297,11 @@ export default async function ProjectDetailPage({
             ai_extraction: m.ai_extraction as Record<string, unknown> | null,
             created_at: m.created_at as string,
           }))}
+          buckets={budget.lines.map((b) => ({
+            id: b.bucket_id,
+            name: b.bucket_name,
+            section: b.section,
+          }))}
         />
       ) : null}
 
