@@ -126,6 +126,7 @@ export async function createJobAction(input: JobFormInput): Promise<JobActionRes
       // Fire and forget. The job is already saved; email failure
       // should not block the response.
       void sendEmail({
+        tenantId: tenant.id,
         to: customer.email,
         subject: `Appointment confirmed — ${formattedDate}`,
         html: bookingEmailHtml({
@@ -337,6 +338,7 @@ export async function changeJobStatusAction(input: {
         });
 
         void sendEmail({
+          tenantId: tenant.id,
           to: customerData.email,
           subject: `Appointment cancelled — ${formattedDate}`,
           html: cancellationEmailHtml({

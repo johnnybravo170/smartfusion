@@ -139,3 +139,39 @@
     height: 100%;
   }
 }
+
+/* --- Print styles ---------------------------------------------------
+   Keep printed pages clean: remove app chrome (sidebar, header nav,
+   action buttons) so what prints is just the document content. Pages
+   that render documents (quotes, invoices, change orders) show up
+   framed for A4/Letter with no clipped scrolling. */
+@media print {
+  html,
+  body {
+    overflow: visible !important;
+    height: auto !important;
+    background: white !important;
+    color: black !important;
+  }
+  /* Components opt out of print by adding the .no-print class. */
+  .no-print,
+  aside,
+  nav,
+  header[aria-label],
+  [data-slot='sidebar'],
+  [role='toolbar'] {
+    display: none !important;
+  }
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+  /* Ensure main content takes the full width and isn't clipped. */
+  main {
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+}

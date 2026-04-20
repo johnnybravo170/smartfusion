@@ -5,6 +5,7 @@ import { InvoiceActions } from '@/components/features/invoices/invoice-actions';
 import { InvoiceLineItems } from '@/components/features/invoices/invoice-line-items';
 import { InvoiceNote } from '@/components/features/invoices/invoice-note';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
+import { PrintButton } from '@/components/features/shared/print-button';
 import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime } from '@/lib/date/format';
@@ -171,13 +172,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       )}
 
       {/* Actions */}
-      <InvoiceActions
-        invoiceId={invoice.id}
-        status={invoice.status as InvoiceStatus}
-        paymentUrl={invoice.pdf_url}
-        customerEmail={invoice.customer?.email ?? null}
-        hasStripe={hasStripe}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <InvoiceActions
+          invoiceId={invoice.id}
+          status={invoice.status as InvoiceStatus}
+          paymentUrl={invoice.pdf_url}
+          customerEmail={invoice.customer?.email ?? null}
+          hasStripe={hasStripe}
+        />
+        <PrintButton />
+      </div>
 
       {/* Invoice-related worklog */}
       {worklog && worklog.length > 0 && (

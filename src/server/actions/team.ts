@@ -155,6 +155,7 @@ export async function sendWorkerInviteEmailAction(
   try {
     const { sendEmail } = await import('@/lib/email/send');
     const result = await sendEmail({
+      tenantId: tenant.id,
       to: email,
       subject: `You're invited to join ${tenant.name} on HeyHenry`,
       html: `<!DOCTYPE html>

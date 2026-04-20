@@ -283,6 +283,7 @@ export async function sendInvoiceAction(input: {
       const { invoiceEmailHtml } = await import('@/lib/email/templates/invoice-email');
 
       const emailResult = await sendEmail({
+        tenantId: tenant.id,
         to: customer.email,
         subject: `Invoice from ${tenantRow?.name ?? 'your contractor'} — ${formatCurrency(totalCents)}`,
         html: invoiceEmailHtml({
@@ -400,6 +401,7 @@ export async function resendInvoiceAction(input: {
       const { invoiceEmailHtml } = await import('@/lib/email/templates/invoice-email');
 
       const emailResult = await sendEmail({
+        tenantId: tenant.id,
         to: customer.email,
         subject: `Invoice from ${tenantRow?.name ?? 'your contractor'} — ${formatCurrency(totalCents)}`,
         html: invoiceEmailHtml({

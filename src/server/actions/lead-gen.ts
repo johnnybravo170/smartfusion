@@ -176,6 +176,7 @@ export async function submitLeadAction(input: {
 
       // Send email notification (best-effort, don't block the response).
       sendEmail({
+        tenantId: tenant.id as string,
         to: operatorEmail,
         subject: `New quote request from ${parsed.data.name}`,
         html: leadNotificationHtml({

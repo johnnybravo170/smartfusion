@@ -332,6 +332,7 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
       const viewUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io'}/view/${input.quoteId}`;
 
       const emailResult = await sendEmail({
+        tenantId: tenant.id,
         to: customer.email,
         subject: `Estimate from ${tenantData?.name ?? tenant.name}`,
         html: quoteEmailHtml({
@@ -765,6 +766,7 @@ export async function approveQuotePublicAction(
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io';
 
         await sendEmail({
+          tenantId,
           to: operatorEmail,
           subject: `${customerName} accepted your estimate!`,
           html: quoteResponseEmailHtml({
@@ -870,6 +872,7 @@ export async function declineQuotePublicAction(
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io';
 
         await sendEmail({
+          tenantId,
           to: operatorEmail,
           subject: `Estimate declined — ${customerName}`,
           html: quoteResponseEmailHtml({

@@ -1,4 +1,5 @@
 import { FROM_EMAIL, getResend } from './client';
+import { getTenantFromHeader } from './from';
 
 export type EmailAttachment = {
   filename: string;
@@ -6,6 +7,18 @@ export type EmailAttachment = {
   contentType?: string;
 };
 
+/**
+ * Send an email via Resend.
+ *
+ * Preferred: pass `tenantId` and the From header will be built as
+ * `"<Business Name>" <platform-address>` with `Reply-To` set to the
+ * tenant's contact_email. Callers don't need to fetch the tenant profile
+ * themselves.
+ *
+ * Explicit `from` / `replyTo` still win when provided, which is useful for
+ * system emails (platform admin notices, invites) and the AR engine (which
+ * uses template-stored from_name/from_email).
+ */
 export async function sendEmail({
   to,
   subject,
@@ -13,6 +26,7 @@ export async function sendEmail({
   from,
   replyTo,
   attachments,
+  tenantId,
 }: {
   to: string;
   subject: string;
@@ -20,15 +34,25 @@ export async function sendEmail({
   from?: string;
   replyTo?: string;
   attachments?: EmailAttachment[];
+  tenantId?: string;
 }): Promise<{ ok: boolean; error?: string; id?: string }> {
   try {
+    let resolvedFrom = from || FROM_EMAIL;
+    let resolvedReplyTo = replyTo;
+
+    if (tenantId && !from) {
+      const tenantHeader = await getTenantFromHeader(tenantId);
+      resolvedFrom = tenantHeader.from;
+      resolvedReplyTo = replyTo ?? tenantHeader.replyTo;
+    }
+
     const resend = getResend();
     const { data, error } = await resend.emails.send({
-      from: from || FROM_EMAIL,
+      from: resolvedFrom,
       to,
       subject,
       html,
-      replyTo,
+      replyTo: resolvedReplyTo,
       attachments: attachments?.map((a) => ({
         filename: a.filename,
         content: a.content,

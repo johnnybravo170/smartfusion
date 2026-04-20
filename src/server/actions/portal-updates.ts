@@ -182,6 +182,7 @@ export async function sendPortalInviteAction(projectId: string): Promise<PortalA
   });
 
   const result = await sendEmail({
+    tenantId: tenant.id,
     to: customerEmail,
     subject: `Your project portal — ${projectData.name}`,
     html,

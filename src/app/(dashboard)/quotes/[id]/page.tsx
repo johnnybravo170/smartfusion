@@ -12,6 +12,7 @@ import {
 } from '@/components/features/quotes/quote-actions';
 import { QuoteStatusBadge } from '@/components/features/quotes/quote-status-badge';
 import { SurfaceList } from '@/components/features/quotes/surface-list';
+import { PrintButton } from '@/components/features/shared/print-button';
 import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime, formatRelativeTime } from '@/lib/date/format';
@@ -90,6 +91,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </Button>
               <SendQuoteButton quoteId={quote.id} />
               <DuplicateQuoteButton quoteId={quote.id} />
+              <PrintButton />
               <DeleteQuoteButton quoteId={quote.id} customerName={customerName} />
             </>
           )}
@@ -105,6 +107,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 </Link>
               </Button>
               <DuplicateQuoteButton quoteId={quote.id} />
+              <PrintButton />
               {quote.pdf_url && <DownloadPdfButton pdfUrl={quote.pdf_url} />}
             </>
           )}
@@ -113,6 +116,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               <ConvertToJobButton quoteId={quote.id} />
               <ResendQuoteButton quoteId={quote.id} customerEmail={quote.customer?.email ?? null} />
               <DuplicateQuoteButton quoteId={quote.id} />
+              <PrintButton />
               {quote.pdf_url && <DownloadPdfButton pdfUrl={quote.pdf_url} />}
             </>
           )}
@@ -120,6 +124,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             <>
               <ResendQuoteButton quoteId={quote.id} customerEmail={quote.customer?.email ?? null} />
               <DuplicateQuoteButton quoteId={quote.id} />
+              <PrintButton />
             </>
           )}
         </div>

@@ -116,6 +116,7 @@ export async function sendReferralEmailAction(
 
   // Send the email.
   const result = await sendEmail({
+    tenantId: tenant.id,
     to: parsed.data.email,
     subject: referralInviteSubject(tenant.name),
     html: referralInviteHtml({

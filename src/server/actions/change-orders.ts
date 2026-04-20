@@ -99,7 +99,9 @@ export async function sendChangeOrderAction(
   // Load the change order with project OR job context
   const { data: co, error: coErr } = await supabase
     .from('change_orders')
-    .select('*, projects:project_id (id, name, customer_id, customers:customer_id (name, email)), jobs:job_id (id, customer_id, customers:customer_id (name, email))')
+    .select(
+      '*, projects:project_id (id, name, customer_id, customers:customer_id (name, email)), jobs:job_id (id, customer_id, customers:customer_id (name, email))',
+    )
     .eq('id', changeOrderId)
     .single();
 
@@ -150,6 +152,7 @@ export async function sendChangeOrderAction(
     });
 
     await sendEmail({
+      tenantId: tenant.id,
       to: customerEmail,
       subject: `Change order for ${projectName} — ${tenant.name}`,
       html,
@@ -421,7 +424,10 @@ export async function deleteChangeOrderAction(
 
   if (!co) return { ok: false, error: 'Change order not found.' };
   if ((co as Record<string, unknown>).status !== 'draft') {
-    return { ok: false, error: 'Only draft change orders can be deleted. Use Cancel for pending ones.' };
+    return {
+      ok: false,
+      error: 'Only draft change orders can be deleted. Use Cancel for pending ones.',
+    };
   }
 
   const { error } = await supabase
