@@ -5,9 +5,7 @@ import { z } from 'zod';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
 
-export type CostControlResult =
-  | { ok: true; id: string }
-  | { ok: false; error: string };
+export type CostControlResult = { ok: true; id: string } | { ok: false; error: string };
 
 // ─── Cost lines ───────────────────────────────────────────────────────────────
 
@@ -27,11 +25,7 @@ const costLineSchema = z.object({
   sort_order: z.coerce.number().int().optional().default(0),
 });
 
-function computeLineTotals(
-  qty: number,
-  unit_cost_cents: number,
-  unit_price_cents: number,
-) {
+function computeLineTotals(qty: number, unit_cost_cents: number, unit_price_cents: number) {
   return {
     line_cost_cents: Math.round(qty * unit_cost_cents),
     line_price_cents: Math.round(qty * unit_price_cents),
@@ -78,6 +72,65 @@ export async function upsertCostLineAction(input: unknown): Promise<CostControlR
   return { ok: true, id: data.id as string };
 }
 
+export async function generateEstimateFromBucketsAction(input: {
+  project_id: string;
+}): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+
+  const { data: buckets, error: bErr } = await supabase
+    .from('project_cost_buckets')
+    .select('id, name, estimate_cents')
+    .eq('project_id', input.project_id)
+    .gt('estimate_cents', 0);
+  if (bErr) return { ok: false, error: bErr.message };
+  if (!buckets || buckets.length === 0) {
+    return { ok: false, error: 'No buckets have an estimate to generate from.' };
+  }
+
+  const { data: existingLines, error: lErr } = await supabase
+    .from('project_cost_lines')
+    .select('bucket_id')
+    .eq('project_id', input.project_id)
+    .not('bucket_id', 'is', null);
+  if (lErr) return { ok: false, error: lErr.message };
+
+  const usedBucketIds = new Set(
+    (existingLines ?? []).map((r) => (r as { bucket_id: string }).bucket_id),
+  );
+  const toSeed = buckets.filter((b) => !usedBucketIds.has((b as { id: string }).id)) as {
+    id: string;
+    name: string;
+    estimate_cents: number;
+  }[];
+
+  if (toSeed.length === 0) {
+    return { ok: false, error: 'All buckets with estimates already have line items.' };
+  }
+
+  const rows = toSeed.map((b) => ({
+    project_id: input.project_id,
+    bucket_id: b.id,
+    category: 'material' as const,
+    label: b.name,
+    qty: 1,
+    unit: 'lot',
+    unit_cost_cents: b.estimate_cents,
+    unit_price_cents: b.estimate_cents,
+    line_cost_cents: b.estimate_cents,
+    line_price_cents: b.estimate_cents,
+    markup_pct: 0,
+  }));
+
+  const { error: insErr } = await supabase.from('project_cost_lines').insert(rows);
+  if (insErr) return { ok: false, error: insErr.message };
+
+  revalidatePath(`/projects/${input.project_id}`);
+  return { ok: true, count: rows.length };
+}
+
 export async function deleteCostLineAction(
   id: string,
   projectId: string,
@@ -100,15 +153,17 @@ const poSchema = z.object({
   issued_date: z.string().optional().or(z.literal('')),
   expected_date: z.string().optional().or(z.literal('')),
   notes: z.string().trim().max(1000).optional().or(z.literal('')),
-  items: z.array(
-    z.object({
-      label: z.string().trim().min(1).max(300),
-      qty: z.coerce.number().positive(),
-      unit: z.string().trim().min(1).max(50),
-      unit_cost_cents: z.coerce.number().int().min(0),
-      cost_line_id: z.string().uuid().optional().or(z.literal('')),
-    }),
-  ).min(1, 'At least one item is required'),
+  items: z
+    .array(
+      z.object({
+        label: z.string().trim().min(1).max(300),
+        qty: z.coerce.number().positive(),
+        unit: z.string().trim().min(1).max(50),
+        unit_cost_cents: z.coerce.number().int().min(0),
+        cost_line_id: z.string().uuid().optional().or(z.literal('')),
+      }),
+    )
+    .min(1, 'At least one item is required'),
 });
 
 export async function createPurchaseOrderAction(input: unknown): Promise<CostControlResult> {
@@ -221,10 +276,7 @@ export async function upsertBillAction(input: unknown): Promise<CostControlResul
   return { ok: true, id: data.id as string };
 }
 
-export async function deleteBillAction(
-  id: string,
-  projectId: string,
-): Promise<CostControlResult> {
+export async function deleteBillAction(id: string, projectId: string): Promise<CostControlResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
   const supabase = await createClient();

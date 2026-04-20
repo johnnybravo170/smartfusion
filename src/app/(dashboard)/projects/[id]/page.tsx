@@ -248,7 +248,14 @@ export default async function ProjectDetailPage({
         </div>
       ) : null}
 
-      {tab === 'buckets' ? <CostBucketsTable lines={budget.lines} projectId={id} /> : null}
+      {tab === 'buckets' ? (
+        <CostBucketsTable
+          lines={budget.lines}
+          projectId={id}
+          costLines={costLines}
+          catalog={catalog}
+        />
+      ) : null}
 
       {tab === 'estimate' ? (
         <EstimateTab projectId={id} costLines={costLines} catalog={catalog} />
