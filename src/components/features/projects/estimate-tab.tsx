@@ -1,10 +1,13 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import { formatCurrency } from '@/lib/pricing/calculator';
+import { createInvoiceFromEstimateAction } from '@/server/actions/invoices';
 import { deleteCostLineAction } from '@/server/actions/project-cost-control';
 import { CostLineForm } from './cost-line-form';
 
@@ -12,14 +15,17 @@ export function EstimateTab({
   projectId,
   costLines,
   catalog,
+  managementFeeRate,
 }: {
   projectId: string;
   costLines: CostLineRow[];
   catalog: MaterialsCatalogRow[];
+  managementFeeRate: number;
 }) {
   const [showForm, setShowForm] = useState(false);
   const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   function deleteLine(id: string) {
     if (!confirm('Delete this line?')) return;
@@ -28,8 +34,22 @@ export function EstimateTab({
     });
   }
 
+  function createInvoice() {
+    startTransition(async () => {
+      const res = await createInvoiceFromEstimateAction({ projectId });
+      if (res.ok && res.id) {
+        toast.success('Invoice created');
+        router.push(`/invoices/${res.id}`);
+      } else if (!res.ok) {
+        toast.error(res.error);
+      }
+    });
+  }
+
   const totalCost = costLines.reduce((s, l) => s + l.line_cost_cents, 0);
   const totalPrice = costLines.reduce((s, l) => s + l.line_price_cents, 0);
+  const mgmtFeeCents = Math.round(totalPrice * managementFeeRate);
+  const grandTotal = totalPrice + mgmtFeeCents;
 
   const grouped = costLines.reduce<Record<string, CostLineRow[]>>((acc, line) => {
     const bucket = acc[line.category] ?? [];
@@ -134,23 +154,36 @@ export function EstimateTab({
             </div>
           ))}
 
-          <div className="flex justify-end gap-8 rounded-lg border bg-muted/30 px-4 py-3 text-sm">
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Total Cost</p>
-              <p className="font-medium">{formatCurrency(totalCost)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Total Price</p>
-              <p className="font-semibold text-primary">{formatCurrency(totalPrice)}</p>
-            </div>
-            {totalCost > 0 && (
+          <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+            <div className="flex justify-end gap-8">
               <div className="text-right">
-                <p className="text-xs text-muted-foreground">Gross Margin</p>
-                <p className="font-medium">
-                  {Math.round(((totalPrice - totalCost) / totalPrice) * 100)}%
-                </p>
+                <p className="text-xs text-muted-foreground">Subtotal</p>
+                <p className="font-medium">{formatCurrency(totalPrice)}</p>
               </div>
-            )}
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">
+                  Management fee ({Math.round(managementFeeRate * 100)}%)
+                </p>
+                <p className="font-medium">{formatCurrency(mgmtFeeCents)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Total</p>
+                <p className="font-semibold text-primary">{formatCurrency(grandTotal)}</p>
+              </div>
+              {totalCost > 0 && (
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Gross Margin</p>
+                  <p className="font-medium">
+                    {Math.round(((totalPrice - totalCost) / totalPrice) * 100)}%
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <Button size="sm" onClick={createInvoice} disabled={isPending}>
+                Create invoice from estimate
+              </Button>
+            </div>
           </div>
         </div>
       )}

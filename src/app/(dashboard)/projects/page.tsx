@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { ProjectNameEditor } from '@/components/features/projects/project-name-editor';
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
 import { Button } from '@/components/ui/button';
 import { countProjectsByStatus, listProjects } from '@/lib/db/queries/projects';
@@ -60,11 +61,14 @@ export default async function ProjectsPage() {
             </thead>
             <tbody>
               {projects.map((p) => (
-                <tr key={p.id} className="border-b last:border-0 hover:bg-muted/30">
+                <tr key={p.id} className="group border-b last:border-0 hover:bg-muted/30">
                   <td className="px-4 py-3">
-                    <Link href={`/projects/${p.id}`} className="font-medium hover:underline">
-                      {p.name}
-                    </Link>
+                    <span className="inline-flex items-center gap-1">
+                      <Link href={`/projects/${p.id}`} className="font-medium hover:underline">
+                        {p.name}
+                      </Link>
+                      <ProjectNameEditor projectId={p.id} name={p.name} variant="inline" />
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {p.customer ? (

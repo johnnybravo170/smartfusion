@@ -9,6 +9,7 @@
  */
 
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,7 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
   const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
   const [showAddBucket, setShowAddBucket] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   const sections = new Map<string, BudgetLine[]>();
   for (const line of lines) {
@@ -114,9 +116,12 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
   function generateEstimate() {
     startTransition(async () => {
       const res = await generateEstimateFromBucketsAction({ project_id: projectId });
-      if (res.ok)
+      if (res.ok) {
         toast.success(`Seeded ${res.count} line${res.count === 1 ? '' : 's'} from buckets`);
-      else toast.error(res.error);
+        router.push(`/projects/${projectId}?tab=estimate`);
+      } else {
+        toast.error(res.error);
+      }
     });
   }
 
@@ -127,7 +132,7 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
           {showAddBucket ? 'Cancel' : '+ Add bucket'}
         </Button>
         <Button size="sm" variant="outline" onClick={generateEstimate} disabled={isPending}>
-          Generate estimate from buckets
+          Generate Estimate
         </Button>
       </div>
 

@@ -760,7 +760,8 @@ export async function createMilestoneInvoiceAction(input: {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
   if (!input.label.trim()) return { ok: false, error: 'Milestone label is required.' };
-  if (input.lineItems.length === 0) return { ok: false, error: 'At least one line item is required.' };
+  if (input.lineItems.length === 0)
+    return { ok: false, error: 'At least one line item is required.' };
 
   const supabase = await createClient();
 
@@ -814,6 +815,89 @@ export async function createMilestoneInvoiceAction(input: {
   return { ok: true, id: data.id as string };
 }
 
+export async function createInvoiceFromEstimateAction(input: {
+  projectId: string;
+}): Promise<InvoiceActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+
+  const { data: project, error: projErr } = await supabase
+    .from('projects')
+    .select('id, customer_id, name, management_fee_rate')
+    .eq('id', input.projectId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (projErr || !project) return { ok: false, error: 'Project not found.' };
+  if (!project.customer_id) return { ok: false, error: 'Project has no customer assigned.' };
+
+  const { data: lines, error: linesErr } = await supabase
+    .from('project_cost_lines')
+    .select('label, qty, unit_price_cents, line_price_cents, notes')
+    .eq('project_id', input.projectId)
+    .order('sort_order')
+    .order('created_at');
+
+  if (linesErr) return { ok: false, error: linesErr.message };
+  if (!lines || lines.length === 0) {
+    return { ok: false, error: 'No estimate line items to invoice.' };
+  }
+
+  const items: InvoiceLineItem[] = (
+    lines as {
+      label: string;
+      qty: number;
+      unit_price_cents: number;
+      line_price_cents: number;
+      notes: string | null;
+    }[]
+  ).map((l) => ({
+    description: l.notes ? `${l.label} — ${l.notes}` : l.label,
+    quantity: Number(l.qty),
+    unit_price_cents: l.unit_price_cents,
+    total_cents: l.line_price_cents,
+  }));
+
+  const lineSubtotal = items.reduce((s, i) => s + i.total_cents, 0);
+  const mgmtRate = (project.management_fee_rate as number) ?? 0.12;
+  const mgmtFeeCents = Math.round(lineSubtotal * mgmtRate);
+
+  if (mgmtFeeCents > 0) {
+    items.push({
+      description: `Management fee (${Math.round(mgmtRate * 100)}%)`,
+      quantity: 1,
+      unit_price_cents: mgmtFeeCents,
+      total_cents: mgmtFeeCents,
+    });
+  }
+
+  const subtotalCents = lineSubtotal + mgmtFeeCents;
+  const taxCents = Math.round(subtotalCents * 0.05);
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .insert({
+      tenant_id: tenant.id,
+      project_id: input.projectId,
+      customer_id: project.customer_id,
+      status: 'draft',
+      amount_cents: subtotalCents,
+      tax_cents: taxCents,
+      line_items: items,
+      customer_note: `Estimate for ${project.name}`,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create invoice.' };
+
+  revalidatePath(`/projects/${input.projectId}`);
+  revalidatePath('/invoices');
+  return { ok: true, id: data.id as string };
+}
+
 // ─── Project (GC) final invoice ───────────────────────────────────────────────
 
 export async function generateFinalInvoiceAction(input: {
@@ -837,7 +921,10 @@ export async function generateFinalInvoiceAction(input: {
   const mgmtRate = (project.management_fee_rate as number) ?? 0.12;
 
   const [timeRes, expenseRes, priorInvoicesRes] = await Promise.all([
-    supabase.from('time_entries').select('hours, hourly_rate_cents').eq('project_id', input.projectId),
+    supabase
+      .from('time_entries')
+      .select('hours, hourly_rate_cents')
+      .eq('project_id', input.projectId),
     supabase.from('expenses').select('amount_cents').eq('project_id', input.projectId),
     supabase
       .from('invoices')
@@ -861,16 +948,36 @@ export async function generateFinalInvoiceAction(input: {
 
   const lineItems: InvoiceLineItem[] = [];
   if (labourCents > 0) {
-    lineItems.push({ description: 'Labour', quantity: 1, unit_price_cents: labourCents, total_cents: labourCents });
+    lineItems.push({
+      description: 'Labour',
+      quantity: 1,
+      unit_price_cents: labourCents,
+      total_cents: labourCents,
+    });
   }
   if (expenseCents > 0) {
-    lineItems.push({ description: 'Materials & Expenses', quantity: 1, unit_price_cents: expenseCents, total_cents: expenseCents });
+    lineItems.push({
+      description: 'Materials & Expenses',
+      quantity: 1,
+      unit_price_cents: expenseCents,
+      total_cents: expenseCents,
+    });
   }
   if (mgmtFeeCents > 0) {
-    lineItems.push({ description: `Management Fee (${Math.round(mgmtRate * 100)}%)`, quantity: 1, unit_price_cents: mgmtFeeCents, total_cents: mgmtFeeCents });
+    lineItems.push({
+      description: `Management Fee (${Math.round(mgmtRate * 100)}%)`,
+      quantity: 1,
+      unit_price_cents: mgmtFeeCents,
+      total_cents: mgmtFeeCents,
+    });
   }
   if (priorBilledCents > 0) {
-    lineItems.push({ description: 'Less: Prior Invoices', quantity: 1, unit_price_cents: -priorBilledCents, total_cents: -priorBilledCents });
+    lineItems.push({
+      description: 'Less: Prior Invoices',
+      quantity: 1,
+      unit_price_cents: -priorBilledCents,
+      total_cents: -priorBilledCents,
+    });
   }
 
   const subtotalCents = lineItems.reduce((s, li) => s + li.total_cents, 0);
@@ -894,7 +1001,8 @@ export async function generateFinalInvoiceAction(input: {
     .select('id')
     .single();
 
-  if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create final invoice.' };
+  if (error || !data)
+    return { ok: false, error: error?.message ?? 'Failed to create final invoice.' };
 
   revalidatePath(`/projects/${input.projectId}`);
   revalidatePath('/invoices');

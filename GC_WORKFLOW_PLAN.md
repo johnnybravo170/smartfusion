@@ -148,6 +148,65 @@ These are independent enough to parallelize in tracks after Stage 2 is done.
 
 ## Backlog / future features
 
+---
+
+### Estimate-screen polish (immediate — in progress)
+
+UX papercuts on the estimate flow JVD flagged 2026-04-20:
+
+- [x] "Generate estimate from buckets" button → rename to "Generate Estimate", auto-switch to the estimate tab after run (don't make the user click).
+- [ ] Cost line description becomes a multi-line textarea (room for a full paragraph, not a tiny input). Use case: JVD attaches a photo of a designer fireplace and writes a paragraph about building something similar with matching stone/hearth.
+- [ ] Photos on cost lines: attach one or more reference images to any line. Click to enlarge. Stored in Supabase Storage. New `project_cost_line_photos` table or a `photo_urls jsonb` column on `project_cost_lines`.
+- [ ] Management fee visibility on the estimate. Pull from `projects.management_fee_rate` (default 12%). Show as a computed line at the bottom of the estimate totals — transparent to the customer by default, with a per-project toggle later (see Key Decisions #3). Do not require the user to add it manually.
+- [ ] Estimate → Invoice action: "Create invoice from estimate" button on the estimate tab. Pre-fills `invoices.line_items` from current cost lines + management fee.
+
+### Project name inline editing
+
+Click the project name on the detail page to rename in-place. Add a small edit affordance on the project list row too (unobtrusive but discoverable). Single `updateProjectAction({id, name})`.
+
+---
+
+### Worker app / subcontractor experience (new track)
+
+JVD's "employees" are actually subcontractors, so the worker experience has to support both hourly employees and invoicing subs. Owner-level toggles control what each worker sees.
+
+**Core worker features:**
+- **Assigned jobs list.** Worker sees only projects the owner has assigned them to.
+- **Calendar view.** Past + future assignments. Tap a day to see where they're scheduled / where they worked. Drives the time-entry pre-fill.
+- **Time entry.** Job pre-selected from today's calendar slot (editable). Choose cost bucket + hours. One entry per bucket-per-day.
+- **Expense logging.** Photo receipt upload → storage. Owner-level toggle: per-tenant whether workers can log expenses at all.
+- **Worker invoicing (subs only).** Generate an invoice pre-addressed to the owner's company. Worker fills in their GST/business info once, reused. Owner-level + per-worker toggle to enable/disable the invoicing UI (hourly employees shouldn't see it).
+
+**Owner controls (settings):**
+- Per-tenant: "Allow workers to log expenses" (yes/no).
+- Per-worker: "Show invoicing features" (yes/no). Default off for `employee` role, default on for `subcontractor` role.
+- Worker assignment: add/remove workers from a project.
+
+**Proactive nudge:**
+- Daily 7pm check: if assigned worker has 0 time entries for today, Henry pings them ("Hey, noticed you haven't logged hours today, want to now?"). Email + SMS based on worker prefs.
+
+**Schema sketch:**
+- `workers` / `worker_profiles` — role (`employee` | `subcontractor`), gst_number, business_name, can_invoice, can_log_expenses (overrides tenant default).
+- `project_assignments` — project_id, worker_id, scheduled dates (or link to a `worker_schedule` table for day-level slots).
+- `worker_invoices` — owner-facing invoice from sub to tenant; separate from customer-facing `invoices`.
+- Extend `time_entries` with `worker_id` (likely already there — verify).
+
+**Build order (rough):**
+1. Role + toggle schema. Worker signup/invite flow reusing existing auth.
+2. Assigned jobs list + time entry form (bucket + hours).
+3. Calendar view (can start read-only from `project_assignments`, add scheduling UI after).
+4. Expense logging (gated by tenant toggle).
+5. Subcontractor invoicing (gated by worker toggle).
+6. 7pm nudge cron.
+
+---
+
+### Project file attachments (drawings, specs, etc.)
+
+Lightweight upload + archive for non-photo files: plans, architectural drawings, permits, spec sheets, vendor warranty docs. Storage + list + download only for now (no parsing, no AI). Adds a "Files" tab on the project page. Supabase Storage bucket `project-files/{tenant_id}/{project_id}/{uuid}-{filename}`, new `project_files` table (id, project_id, filename, storage_path, size, mime_type, uploaded_by, uploaded_at, deleted_at). Signed download URLs.
+
+---
+
 ### Customer closeout package (ZIP)
 
 At job completion, generate a downloadable ZIP the contractor can hand to the homeowner containing:

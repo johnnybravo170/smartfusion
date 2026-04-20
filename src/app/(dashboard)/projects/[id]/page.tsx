@@ -13,6 +13,7 @@ import { CostsTab } from '@/components/features/projects/costs-tab';
 import { EstimateTab } from '@/components/features/projects/estimate-tab';
 import { InvoicesTab } from '@/components/features/projects/invoices-tab';
 import { PercentCompleteEditor } from '@/components/features/projects/percent-complete-editor';
+import { ProjectNameEditor } from '@/components/features/projects/project-name-editor';
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
 import { TimeExpenseTab } from '@/components/features/projects/time-expense-tab';
 import { VarianceTab } from '@/components/features/projects/variance-tab';
@@ -168,7 +169,7 @@ export default async function ProjectDetailPage({
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
+            <ProjectNameEditor projectId={project.id} name={project.name} />
             <ProjectStatusBadge status={project.status as ProjectStatus} />
           </div>
           {project.customer ? (
@@ -258,7 +259,12 @@ export default async function ProjectDetailPage({
       ) : null}
 
       {tab === 'estimate' ? (
-        <EstimateTab projectId={id} costLines={costLines} catalog={catalog} />
+        <EstimateTab
+          projectId={id}
+          costLines={costLines}
+          catalog={catalog}
+          managementFeeRate={project.management_fee_rate}
+        />
       ) : null}
 
       {tab === 'costs' ? (

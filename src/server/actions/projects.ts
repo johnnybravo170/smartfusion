@@ -189,6 +189,28 @@ export async function updateProjectAction(input: {
   return { ok: true, id: parsed.data.id };
 }
 
+export async function renameProjectAction(input: {
+  id: string;
+  name: string;
+}): Promise<ProjectActionResult> {
+  const name = input.name.trim();
+  if (!name) return { ok: false, error: 'Name is required.' };
+  if (name.length > 200) return { ok: false, error: 'Name too long.' };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('projects')
+    .update({ name, updated_at: new Date().toISOString() })
+    .eq('id', input.id)
+    .is('deleted_at', null);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/projects');
+  revalidatePath(`/projects/${input.id}`);
+  return { ok: true, id: input.id };
+}
+
 export async function updateProjectStatusAction(input: {
   id: string;
   status: string;

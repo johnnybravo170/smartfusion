@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import { formatCurrency } from '@/lib/pricing/calculator';
@@ -193,17 +194,18 @@ export function CostLineForm({
             placeholder="0.00"
           />
         </div>
-        <div>
-          <label htmlFor="cl-notes" className="mb-1 block text-xs font-medium">
-            Notes
-          </label>
-          <Input
-            id="cl-notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Optional"
-          />
-        </div>
+      </div>
+      <div>
+        <label htmlFor="cl-notes" className="mb-1 block text-xs font-medium">
+          Description
+        </label>
+        <Textarea
+          id="cl-notes"
+          rows={5}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Add details, photos this references, material notes, etc."
+        />
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex gap-2">
