@@ -43,16 +43,23 @@ export const photoTagLabels: Record<PhotoTag, string> = {
  * Validates the metadata attached to an upload. The file itself is handled
  * outside Zod (binary not in JSON); we validate everything around it.
  */
-export const photoUploadSchema = z.object({
-  job_id: z.string().uuid({ message: 'Invalid job id.' }),
-  tag: z.enum(photoTags).default('other'),
-  caption: z
-    .string()
-    .trim()
-    .max(500, { message: 'Caption must be at most 500 characters.' })
-    .optional()
-    .or(z.literal('')),
-});
+export const photoUploadSchema = z
+  .object({
+    job_id: z.string().uuid({ message: 'Invalid job id.' }).optional().or(z.literal('')),
+    project_id: z.string().uuid({ message: 'Invalid project id.' }).optional().or(z.literal('')),
+    memo_id: z.string().uuid({ message: 'Invalid memo id.' }).optional().or(z.literal('')),
+    tag: z.enum(photoTags).default('other'),
+    caption: z
+      .string()
+      .trim()
+      .max(500, { message: 'Caption must be at most 500 characters.' })
+      .optional()
+      .or(z.literal('')),
+  })
+  .refine((d) => !!d.job_id !== !!d.project_id, {
+    message: 'Exactly one of job_id or project_id is required.',
+    path: ['project_id'],
+  });
 
 export const photoUpdateSchema = z.object({
   id: z.string().uuid({ message: 'Invalid photo id.' }),

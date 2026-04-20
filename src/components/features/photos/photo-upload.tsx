@@ -48,11 +48,16 @@ function makeKey() {
 
 export function PhotoUpload({
   jobId,
+  projectId,
   onUploadComplete,
 }: {
-  jobId: string;
+  jobId?: string;
+  projectId?: string;
   onUploadComplete?: () => void;
 }) {
+  if (!jobId && !projectId) {
+    throw new Error('PhotoUpload needs either jobId or projectId.');
+  }
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -140,7 +145,8 @@ export function PhotoUpload({
 
           const fd = new FormData();
           fd.append('file', finalFile);
-          fd.append('job_id', jobId);
+          if (jobId) fd.append('job_id', jobId);
+          if (projectId) fd.append('project_id', projectId);
           fd.append('tag', entry.tag);
           fd.append('caption', entry.caption);
 

@@ -24,6 +24,8 @@ export type PhotoRow = {
   id: string;
   tenant_id: string;
   job_id: string | null;
+  project_id: string | null;
+  memo_id: string | null;
   storage_path: string;
   tag: PhotoTag;
   caption: string | null;
@@ -47,7 +49,7 @@ export type PhotoListFilters = {
 };
 
 const PHOTO_COLUMNS =
-  'id, tenant_id, job_id, storage_path, tag, caption, taken_at, created_at, updated_at, ai_tag, ai_tag_confidence, ai_caption, ai_caption_confidence, caption_source, quality_flags, ai_processed_at';
+  'id, tenant_id, job_id, project_id, memo_id, storage_path, tag, caption, taken_at, created_at, updated_at, ai_tag, ai_tag_confidence, ai_caption, ai_caption_confidence, caption_source, quality_flags, ai_processed_at';
 
 async function decorateWithUrls(rows: PhotoRow[]): Promise<PhotoWithUrl[]> {
   if (rows.length === 0) return [];
@@ -72,6 +74,20 @@ export async function listPhotosByJob(jobId: string): Promise<PhotoWithUrl[]> {
 
   if (error) {
     throw new Error(`Failed to list photos for job: ${error.message}`);
+  }
+  return decorateWithUrls((data ?? []) as PhotoRow[]);
+}
+
+export async function listPhotosByProject(projectId: string): Promise<PhotoWithUrl[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('photos')
+    .select(PHOTO_COLUMNS)
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to list photos for project: ${error.message}`);
   }
   return decorateWithUrls((data ?? []) as PhotoRow[]);
 }

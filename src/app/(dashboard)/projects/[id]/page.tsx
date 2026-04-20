@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ChangeOrderList } from '@/components/features/change-orders/change-order-list';
 import { MemoUpload } from '@/components/features/memos/memo-upload';
+import { PhotoUpload } from '@/components/features/photos/photo-upload';
+import { ProjectPhotoGallery } from '@/components/features/photos/project-photo-gallery';
 import { PortalToggle } from '@/components/features/portal/portal-toggle';
 import { PortalUpdateForm } from '@/components/features/portal/portal-update-form';
 import { BudgetSummaryCard } from '@/components/features/projects/budget-summary';
@@ -45,6 +47,7 @@ type Tab =
   | 'invoices'
   | 'time'
   | 'memos'
+  | 'gallery'
   | 'change-orders'
   | 'portal';
 
@@ -129,6 +132,7 @@ export default async function ProjectDetailPage({
     { key: 'time', label: 'Time & Expenses' },
     { key: 'change-orders', label: coLabel },
     { key: 'memos', label: 'Memos' },
+    { key: 'gallery', label: 'Gallery' },
     { key: 'portal', label: 'Portal' },
   ];
 
@@ -303,6 +307,13 @@ export default async function ProjectDetailPage({
             section: b.section,
           }))}
         />
+      ) : null}
+
+      {tab === 'gallery' ? (
+        <div className="space-y-6">
+          <PhotoUpload projectId={id} />
+          <ProjectPhotoGallery projectId={id} />
+        </div>
       ) : null}
 
       {tab === 'portal' ? (

@@ -17,7 +17,9 @@ const DEFAULT_SIGN_EXPIRES_SECONDS = 3600;
 
 export type UploadArgs = {
   tenantId: string;
-  jobId: string;
+  /** Either jobId or projectId must be provided — not both. */
+  jobId?: string;
+  projectId?: string;
   photoId: string;
   file: Blob | Buffer;
   contentType: string;
@@ -28,14 +30,19 @@ export type UploadArgs = {
 export type UploadResult = { path: string } | { error: string };
 
 /**
- * Writes a photo to storage under `${tenantId}/${jobId}/${photoId}.${ext}`.
- * RLS on `storage.objects` gatekeeps the write; if the tenant doesn't match
- * the caller's `current_tenant_id()`, Supabase returns a permission error.
+ * Writes a photo to storage. Path is `${tenantId}/${jobId}/${photoId}.${ext}`
+ * for job-scoped photos or `${tenantId}/project-${projectId}/${photoId}.${ext}`
+ * for project-scoped photos. Storage RLS only validates the first segment
+ * matches the caller's `current_tenant_id()`.
  */
 export async function uploadToStorage(args: UploadArgs): Promise<UploadResult> {
+  if (!args.jobId && !args.projectId) {
+    return { error: 'uploadToStorage needs either jobId or projectId.' };
+  }
   const supabase = await createClient();
   const ext = (args.extension ?? 'jpg').replace(/^\./, '');
-  const path = `${args.tenantId}/${args.jobId}/${args.photoId}.${ext}`;
+  const parent = args.jobId ? args.jobId : `project-${args.projectId}`;
+  const path = `${args.tenantId}/${parent}/${args.photoId}.${ext}`;
 
   const body = args.file instanceof Buffer ? new Blob([new Uint8Array(args.file)]) : args.file;
 

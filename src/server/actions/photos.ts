@@ -38,7 +38,9 @@ export async function uploadPhotoAction(formData: FormData): Promise<PhotoAction
   }
 
   const rawMeta = {
-    job_id: String(formData.get('job_id') ?? ''),
+    job_id: formData.get('job_id') ? String(formData.get('job_id')) : '',
+    project_id: formData.get('project_id') ? String(formData.get('project_id')) : '',
+    memo_id: formData.get('memo_id') ? String(formData.get('memo_id')) : '',
     tag: String(formData.get('tag') ?? 'other'),
     caption: formData.get('caption') ? String(formData.get('caption')) : '',
   };
@@ -61,11 +63,15 @@ export async function uploadPhotoAction(formData: FormData): Promise<PhotoAction
   const photoId = randomUUID();
   const ext = deriveExtension(file);
   const contentType = file.type || 'image/jpeg';
+  const jobId = parsed.data.job_id || undefined;
+  const projectId = parsed.data.project_id || undefined;
+  const memoId = parsed.data.memo_id || undefined;
 
   // 1. Upload to storage.
   const uploadRes = await uploadToStorage({
     tenantId: tenant.id,
-    jobId: parsed.data.job_id,
+    jobId,
+    projectId,
     photoId,
     file,
     contentType,
@@ -81,7 +87,9 @@ export async function uploadPhotoAction(formData: FormData): Promise<PhotoAction
     .insert({
       id: photoId,
       tenant_id: tenant.id,
-      job_id: parsed.data.job_id,
+      job_id: jobId ?? null,
+      project_id: projectId ?? null,
+      memo_id: memoId ?? null,
       storage_path: uploadRes.path,
       tag: parsed.data.tag,
       caption: emptyToNull(parsed.data.caption),
@@ -96,7 +104,8 @@ export async function uploadPhotoAction(formData: FormData): Promise<PhotoAction
   }
 
   revalidatePath('/photos-demo');
-  revalidatePath(`/jobs/${parsed.data.job_id}`);
+  if (jobId) revalidatePath(`/jobs/${jobId}`);
+  if (projectId) revalidatePath(`/projects/${projectId}`);
   return { ok: true, id: data.id };
 }
 
@@ -115,7 +124,7 @@ export async function deletePhotoAction(id: string): Promise<PhotoActionResult> 
 
   const { data: row, error: loadErr } = await supabase
     .from('photos')
-    .select('id, job_id, storage_path')
+    .select('id, job_id, project_id, storage_path')
     .eq('id', id)
     .maybeSingle();
 
@@ -137,9 +146,8 @@ export async function deletePhotoAction(id: string): Promise<PhotoActionResult> 
   }
 
   revalidatePath('/photos-demo');
-  if (row.job_id) {
-    revalidatePath(`/jobs/${row.job_id}`);
-  }
+  if (row.job_id) revalidatePath(`/jobs/${row.job_id}`);
+  if (row.project_id) revalidatePath(`/projects/${row.project_id}`);
   return { ok: true, id };
 }
 
@@ -171,7 +179,7 @@ export async function updatePhotoAction(formData: FormData): Promise<PhotoAction
     .from('photos')
     .update(patch)
     .eq('id', parsed.data.id)
-    .select('id, job_id')
+    .select('id, job_id, project_id')
     .single();
 
   if (error || !data) {
@@ -179,9 +187,8 @@ export async function updatePhotoAction(formData: FormData): Promise<PhotoAction
   }
 
   revalidatePath('/photos-demo');
-  if (data.job_id) {
-    revalidatePath(`/jobs/${data.job_id}`);
-  }
+  if (data.job_id) revalidatePath(`/jobs/${data.job_id}`);
+  if (data.project_id) revalidatePath(`/projects/${data.project_id}`);
   return { ok: true, id: parsed.data.id };
 }
 
