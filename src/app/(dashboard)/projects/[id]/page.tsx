@@ -7,15 +7,28 @@ import { PortalToggle } from '@/components/features/portal/portal-toggle';
 import { PortalUpdateForm } from '@/components/features/portal/portal-update-form';
 import { BudgetSummaryCard } from '@/components/features/projects/budget-summary';
 import { CostBucketsTable } from '@/components/features/projects/cost-buckets-table';
+import { CostsTab } from '@/components/features/projects/costs-tab';
+import { EstimateTab } from '@/components/features/projects/estimate-tab';
+import { InvoicesTab } from '@/components/features/projects/invoices-tab';
+import { PercentCompleteEditor } from '@/components/features/projects/percent-complete-editor';
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
+import { TimeExpenseTab } from '@/components/features/projects/time-expense-tab';
+import { VarianceTab } from '@/components/features/projects/variance-tab';
 import { getChangeOrderSummaryForProject, listChangeOrders } from '@/lib/db/queries/change-orders';
+import { getVarianceReport, listCostLines } from '@/lib/db/queries/cost-lines';
 import { listExpenses } from '@/lib/db/queries/expenses';
+import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
+import { listProjectBills } from '@/lib/db/queries/project-bills';
 import { getBudgetVsActual } from '@/lib/db/queries/project-buckets';
 import { getProject } from '@/lib/db/queries/projects';
+import { listPurchaseOrders } from '@/lib/db/queries/purchase-orders';
 import { listTimeEntries } from '@/lib/db/queries/time-entries';
-import { formatCurrency } from '@/lib/pricing/calculator';
 import { createClient } from '@/lib/supabase/server';
 import type { ProjectStatus } from '@/lib/validators/project';
+
+// Audio transcription of voice memos can take up to ~30s — bump the
+// server-action timeout past Vercel's 10s Hobby default.
+export const maxDuration = 60;
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,7 +36,17 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: project ? `${project.name} — HeyHenry` : 'Project — HeyHenry' };
 }
 
-type Tab = 'overview' | 'buckets' | 'time' | 'memos' | 'change-orders' | 'portal';
+type Tab =
+  | 'overview'
+  | 'buckets'
+  | 'estimate'
+  | 'costs'
+  | 'variance'
+  | 'invoices'
+  | 'time'
+  | 'memos'
+  | 'change-orders'
+  | 'portal';
 
 export default async function ProjectDetailPage({
   params,
@@ -55,11 +78,25 @@ export default async function ProjectDetailPage({
     listExpenses({ project_id: id, limit: 100 }),
   ]);
 
-  // Load change orders + summary for badge
-  const [changeOrders, coSummary] = await Promise.all([
-    listChangeOrders({ projectId: id }),
-    getChangeOrderSummaryForProject(id),
-  ]);
+  // Load job cost control data
+  const [costLines, purchaseOrders, bills, variance, catalog, changeOrders, coSummary] =
+    await Promise.all([
+      listCostLines(id),
+      listPurchaseOrders(id),
+      listProjectBills(id),
+      getVarianceReport(id),
+      listMaterialsCatalog(),
+      listChangeOrders({ projectId: id }),
+      getChangeOrderSummaryForProject(id),
+    ]);
+
+  // Load project invoices
+  const { data: projectInvoices } = await supabase
+    .from('invoices')
+    .select('id, status, amount_cents, tax_cents, customer_note, created_at')
+    .eq('project_id', id)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
 
   // Load portal updates
   const { data: portalUpdates } = await supabase
@@ -85,6 +122,10 @@ export default async function ProjectDetailPage({
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'buckets', label: 'Cost Buckets' },
+    { key: 'estimate', label: 'Estimate' },
+    { key: 'costs', label: 'POs & Bills' },
+    { key: 'variance', label: 'Variance' },
+    { key: 'invoices', label: 'Invoices' },
     { key: 'time', label: 'Time & Expenses' },
     { key: 'change-orders', label: coLabel },
     { key: 'memos', label: 'Memos' },
@@ -119,10 +160,9 @@ export default async function ProjectDetailPage({
           {project.description ? (
             <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
           ) : null}
-          <p className="mt-1 text-sm text-muted-foreground">
-            {project.percent_complete}% complete
-            {project.phase ? ` · ${project.phase}` : ''}
-          </p>
+          <div className="mt-1">
+            <PercentCompleteEditor project={project} />
+          </div>
         </div>
       </header>
 
@@ -189,70 +229,48 @@ export default async function ProjectDetailPage({
 
       {tab === 'buckets' ? <CostBucketsTable lines={budget.lines} projectId={id} /> : null}
 
-      {tab === 'time' ? (
-        <div className="space-y-6">
-          {/* Time entries */}
-          <div>
-            <h3 className="mb-3 text-sm font-semibold">Time Entries</h3>
-            {timeEntries.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No time entries logged yet.</p>
-            ) : (
-              <div className="overflow-x-auto rounded-md border">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="px-3 py-2 text-left font-medium">Date</th>
-                      <th className="px-3 py-2 text-right font-medium">Hours</th>
-                      <th className="px-3 py-2 text-left font-medium">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {timeEntries.map((entry) => (
-                      <tr key={entry.id} className="border-b last:border-0">
-                        <td className="px-3 py-2">{entry.entry_date}</td>
-                        <td className="px-3 py-2 text-right">{entry.hours}h</td>
-                        <td className="px-3 py-2 text-muted-foreground">{entry.notes || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+      {tab === 'estimate' ? (
+        <EstimateTab projectId={id} costLines={costLines} catalog={catalog} />
+      ) : null}
 
-          {/* Expenses */}
-          <div>
-            <h3 className="mb-3 text-sm font-semibold">Expenses</h3>
-            {expenses.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No expenses logged yet.</p>
-            ) : (
-              <div className="overflow-x-auto rounded-md border">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="px-3 py-2 text-left font-medium">Date</th>
-                      <th className="px-3 py-2 text-right font-medium">Amount</th>
-                      <th className="px-3 py-2 text-left font-medium">Vendor</th>
-                      <th className="px-3 py-2 text-left font-medium">Description</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {expenses.map((exp) => (
-                      <tr key={exp.id} className="border-b last:border-0">
-                        <td className="px-3 py-2">{exp.expense_date}</td>
-                        <td className="px-3 py-2 text-right">{formatCurrency(exp.amount_cents)}</td>
-                        <td className="px-3 py-2">{exp.vendor || '—'}</td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {exp.description || '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+      {tab === 'costs' ? (
+        <CostsTab projectId={id} purchaseOrders={purchaseOrders} bills={bills} />
+      ) : null}
+
+      {tab === 'variance' ? <VarianceTab variance={variance} /> : null}
+
+      {tab === 'invoices' ? (
+        <InvoicesTab
+          projectId={id}
+          invoices={(projectInvoices ?? []).map((inv) => ({
+            id: inv.id as string,
+            status: inv.status as string,
+            amount_cents: inv.amount_cents as number,
+            tax_cents: inv.tax_cents as number,
+            customer_note: inv.customer_note as string | null,
+            created_at: inv.created_at as string,
+          }))}
+        />
+      ) : null}
+
+      {tab === 'time' ? (
+        <TimeExpenseTab
+          projectId={id}
+          buckets={project.cost_buckets}
+          timeEntries={timeEntries.map((e) => ({
+            id: e.id,
+            entry_date: e.entry_date,
+            hours: Number(e.hours),
+            notes: e.notes ?? null,
+          }))}
+          expenses={expenses.map((e) => ({
+            id: e.id,
+            expense_date: e.expense_date,
+            amount_cents: e.amount_cents,
+            vendor: e.vendor ?? null,
+            description: e.description ?? null,
+          }))}
+        />
       ) : null}
 
       {tab === 'change-orders' ? (

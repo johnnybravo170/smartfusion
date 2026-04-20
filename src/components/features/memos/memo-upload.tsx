@@ -9,7 +9,8 @@
  */
 
 import { Loader2, Mic, MicOff, Trash2, Upload } from 'lucide-react';
-import { useRef, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,12 +33,25 @@ type MemoUploadProps = {
 };
 
 export function MemoUpload({ projectId, memos }: MemoUploadProps) {
+  const router = useRouter();
   const [isRecording, setIsRecording] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [transcribing, setTranscribing] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Poll for status changes while any memo is still being processed server-side.
+  // This decouples the UI from the original fetch's lifetime — if the server
+  // action finishes after the client has moved on, we still pick up the result.
+  const hasInFlight = memos.some(
+    (m) => m.status === 'pending' || m.status === 'transcribing' || m.status === 'extracting',
+  );
+  useEffect(() => {
+    if (!hasInFlight) return;
+    const interval = setInterval(() => router.refresh(), 4000);
+    return () => clearInterval(interval);
+  }, [hasInFlight, router]);
 
   async function startRecording() {
     try {
@@ -91,14 +105,22 @@ export function MemoUpload({ projectId, memos }: MemoUploadProps) {
       }
 
       toast.success('Audio uploaded. Transcribing...');
-      setTranscribing(result.id);
-      const transcribeResult = await transcribeMemoAction(result.id);
-      setTranscribing(null);
-      if (transcribeResult.ok) {
-        toast.success('Transcription complete!');
-      } else {
-        toast.error(transcribeResult.error);
-      }
+
+      // Fire transcription without awaiting so the record/upload button
+      // frees up immediately. The polling effect will pick up the result.
+      transcribeMemoAction(result.id)
+        .then((r) => {
+          if (r.ok) {
+            toast.success('Transcription complete!');
+          } else {
+            toast.error(r.error);
+          }
+          router.refresh();
+        })
+        .catch((err) => {
+          toast.error(`Transcription failed: ${err instanceof Error ? err.message : String(err)}`);
+          router.refresh();
+        });
     });
   }
 
