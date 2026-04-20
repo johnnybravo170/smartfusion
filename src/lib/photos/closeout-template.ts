@@ -59,7 +59,7 @@ export const CLOSEOUT_EMAIL_BODY_HTML = `<!doctype html>
   <div style="padding:0 28px 28px">
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0" />
     <p style="margin:0 0 8px;font-size:14px;line-height:1.5">
-      If we did right by you, a quick review would mean a lot:
+      If we earned it, a quick review goes a long way:
     </p>
     <p style="margin:0 0 16px">
       <a href="{{review_url}}" style="color:#2563eb;text-decoration:none;font-weight:500">Leave a review</a>
@@ -88,7 +88,7 @@ See the full gallery (before/after + everything we captured):
 
 Every photo is timestamped and kept on file — it's here whenever you need it.
 
-If we did right by you, a quick review would mean a lot:
+If we earned it, a quick review goes a long way:
 {{review_url}}
 
 Thanks,
