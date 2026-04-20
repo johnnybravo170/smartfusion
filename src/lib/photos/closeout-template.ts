@@ -1,21 +1,28 @@
 /**
  * Closeout email template — draft copy for the closeout loop.
  *
- * Rendered by the AR engine when a `job_completed` event fires. Merge tags
- * are resolved from the event payload:
+ * Rendered by the AR engine when a `job_completed` event fires. Most
+ * conditional rendering is done server-side in the closeout handler, which
+ * passes in pre-rendered HTML blocks so this template stays a flat merge.
  *
+ * Merge tags:
  *   {{first_name}}           customer first name
  *   {{business_name}}        operator's business name
  *   {{surface_summary}}      short phrase, e.g. "driveway" or "front walk and deck"
- *   {{city}}                 customer's city
  *   {{gallery_url}}          live gallery share link (no-login)
- *   {{primary_before_url}}   signed/public URL of the primary before photo
- *   {{primary_after_url}}    signed/public URL of the primary after photo
- *   {{review_url}}           Review URL the operator points people at
+ *   {{primary_before_url}}   signed URL of the primary before photo
+ *   {{primary_after_url}}    signed URL of the primary after photo
+ *   {{logo_html}}            pre-rendered <img> tag for the business logo,
+ *                            or empty string if no logo uploaded
+ *   {{review_html}}          pre-rendered review block (header + link), or
+ *                            empty string if no review URL configured
+ *   {{operator_line_html}}   pre-rendered operator signoff line ("Jonathan,
+ *                            Owner"), or empty string if the tenant has no
+ *                            operator name on file
+ *   (plain-text variants): {{logo_text}}, {{review_text}}, {{operator_line_text}}
  *
- * Tone: short, warm, tradesperson voice. NOT marketing copy. The photos
- * do the talking. Subject matches the "sounds like a real person" rule
- * from the Social Poster Voice spec.
+ * Tone: short, warm, tradesperson voice. NOT marketing copy. The photos do
+ * the talking.
  */
 
 import type { NewArTemplate } from '@/lib/db/schema/ar/templates';
@@ -26,6 +33,8 @@ export const CLOSEOUT_EMAIL_SUBJECT =
 export const CLOSEOUT_EMAIL_BODY_HTML = `<!doctype html>
 <html><body style="margin:0;padding:0;background:#f6f7f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111">
 <div style="max-width:560px;margin:24px auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
+
+  {{logo_html}}
 
   <div style="padding:28px 28px 0">
     <p style="margin:0 0 16px;font-size:16px;line-height:1.5">Hi {{first_name}},</p>
@@ -58,15 +67,10 @@ export const CLOSEOUT_EMAIL_BODY_HTML = `<!doctype html>
 
   <div style="padding:0 28px 28px">
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0" />
-    <p style="margin:0 0 8px;font-size:14px;line-height:1.5">
-      If we earned it, a quick review goes a long way:
-    </p>
-    <p style="margin:0 0 16px">
-      <a href="{{review_url}}" style="color:#2563eb;text-decoration:none;font-weight:500">Leave a review</a>
-    </p>
+    {{review_html}}
     <p style="margin:0;font-size:14px;line-height:1.5;color:#374151">
       Thanks,<br />
-      <span style="font-weight:600">{{business_name}}</span>
+      {{operator_line_html}}<span style="font-weight:600">{{business_name}}</span>
     </p>
   </div>
 
@@ -87,16 +91,68 @@ See the full gallery (before/after + everything we captured):
 {{gallery_url}}
 
 Every photo is timestamped and kept on file — it's here whenever you need it.
-
-If we earned it, a quick review goes a long way:
-{{review_url}}
-
+{{review_text}}
 Thanks,
-{{business_name}}
+{{operator_line_text}}{{business_name}}
 
 ---
 Reply to this email — {{business_name}} will get it directly.
 Unsubscribe: {{unsubscribe_url}}`;
+
+/**
+ * Pre-rendered blocks that the closeout handler populates per-tenant.
+ */
+export type CloseoutRenderChunks = {
+  logo_html: string;
+  review_html: string;
+  review_text: string;
+  operator_line_html: string;
+  operator_line_text: string;
+};
+
+export function buildLogoBlock(logoUrl: string | null): string {
+  if (!logoUrl) return '';
+  return `<div style="padding:24px 28px 0;text-align:left"><img src="${escapeAttr(logoUrl)}" alt="" style="max-height:48px;max-width:200px;display:block" /></div>`;
+}
+
+export function buildReviewBlock(reviewUrl: string | null): {
+  html: string;
+  text: string;
+} {
+  if (!reviewUrl) return { html: '', text: '' };
+  return {
+    html: `<p style="margin:0 0 8px;font-size:14px;line-height:1.5">If we earned it, a quick review goes a long way:</p>
+    <p style="margin:0 0 16px">
+      <a href="${escapeAttr(reviewUrl)}" style="color:#2563eb;text-decoration:none;font-weight:500">Leave a review</a>
+    </p>`,
+    text: `\nIf we earned it, a quick review goes a long way:\n${reviewUrl}\n`,
+  };
+}
+
+export function buildOperatorLine(
+  firstName: string | null,
+  lastName: string | null,
+  title: string | null,
+): { html: string; text: string } {
+  const name = [firstName, lastName].filter(Boolean).join(' ').trim();
+  if (!name) return { html: '', text: '' };
+  const label = title ? `${name}, ${title}` : name;
+  return {
+    html: `${escapeHtml(label)}<br />`,
+    text: `${label}\n`,
+  };
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
+  );
+}
+
+function escapeAttr(s: string): string {
+  return s.replace(/"/g, '&quot;');
+}
 
 /**
  * Build the ar_templates row insert shape for a tenant's closeout template.
@@ -123,16 +179,12 @@ export function buildCloseoutTemplate(params: {
 }
 
 /**
- * Closeout sequence definition (Phase 3 wiring).
+ * Closeout sequence definition.
  *
  * Triggered by an AR event of type `job_completed`. A single email step
  * with no delay — the AR dispatcher still honors quiet hours, so the
  * email won't fire at 11pm just because the operator happened to tap
  * Complete at 11pm.
- *
- * Returned here as a plain object so Phase 3 can insert + link it via
- * the existing ar_sequences / ar_steps tables without repeating shape
- * knowledge across the codebase.
  */
 export function buildCloseoutSequenceDef(params: { tenantId: string; templateId: string }) {
   return {
@@ -144,7 +196,7 @@ export function buildCloseoutSequenceDef(params: { tenantId: string; templateId:
       status: 'active' as const,
       triggerType: 'event' as const,
       triggerConfig: { event_type: 'job_completed' },
-      allowReenrollment: true, // each job is its own closeout
+      allowReenrollment: true,
     },
     steps: [
       {

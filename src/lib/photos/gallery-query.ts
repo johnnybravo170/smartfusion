@@ -3,6 +3,7 @@
  * the share-link token is the access control.
  */
 
+import { getBusinessProfileAdmin, type Socials } from '@/lib/db/queries/profile';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const PHOTOS_BUCKET = 'photos';
@@ -32,6 +33,10 @@ export type GalleryData = {
   tenantName: string;
   jobLabel: string | null;
   photos: GalleryPhoto[];
+  logoUrl: string | null;
+  websiteUrl: string | null;
+  reviewUrl: string | null;
+  socials: Socials;
 };
 
 // Tags not shown to the customer. Internal-only photos never appear on a
@@ -44,8 +49,8 @@ export async function loadGalleryForJob(params: {
 }): Promise<GalleryData | null> {
   const admin = createAdminClient();
 
-  const [{ data: tenant }, { data: job }, { data: photos }] = await Promise.all([
-    admin.from('tenants').select('name').eq('id', params.tenantId).maybeSingle(),
+  const [profile, { data: job }, { data: photos }] = await Promise.all([
+    getBusinessProfileAdmin(params.tenantId),
     admin
       .from('jobs')
       .select('id, customers:customer_id (name, city)')
@@ -60,7 +65,7 @@ export async function loadGalleryForJob(params: {
       .order('created_at', { ascending: true }),
   ]);
 
-  if (!tenant) return null;
+  if (!profile) return null;
 
   const visible = (photos ?? []).filter((p) => !HIDDEN_TAGS.has((p.tag as string) ?? ''));
   const paths = visible.map((p) => p.storage_path as string);
@@ -74,7 +79,7 @@ export async function loadGalleryForJob(params: {
       : null;
 
   return {
-    tenantName: tenant.name as string,
+    tenantName: profile.name,
     jobLabel: label,
     photos: visible.map((p) => ({
       id: p.id as string,
@@ -83,5 +88,9 @@ export async function loadGalleryForJob(params: {
       takenAt: (p.taken_at as string | null) ?? null,
       url: urlMap.get(p.storage_path as string) ?? null,
     })),
+    logoUrl: profile.logoSignedUrl,
+    websiteUrl: profile.websiteUrl,
+    reviewUrl: profile.reviewUrl,
+    socials: profile.socials,
   };
 }

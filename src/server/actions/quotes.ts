@@ -209,9 +209,35 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
 
   const { data: tenantData } = await supabase
     .from('tenants')
-    .select('id, name, slug, quote_validity_days')
+    .select(
+      'id, name, slug, quote_validity_days, address_line1, address_line2, city, province, postal_code, phone, contact_email, website_url, logo_storage_path',
+    )
     .eq('id', tenant.id)
     .single();
+
+  // Pre-fetch the logo as a data URL so jsPDF can embed it. Best-effort.
+  let logoDataUrl: string | null = null;
+  const logoPath = (tenantData?.logo_storage_path as string | null) ?? null;
+  if (logoPath) {
+    try {
+      const { data: signed } = await supabase.storage
+        .from('photos')
+        .createSignedUrl(logoPath, 60 * 5);
+      if (signed?.signedUrl) {
+        const res = await fetch(signed.signedUrl);
+        if (res.ok) {
+          const buf = Buffer.from(await res.arrayBuffer());
+          const contentType = res.headers.get('content-type') ?? 'image/png';
+          // jsPDF only handles PNG / JPEG reliably.
+          if (contentType === 'image/png' || contentType === 'image/jpeg') {
+            logoDataUrl = `data:${contentType};base64,${buf.toString('base64')}`;
+          }
+        }
+      }
+    } catch {
+      // swallow — PDF still generates without logo
+    }
+  }
 
   // Generate PDF.
   let pdfUrl: string | null = null;
@@ -221,8 +247,17 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
     const pdfBuffer = await generateQuotePdf(
       quote,
       {
-        name: tenantData?.name ?? tenant.name,
         id: tenant.id,
+        name: tenantData?.name ?? tenant.name,
+        addressLine1: (tenantData?.address_line1 as string | null) ?? null,
+        addressLine2: (tenantData?.address_line2 as string | null) ?? null,
+        city: (tenantData?.city as string | null) ?? null,
+        province: (tenantData?.province as string | null) ?? null,
+        postalCode: (tenantData?.postal_code as string | null) ?? null,
+        phone: (tenantData?.phone as string | null) ?? null,
+        contactEmail: (tenantData?.contact_email as string | null) ?? null,
+        websiteUrl: (tenantData?.website_url as string | null) ?? null,
+        logoDataUrl,
       },
       quote.customer ?? {
         id: '',

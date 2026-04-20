@@ -9,11 +9,12 @@
  * pair_set, single) fall through to 404.
  */
 
-import { ImageOff } from 'lucide-react';
+import { ImageOff, Star } from 'lucide-react';
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { loadGalleryForJob } from '@/lib/photos/gallery-query';
 import { lookupShareLink, parseShareHandle, recordShareLinkView } from '@/lib/photos/share-links';
+import { toAbsoluteUrl } from '@/lib/validators/profile';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,16 @@ const TAG_LABEL: Record<string, string> = {
   progress: 'Progress',
   damage: 'Noted',
   other: 'Other',
+};
+
+const SOCIAL_LABELS: Record<string, string> = {
+  googleBusiness: 'Google',
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+  linkedin: 'LinkedIn',
+  x: 'X',
 };
 
 export default async function PublicGalleryPage({
@@ -36,9 +47,6 @@ export default async function PublicGalleryPage({
   const link = await lookupShareLink(token);
   if (!link) notFound();
 
-  // Redirect to canonical URL when the visited slug doesn't match. Only do
-  // this if the link has a canonical slug (older links have null slug and
-  // keep working on the bare `/g/{token}` form).
   if (link.slug && link.slug !== visitedSlug) {
     redirect(`/g/${link.slug}-${link.token}`);
   }
@@ -62,19 +70,39 @@ export default async function PublicGalleryPage({
     'other',
   ];
 
+  const reviewUrl = toAbsoluteUrl(data.reviewUrl);
+  const websiteUrl = toAbsoluteUrl(data.websiteUrl);
+  const socialLinks = Object.entries(data.socials ?? {})
+    .map(([key, value]) => ({
+      key,
+      label: SOCIAL_LABELS[key] ?? key,
+      url: toAbsoluteUrl(value as string | null),
+    }))
+    .filter((s): s is { key: string; label: string; url: string } => Boolean(s.url));
+
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
       <header className="border-b bg-white">
-        <div className="mx-auto max-w-5xl px-6 py-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-            Job gallery
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold">
-            {data.jobLabel ? `${data.jobLabel} · ${data.tenantName}` : data.tenantName}
-          </h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            Every photo is timestamped and kept on file by {data.tenantName}.
-          </p>
+        <div className="mx-auto flex max-w-5xl items-start gap-4 px-6 py-5">
+          {data.logoUrl ? (
+            // biome-ignore lint/performance/noImgElement: signed URL
+            <img
+              src={data.logoUrl}
+              alt={data.tenantName}
+              className="h-12 w-auto max-w-[160px] shrink-0 object-contain"
+            />
+          ) : null}
+          <div className="flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+              Job gallery
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold">
+              {data.jobLabel ? `${data.jobLabel} · ${data.tenantName}` : data.tenantName}
+            </h1>
+            <p className="mt-1 text-sm text-neutral-500">
+              Every photo is timestamped and kept on file by {data.tenantName}.
+            </p>
+          </div>
         </div>
       </header>
 
@@ -126,8 +154,45 @@ export default async function PublicGalleryPage({
         )}
       </div>
 
+      {reviewUrl ? (
+        <section id="review" className="mx-auto max-w-5xl px-6 pb-8">
+          <a
+            href={reviewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 rounded-xl border bg-white px-6 py-4 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-50"
+          >
+            <Star className="size-4 text-amber-500" aria-hidden />
+            Leave {data.tenantName} a review
+          </a>
+        </section>
+      ) : null}
+
       <footer className="mx-auto max-w-5xl px-6 pb-12 pt-4 text-center text-xs text-neutral-500">
-        Shared by {data.tenantName} via Hey Henry
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+          {websiteUrl ? (
+            <a
+              href={websiteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-neutral-700"
+            >
+              {stripScheme(websiteUrl)}
+            </a>
+          ) : null}
+          {socialLinks.map((s) => (
+            <a
+              key={s.key}
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-neutral-700"
+            >
+              {s.label}
+            </a>
+          ))}
+        </div>
+        <p className="mt-3">Shared by {data.tenantName} via Hey Henry</p>
       </footer>
     </main>
   );
@@ -141,4 +206,8 @@ function groupByTag<T extends { tag: string }>(items: T[]): Map<string, T[]> {
     map.set(item.tag, arr);
   }
   return map;
+}
+
+function stripScheme(url: string): string {
+  return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }

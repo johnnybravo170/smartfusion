@@ -1,4 +1,4 @@
-import { ChevronRight, Mic, Ruler, Users } from 'lucide-react';
+import { Building2, ChevronRight, Mic, Ruler, Users } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { CalendarFeedCard } from '@/components/features/settings/calendar-feed-card';
@@ -130,6 +130,25 @@ export default function SettingsPage() {
       <Suspense fallback={<div className="h-48 animate-pulse rounded-xl border bg-card" />}>
         <PublicQuoteLinkSection />
       </Suspense>
+
+      <Link href="/settings/profile" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Building2 className="size-5" />
+                <div>
+                  <CardTitle>Business profile</CardTitle>
+                  <CardDescription>
+                    Logo, contact info, socials, and how you sign off on emails.
+                  </CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Card>
+      </Link>
 
       <Link href="/settings/team" className="block">
         <Card className="transition-colors hover:bg-muted/50">

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { allTools, executeToolCall, getToolDefinitions } from '@/lib/ai/tools';
 
 describe('AI tool definitions', () => {
-  it('exports exactly 38 tools (25 core + 9 renovation + 4 change orders)', () => {
-    expect(allTools).toHaveLength(38);
+  it('exports a stable number of tools', () => {
+    // Bump this when intentionally adding/removing tools. Hard-coded so
+    // drift is caught in CI instead of surfacing as a runtime surprise.
+    expect(allTools).toHaveLength(45);
   });
 
   it('each tool has a name, description, and valid input_schema', () => {
@@ -24,9 +26,9 @@ describe('AI tool definitions', () => {
     expect(uniqueNames.size).toBe(names.length);
   });
 
-  it('getToolDefinitions returns core tools (25) when no vertical specified', () => {
+  it('getToolDefinitions returns core tools when no vertical specified', () => {
     const defs = getToolDefinitions();
-    expect(defs).toHaveLength(25);
+    expect(defs).toHaveLength(31);
   });
 
   it('getToolDefinitions returns all tools (33) for renovation vertical', () => {

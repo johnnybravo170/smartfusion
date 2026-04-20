@@ -10,7 +10,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
@@ -25,6 +25,16 @@ export const tenants = pgTable('tenants', {
   province: text('province'),
   gstRate: numeric('gst_rate', { precision: 5, scale: 4 }).default('0.05').notNull(),
   pstRate: numeric('pst_rate', { precision: 5, scale: 4 }).default('0').notNull(),
+  addressLine1: text('address_line1'),
+  addressLine2: text('address_line2'),
+  city: text('city'),
+  postalCode: text('postal_code'),
+  phone: text('phone'),
+  contactEmail: text('contact_email'),
+  websiteUrl: text('website_url'),
+  reviewUrl: text('review_url'),
+  logoStoragePath: text('logo_storage_path'),
+  socials: jsonb('socials').default(sql`'{}'::jsonb`).notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).default(sql`now()`).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).default(sql`now()`).notNull(),

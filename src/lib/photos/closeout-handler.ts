@@ -15,9 +15,17 @@
  */
 
 import { emitArEvent } from '@/lib/ar/event-bus';
+import { getBusinessProfileAdmin, getPrimaryOperatorName } from '@/lib/db/queries/profile';
 import { getSignedUrl } from '@/lib/storage/photos';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { buildCloseoutSequenceDef, buildCloseoutTemplate } from './closeout-template';
+import { toAbsoluteUrl } from '@/lib/validators/profile';
+import {
+  buildCloseoutSequenceDef,
+  buildCloseoutTemplate,
+  buildLogoBlock,
+  buildOperatorLine,
+  buildReviewBlock,
+} from './closeout-template';
 import { buildShareUrl, getOrCreateShareLink, slugify } from './share-links';
 
 type JobWithCustomer = {
@@ -94,19 +102,22 @@ export async function handleJobCompleted(jobId: string): Promise<RunResult> {
       pair?.afterPath ? getSignedUrl(pair.afterPath, 60 * 60 * 24 * 7) : Promise.resolve(null),
     ]);
 
-    // 5. Resolve tenant + surface details for the payload.
-    const { data: tenantRow } = await admin
-      .from('tenants')
-      .select('name')
-      .eq('id', tenantId)
-      .maybeSingle();
-    const businessName = (tenantRow?.name as string | undefined) ?? 'Hey Henry';
+    // 5. Resolve profile + surface details for the payload.
+    const [business, operator, surfaceSummary] = await Promise.all([
+      getBusinessProfileAdmin(tenantId),
+      getPrimaryOperatorName(tenantId),
+      resolveSurfaceSummary(job.quote_id ?? null),
+    ]);
 
-    const surfaceSummary = await resolveSurfaceSummary(job.quote_id ?? null);
+    const businessName = business?.name ?? 'Hey Henry';
+    const reviewUrl = toAbsoluteUrl(business?.reviewUrl ?? null);
+    const logoUrl = business?.logoSignedUrl ?? null;
 
-    // 6. Emit event. No operator_first_name — the template signs with the
-    // business name only. Reliable operator-first-name needs a dedicated
-    // profile field (future work).
+    const logoHtml = buildLogoBlock(logoUrl);
+    const reviewBlock = buildReviewBlock(reviewUrl);
+    const operatorLine = buildOperatorLine(operator.firstName, operator.lastName, operator.title);
+
+    // 6. Emit event.
     const { firstName, lastName } = splitName(customerName);
     const result = await emitArEvent({
       tenantId,
@@ -127,7 +138,13 @@ export async function handleJobCompleted(jobId: string): Promise<RunResult> {
         gallery_url: galleryUrl,
         primary_before_url: beforeUrl,
         primary_after_url: afterUrl,
-        review_url: `${galleryUrl}#review`,
+        review_url: reviewUrl ?? galleryUrl,
+        // Pre-rendered conditional blocks — the template is a flat merge.
+        logo_html: logoHtml,
+        review_html: reviewBlock.html,
+        review_text: reviewBlock.text,
+        operator_line_html: operatorLine.html,
+        operator_line_text: operatorLine.text,
       },
     });
 

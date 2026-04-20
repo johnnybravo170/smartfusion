@@ -12,10 +12,41 @@ import { formatDate } from '@/lib/date/format';
 import type { QuoteCustomerSummary, QuoteWithRelations } from '@/lib/db/queries/quotes';
 import { formatCurrency } from '@/lib/pricing/calculator';
 
+function buildLetterhead(tenant: {
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postalCode?: string | null;
+  phone?: string | null;
+  contactEmail?: string | null;
+  websiteUrl?: string | null;
+}): string[] {
+  const lines: string[] = [];
+  if (tenant.addressLine1) lines.push(tenant.addressLine1);
+  if (tenant.addressLine2) lines.push(tenant.addressLine2);
+  const cityLine = [tenant.city, tenant.province, tenant.postalCode].filter(Boolean).join(', ');
+  if (cityLine) lines.push(cityLine);
+  const contact = [tenant.phone, tenant.contactEmail].filter(Boolean).join('  ·  ');
+  if (contact) lines.push(contact);
+  if (tenant.websiteUrl) lines.push(tenant.websiteUrl.replace(/^https?:\/\//, ''));
+  return lines;
+}
+
 type TenantInfo = {
   id: string;
   name: string;
   timezone?: string;
+  // Optional profile fields. When present, they show on the PDF letterhead.
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postalCode?: string | null;
+  phone?: string | null;
+  contactEmail?: string | null;
+  websiteUrl?: string | null;
+  logoDataUrl?: string | null; // pre-fetched as data URL by caller
 };
 
 export async function generateQuotePdf(
@@ -28,11 +59,48 @@ export async function generateQuotePdf(
   const margin = 20;
   let y = margin;
 
-  // -- Header: business name --
+  // -- Header: optional logo on the right, business info on the left --
+  const headerTop = y;
+
+  if (tenant.logoDataUrl) {
+    try {
+      const logoFormat = tenant.logoDataUrl.includes('image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(
+        tenant.logoDataUrl,
+        logoFormat,
+        pageWidth - margin - 36,
+        y,
+        36,
+        18,
+        undefined,
+        'FAST',
+      );
+    } catch {
+      // If image add fails (bad format, corrupt data URL), silently skip — we
+      // still want the quote to generate.
+    }
+  }
+
   doc.setFontSize(20);
   doc.setFont('helvetica', 'bold');
   doc.text(tenant.name, margin, y);
-  y += 12;
+  y += 7;
+
+  // Letterhead lines (address, phone, email, website)
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(90, 90, 90);
+  const letterheadLines = buildLetterhead(tenant);
+  for (const line of letterheadLines) {
+    doc.text(line, margin, y);
+    y += 4;
+  }
+  doc.setTextColor(0, 0, 0);
+
+  // Make sure the header slot is at least as tall as the logo (18mm) so the
+  // next section doesn't overlap it.
+  y = Math.max(y, headerTop + 20);
+  y += 4;
 
   // -- QUOTE title + number --
   doc.setFontSize(28);
