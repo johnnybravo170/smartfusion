@@ -362,14 +362,7 @@ export async function resendInvoiceAction(input: {
     return { ok: false, error: 'No payment link found. Send the invoice first.' };
   }
 
-  // Load tenant name for email.
-  const { data: tenantRow } = await supabase
-    .from('tenants')
-    .select('name')
-    .eq('id', tenant.id)
-    .single();
-
-  // Load customer for email.
+  // Load customer for email. Tenant name/logo come from getEmailBrandingForTenant below.
   const { data: customer } = await supabase
     .from('customers')
     .select('name, email')
