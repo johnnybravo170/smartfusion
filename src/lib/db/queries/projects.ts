@@ -28,6 +28,13 @@ export type ProjectRow = {
   start_date: string | null;
   target_end_date: string | null;
   percent_complete: number;
+  estimate_status: 'draft' | 'pending_approval' | 'approved' | 'declined';
+  estimate_approval_code: string | null;
+  estimate_sent_at: string | null;
+  estimate_approved_at: string | null;
+  estimate_approved_by_name: string | null;
+  estimate_declined_at: string | null;
+  estimate_declined_reason: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -65,7 +72,7 @@ export type ProjectStatusCounts = {
 };
 
 const PROJECT_COLUMNS =
-  'id, tenant_id, customer_id, name, description, status, phase, management_fee_rate, start_date, target_end_date, percent_complete, deleted_at, created_at, updated_at';
+  'id, tenant_id, customer_id, name, description, status, phase, management_fee_rate, start_date, target_end_date, percent_complete, estimate_status, estimate_approval_code, estimate_sent_at, estimate_approved_at, estimate_approved_by_name, estimate_declined_at, estimate_declined_reason, deleted_at, created_at, updated_at';
 
 const PROJECT_WITH_CUSTOMER_SELECT = `${PROJECT_COLUMNS}, customers:customer_id (id, name, type)`;
 

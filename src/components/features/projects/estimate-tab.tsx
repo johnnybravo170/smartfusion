@@ -7,20 +7,38 @@ import { Button } from '@/components/ui/button';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import { formatCurrency } from '@/lib/pricing/calculator';
+import {
+  resetEstimateAction,
+  sendEstimateForApprovalAction,
+} from '@/server/actions/estimate-approval';
 import { createInvoiceFromEstimateAction } from '@/server/actions/invoices';
 import { deleteCostLineAction } from '@/server/actions/project-cost-control';
 import { CostLineForm } from './cost-line-form';
+
+export type EstimateApprovalInfo = {
+  status: 'draft' | 'pending_approval' | 'approved' | 'declined';
+  approval_code: string | null;
+  sent_at: string | null;
+  approved_at: string | null;
+  approved_by_name: string | null;
+  declined_at: string | null;
+  declined_reason: string | null;
+  view_count: number;
+  last_viewed_at: string | null;
+};
 
 export function EstimateTab({
   projectId,
   costLines,
   catalog,
   managementFeeRate,
+  approval,
 }: {
   projectId: string;
   costLines: CostLineRow[];
   catalog: MaterialsCatalogRow[];
   managementFeeRate: number;
+  approval: EstimateApprovalInfo;
 }) {
   const [showForm, setShowForm] = useState(false);
   const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
@@ -46,6 +64,37 @@ export function EstimateTab({
     });
   }
 
+  function sendForApproval() {
+    startTransition(async () => {
+      const res = await sendEstimateForApprovalAction({ projectId });
+      if (res.ok) {
+        toast.success('Estimate sent to customer');
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
+    });
+  }
+
+  function resetEstimate() {
+    if (!confirm('Reset estimate to draft? The approval link will be invalidated.')) return;
+    startTransition(async () => {
+      const res = await resetEstimateAction({ projectId });
+      if (res.ok) {
+        toast.success('Estimate reset to draft');
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
+    });
+  }
+
+  function copyApprovalLink() {
+    if (!approval.approval_code) return;
+    const url = `${window.location.origin}/estimate/${approval.approval_code}`;
+    navigator.clipboard.writeText(url).then(() => toast.success('Link copied'));
+  }
+
   const totalCost = costLines.reduce((s, l) => s + l.line_cost_cents, 0);
   const totalPrice = costLines.reduce((s, l) => s + l.line_price_cents, 0);
   const mgmtFeeCents = Math.round(totalPrice * managementFeeRate);
@@ -58,8 +107,100 @@ export function EstimateTab({
     return acc;
   }, {});
 
+  const statusChip = (() => {
+    switch (approval.status) {
+      case 'approved':
+        return (
+          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+            Approved
+          </span>
+        );
+      case 'pending_approval':
+        return (
+          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+            Awaiting approval
+          </span>
+        );
+      case 'declined':
+        return (
+          <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+            Declined
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            Draft
+          </span>
+        );
+    }
+  })();
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-4 py-3">
+        <div className="flex items-center gap-3">
+          {statusChip}
+          {approval.status === 'pending_approval' ? (
+            <span className="text-xs text-muted-foreground">
+              Sent{' '}
+              {approval.sent_at
+                ? new Date(approval.sent_at).toLocaleDateString('en-CA', {
+                    month: 'short',
+                    day: 'numeric',
+                  })
+                : ''}{' '}
+              · {approval.view_count} view{approval.view_count === 1 ? '' : 's'}
+              {approval.last_viewed_at
+                ? ` · last ${new Date(approval.last_viewed_at).toLocaleDateString('en-CA', {
+                    month: 'short',
+                    day: 'numeric',
+                  })}`
+                : ' · not opened yet'}
+            </span>
+          ) : null}
+          {approval.status === 'approved' && approval.approved_by_name ? (
+            <span className="text-xs text-muted-foreground">
+              by {approval.approved_by_name}
+              {approval.approved_at
+                ? ` on ${new Date(approval.approved_at).toLocaleDateString('en-CA', {
+                    month: 'short',
+                    day: 'numeric',
+                  })}`
+                : ''}
+            </span>
+          ) : null}
+          {approval.status === 'declined' && approval.declined_reason ? (
+            <span className="text-xs text-muted-foreground">— {approval.declined_reason}</span>
+          ) : null}
+        </div>
+        <div className="flex gap-2">
+          {approval.status === 'draft' && costLines.length > 0 ? (
+            <Button size="sm" onClick={sendForApproval} disabled={isPending}>
+              Send for approval
+            </Button>
+          ) : null}
+          {approval.status === 'pending_approval' ? (
+            <>
+              <Button size="sm" variant="outline" onClick={copyApprovalLink}>
+                Copy link
+              </Button>
+              <Button size="sm" variant="outline" onClick={sendForApproval} disabled={isPending}>
+                Resend
+              </Button>
+              <Button size="sm" variant="ghost" onClick={resetEstimate} disabled={isPending}>
+                Reset
+              </Button>
+            </>
+          ) : null}
+          {approval.status === 'approved' || approval.status === 'declined' ? (
+            <Button size="sm" variant="ghost" onClick={resetEstimate} disabled={isPending}>
+              Reset to draft
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
       {showForm || editingLine ? (
         <CostLineForm
           projectId={projectId}
@@ -179,8 +320,17 @@ export function EstimateTab({
                 </div>
               )}
             </div>
-            <div className="mt-3 flex justify-end">
-              <Button size="sm" onClick={createInvoice} disabled={isPending}>
+            <div className="mt-3 flex items-center justify-end gap-3">
+              {approval.status !== 'approved' ? (
+                <p className="text-xs text-muted-foreground">
+                  Customer must approve the estimate before invoicing.
+                </p>
+              ) : null}
+              <Button
+                size="sm"
+                onClick={createInvoice}
+                disabled={isPending || approval.status !== 'approved'}
+              >
                 Create invoice from estimate
               </Button>
             </div>

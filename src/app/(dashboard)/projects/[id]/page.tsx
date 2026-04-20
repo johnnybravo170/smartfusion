@@ -15,6 +15,7 @@ import { InvoicesTab } from '@/components/features/projects/invoices-tab';
 import { PercentCompleteEditor } from '@/components/features/projects/percent-complete-editor';
 import { ProjectNameEditor } from '@/components/features/projects/project-name-editor';
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
+import { ProjectTimeline } from '@/components/features/projects/project-timeline';
 import { TimeExpenseTab } from '@/components/features/projects/time-expense-tab';
 import { VarianceTab } from '@/components/features/projects/variance-tab';
 import { getChangeOrderSummaryForProject, listChangeOrders } from '@/lib/db/queries/change-orders';
@@ -24,6 +25,7 @@ import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
 import { listPhotosByProject } from '@/lib/db/queries/photos';
 import { listProjectBills } from '@/lib/db/queries/project-bills';
 import { getBudgetVsActual } from '@/lib/db/queries/project-buckets';
+import { getEstimateViewStats, listProjectEvents } from '@/lib/db/queries/project-events';
 import { getProject } from '@/lib/db/queries/projects';
 import { listPurchaseOrders } from '@/lib/db/queries/purchase-orders';
 import { listTimeEntries } from '@/lib/db/queries/time-entries';
@@ -100,16 +102,27 @@ export default async function ProjectDetailPage({
   ]);
 
   // Load job cost control data
-  const [costLines, purchaseOrders, bills, variance, catalog, changeOrders, coSummary] =
-    await Promise.all([
-      listCostLines(id),
-      listPurchaseOrders(id),
-      listProjectBills(id),
-      getVarianceReport(id),
-      listMaterialsCatalog(),
-      listChangeOrders({ projectId: id }),
-      getChangeOrderSummaryForProject(id),
-    ]);
+  const [
+    costLines,
+    purchaseOrders,
+    bills,
+    variance,
+    catalog,
+    changeOrders,
+    coSummary,
+    projectEvents,
+    estimateViewStats,
+  ] = await Promise.all([
+    listCostLines(id),
+    listPurchaseOrders(id),
+    listProjectBills(id),
+    getVarianceReport(id),
+    listMaterialsCatalog(),
+    listChangeOrders({ projectId: id }),
+    getChangeOrderSummaryForProject(id),
+    listProjectEvents(id),
+    getEstimateViewStats(id),
+  ]);
 
   // Load project invoices
   const { data: projectInvoices } = await supabase
@@ -246,6 +259,8 @@ export default async function ProjectDetailPage({
               <p className="text-sm font-medium">{project.cost_buckets.length}</p>
             </div>
           </div>
+
+          <ProjectTimeline events={projectEvents} />
         </div>
       ) : null}
 
@@ -264,6 +279,17 @@ export default async function ProjectDetailPage({
           costLines={costLines}
           catalog={catalog}
           managementFeeRate={project.management_fee_rate}
+          approval={{
+            status: project.estimate_status,
+            approval_code: project.estimate_approval_code,
+            sent_at: project.estimate_sent_at,
+            approved_at: project.estimate_approved_at,
+            approved_by_name: project.estimate_approved_by_name,
+            declined_at: project.estimate_declined_at,
+            declined_reason: project.estimate_declined_reason,
+            view_count: estimateViewStats.total,
+            last_viewed_at: estimateViewStats.last_viewed_at,
+          }}
         />
       ) : null}
 

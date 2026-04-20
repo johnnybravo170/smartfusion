@@ -893,6 +893,14 @@ export async function createInvoiceFromEstimateAction(input: {
 
   if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create invoice.' };
 
+  await supabase.from('project_events').insert({
+    tenant_id: tenant.id,
+    project_id: input.projectId,
+    kind: 'invoice_created',
+    meta: { invoice_id: data.id, total_cents: subtotalCents + taxCents },
+    actor: tenant.member.id,
+  });
+
   revalidatePath(`/projects/${input.projectId}`);
   revalidatePath('/invoices');
   return { ok: true, id: data.id as string };
