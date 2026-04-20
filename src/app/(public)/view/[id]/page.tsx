@@ -8,12 +8,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-type Surface = {
+type LineItem = {
   id: string;
-  surface_type: string;
-  sqft: number;
-  price_cents: number;
-  notes: string | null;
+  label: string;
+  qty: number;
+  unit: string;
+  line_total_cents: number;
 };
 
 export default async function PublicQuoteViewPage({ params }: { params: Promise<{ id: string }> }) {
@@ -57,14 +57,14 @@ export default async function PublicQuoteViewPage({ params }: { params: Promise<
     .eq('id', quote.customer_id)
     .single();
 
-  // Load surfaces.
-  const { data: surfaces } = await supabase
-    .from('quote_surfaces')
-    .select('id, surface_type, sqft, price_cents, notes')
+  // Load line items.
+  const { data: lineItems } = await supabase
+    .from('quote_line_items')
+    .select('id, label, qty, unit, line_total_cents')
     .eq('quote_id', id)
-    .order('created_at', { ascending: true });
+    .order('sort_order', { ascending: true });
 
-  const surfaceList = (surfaces ?? []) as Surface[];
+  const lineItemList = (lineItems ?? []) as LineItem[];
   const businessName = tenant?.name ?? 'Our Company';
   const validityDays = (tenant?.quote_validity_days as number) ?? 30;
 
@@ -125,25 +125,25 @@ export default async function PublicQuoteViewPage({ params }: { params: Promise<
         </div>
       </div>
 
-      {/* Surface breakdown */}
+      {/* Line item breakdown */}
       <div className="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-              <th className="px-5 py-3">Surface</th>
-              <th className="px-5 py-3 text-right">Sq ft</th>
+              <th className="px-5 py-3">Description</th>
+              <th className="px-5 py-3 text-right">Qty</th>
               <th className="px-5 py-3 text-right">Price</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {surfaceList.map((s) => (
-              <tr key={s.id}>
-                <td className="px-5 py-3 font-medium text-gray-900">
-                  {s.surface_type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+            {lineItemList.map((li) => (
+              <tr key={li.id}>
+                <td className="px-5 py-3 font-medium text-gray-900">{li.label}</td>
+                <td className="px-5 py-3 text-right text-gray-600">
+                  {Number(li.qty).toLocaleString()} {li.unit}
                 </td>
-                <td className="px-5 py-3 text-right text-gray-600">{s.sqft.toLocaleString()}</td>
                 <td className="px-5 py-3 text-right text-gray-900">
-                  {formatCurrency(s.price_cents)}
+                  {formatCurrency(li.line_total_cents)}
                 </td>
               </tr>
             ))}

@@ -27,6 +27,22 @@ function generateApprovalCode(): string {
   return crypto.randomBytes(12).toString('base64url').slice(0, 16);
 }
 
+/** Build line item rows from priced surfaces (pressure washing vertical). */
+function buildLineItemRows(
+  quoteId: string,
+  surfaces: { surface_type: string; sqft: number; price_cents: number }[],
+) {
+  return surfaces.map((s, i) => ({
+    quote_id: quoteId,
+    label: s.surface_type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+    qty: s.sqft > 0 ? s.sqft : 1,
+    unit: s.sqft > 0 ? 'sq ft' : 'item',
+    unit_price_cents: s.sqft > 0 ? Math.round(s.price_cents / s.sqft) : s.price_cents,
+    line_total_cents: s.price_cents,
+    sort_order: i,
+  }));
+}
+
 export type QuoteActionResult =
   | { ok: true; id: string; warning?: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
@@ -95,14 +111,27 @@ export async function createQuoteAction(input: unknown): Promise<QuoteActionResu
 
   const quoteId = quoteData.id;
 
-  // Insert surfaces.
-  const surfaceRows = pricedSurfaces.map((s) => ({
+  // Insert line items first (canonical pricing output).
+  const lineItemRows = buildLineItemRows(quoteId, pricedSurfaces);
+  const { data: lineItemData, error: liErr } = await supabase
+    .from('quote_line_items')
+    .insert(lineItemRows)
+    .select('id');
+
+  if (liErr) {
+    await supabase.from('quotes').delete().eq('id', quoteId);
+    return { ok: false, error: `Failed to save line items: ${liErr.message}` };
+  }
+
+  // Insert surfaces with line_item_id linking back to canonical line item.
+  const surfaceRows = pricedSurfaces.map((s, i) => ({
     quote_id: quoteId,
     surface_type: s.surface_type,
     polygon_geojson: s.polygon_geojson ?? null,
     sqft: s.sqft,
     price_cents: s.price_cents,
     notes: emptyToNull(s.notes),
+    line_item_id: lineItemData?.[i]?.id ?? null,
   }));
 
   const { error: surfErr } = await supabase.from('quote_surfaces').insert(surfaceRows);
@@ -167,16 +196,28 @@ export async function updateQuoteAction(input: unknown): Promise<QuoteActionResu
     return { ok: false, error: quoteErr.message };
   }
 
-  // Replace surfaces: delete old, insert new.
+  // Replace line items and surfaces: delete old, insert new.
+  await supabase.from('quote_line_items').delete().eq('quote_id', parsed.data.id);
   await supabase.from('quote_surfaces').delete().eq('quote_id', parsed.data.id);
 
-  const surfaceRows = pricedSurfaces.map((s) => ({
+  const lineItemRows = buildLineItemRows(parsed.data.id, pricedSurfaces);
+  const { data: lineItemData, error: liErr } = await supabase
+    .from('quote_line_items')
+    .insert(lineItemRows)
+    .select('id');
+
+  if (liErr) {
+    return { ok: false, error: `Failed to update line items: ${liErr.message}` };
+  }
+
+  const surfaceRows = pricedSurfaces.map((s, i) => ({
     quote_id: parsed.data.id,
     surface_type: s.surface_type,
     polygon_geojson: s.polygon_geojson ?? null,
     sqft: s.sqft,
     price_cents: s.price_cents,
     notes: emptyToNull(s.notes),
+    line_item_id: lineItemData?.[i]?.id ?? null,
   }));
 
   const { error: surfErr } = await supabase.from('quote_surfaces').insert(surfaceRows);
@@ -531,6 +572,86 @@ export async function convertQuoteToJobAction(input: {
 }
 
 /**
+ * Convert an accepted quote to a project (GC/renovation vertical).
+ * Creates a project with default cost buckets and links the quote.
+ */
+export async function convertQuoteToProjectAction(input: {
+  quoteId: string;
+}): Promise<QuoteActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+
+  const { data: quote, error: loadErr } = await supabase
+    .from('quotes')
+    .select('id, customer_id, status, notes, customers:customer_id (id, name)')
+    .eq('id', input.quoteId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (loadErr || !quote) return { ok: false, error: 'Quote not found.' };
+  if (quote.status !== 'accepted') return { ok: false, error: 'Only accepted quotes can be converted to projects.' };
+
+  const customerRaw = Array.isArray(quote.customers) ? quote.customers[0] : quote.customers;
+  const customerName =
+    customerRaw && typeof customerRaw === 'object' && 'name' in customerRaw
+      ? (customerRaw as { name: string }).name
+      : 'Project';
+
+  const { data: projectData, error: projErr } = await supabase
+    .from('projects')
+    .insert({
+      tenant_id: tenant.id,
+      customer_id: quote.customer_id,
+      quote_id: quote.id,
+      name: `${customerName} — Renovation`,
+      description: quote.notes || null,
+      management_fee_rate: 0.12,
+    })
+    .select('id')
+    .single();
+
+  if (projErr || !projectData) return { ok: false, error: projErr?.message ?? 'Failed to create project.' };
+
+  const DEFAULT_BUCKETS = [
+    { name: 'Demo', section: 'general' },
+    { name: 'Disposal', section: 'general' },
+    { name: 'Framing', section: 'interior' },
+    { name: 'Plumbing', section: 'interior' },
+    { name: 'Electrical', section: 'interior' },
+    { name: 'Drywall', section: 'interior' },
+    { name: 'Flooring', section: 'interior' },
+    { name: 'Painting', section: 'interior' },
+    { name: 'Contingency', section: 'general' },
+  ];
+
+  await supabase.from('project_cost_buckets').insert(
+    DEFAULT_BUCKETS.map((b, i) => ({
+      project_id: projectData.id,
+      tenant_id: tenant.id,
+      name: b.name,
+      section: b.section,
+      display_order: i,
+    })),
+  );
+
+  await supabase.from('worklog_entries').insert({
+    tenant_id: tenant.id,
+    entry_type: 'system',
+    title: 'Quote converted to project',
+    body: `Quote #${quote.id.slice(0, 8)} converted to project.`,
+    related_type: 'quote',
+    related_id: quote.id,
+  });
+
+  revalidatePath('/quotes');
+  revalidatePath(`/quotes/${quote.id}`);
+  revalidatePath('/projects');
+  return { ok: true, id: projectData.id };
+}
+
+/**
  * Duplicate a quote. Creates a new draft quote with the same customer and
  * surfaces.
  */
@@ -554,7 +675,8 @@ export async function duplicateQuoteAction(input: { quoteId: string }): Promise<
   const { data: surfaces } = await supabase
     .from('quote_surfaces')
     .select('surface_type, polygon_geojson, sqft, price_cents, notes')
-    .eq('quote_id', input.quoteId);
+    .eq('quote_id', input.quoteId)
+    .order('created_at', { ascending: true });
 
   // Insert new quote as draft.
   const { data: newQuote, error: insertErr } = await supabase
@@ -574,15 +696,23 @@ export async function duplicateQuoteAction(input: { quoteId: string }): Promise<
   if (insertErr || !newQuote)
     return { ok: false, error: insertErr?.message ?? 'Failed to duplicate quote.' };
 
-  // Copy surfaces.
+  // Copy line items and surfaces.
   if (surfaces && surfaces.length > 0) {
-    const surfaceRows = surfaces.map((s) => ({
+    const pricedSurfaces = (surfaces as { surface_type: string; sqft: number; price_cents: number }[]);
+    const lineItemRows = buildLineItemRows(newQuote.id, pricedSurfaces);
+    const { data: lineItemData } = await supabase
+      .from('quote_line_items')
+      .insert(lineItemRows)
+      .select('id');
+
+    const surfaceRows = surfaces.map((s, i) => ({
       quote_id: newQuote.id,
       surface_type: s.surface_type,
       polygon_geojson: s.polygon_geojson,
       sqft: s.sqft,
       price_cents: s.price_cents,
       notes: s.notes,
+      line_item_id: lineItemData?.[i]?.id ?? null,
     }));
     await supabase.from('quote_surfaces').insert(surfaceRows);
   }

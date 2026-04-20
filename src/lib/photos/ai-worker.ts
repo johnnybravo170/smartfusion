@@ -127,11 +127,12 @@ async function processOne(photo: PhotoRow): Promise<'applied' | 'soft_applied' |
   let surfaces: string[] = [];
   let customerCity: string | null = null;
   if (jobContext?.quote_id) {
-    const { data: surfs } = await admin
-      .from('quote_surfaces')
-      .select('surface_type')
-      .eq('quote_id', jobContext.quote_id);
-    surfaces = (surfs ?? []).map((s) => s.surface_type as string).filter(Boolean);
+    const { data: items } = await admin
+      .from('quote_line_items')
+      .select('label')
+      .eq('quote_id', jobContext.quote_id)
+      .order('sort_order', { ascending: true });
+    surfaces = (items ?? []).map((li) => li.label as string).filter(Boolean);
   }
   if (jobContext?.customer_id) {
     const { data: cust } = await admin

@@ -120,13 +120,29 @@ export async function submitLeadAction(input: {
     return { ok: false, error: 'Failed to create your quote. Please try again.' };
   }
 
-  // 6. Insert quote surfaces.
-  const surfaceRows = pricedSurfaces.map((s) => ({
+  // 6. Insert line items (canonical pricing), then surfaces linked to them.
+  const lineItemRows = pricedSurfaces.map((s, i) => ({
+    quote_id: quote.id,
+    label: s.surface_type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+    qty: s.sqft > 0 ? s.sqft : 1,
+    unit: s.sqft > 0 ? 'sq ft' : 'item',
+    unit_price_cents: s.sqft > 0 ? Math.round(s.price_cents / s.sqft) : s.price_cents,
+    line_total_cents: s.price_cents,
+    sort_order: i,
+  }));
+
+  const { data: lineItemData } = await admin
+    .from('quote_line_items')
+    .insert(lineItemRows)
+    .select('id');
+
+  const surfaceRows = pricedSurfaces.map((s, i) => ({
     quote_id: quote.id,
     surface_type: s.surface_type,
     polygon_geojson: s.polygon_geojson ?? null,
     sqft: s.sqft,
     price_cents: s.price_cents,
+    line_item_id: lineItemData?.[i]?.id ?? null,
   }));
 
   await admin.from('quote_surfaces').insert(surfaceRows);

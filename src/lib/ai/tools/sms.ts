@@ -1,5 +1,7 @@
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { checkWindow, defaultWindow } from '@/lib/ar/policy';
 import { sendSms } from '@/lib/twilio/client';
+import { createClient } from '@/lib/supabase/server';
 import type { AiTool } from '../types';
 
 export const smsTools: AiTool[] = [
@@ -43,6 +45,31 @@ export const smsTools: AiTool[] = [
       try {
         const tenant = await getCurrentTenant();
         if (!tenant) return 'Not authenticated.';
+
+        // Quiet hours check: get tenant timezone and verify we're in the SMS send window
+        const supabase = await createClient();
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('timezone')
+          .eq('id', tenant.id)
+          .maybeSingle();
+
+        const timezone = tenantRow?.timezone ?? tenant.timezone ?? 'America/Vancouver';
+        const now = new Date();
+        const windowCheck = checkWindow(now, defaultWindow('sms'), timezone);
+
+        if (!windowCheck.ok) {
+          const localTime = now.toLocaleTimeString('en-CA', {
+            timeZone: timezone,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+          });
+          return (
+            `It's currently outside SMS hours (${localTime} ${timezone}). ` +
+            `Quiet window is 10am–9pm Mon–Fri. Send anyway, or wait until morning?`
+          );
+        }
 
         const result = await sendSms({
           tenantId: tenant.id,

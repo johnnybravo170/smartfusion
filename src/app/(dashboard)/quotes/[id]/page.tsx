@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import {
   AcceptQuoteButton,
   ConvertToJobButton,
+  ConvertToProjectButton,
   DeleteQuoteButton,
   DownloadPdfButton,
   RejectQuoteButton,
@@ -114,6 +115,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           {status === 'accepted' && (
             <>
               <ConvertToJobButton quoteId={quote.id} />
+              <ConvertToProjectButton quoteId={quote.id} />
               <ResendQuoteButton quoteId={quote.id} customerEmail={quote.customer?.email ?? null} />
               <DuplicateQuoteButton quoteId={quote.id} />
               <PrintButton />
@@ -130,16 +132,19 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         </div>
       </header>
 
-      {/* Accepted prompt — nudge to create job */}
+      {/* Accepted prompt — nudge to create job or project */}
       {status === 'accepted' && (
         <div className="flex items-center justify-between rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4">
           <div className="flex flex-col gap-1">
             <p className="text-sm font-medium text-emerald-900">
               🎉 {quote.customer?.name?.split(' ')[0] ?? 'Customer'} accepted this estimate!
             </p>
-            <p className="text-xs text-emerald-700">Ready to schedule the job?</p>
+            <p className="text-xs text-emerald-700">Convert to a job (pressure washing) or a project (renovation/GC).</p>
           </div>
-          <ConvertToJobButton quoteId={quote.id} />
+          <div className="flex gap-2">
+            <ConvertToJobButton quoteId={quote.id} />
+            <ConvertToProjectButton quoteId={quote.id} />
+          </div>
         </div>
       )}
 

@@ -31,6 +31,18 @@ export type QuoteSurfaceRow = {
   created_at: string;
 };
 
+export type QuoteLineItemRow = {
+  id: string;
+  quote_id: string;
+  label: string;
+  qty: number;
+  unit: string;
+  unit_price_cents: number;
+  line_total_cents: number;
+  sort_order: number;
+  created_at: string;
+};
+
 export type QuoteRow = {
   id: string;
   tenant_id: string;
@@ -54,6 +66,7 @@ export type QuoteWithCustomer = QuoteRow & {
 
 export type QuoteWithRelations = QuoteWithCustomer & {
   surfaces: QuoteSurfaceRow[];
+  lineItems: QuoteLineItemRow[];
 };
 
 export type QuoteListFilters = {
@@ -145,9 +158,20 @@ export async function getQuote(id: string): Promise<QuoteWithRelations | null> {
     throw new Error(`Failed to load quote surfaces: ${surfErr.message}`);
   }
 
+  const { data: lineItemData, error: liErr } = await supabase
+    .from('quote_line_items')
+    .select('id, quote_id, label, qty, unit, unit_price_cents, line_total_cents, sort_order, created_at')
+    .eq('quote_id', id)
+    .order('sort_order', { ascending: true });
+
+  if (liErr) {
+    throw new Error(`Failed to load quote line items: ${liErr.message}`);
+  }
+
   return {
     ...base,
     surfaces: (surfaceData ?? []) as QuoteSurfaceRow[],
+    lineItems: (lineItemData ?? []) as QuoteLineItemRow[],
   };
 }
 

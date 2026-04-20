@@ -7,6 +7,7 @@ import { formatCad, formatDate, quoteStatusLabels } from '../format';
 import { resolveByShortId } from '../helpers/resolve-by-short-id';
 import { resolveCustomer } from '../helpers/resolve-customer';
 import type { AiTool } from '../types';
+import { getTaxRate } from './helpers';
 
 export const quoteTools: AiTool[] = [
   {
@@ -97,16 +98,12 @@ export const quoteTools: AiTool[] = [
         if (quote.accepted_at) output += `Accepted: ${formatDate(quote.accepted_at)}\n`;
         if (quote.notes) output += `Notes: ${quote.notes}\n`;
 
-        output += `\nSurfaces\n${'-'.repeat(30)}\n`;
-        if (quote.surfaces.length === 0) {
-          output += '  No surfaces on this quote.\n';
+        output += `\nLine Items\n${'-'.repeat(30)}\n`;
+        if (quote.lineItems.length === 0) {
+          output += '  No line items on this quote.\n';
         } else {
-          for (const s of quote.surfaces) {
-            output += `  ${s.surface_type}`;
-            if (s.sqft) output += ` (${s.sqft} sq ft)`;
-            output += ` - ${formatCad(s.price_cents)}`;
-            if (s.notes) output += ` -- ${s.notes}`;
-            output += '\n';
+          for (const li of quote.lineItems) {
+            output += `  ${li.label} — ${Number(li.qty).toFixed(1)} ${li.unit} @ ${formatCad(li.unit_price_cents)} = ${formatCad(li.line_total_cents)}\n`;
           }
         }
 
@@ -190,7 +187,8 @@ export const quoteTools: AiTool[] = [
           });
         }
 
-        const totals = calculateQuoteTotal(pricedSurfaces, 0.05);
+        const taxRate = await getTaxRate(tenant.id);
+        const totals = calculateQuoteTotal(pricedSurfaces, taxRate);
 
         const supabase = await createClient();
 
@@ -213,12 +211,32 @@ export const quoteTools: AiTool[] = [
           return `Failed to create quote: ${quoteErr?.message ?? 'Unknown error'}`;
         }
 
-        // Insert quote surfaces
-        const surfaceRows = pricedSurfaces.map((s) => ({
+        // Insert line items (canonical pricing output)
+        const lineItemRows = pricedSurfaces.map((s, i) => ({
+          quote_id: quote.id,
+          label: s.surface_type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+          qty: s.sqft > 0 ? s.sqft : 1,
+          unit: s.sqft > 0 ? 'sq ft' : 'item',
+          unit_price_cents: s.sqft > 0 ? Math.round(s.price_cents / s.sqft) : s.price_cents,
+          line_total_cents: s.price_cents,
+          sort_order: i,
+        }));
+
+        const { data: lineItemData, error: liErr } = await supabase
+          .from('quote_line_items')
+          .insert(lineItemRows)
+          .select('id');
+        if (liErr) {
+          return `Quote created but failed to add line items: ${liErr.message}`;
+        }
+
+        // Insert surfaces linked to their line items
+        const surfaceRows = pricedSurfaces.map((s, i) => ({
           quote_id: quote.id,
           surface_type: s.surface_type,
           sqft: s.sqft,
           price_cents: s.price_cents,
+          line_item_id: lineItemData?.[i]?.id ?? null,
         }));
 
         const { error: surfErr } = await supabase.from('quote_surfaces').insert(surfaceRows);
@@ -320,6 +338,203 @@ export const quoteTools: AiTool[] = [
         );
       } catch (e) {
         return `Failed to send quote: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
+  {
+    definition: {
+      name: 'get_overdue_quotes',
+      description: "Get quotes that were sent but haven't received a response in 3+ days",
+      input_schema: {
+        type: 'object',
+        properties: {
+          days_old: {
+            type: 'number',
+            description: 'How many days since sent to consider overdue (default 3)',
+          },
+        },
+      },
+    },
+    handler: async (input) => {
+      try {
+        const tenant = await getCurrentTenant();
+        if (!tenant) return 'Not authenticated.';
+
+        const daysOld = (input.days_old as number) ?? 3;
+        const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+
+        const supabase = await createClient();
+        const { data, error } = await supabase
+          .from('quotes')
+          .select('id, sent_at, total_cents, customers:customer_id (name)')
+          .eq('status', 'sent')
+          .lte('sent_at', cutoff)
+          .is('deleted_at', null)
+          .order('sent_at', { ascending: true });
+
+        if (error) {
+          return `Failed to fetch overdue quotes: ${error.message}`;
+        }
+
+        if (!data || data.length === 0) {
+          return `No quotes have been waiting more than ${daysOld} day(s) without a response.`;
+        }
+
+        const now = Date.now();
+        let output = `Found ${data.length} overdue quote(s):\n\n`;
+        for (let i = 0; i < data.length; i++) {
+          const q = data[i];
+          const customerRaw = q.customers;
+          const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
+          const sentAt = q.sent_at ? new Date(q.sent_at) : null;
+          const daysSince = sentAt ? Math.floor((now - sentAt.getTime()) / 86400000) : null;
+          output += `${i + 1}. ${(customer as { name?: string })?.name ?? 'No customer'}\n`;
+          output += `   Sent: ${sentAt ? formatDate(q.sent_at!) : 'unknown'}`;
+          if (daysSince !== null) output += ` (${daysSince} days ago)`;
+          output += `\n   Total: ${formatCad(q.total_cents as number)}\n`;
+          output += `   ID: ${(q.id as string).slice(0, 8)}\n\n`;
+        }
+
+        return output;
+      } catch (e) {
+        return `Failed to get overdue quotes: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
+  {
+    definition: {
+      name: 'update_quote_surfaces',
+      description: 'Update the surfaces and pricing on an existing draft quote',
+      input_schema: {
+        type: 'object',
+        properties: {
+          quote_id: {
+            type: 'string',
+            description: 'Quote UUID or short ID',
+          },
+          surfaces: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                surface_type: { type: 'string' },
+                sqft: { type: 'number' },
+              },
+              required: ['surface_type', 'sqft'],
+            },
+            description: 'Replacement surfaces list',
+          },
+        },
+        required: ['quote_id', 'surfaces'],
+      },
+    },
+    handler: async (input) => {
+      try {
+        const tenant = await getCurrentTenant();
+        if (!tenant) return 'Not authenticated.';
+
+        type QuoteRow = { id: string; status: string; customer_id: string };
+        const result = await resolveByShortId<QuoteRow>(
+          'quotes',
+          input.quote_id as string,
+          'id, status, customer_id',
+        );
+        if (typeof result === 'string') return result;
+
+        const quote = result;
+        if (quote.status !== 'draft') {
+          return `Quote is "${quote.status}". Only draft quotes can be updated.`;
+        }
+
+        const surfaces = input.surfaces as { surface_type: string; sqft: number }[];
+        if (!surfaces || surfaces.length === 0) {
+          return 'At least one surface is required.';
+        }
+
+        const catalog = await listCatalogEntries();
+        const catalogMap = new Map(catalog.map((c) => [c.surface_type.toLowerCase(), c]));
+
+        const pricedSurfaces: { surface_type: string; sqft: number; price_cents: number }[] = [];
+        for (const s of surfaces) {
+          const entry = catalogMap.get(s.surface_type.toLowerCase());
+          if (!entry) {
+            const available = catalog.map((c) => c.surface_type).join(', ');
+            return `Unknown surface type "${s.surface_type}". Available types: ${available}`;
+          }
+          pricedSurfaces.push({
+            surface_type: s.surface_type,
+            sqft: s.sqft,
+            price_cents: calculateSurfacePrice({ surface_type: s.surface_type, sqft: s.sqft }, entry),
+          });
+        }
+
+        const taxRate = await getTaxRate(tenant.id);
+        const totals = calculateQuoteTotal(pricedSurfaces, taxRate);
+
+        const supabase = await createClient();
+
+        await supabase.from('quote_line_items').delete().eq('quote_id', quote.id);
+        const { error: deleteErr } = await supabase
+          .from('quote_surfaces')
+          .delete()
+          .eq('quote_id', quote.id);
+
+        if (deleteErr) {
+          return `Failed to clear existing surfaces: ${deleteErr.message}`;
+        }
+
+        const lineItemRows = pricedSurfaces.map((s, i) => ({
+          quote_id: quote.id,
+          label: s.surface_type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+          qty: s.sqft > 0 ? s.sqft : 1,
+          unit: s.sqft > 0 ? 'sq ft' : 'item',
+          unit_price_cents: s.sqft > 0 ? Math.round(s.price_cents / s.sqft) : s.price_cents,
+          line_total_cents: s.price_cents,
+          sort_order: i,
+        }));
+        const { data: lineItemData } = await supabase
+          .from('quote_line_items')
+          .insert(lineItemRows)
+          .select('id');
+
+        const surfaceRows = pricedSurfaces.map((s, i) => ({
+          quote_id: quote.id,
+          surface_type: s.surface_type,
+          sqft: s.sqft,
+          price_cents: s.price_cents,
+          line_item_id: lineItemData?.[i]?.id ?? null,
+        }));
+
+        const { error: insertErr } = await supabase.from('quote_surfaces').insert(surfaceRows);
+        if (insertErr) {
+          return `Failed to insert updated surfaces: ${insertErr.message}`;
+        }
+
+        const now = new Date().toISOString();
+        const { error: updateErr } = await supabase
+          .from('quotes')
+          .update({
+            subtotal_cents: totals.subtotal_cents,
+            tax_cents: totals.tax_cents,
+            total_cents: totals.total_cents,
+            updated_at: now,
+          })
+          .eq('id', quote.id);
+
+        if (updateErr) {
+          return `Surfaces updated but failed to recalculate totals: ${updateErr.message}`;
+        }
+
+        const surfaceSummary = pricedSurfaces
+          .map((s) => `${s.surface_type} (${s.sqft} sqft) ${formatCad(s.price_cents)}`)
+          .join(', ');
+
+        return (
+          `Quote #${quote.id.slice(0, 8)} updated: ${surfaceSummary}. ` +
+          `New total: ${formatCad(totals.total_cents)}.`
+        );
+      } catch (e) {
+        return `Failed to update quote surfaces: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
   },

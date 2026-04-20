@@ -313,11 +313,12 @@ async function resolveSurfaceSummary(quoteId: string | null): Promise<string> {
   if (!quoteId) return 'job';
   const admin = createAdminClient();
   const { data } = await admin
-    .from('quote_surfaces')
-    .select('surface_type')
-    .eq('quote_id', quoteId);
+    .from('quote_line_items')
+    .select('label')
+    .eq('quote_id', quoteId)
+    .order('sort_order', { ascending: true });
   const names = (data ?? [])
-    .map((s) => humanizeSurface((s.surface_type as string | null) ?? ''))
+    .map((li) => humanizeSurface((li.label as string | null) ?? ''))
     .filter((v): v is string => Boolean(v));
   if (names.length === 0) return 'job';
   if (names.length === 1) return names[0];

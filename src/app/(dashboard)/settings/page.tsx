@@ -1,4 +1,4 @@
-import { Building2, ChevronRight, Mic, Ruler, Users } from 'lucide-react';
+import { Building2, ChevronRight, Mic, Ruler, Users, HardHat, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { CalendarFeedCard } from '@/components/features/settings/calendar-feed-card';
@@ -176,6 +176,40 @@ export default function SettingsPage() {
                 <div>
                   <CardTitle>Service Catalog</CardTitle>
                   <CardDescription>Surface types and pricing for your quotes.</CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Card>
+      </Link>
+
+      <Link href="/settings/cost-catalog" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <HardHat className="size-5" />
+                <div>
+                  <CardTitle>Cost Catalog</CardTitle>
+                  <CardDescription>Materials, labour rates, and markup rules for GC projects.</CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Card>
+      </Link>
+
+      <Link href="/settings/bucket-templates" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Layers className="size-5" />
+                <div>
+                  <CardTitle>Bucket Templates</CardTitle>
+                  <CardDescription>Reusable cost bucket sets applied when creating renovation projects.</CardDescription>
                 </div>
               </div>
               <ChevronRight className="size-5 text-muted-foreground" />

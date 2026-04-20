@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import {
   acceptQuoteAction,
   convertQuoteToJobAction,
+  convertQuoteToProjectAction,
   deleteQuoteAction,
   rejectQuoteAction,
   sendQuoteAction,
@@ -183,6 +184,30 @@ export function ConvertToJobButton({ quoteId }: { quoteId: string }) {
     <Button onClick={handleConvert} disabled={pending} size="sm">
       {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Briefcase className="size-3.5" />}
       Convert to job
+    </Button>
+  );
+}
+
+export function ConvertToProjectButton({ quoteId }: { quoteId: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  function handleConvert() {
+    startTransition(async () => {
+      const result = await convertQuoteToProjectAction({ quoteId });
+      if (result.ok) {
+        toast.success('Project created from quote.');
+        router.push(`/projects/${result.id}`);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  return (
+    <Button onClick={handleConvert} disabled={pending} size="sm" variant="outline">
+      {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Briefcase className="size-3.5" />}
+      Convert to project
     </Button>
   );
 }

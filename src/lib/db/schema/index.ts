@@ -13,6 +13,7 @@ export * from './photo-albums';
 export * from './photo-pairs';
 export * from './photo-share-links';
 export * from './photos';
+export * from './quote-line-items';
 export * from './quote-surfaces';
 export * from './quotes';
 export * from './service-catalog';

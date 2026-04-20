@@ -40,6 +40,7 @@ function toCsv(rows: Record<string, unknown>[]): string {
 const EXPORT_TABLES = [
   'customers',
   'quotes',
+  'quote_line_items',
   'quote_surfaces',
   'jobs',
   'photos',

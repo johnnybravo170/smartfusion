@@ -1,5 +1,6 @@
 import { getBudgetVsActual } from '@/lib/db/queries/project-buckets';
 import { getProject, listProjects } from '@/lib/db/queries/projects';
+import { createClient } from '@/lib/supabase/server';
 import { formatCad, formatDate } from '../format';
 import type { AiTool } from '../types';
 
@@ -222,6 +223,77 @@ export const projectTools: AiTool[] = [
         return output;
       } catch (e) {
         return `Failed to get budget: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
+  {
+    definition: {
+      name: 'get_project_budget_status',
+      description:
+        'Get budget vs actual spending for renovation projects. Flags projects over 80% budget used.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          project_id: {
+            type: 'string',
+            description: 'Project UUID. Omit to get all active projects.',
+          },
+        },
+      },
+    },
+    handler: async (input) => {
+      try {
+        let projectIds: { id: string; name: string }[] = [];
+
+        if (input.project_id) {
+          const project = await getProject(input.project_id as string);
+          if (!project) return 'Project not found.';
+          projectIds = [{ id: project.id, name: project.name }];
+        } else {
+          const supabase = await createClient();
+          const { data, error } = await supabase
+            .from('projects')
+            .select('id, name')
+            .in('status', ['planning', 'in_progress'])
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false });
+
+          if (error) {
+            return `Failed to list projects: ${error.message}`;
+          }
+          projectIds = (data ?? []) as { id: string; name: string }[];
+        }
+
+        if (projectIds.length === 0) {
+          return 'No active projects found.';
+        }
+
+        let output = `Project Budget Status\n${'='.repeat(40)}\n\n`;
+
+        for (const proj of projectIds) {
+          const budget = await getBudgetVsActual(proj.id);
+
+          const pct =
+            budget.total_estimate_cents > 0
+              ? Math.round((budget.total_actual_cents / budget.total_estimate_cents) * 100)
+              : 0;
+
+          const warning = pct >= 80 ? ' ⚠ OVER 80%' : '';
+          output += `${proj.name}${warning}\n`;
+          output += `  Budget: ${formatCad(budget.total_estimate_cents)}`;
+          output += ` · Spent: ${formatCad(budget.total_actual_cents)}`;
+          output += ` · ${pct}% used\n`;
+          if (budget.total_remaining_cents < 0) {
+            output += `  Remaining: ${formatCad(budget.total_remaining_cents)} [OVER BUDGET]\n`;
+          } else {
+            output += `  Remaining: ${formatCad(budget.total_remaining_cents)}\n`;
+          }
+          output += '\n';
+        }
+
+        return output;
+      } catch (e) {
+        return `Failed to get project budget status: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
   },

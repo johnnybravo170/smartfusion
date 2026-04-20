@@ -160,17 +160,17 @@ export async function generateQuotePdf(
   doc.line(margin, y, pageWidth - margin, y);
   y += 8;
 
-  // -- Surface breakdown table --
-  const tableBody = quote.surfaces.map((s) => [
-    s.surface_type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-    `${s.sqft.toFixed(1)} sq ft`,
-    `${formatCurrency(Math.round(s.sqft > 0 ? s.price_cents / s.sqft : 0))}/sq ft`,
-    formatCurrency(s.price_cents),
+  // -- Line item breakdown table --
+  const tableBody = quote.lineItems.map((li) => [
+    li.label,
+    `${Number(li.qty).toFixed(li.unit === 'item' ? 0 : 1)} ${li.unit}`,
+    formatCurrency(li.unit_price_cents),
+    formatCurrency(li.line_total_cents),
   ]);
 
   autoTable(doc, {
     startY: y,
-    head: [['Surface', 'Area', 'Unit Price', 'Total']],
+    head: [['Description', 'Qty', 'Unit Price', 'Total']],
     body: tableBody,
     margin: { left: margin, right: margin },
     headStyles: {
@@ -183,10 +183,10 @@ export async function generateQuotePdf(
       fontSize: 10,
     },
     columnStyles: {
-      0: { cellWidth: 60 },
-      1: { halign: 'right', cellWidth: 35 },
-      2: { halign: 'right', cellWidth: 35 },
-      3: { halign: 'right', cellWidth: 35 },
+      0: { cellWidth: 75 },
+      1: { halign: 'right', cellWidth: 28 },
+      2: { halign: 'right', cellWidth: 28 },
+      3: { halign: 'right', cellWidth: 34 },
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252],

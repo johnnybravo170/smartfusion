@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { formatCad, formatDate, invoiceStatusLabels } from '../format';
 import { resolveByShortId } from '../helpers/resolve-by-short-id';
 import type { AiTool } from '../types';
+import { getTaxRate } from './helpers';
 
 /** Timezone injected from tenant context for revenue queries. */
 let _timezone = 'America/Vancouver';
@@ -169,7 +170,8 @@ export const invoiceTools: AiTool[] = [
           return 'No quote linked to this job. Specify the amount with amount_cents.';
         }
 
-        const taxCents = Math.round(amountCents * 0.05);
+        const taxRate = await getTaxRate(tenant.id);
+        const taxCents = Math.round(amountCents * taxRate);
         const totalCents = amountCents + taxCents;
 
         const { data: invoice, error } = await supabase
@@ -295,6 +297,83 @@ export const invoiceTools: AiTool[] = [
         );
       } catch (e) {
         return `Failed to send invoice: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
+  {
+    definition: {
+      name: 'mark_invoice_paid',
+      description:
+        'Mark an invoice as paid (for cash/e-transfer payments received outside Stripe)',
+      input_schema: {
+        type: 'object',
+        properties: {
+          invoice_id: {
+            type: 'string',
+            description: 'Invoice UUID or short ID (first 8 chars)',
+          },
+        },
+        required: ['invoice_id'],
+      },
+    },
+    handler: async (input) => {
+      try {
+        const tenant = await getCurrentTenant();
+        if (!tenant) return 'Not authenticated.';
+
+        type InvoiceRow = {
+          id: string;
+          status: string;
+          amount_cents: number;
+          tax_cents: number;
+          customers: { name: string } | { name: string }[];
+        };
+
+        const result = await resolveByShortId<InvoiceRow>(
+          'invoices',
+          input.invoice_id as string,
+          'id, status, amount_cents, tax_cents, customers:customer_id (name)',
+        );
+        if (typeof result === 'string') return result;
+
+        const invoice = result;
+
+        if (invoice.status !== 'sent') {
+          return `Invoice is "${invoice.status}". Only sent invoices can be marked paid.`;
+        }
+
+        const supabase = await createClient();
+        const now = new Date().toISOString();
+
+        const { error: updateErr } = await supabase
+          .from('invoices')
+          .update({ status: 'paid', paid_at: now, updated_at: now })
+          .eq('id', invoice.id);
+
+        if (updateErr) {
+          return `Failed to mark invoice paid: ${updateErr.message}`;
+        }
+
+        const customerRaw = invoice.customers;
+        const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
+        const customerName = customer?.name ?? 'customer';
+        const totalCents = invoice.amount_cents + invoice.tax_cents;
+
+        await supabase.from('worklog_entries').insert({
+          tenant_id: tenant.id,
+          entry_type: 'system',
+          title: 'Invoice marked as paid',
+          body: `Invoice #${invoice.id.slice(0, 8)} for ${customerName} marked as paid. Total: ${formatCad(totalCents)}.`,
+          related_type: 'invoice',
+          related_id: invoice.id,
+        });
+
+        return (
+          `Invoice #${invoice.id.slice(0, 8)} marked as paid. ` +
+          `Customer: ${customerName}. Amount: ${formatCad(totalCents)}.`
+        );
+      } catch (e) {
+        return `Failed to mark invoice paid: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
   },

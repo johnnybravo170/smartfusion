@@ -1,5 +1,6 @@
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getJob, listJobs, listWorklogForJob } from '@/lib/db/queries/jobs';
+import { sendSms } from '@/lib/twilio/client';
 import { createClient } from '@/lib/supabase/server';
 import {
   formatCad,
@@ -371,6 +372,211 @@ export const jobTools: AiTool[] = [
         return `Job for ${customerName} rescheduled to ${formatDateTime(scheduledAt)}.`;
       } catch (e) {
         return `Failed to schedule job: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
+  {
+    definition: {
+      name: 'get_uninvoiced_jobs',
+      description: "Get completed jobs that don't have an invoice yet",
+      input_schema: {
+        type: 'object',
+        properties: {},
+      },
+    },
+    handler: async () => {
+      try {
+        const tenant = await getCurrentTenant();
+        if (!tenant) return 'Not authenticated.';
+
+        const supabase = await createClient();
+
+        const { data: invoicedJobIds, error: invErr } = await supabase
+          .from('invoices')
+          .select('job_id')
+          .not('job_id', 'is', null)
+          .is('deleted_at', null);
+
+        if (invErr) {
+          return `Failed to check invoices: ${invErr.message}`;
+        }
+
+        const invoicedSet = new Set(
+          (invoicedJobIds ?? []).map((r) => (r as { job_id: string }).job_id),
+        );
+
+        const { data: jobs, error: jobErr } = await supabase
+          .from('jobs')
+          .select(
+            'id, completed_at, notes, customers:customer_id (name), quotes:quote_id (total_cents)',
+          )
+          .eq('status', 'complete')
+          .is('deleted_at', null)
+          .order('completed_at', { ascending: false });
+
+        if (jobErr) {
+          return `Failed to fetch completed jobs: ${jobErr.message}`;
+        }
+
+        const uninvoiced = (jobs ?? []).filter((j) => !invoicedSet.has(j.id));
+
+        if (uninvoiced.length === 0) {
+          return 'All completed jobs have been invoiced.';
+        }
+
+        let output = `Found ${uninvoiced.length} completed job(s) without an invoice:\n\n`;
+        for (let i = 0; i < uninvoiced.length; i++) {
+          const j = uninvoiced[i];
+          const customerRaw = j.customers;
+          const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
+          const quoteRaw = j.quotes;
+          const quote = Array.isArray(quoteRaw) ? quoteRaw[0] : quoteRaw;
+          output += `${i + 1}. ${(customer as { name?: string })?.name ?? 'No customer'}\n`;
+          if (j.completed_at) output += `   Completed: ${formatDate(j.completed_at)}\n`;
+          if (quote) output += `   Quote total: ${formatCad((quote as { total_cents: number }).total_cents)}\n`;
+          if (j.notes) output += `   Notes: ${j.notes}\n`;
+          output += `   ID: ${j.id.slice(0, 8)}\n\n`;
+        }
+
+        return output;
+      } catch (e) {
+        return `Failed to get uninvoiced jobs: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
+  {
+    definition: {
+      name: 'create_review_request',
+      description: 'Send a review request SMS to a customer after job completion',
+      input_schema: {
+        type: 'object',
+        properties: {
+          job_id: {
+            type: 'string',
+            description: 'Job UUID or short ID',
+          },
+        },
+        required: ['job_id'],
+      },
+    },
+    handler: async (input) => {
+      try {
+        const tenant = await getCurrentTenant();
+        if (!tenant) return 'Not authenticated.';
+
+        type JobRow = {
+          id: string;
+          status: string;
+          customers: { name: string; phone: string | null } | { name: string; phone: string | null }[];
+        };
+
+        const result = await resolveByShortId<JobRow>(
+          'jobs',
+          input.job_id as string,
+          'id, status, customers:customer_id (name, phone)',
+        );
+        if (typeof result === 'string') return result;
+
+        const job = result;
+
+        if (job.status !== 'complete') {
+          return `Job is "${jobStatusLabels[job.status] ?? job.status}". Review requests can only be sent for completed jobs.`;
+        }
+
+        const customerRaw = job.customers;
+        const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
+
+        if (!customer?.phone) {
+          return `Cannot send review request: ${customer?.name ?? 'customer'} has no phone number on file.`;
+        }
+
+        const firstName = customer.name.split(' ')[0];
+        const body = `Hi ${firstName}, thanks for having us out today! If you have a moment, we'd really appreciate a Google review — it helps us a ton. Just search ${tenant.name} on Google!`;
+
+        const smsResult = await sendSms({
+          tenantId: tenant.id,
+          to: customer.phone,
+          body,
+          identity: 'operator',
+          relatedType: 'job',
+          relatedId: job.id,
+        });
+
+        if (!smsResult.ok) {
+          return `Failed to send review request: ${smsResult.error}`;
+        }
+
+        const supabase = await createClient();
+        await supabase.from('worklog_entries').insert({
+          tenant_id: tenant.id,
+          entry_type: 'system',
+          title: 'Review request sent',
+          body: `Review request sent to ${customer.name} (${customer.phone}).`,
+          related_type: 'job',
+          related_id: job.id,
+        });
+
+        return `Review request sent to ${customer.name} at ${customer.phone}.`;
+      } catch (e) {
+        return `Failed to send review request: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
+  {
+    definition: {
+      name: 'get_upcoming_jobs',
+      description: 'Get upcoming scheduled jobs for the next 7 days',
+      input_schema: {
+        type: 'object',
+        properties: {
+          days_ahead: {
+            type: 'number',
+            description: 'How many days ahead to look (default 7)',
+          },
+        },
+      },
+    },
+    handler: async (input) => {
+      try {
+        const tenant = await getCurrentTenant();
+        if (!tenant) return 'Not authenticated.';
+
+        const daysAhead = (input.days_ahead as number) ?? 7;
+        const now = new Date().toISOString();
+        const future = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString();
+
+        const supabase = await createClient();
+        const { data, error } = await supabase
+          .from('jobs')
+          .select('id, scheduled_at, notes, customers:customer_id (name)')
+          .eq('status', 'booked')
+          .gte('scheduled_at', now)
+          .lte('scheduled_at', future)
+          .is('deleted_at', null)
+          .order('scheduled_at', { ascending: true });
+
+        if (error) {
+          return `Failed to fetch upcoming jobs: ${error.message}`;
+        }
+
+        if (!data || data.length === 0) {
+          return `No jobs scheduled in the next ${daysAhead} day(s).`;
+        }
+
+        let output = `Upcoming jobs (next ${daysAhead} day(s)):\n\n`;
+        for (let i = 0; i < data.length; i++) {
+          const j = data[i];
+          const customerRaw = j.customers;
+          const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
+          output += `${i + 1}. ${(customer as { name?: string })?.name ?? 'No customer'}\n`;
+          if (j.scheduled_at) output += `   Scheduled: ${formatDateTime(j.scheduled_at)}\n`;
+          if (j.notes) output += `   Notes: ${j.notes}\n`;
+          output += `   ID: ${j.id.slice(0, 8)}\n\n`;
+        }
+
+        return output;
+      } catch (e) {
+        return `Failed to get upcoming jobs: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
   },

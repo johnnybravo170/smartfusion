@@ -749,3 +749,154 @@ export async function updateInvoiceNoteAction(input: {
   revalidatePath(`/invoices/${input.invoiceId}`);
   return { ok: true, id: input.invoiceId };
 }
+
+// ─── Project (GC) milestone invoice ──────────────────────────────────────────
+
+export async function createMilestoneInvoiceAction(input: {
+  projectId: string;
+  label: string;
+  lineItems: { description: string; quantity: number; unitPriceCents: number }[];
+}): Promise<InvoiceActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+  if (!input.label.trim()) return { ok: false, error: 'Milestone label is required.' };
+  if (input.lineItems.length === 0) return { ok: false, error: 'At least one line item is required.' };
+
+  const supabase = await createClient();
+
+  const { data: project, error: projErr } = await supabase
+    .from('projects')
+    .select('id, customer_id, name')
+    .eq('id', input.projectId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (projErr || !project) return { ok: false, error: 'Project not found.' };
+  if (!project.customer_id) return { ok: false, error: 'Project has no customer assigned.' };
+
+  const items: InvoiceLineItem[] = input.lineItems.map((li) => ({
+    description: li.description.trim(),
+    quantity: li.quantity,
+    unit_price_cents: li.unitPriceCents,
+    total_cents: li.quantity * li.unitPriceCents,
+  }));
+  const subtotalCents = items.reduce((s, li) => s + li.total_cents, 0);
+  const taxCents = Math.round(subtotalCents * 0.05);
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .insert({
+      tenant_id: tenant.id,
+      project_id: input.projectId,
+      customer_id: project.customer_id,
+      status: 'draft',
+      amount_cents: subtotalCents,
+      tax_cents: taxCents,
+      line_items: items,
+      customer_note: input.label,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create invoice.' };
+
+  await supabase.from('worklog_entries').insert({
+    tenant_id: tenant.id,
+    entry_type: 'system',
+    title: 'Milestone invoice created',
+    body: `Invoice "${input.label}" created for project "${project.name}".`,
+    related_type: 'project',
+    related_id: input.projectId,
+  });
+
+  revalidatePath(`/projects/${input.projectId}`);
+  revalidatePath('/invoices');
+  return { ok: true, id: data.id as string };
+}
+
+// ─── Project (GC) final invoice ───────────────────────────────────────────────
+
+export async function generateFinalInvoiceAction(input: {
+  projectId: string;
+}): Promise<InvoiceActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+
+  const { data: project, error: projErr } = await supabase
+    .from('projects')
+    .select('id, customer_id, name, management_fee_rate')
+    .eq('id', input.projectId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (projErr || !project) return { ok: false, error: 'Project not found.' };
+  if (!project.customer_id) return { ok: false, error: 'Project has no customer assigned.' };
+
+  const mgmtRate = (project.management_fee_rate as number) ?? 0.12;
+
+  const [timeRes, expenseRes, priorInvoicesRes] = await Promise.all([
+    supabase.from('time_entries').select('hours, hourly_rate_cents').eq('project_id', input.projectId),
+    supabase.from('expenses').select('amount_cents').eq('project_id', input.projectId),
+    supabase
+      .from('invoices')
+      .select('amount_cents')
+      .eq('project_id', input.projectId)
+      .not('status', 'in', '("void")')
+      .is('deleted_at', null),
+  ]);
+
+  const timeEntries = (timeRes.data ?? []) as { hours: number; hourly_rate_cents: number | null }[];
+  const expenses = (expenseRes.data ?? []) as { amount_cents: number }[];
+  const priorInvoices = (priorInvoicesRes.data ?? []) as { amount_cents: number }[];
+
+  const labourCents = timeEntries.reduce((s, t) => {
+    const rate = t.hourly_rate_cents ?? 0;
+    return s + Math.round(Number(t.hours) * rate);
+  }, 0);
+  const expenseCents = expenses.reduce((s, e) => s + e.amount_cents, 0);
+  const mgmtFeeCents = Math.round((labourCents + expenseCents) * mgmtRate);
+  const priorBilledCents = priorInvoices.reduce((s, i) => s + i.amount_cents, 0);
+
+  const lineItems: InvoiceLineItem[] = [];
+  if (labourCents > 0) {
+    lineItems.push({ description: 'Labour', quantity: 1, unit_price_cents: labourCents, total_cents: labourCents });
+  }
+  if (expenseCents > 0) {
+    lineItems.push({ description: 'Materials & Expenses', quantity: 1, unit_price_cents: expenseCents, total_cents: expenseCents });
+  }
+  if (mgmtFeeCents > 0) {
+    lineItems.push({ description: `Management Fee (${Math.round(mgmtRate * 100)}%)`, quantity: 1, unit_price_cents: mgmtFeeCents, total_cents: mgmtFeeCents });
+  }
+  if (priorBilledCents > 0) {
+    lineItems.push({ description: 'Less: Prior Invoices', quantity: 1, unit_price_cents: -priorBilledCents, total_cents: -priorBilledCents });
+  }
+
+  const subtotalCents = lineItems.reduce((s, li) => s + li.total_cents, 0);
+  if (subtotalCents <= 0) {
+    return { ok: false, error: 'Balance owing is zero or negative — nothing left to invoice.' };
+  }
+  const taxCents = Math.round(subtotalCents * 0.05);
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .insert({
+      tenant_id: tenant.id,
+      project_id: input.projectId,
+      customer_id: project.customer_id,
+      status: 'draft',
+      amount_cents: subtotalCents,
+      tax_cents: taxCents,
+      line_items: lineItems,
+      customer_note: 'Final invoice',
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create final invoice.' };
+
+  revalidatePath(`/projects/${input.projectId}`);
+  revalidatePath('/invoices');
+  return { ok: true, id: data.id as string };
+}

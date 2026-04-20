@@ -8,7 +8,8 @@
  * the server on every keystroke.
  */
 
-import { Search, X } from 'lucide-react';
+import { Plus, Search, X } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
@@ -101,6 +102,12 @@ export function CustomerSearchBar({ defaultQuery }: { defaultQuery: string }) {
             data-type={t}
           />
         ))}
+        <Button variant="outline" size="xs" asChild className="ml-auto">
+          <Link href="/customers/new">
+            <Plus className="size-3.5" />
+            Add new
+          </Link>
+        </Button>
       </div>
     </div>
   );
