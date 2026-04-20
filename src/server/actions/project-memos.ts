@@ -13,6 +13,7 @@ import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
 
 export type MemoActionResult = { ok: true; id: string } | { ok: false; error: string };
+export type MemoDeleteResult = { ok: true } | { ok: false; error: string };
 
 export type MemoExtraction = {
   transcript: string;
@@ -232,4 +233,39 @@ Respond with ONLY valid JSON in this exact format:
       error: `Transcription failed: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
+}
+
+/**
+ * Delete a memo row and its audio file from storage.
+ */
+export async function deleteMemoAction(memoId: string): Promise<MemoDeleteResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+
+  const { data: memo, error: loadErr } = await supabase
+    .from('project_memos')
+    .select('id, project_id, audio_url')
+    .eq('id', memoId)
+    .maybeSingle();
+
+  if (loadErr || !memo) {
+    return { ok: false, error: 'Memo not found.' };
+  }
+
+  if (memo.audio_url) {
+    const storagePath = (memo.audio_url as string).split('/project-memos/')[1];
+    if (storagePath) {
+      await supabase.storage.from('project-memos').remove([storagePath]);
+    }
+  }
+
+  const { error: deleteErr } = await supabase.from('project_memos').delete().eq('id', memoId);
+  if (deleteErr) {
+    return { ok: false, error: deleteErr.message };
+  }
+
+  revalidatePath(`/projects/${memo.project_id}`);
+  return { ok: true };
 }

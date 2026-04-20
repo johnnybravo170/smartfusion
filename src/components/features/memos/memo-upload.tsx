@@ -8,11 +8,15 @@
  * mapped to cost buckets.
  */
 
-import { Loader2, Mic, MicOff, Upload } from 'lucide-react';
+import { Loader2, Mic, MicOff, Trash2, Upload } from 'lucide-react';
 import { useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { transcribeMemoAction, uploadMemoAction } from '@/server/actions/project-memos';
+import {
+  deleteMemoAction,
+  transcribeMemoAction,
+  uploadMemoAction,
+} from '@/server/actions/project-memos';
 
 type MemoRow = {
   id: string;
@@ -81,10 +85,19 @@ export function MemoUpload({ projectId, memos }: MemoUploadProps) {
       formData.append('audio', blob, filename);
 
       const result = await uploadMemoAction(formData);
-      if (result.ok) {
-        toast.success('Audio uploaded. Click "Transcribe" to process.');
-      } else {
+      if (!result.ok) {
         toast.error(result.error);
+        return;
+      }
+
+      toast.success('Audio uploaded. Transcribing...');
+      setTranscribing(result.id);
+      const transcribeResult = await transcribeMemoAction(result.id);
+      setTranscribing(null);
+      if (transcribeResult.ok) {
+        toast.success('Transcription complete!');
+      } else {
+        toast.error(transcribeResult.error);
       }
     });
   }
@@ -96,6 +109,18 @@ export function MemoUpload({ projectId, memos }: MemoUploadProps) {
       setTranscribing(null);
       if (result.ok) {
         toast.success('Transcription complete!');
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  function handleDelete(memoId: string) {
+    if (!confirm('Delete this voice memo? This cannot be undone.')) return;
+    startTransition(async () => {
+      const result = await deleteMemoAction(memoId);
+      if (result.ok) {
+        toast.success('Memo deleted.');
       } else {
         toast.error(result.error);
       }
@@ -161,28 +186,28 @@ export function MemoUpload({ projectId, memos }: MemoUploadProps) {
                     minute: '2-digit',
                   })}
                 </span>
-                <span className="text-xs font-medium uppercase tracking-wider">{memo.status}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium uppercase tracking-wider">
+                    {memo.status}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="size-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDelete(memo.id)}
+                    disabled={isPending}
+                    aria-label="Delete memo"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
               </div>
 
-              {memo.status === 'pending' ? (
-                <Button
-                  size="sm"
-                  onClick={() => handleTranscribe(memo.id)}
-                  disabled={isPending || transcribing === memo.id}
-                >
-                  {transcribing === memo.id ? (
-                    <>
-                      <Loader2 className="mr-2 size-3 animate-spin" /> Transcribing...
-                    </>
-                  ) : (
-                    'Transcribe'
-                  )}
-                </Button>
-              ) : null}
-
-              {memo.status === 'transcribing' || memo.status === 'extracting' ? (
+              {memo.status === 'pending' ||
+              memo.status === 'transcribing' ||
+              memo.status === 'extracting' ? (
                 <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Loader2 className="size-3 animate-spin" /> Processing...
+                  <Loader2 className="size-3 animate-spin" /> Transcribing...
                 </p>
               ) : null}
 
