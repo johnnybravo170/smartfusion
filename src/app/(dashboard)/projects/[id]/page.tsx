@@ -358,12 +358,14 @@ export default async function ProjectDetailPage({
             display_name: w.display_name ?? 'Worker',
             worker_type: w.worker_type,
             default_hourly_rate_cents: w.default_hourly_rate_cents,
+            default_charge_rate_cents: w.default_charge_rate_cents,
           }))}
           assignments={crewAssignments.map((a) => ({
             id: a.id,
             worker_profile_id: a.worker_profile_id,
             scheduled_date: a.scheduled_date,
             hourly_rate_cents: a.hourly_rate_cents,
+            charge_rate_cents: a.charge_rate_cents,
             notes: a.notes,
           }))}
         />

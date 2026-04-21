@@ -21,6 +21,7 @@ type WorkerProfile = {
   can_log_expenses: boolean | null;
   can_invoice: boolean | null;
   default_hourly_rate_cents: number | null;
+  default_charge_rate_cents: number | null;
 };
 
 function boolToTri(v: boolean | null): 'inherit' | 'yes' | 'no' {
@@ -33,9 +34,14 @@ export function WorkerSettingsRow({ profile }: { profile: WorkerProfile }) {
   const [workerType, setWorkerType] = useState(profile.worker_type);
   const [canLogExpenses, setCanLogExpenses] = useState(boolToTri(profile.can_log_expenses));
   const [canInvoice, setCanInvoice] = useState(boolToTri(profile.can_invoice));
-  const [rate, setRate] = useState(
+  const [payRate, setPayRate] = useState(
     profile.default_hourly_rate_cents !== null
       ? (profile.default_hourly_rate_cents / 100).toFixed(2)
+      : '',
+  );
+  const [chargeRate, setChargeRate] = useState(
+    profile.default_charge_rate_cents !== null
+      ? (profile.default_charge_rate_cents / 100).toFixed(2)
       : '',
   );
 
@@ -46,7 +52,8 @@ export function WorkerSettingsRow({ profile }: { profile: WorkerProfile }) {
         worker_type: workerType,
         can_log_expenses: canLogExpenses,
         can_invoice: canInvoice,
-        default_hourly_rate_dollars: rate,
+        default_pay_rate_dollars: payRate,
+        default_charge_rate_dollars: chargeRate,
       });
       if (!result.ok) {
         toast.error(result.error ?? 'Failed to save.');
@@ -57,7 +64,7 @@ export function WorkerSettingsRow({ profile }: { profile: WorkerProfile }) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-6">
       <div className="space-y-1">
         <Label className="text-xs">Type</Label>
         <Select value={workerType} onValueChange={(v) => setWorkerType(v as typeof workerType)}>
@@ -100,13 +107,24 @@ export function WorkerSettingsRow({ profile }: { profile: WorkerProfile }) {
         </Select>
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">Default rate (CAD/hr)</Label>
+        <Label className="text-xs">Pay ($/hr)</Label>
         <Input
           type="number"
           step="0.01"
           min="0"
-          value={rate}
-          onChange={(e) => setRate(e.target.value)}
+          value={payRate}
+          onChange={(e) => setPayRate(e.target.value)}
+          placeholder="—"
+        />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Charge ($/hr)</Label>
+        <Input
+          type="number"
+          step="0.01"
+          min="0"
+          value={chargeRate}
+          onChange={(e) => setChargeRate(e.target.value)}
           placeholder="—"
         />
       </div>

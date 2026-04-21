@@ -13,9 +13,20 @@ const createSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional()
     .nullable(),
-  hourly_rate_dollars: z.string().trim().optional().default(''),
+  pay_rate_dollars: z.string().trim().optional().default(''),
+  charge_rate_dollars: z.string().trim().optional().default(''),
   notes: z.string().trim().max(500).optional().default(''),
 });
+
+function parseRate(input: string, label: string): { cents: number | null; error?: string } {
+  const v = input.trim();
+  if (v === '') return { cents: null };
+  const cents = Math.round(Number(v) * 100);
+  if (!Number.isFinite(cents) || cents < 0) {
+    return { cents: null, error: `${label} must be a positive number.` };
+  }
+  return { cents };
+}
 
 function assertOwnerOrAdmin(role: string) {
   if (role !== 'owner' && role !== 'admin') {
@@ -38,11 +49,10 @@ export async function assignWorkerAction(
   if (!parsed.success) return { ok: false, error: 'Invalid input.' };
   const v = parsed.data;
 
-  const rateStr = v.hourly_rate_dollars.trim();
-  const rateCents = rateStr === '' ? null : Math.round(Number(rateStr) * 100);
-  if (rateCents !== null && (!Number.isFinite(rateCents) || rateCents < 0)) {
-    return { ok: false, error: 'Rate must be a positive number.' };
-  }
+  const pay = parseRate(v.pay_rate_dollars, 'Pay rate');
+  if (pay.error) return { ok: false, error: pay.error };
+  const charge = parseRate(v.charge_rate_dollars, 'Charge rate');
+  if (charge.error) return { ok: false, error: charge.error };
 
   const admin = createAdminClient();
 
@@ -60,7 +70,8 @@ export async function assignWorkerAction(
     project_id: v.project_id,
     worker_profile_id: v.worker_profile_id,
     scheduled_date: v.scheduled_date ?? null,
-    hourly_rate_cents: rateCents,
+    hourly_rate_cents: pay.cents,
+    charge_rate_cents: charge.cents,
     notes: v.notes || null,
   });
   if (error) {

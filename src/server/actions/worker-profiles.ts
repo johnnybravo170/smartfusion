@@ -62,8 +62,19 @@ const ownerSchema = z.object({
   worker_type: z.enum(['employee', 'subcontractor']),
   can_log_expenses: z.enum(['inherit', 'yes', 'no']),
   can_invoice: z.enum(['inherit', 'yes', 'no']),
-  default_hourly_rate_dollars: z.string().trim().optional().default(''),
+  default_pay_rate_dollars: z.string().trim().optional().default(''),
+  default_charge_rate_dollars: z.string().trim().optional().default(''),
 });
+
+function parseRate(input: string): { cents: number | null; error?: string } {
+  const v = input.trim();
+  if (v === '') return { cents: null };
+  const cents = Math.round(Number(v) * 100);
+  if (!Number.isFinite(cents) || cents < 0) {
+    return { cents: null, error: 'Rate must be a positive number.' };
+  }
+  return { cents };
+}
 
 function triToBool(value: 'inherit' | 'yes' | 'no'): boolean | null {
   if (value === 'inherit') return null;
@@ -83,18 +94,18 @@ export async function updateWorkerCapabilitiesAction(
   if (!parsed.success) return { ok: false, error: 'Invalid input.' };
   const v = parsed.data;
 
-  const rateDollars = v.default_hourly_rate_dollars.trim();
-  const rateCents = rateDollars === '' ? null : Math.round(Number(rateDollars) * 100);
-  if (rateCents !== null && (!Number.isFinite(rateCents) || rateCents < 0)) {
-    return { ok: false, error: 'Hourly rate must be a positive number.' };
-  }
+  const pay = parseRate(v.default_pay_rate_dollars);
+  if (pay.error) return { ok: false, error: `Pay: ${pay.error}` };
+  const charge = parseRate(v.default_charge_rate_dollars);
+  if (charge.error) return { ok: false, error: `Charge: ${charge.error}` };
 
   try {
     await updateWorkerProfile(tenant.id, v.profile_id, {
       worker_type: v.worker_type,
       can_log_expenses: triToBool(v.can_log_expenses),
       can_invoice: triToBool(v.can_invoice),
-      default_hourly_rate_cents: rateCents,
+      default_hourly_rate_cents: pay.cents,
+      default_charge_rate_cents: charge.cents,
     });
     revalidatePath('/settings/team');
     return { ok: true };

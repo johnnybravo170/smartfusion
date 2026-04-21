@@ -20,6 +20,7 @@ export type TeamMemberRow = {
     can_log_expenses: boolean | null;
     can_invoice: boolean | null;
     default_hourly_rate_cents: number | null;
+    default_charge_rate_cents: number | null;
     display_name: string | null;
   } | null;
 };
@@ -57,7 +58,7 @@ export async function listTeamMembers(tenantId: string): Promise<TeamMemberRow[]
   const { data: profiles } = await admin
     .from('worker_profiles')
     .select(
-      'id, tenant_member_id, worker_type, can_log_expenses, can_invoice, default_hourly_rate_cents, display_name',
+      'id, tenant_member_id, worker_type, can_log_expenses, can_invoice, default_hourly_rate_cents, default_charge_rate_cents, display_name',
     )
     .eq('tenant_id', tenantId);
   const profilesByMember = new Map((profiles ?? []).map((p) => [p.tenant_member_id as string, p]));
@@ -80,6 +81,7 @@ export async function listTeamMembers(tenantId: string): Promise<TeamMemberRow[]
             can_log_expenses: wp.can_log_expenses as boolean | null,
             can_invoice: wp.can_invoice as boolean | null,
             default_hourly_rate_cents: wp.default_hourly_rate_cents as number | null,
+            default_charge_rate_cents: wp.default_charge_rate_cents as number | null,
             display_name: wp.display_name as string | null,
           }
         : null,

@@ -7,12 +7,13 @@ export type ProjectAssignmentRow = {
   worker_profile_id: string;
   scheduled_date: string | null;
   hourly_rate_cents: number | null;
+  charge_rate_cents: number | null;
   notes: string | null;
   created_at: string;
 };
 
 const COLUMNS =
-  'id, tenant_id, project_id, worker_profile_id, scheduled_date, hourly_rate_cents, notes, created_at';
+  'id, tenant_id, project_id, worker_profile_id, scheduled_date, hourly_rate_cents, charge_rate_cents, notes, created_at';
 
 export async function listAssignmentsForProject(
   tenantId: string,

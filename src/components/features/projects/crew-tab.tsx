@@ -28,6 +28,7 @@ export type CrewWorker = {
   display_name: string;
   worker_type: 'employee' | 'subcontractor';
   default_hourly_rate_cents: number | null;
+  default_charge_rate_cents: number | null;
 };
 
 export type CrewAssignment = {
@@ -35,6 +36,7 @@ export type CrewAssignment = {
   worker_profile_id: string;
   scheduled_date: string | null;
   hourly_rate_cents: number | null;
+  charge_rate_cents: number | null;
   notes: string | null;
 };
 
@@ -48,7 +50,8 @@ export function CrewTab({ projectId, workers, assignments }: Props) {
   const [pending, startTransition] = useTransition();
   const [workerId, setWorkerId] = useState<string>(workers[0]?.profile_id ?? '');
   const [date, setDate] = useState<string>('');
-  const [rate, setRate] = useState<string>('');
+  const [payRate, setPayRate] = useState<string>('');
+  const [chargeRate, setChargeRate] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
   const workerById = useMemo(() => new Map(workers.map((w) => [w.profile_id, w])), [workers]);
@@ -63,7 +66,8 @@ export function CrewTab({ projectId, workers, assignments }: Props) {
         project_id: projectId,
         worker_profile_id: workerId,
         scheduled_date: date || null,
-        hourly_rate_dollars: rate,
+        pay_rate_dollars: payRate,
+        charge_rate_dollars: chargeRate,
         notes,
       });
       if (!result.ok) {
@@ -72,7 +76,8 @@ export function CrewTab({ projectId, workers, assignments }: Props) {
       }
       toast.success('Worker assigned.');
       setDate('');
-      setRate('');
+      setPayRate('');
+      setChargeRate('');
       setNotes('');
     });
   }
@@ -106,7 +111,7 @@ export function CrewTab({ projectId, workers, assignments }: Props) {
       ) : (
         <div className="rounded-lg border p-4">
           <h3 className="mb-3 text-sm font-semibold">Assign worker</h3>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
             <div className="space-y-1">
               <Label className="text-xs">Worker</Label>
               <Select value={workerId} onValueChange={setWorkerId}>
@@ -127,13 +132,24 @@ export function CrewTab({ projectId, workers, assignments }: Props) {
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Rate override (CAD/hr)</Label>
+              <Label className="text-xs">Pay override ($/hr)</Label>
               <Input
                 type="number"
                 step="0.01"
                 min="0"
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
+                value={payRate}
+                onChange={(e) => setPayRate(e.target.value)}
+                placeholder="—"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Charge override ($/hr)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={chargeRate}
+                onChange={(e) => setChargeRate(e.target.value)}
                 placeholder="—"
               />
             </div>
@@ -201,7 +217,8 @@ function AssignmentTable({
         <TableRow>
           <TableHead>Worker</TableHead>
           {showDate ? <TableHead>Date</TableHead> : null}
-          <TableHead>Rate</TableHead>
+          <TableHead>Pay</TableHead>
+          <TableHead>Charge</TableHead>
           <TableHead>Notes</TableHead>
           <TableHead className="w-[60px]" />
         </TableRow>
@@ -209,7 +226,8 @@ function AssignmentTable({
       <TableBody>
         {assignments.map((a) => {
           const w = workerById.get(a.worker_profile_id);
-          const rate = a.hourly_rate_cents ?? w?.default_hourly_rate_cents ?? null;
+          const pay = a.hourly_rate_cents ?? w?.default_hourly_rate_cents ?? null;
+          const charge = a.charge_rate_cents ?? w?.default_charge_rate_cents ?? null;
           return (
             <TableRow key={a.id}>
               <TableCell className="text-sm">
@@ -230,9 +248,16 @@ function AssignmentTable({
                 </TableCell>
               ) : null}
               <TableCell className="text-sm">
-                {rate !== null ? `$${(rate / 100).toFixed(2)}/hr` : '—'}
+                {pay !== null ? `$${(pay / 100).toFixed(2)}` : '—'}
                 {a.hourly_rate_cents !== null &&
                 a.hourly_rate_cents !== w?.default_hourly_rate_cents ? (
+                  <span className="ml-1 text-xs text-muted-foreground">(override)</span>
+                ) : null}
+              </TableCell>
+              <TableCell className="text-sm">
+                {charge !== null ? `$${(charge / 100).toFixed(2)}` : '—'}
+                {a.charge_rate_cents !== null &&
+                a.charge_rate_cents !== w?.default_charge_rate_cents ? (
                   <span className="ml-1 text-xs text-muted-foreground">(override)</span>
                 ) : null}
               </TableCell>

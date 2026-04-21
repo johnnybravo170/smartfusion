@@ -45,10 +45,15 @@ export async function logWorkerTimeAction(input: {
   const mine = assignments.filter((a) => a.worker_profile_id === profile.id);
   const dayMatch = mine.find((a) => a.scheduled_date === parsed.data.entry_date);
   const ongoing = mine.find((a) => a.scheduled_date === null);
-  const rateCents =
+  const payCents =
     dayMatch?.hourly_rate_cents ??
     ongoing?.hourly_rate_cents ??
     profile.default_hourly_rate_cents ??
+    null;
+  const chargeCents =
+    dayMatch?.charge_rate_cents ??
+    ongoing?.charge_rate_cents ??
+    profile.default_charge_rate_cents ??
     null;
 
   const admin = createAdminClient();
@@ -61,7 +66,8 @@ export async function logWorkerTimeAction(input: {
       project_id: parsed.data.project_id,
       bucket_id: parsed.data.bucket_id || null,
       hours: parsed.data.hours,
-      hourly_rate_cents: rateCents,
+      hourly_rate_cents: payCents,
+      charge_rate_cents: chargeCents,
       notes: parsed.data.notes?.trim() || null,
       entry_date: parsed.data.entry_date,
     })
