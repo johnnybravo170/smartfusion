@@ -1,8 +1,6 @@
 'use client';
 
-import { Keyboard, Mic, Sparkles, Trash2, X } from 'lucide-react';
-import { useState } from 'react';
-import { cn } from '@/lib/utils';
+import { Sparkles, Trash2, X } from 'lucide-react';
 import { ChatInput } from './chat-input';
 import { ChatMessages } from './chat-messages';
 import { useChatContext } from './chat-provider';
@@ -22,11 +20,6 @@ export function ChatPanel() {
     clearError,
     voice,
   } = useChatContext();
-
-  // When voice mode is on, user can temporarily switch to keyboard input.
-  const [showKeyboard, setShowKeyboard] = useState(false);
-
-  const showPushToTalk = voice.voiceEnabled && !showKeyboard;
 
   return (
     <>
@@ -82,7 +75,7 @@ export function ChatPanel() {
             </div>
           </div>
 
-          {/* Voice indicator */}
+          {/* Voice indicator -- shows listening/processing/speaking state when voice is on */}
           <VoiceIndicator voiceState={voice.voiceState} onStopSpeaking={voice.stopSpeaking} />
 
           {/* Error banner */}
@@ -105,84 +98,11 @@ export function ChatPanel() {
           {/* Messages */}
           <ChatMessages messages={messages} activeTool={activeTool} />
 
-          {/* Input area: push-to-talk OR text input */}
-          {showPushToTalk ? (
-            <PushToTalkInput
-              voiceState={voice.voiceState}
-              onStartPTT={voice.startPushToTalk}
-              onStopPTT={voice.stopPushToTalk}
-              onSwitchToKeyboard={() => setShowKeyboard(true)}
-            />
-          ) : (
-            <div className="relative">
-              <ChatInput onSend={sendMessage} isLoading={isLoading} focusTrigger={isPanelOpen} />
-              {voice.voiceEnabled && (
-                <button
-                  type="button"
-                  onClick={() => setShowKeyboard(false)}
-                  aria-label="Switch to voice input"
-                  className="absolute top-3 right-14 flex size-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <Mic className="size-4" />
-                </button>
-              )}
-            </div>
-          )}
+          {/* Text input is always available. Voice (when on) streams continuously
+              and server VAD handles turn-taking -- no push-to-talk button. */}
+          <ChatInput onSend={sendMessage} isLoading={isLoading} focusTrigger={isPanelOpen} />
         </aside>
       )}
     </>
-  );
-}
-
-/** Hold-to-talk mic button that replaces the text input when voice mode is on. */
-function PushToTalkInput({
-  voiceState,
-  onStartPTT,
-  onStopPTT,
-  onSwitchToKeyboard,
-}: {
-  voiceState: string;
-  onStartPTT: () => void;
-  onStopPTT: () => void;
-  onSwitchToKeyboard: () => void;
-}) {
-  const isActive = voiceState === 'listening';
-
-  return (
-    <div className="border-t p-3">
-      <div className="flex items-center justify-center gap-3">
-        <button
-          type="button"
-          onClick={onSwitchToKeyboard}
-          aria-label="Switch to keyboard"
-          className="flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <Keyboard className="size-4" />
-        </button>
-        <button
-          type="button"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            onStartPTT();
-          }}
-          onPointerUp={onStopPTT}
-          onPointerLeave={onStopPTT}
-          aria-label={isActive ? 'Release to send' : 'Hold to talk'}
-          className={cn(
-            'flex size-14 items-center justify-center rounded-full transition-all',
-            isActive
-              ? 'scale-110 bg-red-500 text-white shadow-lg shadow-red-500/30'
-              : 'bg-primary text-primary-foreground hover:scale-105 active:scale-110',
-          )}
-        >
-          <Mic className="size-6" />
-        </button>
-        {/* Spacer to keep the mic centered */}
-        <div className="size-9" />
-      </div>
-      <p className="mt-2 text-center text-xs text-muted-foreground">
-        {isActive ? 'Release to send' : 'Hold to talk'}
-      </p>
-    </div>
   );
 }

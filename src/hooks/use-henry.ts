@@ -1,20 +1,24 @@
 'use client';
 
 /**
- * useHenry — Gemini Live session manager.
+ * useHenry — OpenAI Realtime voice + text session manager.
  *
- * Single hook that replaces useChat + useVoice. Opens a WebSocket to Gemini's
- * Live API using an ephemeral token from /api/henry/session, streams mic
- * audio in (16kHz PCM16), plays Gemini's audio out (24kHz PCM16), and routes
- * tool calls through /api/henry/tool so they execute under tenant RLS.
+ * Migrated from Gemini Live on 2026-04-21. Opens a WebSocket to
+ * wss://api.openai.com/v1/realtime using an ephemeral client_secret minted
+ * at /api/henry/session. Audio is PCM16 24kHz mono in both directions.
+ * Server-side VAD (configured at mint time) detects end-of-turn, so the UX
+ * is "enable voice → talk → pause → Henry replies" with no push-to-talk.
  *
- * Return shape is kept compatible with the existing chat-panel so the UI
- * doesn't need a rewrite.
+ * Tool calls are dispatched to /api/henry/tool under the operator's RLS
+ * session, except for the three client-side screen-awareness tools which
+ * run in-process against React state.
+ *
+ * Return shape stays API-compatible with the existing chat-panel but
+ * exposes `toggleVoice` / `stopSpeaking` only — push-to-talk is gone.
  */
 
-import { GoogleGenAI, type LiveServerMessage, Modality, type Session } from '@google/genai';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CLIENT_TOOL_NAMES } from '@/lib/henry/client-tools';
+import { CLIENT_TOOL_NAMES } from '@/lib/henry/openai-tools';
 import { useHenryScreen } from '@/lib/henry/screen-context';
 
 export type HenryMessage = {
@@ -31,7 +35,6 @@ export type UseHenryReturn = {
   isLoading: boolean;
   isPanelOpen: boolean;
   activeTool: string | null;
-  /** Most recent error message surfaced to the user. Cleared on successful connect. */
   error: string | null;
   sendMessage: (content: string) => void;
   togglePanel: () => void;
@@ -42,15 +45,12 @@ export type UseHenryReturn = {
     voiceState: VoiceState;
     isSupported: boolean;
     toggleVoice: () => void;
-    startPushToTalk: () => void;
-    stopPushToTalk: () => void;
     stopSpeaking: () => void;
   };
 };
 
 const PANEL_STORAGE_KEY = 'heyhenry-chat-open';
-const INPUT_SAMPLE_RATE = 16_000; // Gemini Live expects 16kHz PCM16 input
-const OUTPUT_SAMPLE_RATE = 24_000; // Gemini Live emits 24kHz PCM16 output
+const SAMPLE_RATE = 24_000; // OpenAI Realtime = PCM16 24kHz both directions
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -65,7 +65,6 @@ function readPanelState(): boolean {
   }
 }
 
-/** Float32 [-1,1] → Int16 PCM → base64. Endianness: little (matches Gemini). */
 function float32ToPcm16Base64(input: Float32Array): string {
   const buf = new ArrayBuffer(input.length * 2);
   const view = new DataView(buf);
@@ -73,7 +72,6 @@ function float32ToPcm16Base64(input: Float32Array): string {
     const s = Math.max(-1, Math.min(1, input[i]));
     view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
   }
-  // btoa requires a binary string; build it in chunks to avoid call-stack issues.
   const bytes = new Uint8Array(buf);
   let binary = '';
   const chunk = 0x8000;
@@ -83,10 +81,20 @@ function float32ToPcm16Base64(input: Float32Array): string {
   return btoa(binary);
 }
 
-/**
- * Dispatch a client-side tool call against the current screen context.
- * Returns a human-readable string result for Gemini to reason about.
- */
+function pcm16Base64ToFloat32(b64: string): Float32Array<ArrayBuffer> {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const view = new DataView(bytes.buffer);
+  const len = bytes.length / 2;
+  const buf = new ArrayBuffer(len * 4);
+  const out = new Float32Array(buf);
+  for (let i = 0; i < len; i++) {
+    out[i] = view.getInt16(i * 2, true) / 0x8000;
+  }
+  return out;
+}
+
 function runClientTool(
   name: string,
   args: Record<string, unknown>,
@@ -148,21 +156,35 @@ function runClientTool(
   return `Unknown client tool: ${name}`;
 }
 
-/** base64 PCM16 little-endian → Float32 in [-1,1]. Uses a plain ArrayBuffer so it
- * satisfies Web Audio's copyToChannel type signature. */
-function pcm16Base64ToFloat32(b64: string): Float32Array<ArrayBuffer> {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  const view = new DataView(bytes.buffer);
-  const len = bytes.length / 2;
-  const buf = new ArrayBuffer(len * 4);
-  const out = new Float32Array(buf);
-  for (let i = 0; i < len; i++) {
-    out[i] = view.getInt16(i * 2, true) / 0x8000;
-  }
-  return out;
-}
+// ─── OpenAI Realtime server event shapes (subset we actually consume) ─────
+type ServerEvent =
+  | { type: 'session.created' | 'session.updated' }
+  | { type: 'error'; error?: { message?: string; code?: string } }
+  | { type: 'input_audio_buffer.speech_started' }
+  | { type: 'input_audio_buffer.speech_stopped' }
+  | {
+      type: 'conversation.item.input_audio_transcription.delta';
+      delta?: string;
+      item_id?: string;
+    }
+  | {
+      type: 'conversation.item.input_audio_transcription.completed';
+      transcript?: string;
+      item_id?: string;
+    }
+  | { type: 'response.created' }
+  | { type: 'response.output_audio.delta'; delta?: string }
+  | { type: 'response.output_audio.done' }
+  | { type: 'response.output_audio_transcript.delta'; delta?: string }
+  | { type: 'response.output_audio_transcript.done' }
+  | {
+      type: 'response.function_call_arguments.done';
+      call_id?: string;
+      name?: string;
+      arguments?: string;
+    }
+  | { type: 'response.done'; response?: { status?: string } }
+  | { type: string };
 
 export function useHenry(): UseHenryReturn {
   const [messages, setMessages] = useState<HenryMessage[]>([]);
@@ -175,14 +197,11 @@ export function useHenry(): UseHenryReturn {
   const [error, setError] = useState<string | null>(null);
   const clearError = useCallback(() => setError(null), []);
 
-  // Screen context: current route + registered form. Stored in refs so the
-  // handleToolCall callback always reads the latest values without needing
-  // to be recreated (and thereby tearing down the active session).
   const screen = useHenryScreen();
   const screenRef = useRef(screen);
   screenRef.current = screen;
 
-  const sessionRef = useRef<Session | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const inputAudioCtxRef = useRef<AudioContext | null>(null);
   const outputAudioCtxRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -192,12 +211,12 @@ export function useHenry(): UseHenryReturn {
   const currentAssistantIdRef = useRef<string | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
 
-  // Detect support after hydration.
   useEffect(() => {
     setIsSupported(
       typeof window !== 'undefined' &&
         !!navigator.mediaDevices?.getUserMedia &&
-        typeof AudioContext !== 'undefined',
+        typeof AudioContext !== 'undefined' &&
+        typeof WebSocket !== 'undefined',
     );
     setIsPanelOpen(readPanelState());
   }, []);
@@ -219,15 +238,18 @@ export function useHenry(): UseHenryReturn {
     setActiveTool(null);
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Audio helpers
-  // ---------------------------------------------------------------------------
+  const sendEvent = useCallback((evt: Record<string, unknown>) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify(evt));
+  }, []);
 
+  // ─── Audio out ─────────────────────────────────────────────────────────
   const playAudioChunk = useCallback((b64: string) => {
     const ctx = outputAudioCtxRef.current;
     if (!ctx) return;
     const pcm = pcm16Base64ToFloat32(b64);
-    const buffer = ctx.createBuffer(1, pcm.length, OUTPUT_SAMPLE_RATE);
+    const buffer = ctx.createBuffer(1, pcm.length, SAMPLE_RATE);
     buffer.copyToChannel(pcm, 0);
     const src = ctx.createBufferSource();
     src.buffer = buffer;
@@ -241,142 +263,165 @@ export function useHenry(): UseHenryReturn {
   const stopSpeaking = useCallback(() => {
     const ctx = outputAudioCtxRef.current;
     if (!ctx) return;
-    // Simplest interruption: close and recreate the output context.
     ctx.close().catch(() => {});
-    const fresh = new AudioContext({ sampleRate: OUTPUT_SAMPLE_RATE });
+    const fresh = new AudioContext({ sampleRate: SAMPLE_RATE });
     outputAudioCtxRef.current = fresh;
     playbackCursorRef.current = 0;
     setVoiceState('idle');
-  }, []);
+    // Also tell the server to stop generating.
+    sendEvent({ type: 'response.cancel' });
+  }, [sendEvent]);
 
-  // ---------------------------------------------------------------------------
-  // Tool call dispatch (server-side via /api/henry/tool)
-  // ---------------------------------------------------------------------------
+  // ─── Tool call dispatch ────────────────────────────────────────────────
+  const handleFunctionCall = useCallback(
+    async (callId: string, name: string, argsJson: string): Promise<void> => {
+      setActiveTool(name);
+      let output: string;
+      try {
+        const args = argsJson ? JSON.parse(argsJson) : {};
+        if (CLIENT_TOOL_NAMES.has(name)) {
+          output = runClientTool(name, args, screenRef.current);
+        } else {
+          const res = await fetch('/api/henry/tool', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, args }),
+          });
+          const json = (await res.json()) as { result?: string };
+          output = json.result ?? 'No output.';
+        }
+      } catch (e) {
+        output = `Tool call failed: ${e instanceof Error ? e.message : String(e)}`;
+      } finally {
+        setActiveTool(null);
+      }
 
-  const handleToolCall = useCallback(
-    async (
-      calls: Array<{ id?: string; name?: string; args?: Record<string, unknown> }>,
-    ): Promise<void> => {
-      const session = sessionRef.current;
-      if (!session) return;
+      sendEvent({
+        type: 'conversation.item.create',
+        item: {
+          type: 'function_call_output',
+          call_id: callId,
+          output,
+        },
+      });
+      sendEvent({ type: 'response.create' });
+    },
+    [sendEvent],
+  );
 
-      const responses = await Promise.all(
-        calls.map(async (fc) => {
-          const name = fc.name ?? '';
-          setActiveTool(name);
-          try {
-            // Client-side tools (screen awareness) run in-process: they
-            // inspect / mutate React state, so a server round-trip would
-            // be wrong.
-            if (CLIENT_TOOL_NAMES.has(name)) {
-              const output = runClientTool(name, fc.args ?? {}, screenRef.current);
-              return { id: fc.id, name, response: { output } };
+  // ─── Server event handler ──────────────────────────────────────────────
+  const handleServerEvent = useCallback(
+    (evt: ServerEvent) => {
+      switch (evt.type) {
+        case 'session.created':
+        case 'session.updated':
+          setIsLoading(false);
+          setError(null);
+          return;
+
+        case 'error': {
+          const msg = ('error' in evt && evt.error?.message) || 'Realtime error';
+          console.error('[Henry] realtime error:', msg, evt);
+          setError(msg);
+          return;
+        }
+
+        case 'input_audio_buffer.speech_started':
+          setVoiceState('listening');
+          // User interrupted Henry; flush any queued output audio.
+          if (outputAudioCtxRef.current && playbackCursorRef.current > 0) {
+            stopSpeaking();
+          }
+          return;
+
+        case 'input_audio_buffer.speech_stopped':
+          setVoiceState('processing');
+          return;
+
+        case 'conversation.item.input_audio_transcription.delta': {
+          const delta = 'delta' in evt ? evt.delta : undefined;
+          if (!delta) return;
+          setMessages((prev) => {
+            let id = currentUserIdRef.current;
+            if (!id) {
+              id = generateId();
+              currentUserIdRef.current = id;
+              return [...prev, { id, role: 'user', content: delta }];
             }
-
-            const res = await fetch('/api/henry/tool', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name, args: fc.args ?? {} }),
-            });
-            const { result } = (await res.json()) as { result?: string };
-            return {
-              id: fc.id,
-              name,
-              response: { output: result ?? 'No output.' },
-            };
-          } catch (e) {
-            return {
-              id: fc.id,
-              name,
-              response: {
-                output: `Tool call failed: ${e instanceof Error ? e.message : String(e)}`,
-              },
-            };
-          } finally {
-            setActiveTool(null);
-          }
-        }),
-      );
-
-      session.sendToolResponse({ functionResponses: responses });
-    },
-    [],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Live server message handler
-  // ---------------------------------------------------------------------------
-
-  const handleServerMessage = useCallback(
-    (msg: LiveServerMessage) => {
-      // Audio out + text out arrive inside serverContent.modelTurn.parts
-      const parts = msg.serverContent?.modelTurn?.parts ?? [];
-      for (const part of parts) {
-        const data = part.inlineData?.data;
-        if (data && part.inlineData?.mimeType?.startsWith('audio/')) {
-          playAudioChunk(data);
+            return prev.map((m) => (m.id === id ? { ...m, content: m.content + delta } : m));
+          });
+          return;
         }
-      }
 
-      // Output transcription (what Henry said)
-      const outT = msg.serverContent?.outputTranscription?.text;
-      if (outT) {
-        setMessages((prev) => {
-          let id = currentAssistantIdRef.current;
-          if (!id) {
-            id = generateId();
-            currentAssistantIdRef.current = id;
-            return [...prev, { id, role: 'assistant', content: outT, isStreaming: true }];
-          }
-          return prev.map((m) => (m.id === id ? { ...m, content: m.content + outT } : m));
-        });
-      }
+        case 'conversation.item.input_audio_transcription.completed':
+          currentUserIdRef.current = null;
+          return;
 
-      // Input transcription (what the user said)
-      const inT = msg.serverContent?.inputTranscription?.text;
-      if (inT) {
-        setMessages((prev) => {
-          let id = currentUserIdRef.current;
-          if (!id) {
-            id = generateId();
-            currentUserIdRef.current = id;
-            return [...prev, { id, role: 'user', content: inT }];
-          }
-          return prev.map((m) => (m.id === id ? { ...m, content: m.content + inT } : m));
-        });
-      }
+        case 'response.created':
+          setIsLoading(true);
+          return;
 
-      // Turn completion
-      if (msg.serverContent?.turnComplete) {
-        if (currentAssistantIdRef.current) {
-          const finishId = currentAssistantIdRef.current;
-          setMessages((prev) =>
-            prev.map((m) => (m.id === finishId ? { ...m, isStreaming: false } : m)),
-          );
-          currentAssistantIdRef.current = null;
+        case 'response.output_audio.delta': {
+          const delta = 'delta' in evt ? evt.delta : undefined;
+          if (delta) playAudioChunk(delta);
+          return;
         }
-        currentUserIdRef.current = null;
-        setIsLoading(false);
-        setVoiceState(voiceEnabled ? 'idle' : 'off');
-      }
 
-      // User barge-in → reset playback cursor and clear any queued audio
-      if (msg.serverContent?.interrupted) {
-        stopSpeaking();
-      }
+        case 'response.output_audio.done':
+          setVoiceState(voiceEnabled ? 'idle' : 'off');
+          return;
 
-      // Tool calls
-      if (msg.toolCall?.functionCalls) {
-        handleToolCall(msg.toolCall.functionCalls);
+        case 'response.output_audio_transcript.delta': {
+          const delta = 'delta' in evt ? evt.delta : undefined;
+          if (!delta) return;
+          setMessages((prev) => {
+            let id = currentAssistantIdRef.current;
+            if (!id) {
+              id = generateId();
+              currentAssistantIdRef.current = id;
+              return [...prev, { id, role: 'assistant', content: delta, isStreaming: true }];
+            }
+            return prev.map((m) => (m.id === id ? { ...m, content: m.content + delta } : m));
+          });
+          return;
+        }
+
+        case 'response.output_audio_transcript.done':
+          if (currentAssistantIdRef.current) {
+            const id = currentAssistantIdRef.current;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === id ? { ...m, isStreaming: false } : m)),
+            );
+            currentAssistantIdRef.current = null;
+          }
+          return;
+
+        case 'response.function_call_arguments.done': {
+          const callId = 'call_id' in evt ? evt.call_id : undefined;
+          const name = 'name' in evt ? evt.name : undefined;
+          const args = 'arguments' in evt ? evt.arguments : undefined;
+          if (callId && name) {
+            handleFunctionCall(callId, name, args ?? '{}');
+          }
+          return;
+        }
+
+        case 'response.done':
+          setIsLoading(false);
+          if (voiceState !== 'speaking') {
+            setVoiceState(voiceEnabled ? 'idle' : 'off');
+          }
+          return;
+
+        default:
+          // Quietly ignore the many other informational events.
+          return;
       }
     },
-    [playAudioChunk, stopSpeaking, handleToolCall, voiceEnabled],
+    [handleFunctionCall, playAudioChunk, stopSpeaking, voiceEnabled, voiceState],
   );
 
-  // ---------------------------------------------------------------------------
-  // Mic capture (defined before session lifecycle so disconnect can reference it)
-  // ---------------------------------------------------------------------------
-
+  // ─── Mic capture ───────────────────────────────────────────────────────
   const stopMicCapture = useCallback(() => {
     procNodeRef.current?.disconnect();
     sourceNodeRef.current?.disconnect();
@@ -389,7 +434,7 @@ export function useHenry(): UseHenryReturn {
   }, []);
 
   const startMicCapture = useCallback(async () => {
-    if (!sessionRef.current || procNodeRef.current) return;
+    if (!wsRef.current || procNodeRef.current) return;
 
     let stream: MediaStream;
     try {
@@ -408,63 +453,43 @@ export function useHenry(): UseHenryReturn {
     }
     micStreamRef.current = stream;
 
-    // AudioContext forced to 16kHz so no resampling is needed.
-    const ctx = new AudioContext({ sampleRate: INPUT_SAMPLE_RATE });
+    const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
     inputAudioCtxRef.current = ctx;
 
     const source = ctx.createMediaStreamSource(stream);
     sourceNodeRef.current = source;
 
-    // ScriptProcessorNode is deprecated but universal. 4096 samples @ 16kHz ≈ 256ms.
+    // 4096 samples @ 24kHz ≈ 170ms per chunk.
     const proc = ctx.createScriptProcessor(4096, 1, 1);
     procNodeRef.current = proc;
 
     proc.onaudioprocess = (e) => {
-      if (!sessionRef.current) return;
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
       const input = e.inputBuffer.getChannelData(0);
-      // Skip silence-ish chunks to cut bandwidth (very loose threshold).
-      let max = 0;
-      for (let i = 0; i < input.length; i++) {
-        const a = Math.abs(input[i]);
-        if (a > max) max = a;
-      }
-      if (max < 0.005) return;
-
       const b64 = float32ToPcm16Base64(input);
-      sessionRef.current.sendRealtimeInput({
-        audio: { data: b64, mimeType: `audio/pcm;rate=${INPUT_SAMPLE_RATE}` },
-      });
-      setVoiceState('listening');
+      ws.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: b64 }));
     };
 
     source.connect(proc);
     proc.connect(ctx.destination);
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Session lifecycle
-  // ---------------------------------------------------------------------------
-
-  const connect = useCallback(async () => {
-    if (sessionRef.current) return;
+  // ─── Session lifecycle ─────────────────────────────────────────────────
+  const connect = useCallback(async (): Promise<void> => {
+    if (wsRef.current) return;
     setError(null);
     setVoiceState('idle');
     setIsLoading(true);
 
-    // 1. Fetch ephemeral token + config from server.
-    let sessionConfig: {
-      token: string;
-      model: string;
-      systemPrompt: string;
-      tools: unknown[];
-    };
+    let cfg: { clientSecret: string; model: string };
     try {
       const res = await fetch('/api/henry/session', { method: 'POST' });
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new Error(`Session mint ${res.status}: ${body || res.statusText}`);
       }
-      sessionConfig = await res.json();
+      cfg = (await res.json()) as { clientSecret: string; model: string };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[Henry] session mint failed:', msg);
@@ -474,78 +499,60 @@ export function useHenry(): UseHenryReturn {
       setVoiceEnabled(false);
       throw e;
     }
-    const { token, model, systemPrompt, tools } = sessionConfig;
 
-    // 2. Open Gemini Live WebSocket. `token` is the raw API key during private
-    // beta — see note in /api/henry/session for the security tradeoff.
-    // apiVersion=v1alpha is required because gemini-live-2.5-flash-preview is
-    // only registered for BidiGenerateContent on the v1alpha surface.
-    const ai = new GoogleGenAI({
-      apiKey: token,
-      httpOptions: { apiVersion: 'v1alpha' },
-    });
+    const url = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(cfg.model)}`;
+    // Browser WS can't set Authorization header; OpenAI accepts the ephemeral
+    // token via the `openai-insecure-api-key` subprotocol. "Insecure" flags
+    // that the key is client-visible — safe here because client_secrets
+    // expire in ~1 minute.
+    const ws = new WebSocket(url, [
+      'realtime',
+      `openai-insecure-api-key.${cfg.clientSecret}`,
+      'openai-beta.realtime-v1',
+    ]);
 
-    try {
-      const session = await ai.live.connect({
-        model,
-        config: {
-          responseModalities: [Modality.AUDIO],
-          systemInstruction: systemPrompt,
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          tools: tools.length > 0 ? [{ functionDeclarations: tools as never }] : undefined,
-        },
-        callbacks: {
-          onopen: () => {
-            console.log('[Henry] Live open');
-            setIsLoading(false);
-            setError(null);
-          },
-          onmessage: handleServerMessage,
-          onerror: (e) => {
-            const detail =
-              (e as ErrorEvent)?.message ||
-              // biome-ignore lint/suspicious/noExplicitAny: unknown error shape
-              (e as any)?.error?.message ||
-              JSON.stringify(e, Object.getOwnPropertyNames(e));
-            console.error('[Henry] Live error:', detail, e);
-            setError(`Live error: ${detail}`);
-            setVoiceState('off');
-            setIsLoading(false);
-          },
-          onclose: (e) => {
-            const code = (e as CloseEvent)?.code;
-            const reason = (e as CloseEvent)?.reason;
-            console.warn('[Henry] Live closed:', code, reason);
-            if (code && code !== 1000 && code !== 1005) {
-              setError(`Live closed (${code}): ${reason || 'no reason given'}`);
-            }
-            sessionRef.current = null;
-            setVoiceState('off');
-            setVoiceEnabled(false);
-            setIsLoading(false);
-          },
-        },
-      });
-      sessionRef.current = session;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error('[Henry] live.connect failed:', msg);
-      setError(`Connect: ${msg}`);
-      setIsLoading(false);
+    ws.onopen = () => {
+      console.log('[Henry] Realtime WS open');
+      // Session was preconfigured at mint time (instructions, tools, VAD).
+      // Nothing else to send until the user speaks.
+    };
+
+    ws.onmessage = (msg) => {
+      try {
+        const evt = JSON.parse(msg.data as string) as ServerEvent;
+        handleServerEvent(evt);
+      } catch (e) {
+        console.warn('[Henry] bad server event:', e);
+      }
+    };
+
+    ws.onerror = (e) => {
+      console.error('[Henry] WS error:', e);
+      setError('Realtime connection error');
       setVoiceState('off');
-      setVoiceEnabled(false);
-      throw e;
-    }
+      setIsLoading(false);
+    };
 
-    // 3. Prepare output audio context for playback.
-    outputAudioCtxRef.current = new AudioContext({ sampleRate: OUTPUT_SAMPLE_RATE });
+    ws.onclose = (e) => {
+      console.warn('[Henry] WS closed:', e.code, e.reason);
+      if (e.code !== 1000 && e.code !== 1005) {
+        setError(`Connection closed (${e.code}): ${e.reason || 'no reason given'}`);
+      }
+      wsRef.current = null;
+      setVoiceEnabled(false);
+      setVoiceState('off');
+      setIsLoading(false);
+    };
+
+    wsRef.current = ws;
+
+    outputAudioCtxRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
     playbackCursorRef.current = 0;
-  }, [handleServerMessage]);
+  }, [handleServerEvent]);
 
   const disconnect = useCallback(() => {
-    sessionRef.current?.close();
-    sessionRef.current = null;
+    wsRef.current?.close();
+    wsRef.current = null;
     stopMicCapture();
     outputAudioCtxRef.current?.close().catch(() => {});
     outputAudioCtxRef.current = null;
@@ -555,70 +562,67 @@ export function useHenry(): UseHenryReturn {
     setIsLoading(false);
   }, [stopMicCapture]);
 
-  // ---------------------------------------------------------------------------
-  // Public voice controls
-  // ---------------------------------------------------------------------------
-
+  // ─── Public voice controls ─────────────────────────────────────────────
   const toggleVoice = useCallback(async () => {
     if (voiceEnabled) {
       disconnect();
-    } else {
-      setVoiceEnabled(true);
-      try {
-        await connect();
-        await startMicCapture();
-      } catch (e) {
-        console.error('[Henry] toggleVoice failed:', e);
-        setVoiceEnabled(false);
-      }
+      return;
+    }
+    setVoiceEnabled(true);
+    try {
+      await connect();
+      // Wait a tick for the WS to be ready before streaming mic audio.
+      await new Promise((r) => setTimeout(r, 50));
+      await startMicCapture();
+    } catch (e) {
+      console.error('[Henry] toggleVoice failed:', e);
+      setVoiceEnabled(false);
     }
   }, [voiceEnabled, connect, disconnect, startMicCapture]);
 
-  const startPushToTalk = useCallback(async () => {
-    if (!voiceEnabled) return;
-    setVoiceState('listening');
-    if (!procNodeRef.current) await startMicCapture();
-  }, [voiceEnabled, startMicCapture]);
-
-  const stopPushToTalk = useCallback(() => {
-    stopMicCapture();
-    setVoiceState('processing');
-  }, [stopMicCapture]);
-
-  // ---------------------------------------------------------------------------
-  // Text message path (still useful as a fallback + for keyboard input)
-  // ---------------------------------------------------------------------------
-
+  // ─── Text path (opens session if not already open, then injects a user turn) ──
   const sendMessage = useCallback(
     async (content: string) => {
       const trimmed = content.trim();
       if (!trimmed) return;
 
-      // Add user message to UI immediately.
       setMessages((prev) => [...prev, { id: generateId(), role: 'user', content: trimmed }]);
       setIsLoading(true);
 
-      // Session may not be open yet; open it now for text-only interactions.
-      if (!sessionRef.current) {
+      if (!wsRef.current) {
         try {
           await connect();
+          await new Promise((r) => setTimeout(r, 50));
         } catch {
           setIsLoading(false);
           return;
         }
       }
-      sessionRef.current?.sendClientContent({
-        turns: [{ role: 'user', parts: [{ text: trimmed }] }],
-        turnComplete: true,
+
+      sendEvent({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: trimmed }],
+        },
       });
+      sendEvent({ type: 'response.create' });
     },
-    [connect],
+    [connect, sendEvent],
   );
 
-  // Clean up on unmount.
+  // Tab close / navigate-away: tear down so the session doesn't linger on
+  // OpenAI's side burning tokens.
   useEffect(() => {
+    const cleanup = () => {
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+    window.addEventListener('pagehide', cleanup);
     return () => {
-      sessionRef.current?.close();
+      window.removeEventListener('pagehide', cleanup);
+      wsRef.current?.close();
       stopMicCapture();
       outputAudioCtxRef.current?.close().catch(() => {});
     };
@@ -639,8 +643,6 @@ export function useHenry(): UseHenryReturn {
       voiceState,
       isSupported,
       toggleVoice,
-      startPushToTalk,
-      stopPushToTalk,
       stopSpeaking,
     },
   };

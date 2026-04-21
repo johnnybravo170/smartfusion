@@ -1,64 +1,86 @@
 /**
  * POST /api/henry/session
  *
- * Returns the Gemini Live session config (API key, model, system prompt, tool
- * declarations) the authenticated client needs to open a Live WebSocket.
+ * Mints an ephemeral OpenAI Realtime client_secret, preconfigured with the
+ * operator's system prompt + tool declarations. The browser opens a WebSocket
+ * to the Realtime API using that secret; no server proxy needed.
  *
- * SECURITY — PRIVATE BETA ONLY:
- * We return the raw GEMINI_API_KEY to authenticated clients. Ephemeral tokens
- * (authTokens.create) mint successfully on AI Studio keys but force the Live
- * WebSocket to API version "v1main" where no Live model is registered, so the
- * socket closes with 1008 immediately. Until Google fixes that or we move to
- * Vertex AI, the pragmatic path is to expose the key.
+ * Why not the raw OPENAI_API_KEY: client_secrets expire in ~1 minute, so a
+ * leak is a minute of risk instead of a permanent credential.
  *
- * Mitigations: only authenticated tenants can hit this route; the key only
- * grants Gemini API access (not billing, not Google Cloud-wide).
- *
- * Before public launch we'll swap to a server-side WebSocket proxy so the key
- * never leaves the server. Tracked in HEY_HENRY_APP_PLAN.md.
+ * Previously this route backed Gemini Live. Migrated to OpenAI Realtime on
+ * 2026-04-21 after 2.5-native-audio was deprecated and 3.1-flash-live-preview
+ * proved unusably slow.
  */
 
 import { getSystemPrompt } from '@/lib/ai/system-prompt';
 import { allTools } from '@/lib/ai/tools';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
-import { toGeminiFunctionDeclarations } from '@/lib/henry/adapter';
-import { clientFunctionDeclarations } from '@/lib/henry/client-tools';
+import { clientRealtimeTools, toOpenAIRealtimeTools } from '@/lib/henry/openai-tools';
 
-// gemini-2.5-flash-native-audio-preview-09-2025 was deprecated 2026-03-19
-// and now hard-closes the Live socket with 1006 as of 2026-04-21. Forced
-// onto 3.1-flash-live-preview (launched 2026-03-26).
-//
-// First 3.1 attempt added `thinkingConfig: { thinkingLevel: MINIMAL }` per
-// the launch blog; responses were unusably slow. Theory: the SDK
-// (@google/genai@1.50.1) or the Live backend doesn't honor MINIMAL and
-// defaults to a higher thinking level. Removed the config — using the
-// model's own defaults.
-const LIVE_MODEL = 'gemini-3.1-flash-live-preview';
+const REALTIME_MODEL = 'gpt-realtime';
 
 export async function POST() {
   try {
     const tenant = await getCurrentTenant();
     if (!tenant) {
-      // Distinguish "not signed in" from "signed in but no tenant" so the
-      // client logs tell us which end of the chain failed.
       const user = await getCurrentUser();
       const reason = user ? 'no_tenant_for_user' : 'no_user';
       return Response.json({ error: 'Unauthorized', reason }, { status: 401 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return Response.json({ error: 'Server missing GEMINI_API_KEY' }, { status: 500 });
+      return Response.json({ error: 'Server missing OPENAI_API_KEY' }, { status: 500 });
     }
 
     const systemPrompt = getSystemPrompt(tenant.name, tenant.timezone, tenant.vertical);
-    const tools = [...toGeminiFunctionDeclarations(allTools), ...clientFunctionDeclarations];
+    const tools = [...toOpenAIRealtimeTools(allTools), ...clientRealtimeTools];
+
+    const mintRes = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session: {
+          type: 'realtime',
+          model: REALTIME_MODEL,
+          instructions: systemPrompt,
+          tools,
+          tool_choice: 'auto',
+          input_audio_transcription: { model: 'gpt-4o-transcribe' },
+          turn_detection: {
+            type: 'server_vad',
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 500,
+            create_response: true,
+            interrupt_response: true,
+          },
+        },
+      }),
+    });
+
+    if (!mintRes.ok) {
+      const body = await mintRes.text();
+      console.error('[Henry session] mint failed:', mintRes.status, body);
+      return Response.json(
+        { error: `OpenAI client_secret mint ${mintRes.status}: ${body}` },
+        { status: 500 },
+      );
+    }
+
+    const minted = (await mintRes.json()) as { value?: string; expires_at?: number };
+    if (!minted.value) {
+      return Response.json({ error: 'client_secret response missing value' }, { status: 500 });
+    }
 
     return Response.json({
-      token: apiKey,
-      model: LIVE_MODEL,
-      systemPrompt,
-      tools,
+      clientSecret: minted.value,
+      model: REALTIME_MODEL,
+      expiresAt: minted.expires_at ?? null,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
