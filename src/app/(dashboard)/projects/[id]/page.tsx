@@ -10,6 +10,10 @@ import { PortalUpdateForm } from '@/components/features/portal/portal-update-for
 import { BudgetSummaryCard } from '@/components/features/projects/budget-summary';
 import { CostBucketsTable } from '@/components/features/projects/cost-buckets-table';
 import { CostsTab } from '@/components/features/projects/costs-tab';
+import {
+  CrewScheduleGrid,
+  type ScheduleCell,
+} from '@/components/features/projects/crew-schedule-grid';
 import { CrewTab } from '@/components/features/projects/crew-tab';
 import { EstimateTab } from '@/components/features/projects/estimate-tab';
 import { InvoicesTab } from '@/components/features/projects/invoices-tab';
@@ -32,6 +36,7 @@ import { getProject } from '@/lib/db/queries/projects';
 import { listPurchaseOrders } from '@/lib/db/queries/purchase-orders';
 import { listTimeEntries } from '@/lib/db/queries/time-entries';
 import { listWorkerProfiles } from '@/lib/db/queries/worker-profiles';
+import { listUnavailabilityForTenant, REASON_LABELS } from '@/lib/db/queries/worker-unavailability';
 import { createClient } from '@/lib/supabase/server';
 import type { ProjectStatus } from '@/lib/validators/project';
 
@@ -132,6 +137,58 @@ export default async function ProjectDetailPage({
     listAssignmentsForProject(project.tenant_id, id),
     listWorkerProfiles(project.tenant_id),
   ]);
+
+  // Build a 14-day crew schedule grid starting today.
+  const scheduleStart = new Date().toLocaleDateString('en-CA');
+  const scheduleEnd = (() => {
+    const d = new Date(`${scheduleStart}T00:00`);
+    d.setDate(d.getDate() + 13);
+    return d.toLocaleDateString('en-CA');
+  })();
+
+  // Workers on this project = anyone with an assignment on it.
+  const scheduleWorkerIds = Array.from(new Set(crewAssignments.map((a) => a.worker_profile_id)));
+  const scheduleWorkers = scheduleWorkerIds
+    .map((wid) => {
+      const w = crewWorkers.find((x) => x.id === wid);
+      return w ? { profile_id: w.id, display_name: w.display_name ?? 'Worker' } : null;
+    })
+    .filter((x): x is { profile_id: string; display_name: string } => x !== null);
+
+  const tenantUnavailability = scheduleWorkerIds.length
+    ? await listUnavailabilityForTenant(project.tenant_id, scheduleStart, scheduleEnd)
+    : [];
+
+  const projectNameById = new Map<string, string>([[id, project.name]]);
+  const scheduleCells: Record<string, ScheduleCell> = {};
+  for (const a of crewAssignments) {
+    if (!a.scheduled_date) continue;
+    if (a.scheduled_date < scheduleStart || a.scheduled_date > scheduleEnd) continue;
+    const key = `${a.worker_profile_id}|${a.scheduled_date}`;
+    scheduleCells[key] = {
+      type: 'scheduled',
+      projectName: projectNameById.get(id) ?? project.name,
+    };
+  }
+  for (const u of tenantUnavailability) {
+    if (!scheduleWorkerIds.includes(u.worker_profile_id)) continue;
+    const key = `${u.worker_profile_id}|${u.unavailable_date}`;
+    const existing = scheduleCells[key];
+    const label = REASON_LABELS[u.reason_tag];
+    if (existing && existing.type === 'scheduled') {
+      scheduleCells[key] = {
+        type: 'both',
+        projectName: existing.projectName,
+        reasonLabel: label,
+      };
+    } else {
+      scheduleCells[key] = {
+        type: 'unavailable',
+        reasonLabel: label,
+        reasonText: u.reason_text,
+      };
+    }
+  }
 
   // Load project invoices
   const { data: projectInvoices } = await supabase
@@ -351,24 +408,33 @@ export default async function ProjectDetailPage({
       ) : null}
 
       {tab === 'crew' ? (
-        <CrewTab
-          projectId={id}
-          workers={crewWorkers.map((w) => ({
-            profile_id: w.id,
-            display_name: w.display_name ?? 'Worker',
-            worker_type: w.worker_type,
-            default_hourly_rate_cents: w.default_hourly_rate_cents,
-            default_charge_rate_cents: w.default_charge_rate_cents,
-          }))}
-          assignments={crewAssignments.map((a) => ({
-            id: a.id,
-            worker_profile_id: a.worker_profile_id,
-            scheduled_date: a.scheduled_date,
-            hourly_rate_cents: a.hourly_rate_cents,
-            charge_rate_cents: a.charge_rate_cents,
-            notes: a.notes,
-          }))}
-        />
+        <div className="space-y-6">
+          <CrewScheduleGrid
+            projectId={id}
+            startDate={scheduleStart}
+            days={14}
+            workers={scheduleWorkers}
+            cells={scheduleCells}
+          />
+          <CrewTab
+            projectId={id}
+            workers={crewWorkers.map((w) => ({
+              profile_id: w.id,
+              display_name: w.display_name ?? 'Worker',
+              worker_type: w.worker_type,
+              default_hourly_rate_cents: w.default_hourly_rate_cents,
+              default_charge_rate_cents: w.default_charge_rate_cents,
+            }))}
+            assignments={crewAssignments.map((a) => ({
+              id: a.id,
+              worker_profile_id: a.worker_profile_id,
+              scheduled_date: a.scheduled_date,
+              hourly_rate_cents: a.hourly_rate_cents,
+              charge_rate_cents: a.charge_rate_cents,
+              notes: a.notes,
+            }))}
+          />
+        </div>
       ) : null}
 
       {tab === 'change-orders' ? (
