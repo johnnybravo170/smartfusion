@@ -108,3 +108,101 @@ export async function removeUnavailabilityAction(
   revalidatePath('/settings/team');
   return { ok: true };
 }
+
+const bulkRemoveSchema = z.object({
+  worker_profile_id: z.string().uuid(),
+  dates: z.array(z.string().regex(DATE_RE)).min(1).max(120),
+});
+
+export async function removeUnavailabilityRangeAction(
+  input: z.input<typeof bulkRemoveSchema>,
+): Promise<UnavailabilityResult> {
+  const parsed = bulkRemoveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid input.' };
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  if (tenant.member.role === 'worker') {
+    const myProfile = await getOrCreateWorkerProfile(tenant.id, tenant.member.id);
+    if (myProfile.id !== parsed.data.worker_profile_id) {
+      return { ok: false, error: 'Not allowed.' };
+    }
+  } else if (tenant.member.role !== 'owner' && tenant.member.role !== 'admin') {
+    return { ok: false, error: 'Not allowed.' };
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from('worker_unavailability')
+    .delete()
+    .eq('tenant_id', tenant.id)
+    .eq('worker_profile_id', parsed.data.worker_profile_id)
+    .in('unavailable_date', parsed.data.dates);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/w/calendar');
+  revalidatePath('/w');
+  revalidatePath('/settings/team');
+  return { ok: true };
+}
+
+const moveSchema = z.object({
+  worker_profile_id: z.string().uuid(),
+  from_dates: z.array(z.string().regex(DATE_RE)).min(1).max(120),
+  to_dates: z.array(z.string().regex(DATE_RE)).min(1).max(120),
+  reason_tag: z.enum(['vacation', 'sick', 'other_job', 'personal', 'other']),
+  reason_text: z.string().trim().max(500).optional().default(''),
+});
+
+export async function moveUnavailabilityRangeAction(
+  input: z.input<typeof moveSchema>,
+): Promise<UnavailabilityResult> {
+  const parsed = moveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid input.' };
+  if (parsed.data.from_dates.length !== parsed.data.to_dates.length) {
+    return { ok: false, error: 'Date arrays must match in length.' };
+  }
+
+  const tenant = await getCurrentTenant();
+  const user = await getCurrentUser();
+  if (!tenant || !user) return { ok: false, error: 'Not signed in.' };
+
+  if (tenant.member.role === 'worker') {
+    const myProfile = await getOrCreateWorkerProfile(tenant.id, tenant.member.id);
+    if (myProfile.id !== parsed.data.worker_profile_id) {
+      return { ok: false, error: 'Not allowed.' };
+    }
+  } else if (tenant.member.role !== 'owner' && tenant.member.role !== 'admin') {
+    return { ok: false, error: 'Not allowed.' };
+  }
+
+  const admin = createAdminClient();
+
+  const { error: delErr } = await admin
+    .from('worker_unavailability')
+    .delete()
+    .eq('tenant_id', tenant.id)
+    .eq('worker_profile_id', parsed.data.worker_profile_id)
+    .in('unavailable_date', parsed.data.from_dates);
+  if (delErr) return { ok: false, error: delErr.message };
+
+  const rows = parsed.data.to_dates.map((d) => ({
+    tenant_id: tenant.id,
+    worker_profile_id: parsed.data.worker_profile_id,
+    unavailable_date: d,
+    reason_tag: parsed.data.reason_tag,
+    reason_text: parsed.data.reason_text || null,
+    created_by: user.id,
+  }));
+  const { error: insErr } = await admin
+    .from('worker_unavailability')
+    .upsert(rows, { onConflict: 'worker_profile_id,unavailable_date', ignoreDuplicates: true });
+  if (insErr) return { ok: false, error: insErr.message };
+
+  revalidatePath('/w/calendar');
+  revalidatePath('/w');
+  revalidatePath('/settings/team');
+  return { ok: true };
+}

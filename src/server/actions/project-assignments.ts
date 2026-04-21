@@ -85,6 +85,125 @@ export async function assignWorkerAction(
   return { ok: true };
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const moveSchema = z.object({
+  project_id: z.string().uuid(),
+  worker_profile_id: z.string().uuid(),
+  from_dates: z.array(z.string().regex(DATE_RE)).min(1).max(60),
+  to_dates: z.array(z.string().regex(DATE_RE)).min(1).max(60),
+});
+
+export async function moveAssignmentsAction(
+  input: z.input<typeof moveSchema>,
+): Promise<{ ok: boolean; error?: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  try {
+    assertOwnerOrAdmin(tenant.member.role);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Forbidden.' };
+  }
+
+  const parsed = moveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid input.' };
+  const v = parsed.data;
+  if (v.from_dates.length !== v.to_dates.length) {
+    return { ok: false, error: 'Date arrays must match in length.' };
+  }
+
+  const admin = createAdminClient();
+
+  // Read existing rows to preserve rate/notes on the new rows.
+  const { data: oldRows } = await admin
+    .from('project_assignments')
+    .select('scheduled_date, hourly_rate_cents, charge_rate_cents, notes')
+    .eq('tenant_id', tenant.id)
+    .eq('project_id', v.project_id)
+    .eq('worker_profile_id', v.worker_profile_id)
+    .in('scheduled_date', v.from_dates);
+
+  const byDate = new Map(
+    (oldRows ?? []).map((r) => [
+      r.scheduled_date as string,
+      {
+        hourly_rate_cents: r.hourly_rate_cents as number | null,
+        charge_rate_cents: r.charge_rate_cents as number | null,
+        notes: r.notes as string | null,
+      },
+    ]),
+  );
+
+  // Delete original day-scheduled rows.
+  const { error: delErr } = await admin
+    .from('project_assignments')
+    .delete()
+    .eq('tenant_id', tenant.id)
+    .eq('project_id', v.project_id)
+    .eq('worker_profile_id', v.worker_profile_id)
+    .in('scheduled_date', v.from_dates);
+  if (delErr) return { ok: false, error: delErr.message };
+
+  // Insert at the new dates with preserved fields.
+  const newRows = v.from_dates.map((d, i) => {
+    const src = byDate.get(d);
+    return {
+      tenant_id: tenant.id,
+      project_id: v.project_id,
+      worker_profile_id: v.worker_profile_id,
+      scheduled_date: v.to_dates[i],
+      hourly_rate_cents: src?.hourly_rate_cents ?? null,
+      charge_rate_cents: src?.charge_rate_cents ?? null,
+      notes: src?.notes ?? null,
+    };
+  });
+  const { error: insErr } = await admin.from('project_assignments').insert(newRows);
+  if (insErr) {
+    if (insErr.code === '23505') {
+      return { ok: false, error: 'One of the target dates is already booked for this worker.' };
+    }
+    return { ok: false, error: insErr.message };
+  }
+
+  revalidatePath(`/projects/${v.project_id}`);
+  return { ok: true };
+}
+
+const bulkDeleteSchema = z.object({
+  project_id: z.string().uuid(),
+  worker_profile_id: z.string().uuid(),
+  dates: z.array(z.string().regex(DATE_RE)).min(1).max(60),
+});
+
+export async function deleteAssignmentsByDatesAction(
+  input: z.input<typeof bulkDeleteSchema>,
+): Promise<{ ok: boolean; error?: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  try {
+    assertOwnerOrAdmin(tenant.member.role);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Forbidden.' };
+  }
+
+  const parsed = bulkDeleteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid input.' };
+  const v = parsed.data;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from('project_assignments')
+    .delete()
+    .eq('tenant_id', tenant.id)
+    .eq('project_id', v.project_id)
+    .eq('worker_profile_id', v.worker_profile_id)
+    .in('scheduled_date', v.dates);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/projects/${v.project_id}`);
+  return { ok: true };
+}
+
 export async function removeAssignmentAction(
   assignmentId: string,
 ): Promise<{ ok: boolean; error?: string }> {

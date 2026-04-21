@@ -180,11 +180,14 @@ export default async function ProjectDetailPage({
         type: 'both',
         projectName: existing.projectName,
         reasonLabel: label,
+        reasonTag: u.reason_tag,
+        reasonText: u.reason_text,
       };
     } else {
       scheduleCells[key] = {
         type: 'unavailable',
         reasonLabel: label,
+        reasonTag: u.reason_tag,
         reasonText: u.reason_text,
       };
     }
