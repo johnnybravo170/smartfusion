@@ -7,10 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import { formatCurrency } from '@/lib/pricing/calculator';
-import {
-  resetEstimateAction,
-  sendEstimateForApprovalAction,
-} from '@/server/actions/estimate-approval';
+import { resetEstimateAction } from '@/server/actions/estimate-approval';
 import { createInvoiceFromEstimateAction } from '@/server/actions/invoices';
 import { deleteCostLineAction } from '@/server/actions/project-cost-control';
 import { CostLineForm } from './cost-line-form';
@@ -62,18 +59,6 @@ export function EstimateTab({
         toast.success('Invoice created');
         router.push(`/invoices/${res.id}`);
       } else if (!res.ok) {
-        toast.error(res.error);
-      }
-    });
-  }
-
-  function sendForApproval() {
-    startTransition(async () => {
-      const res = await sendEstimateForApprovalAction({ projectId });
-      if (res.ok) {
-        toast.success('Estimate sent to customer');
-        router.refresh();
-      } else {
         toast.error(res.error);
       }
     });
@@ -179,8 +164,11 @@ export function EstimateTab({
         </div>
         <div className="flex gap-2">
           {approval.status === 'draft' && costLines.length > 0 ? (
-            <Button size="sm" onClick={sendForApproval} disabled={isPending}>
-              Send for approval
+            <Button
+              size="sm"
+              onClick={() => router.push(`/projects/${projectId}/estimate/preview`)}
+            >
+              Preview &amp; send
             </Button>
           ) : null}
           {approval.status === 'pending_approval' ? (
@@ -188,8 +176,12 @@ export function EstimateTab({
               <Button size="sm" variant="outline" onClick={copyApprovalLink}>
                 Copy link
               </Button>
-              <Button size="sm" variant="outline" onClick={sendForApproval} disabled={isPending}>
-                Resend
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => router.push(`/projects/${projectId}/estimate/preview`)}
+              >
+                Preview &amp; resend
               </Button>
               <Button size="sm" variant="ghost" onClick={resetEstimate} disabled={isPending}>
                 Reset
