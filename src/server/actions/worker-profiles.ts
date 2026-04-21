@@ -117,6 +117,7 @@ export async function updateWorkerCapabilitiesAction(
 const defaultsSchema = z.object({
   workers_can_log_expenses: z.boolean(),
   workers_can_invoice_default: z.boolean(),
+  workers_can_edit_old_entries: z.boolean(),
 });
 
 export async function updateWorkerDefaultsAction(
@@ -137,6 +138,7 @@ export async function updateWorkerDefaultsAction(
     .update({
       workers_can_log_expenses: parsed.data.workers_can_log_expenses,
       workers_can_invoice_default: parsed.data.workers_can_invoice_default,
+      workers_can_edit_old_entries: parsed.data.workers_can_edit_old_entries,
     })
     .eq('id', tenant.id);
 

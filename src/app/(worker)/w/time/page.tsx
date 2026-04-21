@@ -5,13 +5,20 @@ import { Button } from '@/components/ui/button';
 import { requireWorker } from '@/lib/auth/helpers';
 import { getOrCreateWorkerProfile } from '@/lib/db/queries/worker-profiles';
 import { listWorkerTimeEntries } from '@/lib/db/queries/worker-time';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
 export default async function WorkerTimePage() {
   const { tenant } = await requireWorker();
   const profile = await getOrCreateWorkerProfile(tenant.id, tenant.member.id);
-  const entries = await listWorkerTimeEntries(tenant.id, profile.id);
+  const admin = createAdminClient();
+
+  const [entries, tenantRow] = await Promise.all([
+    listWorkerTimeEntries(tenant.id, profile.id),
+    admin.from('tenants').select('workers_can_edit_old_entries').eq('id', tenant.id).maybeSingle(),
+  ]);
+  const canEditOld = Boolean(tenantRow.data?.workers_can_edit_old_entries);
 
   return (
     <div className="flex flex-col gap-4">
@@ -23,7 +30,7 @@ export default async function WorkerTimePage() {
           </Link>
         </Button>
       </div>
-      <WorkerTimeList entries={entries} />
+      <WorkerTimeList entries={entries} canEditOld={canEditOld} />
     </div>
   );
 }

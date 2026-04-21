@@ -15,24 +15,32 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import type { ProjectWithBuckets } from '@/lib/db/queries/worker-time';
-import { logWorkerTimeAction } from '@/server/actions/worker-time';
+import type { ProjectWithBuckets, WorkerTimeEntry } from '@/lib/db/queries/worker-time';
+import { logWorkerTimeAction, updateWorkerTimeAction } from '@/server/actions/worker-time';
 
-type Props = { projects: ProjectWithBuckets[] };
+type Props = {
+  projects: ProjectWithBuckets[];
+  /** When provided, the form edits this entry instead of creating a new one. */
+  initial?: WorkerTimeEntry;
+};
 
-export function WorkerTimeForm({ projects }: Props) {
+export function WorkerTimeForm({ projects, initial }: Props) {
   const router = useRouter();
   const params = useSearchParams();
-  const initialProject = params.get('project') ?? projects[0]?.project_id ?? '';
+  const isEdit = Boolean(initial);
+  const initialProject =
+    initial?.project_id ?? params.get('project') ?? projects[0]?.project_id ?? '';
   const initialDate =
-    params.get('date') ?? new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
+    initial?.entry_date ??
+    params.get('date') ??
+    new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
 
   const [pending, startTransition] = useTransition();
   const [projectId, setProjectId] = useState(initialProject);
-  const [bucketId, setBucketId] = useState('');
-  const [hours, setHours] = useState('');
+  const [bucketId, setBucketId] = useState(initial?.bucket_id ?? '');
+  const [hours, setHours] = useState(initial ? String(initial.hours) : '');
   const [date, setDate] = useState(initialDate);
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(initial?.notes ?? '');
 
   const buckets = useMemo(
     () => projects.find((p) => p.project_id === projectId)?.buckets ?? [],
@@ -51,18 +59,27 @@ export function WorkerTimeForm({ projects }: Props) {
       return;
     }
     startTransition(async () => {
-      const res = await logWorkerTimeAction({
-        project_id: projectId,
-        bucket_id: bucketId || undefined,
-        hours: h,
-        notes: notes || undefined,
-        entry_date: date,
-      });
+      const res = isEdit
+        ? await updateWorkerTimeAction({
+            id: initial!.id,
+            project_id: projectId,
+            bucket_id: bucketId || undefined,
+            hours: h,
+            notes: notes || undefined,
+            entry_date: date,
+          })
+        : await logWorkerTimeAction({
+            project_id: projectId,
+            bucket_id: bucketId || undefined,
+            hours: h,
+            notes: notes || undefined,
+            entry_date: date,
+          });
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
-      toast.success('Time logged.');
+      toast.success(isEdit ? 'Time updated.' : 'Time logged.');
       router.push('/w/time');
     });
   }
@@ -157,7 +174,7 @@ export function WorkerTimeForm({ projects }: Props) {
 
       <Button type="submit" disabled={pending} className="w-full">
         {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-        Log time
+        {isEdit ? 'Save changes' : 'Log time'}
       </Button>
     </form>
   );

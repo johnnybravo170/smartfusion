@@ -12,18 +12,25 @@ import { updateWorkerDefaultsAction } from '@/server/actions/worker-profiles';
 type Props = {
   workersCanLogExpenses: boolean;
   workersCanInvoiceDefault: boolean;
+  workersCanEditOldEntries: boolean;
 };
 
-export function WorkerDefaultsCard({ workersCanLogExpenses, workersCanInvoiceDefault }: Props) {
+export function WorkerDefaultsCard({
+  workersCanLogExpenses,
+  workersCanInvoiceDefault,
+  workersCanEditOldEntries,
+}: Props) {
   const [pending, startTransition] = useTransition();
   const [logExpenses, setLogExpenses] = useState(workersCanLogExpenses);
   const [invoice, setInvoice] = useState(workersCanInvoiceDefault);
+  const [editOld, setEditOld] = useState(workersCanEditOldEntries);
 
   function handleSave() {
     startTransition(async () => {
       const result = await updateWorkerDefaultsAction({
         workers_can_log_expenses: logExpenses,
         workers_can_invoice_default: invoice,
+        workers_can_edit_old_entries: editOld,
       });
       if (!result.ok) {
         toast.error(result.error ?? 'Failed to save.');
@@ -61,6 +68,22 @@ export function WorkerDefaultsCard({ workersCanLogExpenses, workersCanInvoiceDef
           <Label htmlFor="workers_can_invoice_default" className="font-normal">
             Workers can submit invoices (typical for subcontractors)
           </Label>
+        </div>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 text-sm">
+            <Checkbox
+              id="workers_can_edit_old_entries"
+              checked={editOld}
+              onCheckedChange={(v) => setEditOld(v === true)}
+            />
+            <Label htmlFor="workers_can_edit_old_entries" className="font-normal">
+              Workers can edit/delete time entries older than 48 hours
+            </Label>
+          </div>
+          <p className="pl-6 text-xs text-muted-foreground">
+            Entries within 48 hours of logging are always editable by the worker. Turn this on to
+            let them backfill or correct older entries too.
+          </p>
         </div>
         <Button onClick={handleSave} disabled={pending} size="sm">
           {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}

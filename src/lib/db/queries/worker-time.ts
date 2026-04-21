@@ -52,6 +52,44 @@ export async function listWorkerTimeEntries(
   });
 }
 
+export async function getWorkerTimeEntry(
+  tenantId: string,
+  workerProfileId: string,
+  entryId: string,
+): Promise<WorkerTimeEntry | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('time_entries')
+    .select(
+      'id, entry_date, hours, hourly_rate_cents, notes, project_id, bucket_id, created_at, projects:project_id (name), project_cost_buckets:bucket_id (name)',
+    )
+    .eq('tenant_id', tenantId)
+    .eq('worker_profile_id', workerProfileId)
+    .eq('id', entryId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  const r = data as unknown as Record<string, unknown>;
+  const project = r.projects as { name?: string } | { name?: string }[] | null;
+  const bucket = r.project_cost_buckets as { name?: string } | { name?: string }[] | null;
+  const proj = Array.isArray(project) ? project[0] : project;
+  const buck = Array.isArray(bucket) ? bucket[0] : bucket;
+  return {
+    id: r.id as string,
+    entry_date: r.entry_date as string,
+    hours: Number(r.hours),
+    hourly_rate_cents: (r.hourly_rate_cents as number | null) ?? null,
+    notes: (r.notes as string | null) ?? null,
+    project_id: (r.project_id as string | null) ?? null,
+    project_name: proj?.name ?? null,
+    bucket_id: (r.bucket_id as string | null) ?? null,
+    bucket_name: buck?.name ?? null,
+    created_at: r.created_at as string,
+  };
+}
+
 export type ProjectWithBuckets = {
   project_id: string;
   project_name: string;

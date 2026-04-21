@@ -83,31 +83,137 @@ export async function logWorkerTimeAction(input: {
   return { ok: true, id: data.id };
 }
 
+const GRACE_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * Workers can always edit/delete their own entries within 48h of logging.
+ * Beyond that, we check `tenants.workers_can_edit_old_entries`. Ownership
+ * is verified in every path.
+ */
+async function canWorkerMutateEntry(
+  tenantId: string,
+  profileId: string,
+  entryId: string,
+): Promise<
+  | { ok: true; entry: { id: string; project_id: string | null; created_at: string } }
+  | { ok: false; error: string }
+> {
+  const admin = createAdminClient();
+  const { data: entry } = await admin
+    .from('time_entries')
+    .select('id, worker_profile_id, project_id, created_at')
+    .eq('id', entryId)
+    .maybeSingle();
+
+  if (!entry || entry.worker_profile_id !== profileId) {
+    return { ok: false, error: 'Entry not found.' };
+  }
+
+  const ageMs = Date.now() - new Date(entry.created_at as string).getTime();
+  if (ageMs <= GRACE_MS) {
+    return {
+      ok: true,
+      entry: {
+        id: entry.id as string,
+        project_id: (entry.project_id as string | null) ?? null,
+        created_at: entry.created_at as string,
+      },
+    };
+  }
+
+  const { data: tenantRow } = await admin
+    .from('tenants')
+    .select('workers_can_edit_old_entries')
+    .eq('id', tenantId)
+    .maybeSingle();
+
+  if (!tenantRow?.workers_can_edit_old_entries) {
+    return {
+      ok: false,
+      error: 'This entry is older than 48 hours. Ask your supervisor to change it.',
+    };
+  }
+
+  return {
+    ok: true,
+    entry: {
+      id: entry.id as string,
+      project_id: (entry.project_id as string | null) ?? null,
+      created_at: entry.created_at as string,
+    },
+  };
+}
+
+const updateSchema = z.object({
+  id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  bucket_id: z.string().uuid().optional().or(z.literal('')),
+  hours: z.coerce.number().positive().max(24),
+  notes: z.string().trim().max(2000).optional().or(z.literal('')),
+  entry_date: z.string().min(1),
+});
+
+export async function updateWorkerTimeAction(input: {
+  id: string;
+  project_id: string;
+  bucket_id?: string;
+  hours: number;
+  notes?: string;
+  entry_date: string;
+}): Promise<WorkerTimeResult> {
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) {
+    const first = Object.values(parsed.error.flatten().fieldErrors)[0]?.[0];
+    return { ok: false, error: first ?? 'Invalid input.' };
+  }
+
+  const { tenant } = await requireWorker();
+  const profile = await getOrCreateWorkerProfile(tenant.id, tenant.member.id);
+
+  const check = await canWorkerMutateEntry(tenant.id, profile.id, parsed.data.id);
+  if (!check.ok) return check;
+
+  const assigned = await isWorkerAssignedToProject(tenant.id, profile.id, parsed.data.project_id);
+  if (!assigned) return { ok: false, error: 'You are not assigned to this project.' };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from('time_entries')
+    .update({
+      project_id: parsed.data.project_id,
+      bucket_id: parsed.data.bucket_id || null,
+      hours: parsed.data.hours,
+      notes: parsed.data.notes?.trim() || null,
+      entry_date: parsed.data.entry_date,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', parsed.data.id);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/w/time');
+  revalidatePath('/w');
+  revalidatePath(`/w/projects/${parsed.data.project_id}`);
+  revalidatePath(`/projects/${parsed.data.project_id}`);
+  if (check.entry.project_id && check.entry.project_id !== parsed.data.project_id) {
+    revalidatePath(`/projects/${check.entry.project_id}`);
+  }
+  return { ok: true, id: parsed.data.id };
+}
+
 export async function deleteWorkerTimeAction(id: string): Promise<WorkerTimeResult> {
   if (!id) return { ok: false, error: 'Missing id.' };
   const { tenant } = await requireWorker();
   const profile = await getOrCreateWorkerProfile(tenant.id, tenant.member.id);
 
+  const check = await canWorkerMutateEntry(tenant.id, profile.id, id);
+  if (!check.ok) return check;
+
   const admin = createAdminClient();
-  const { data: entry } = await admin
-    .from('time_entries')
-    .select('id, worker_profile_id, project_id, created_at')
-    .eq('id', id)
-    .maybeSingle();
-
-  if (!entry || entry.worker_profile_id !== profile.id) {
-    return { ok: false, error: 'Entry not found.' };
-  }
-
-  const ageMs = Date.now() - new Date(entry.created_at as string).getTime();
-  if (ageMs > 24 * 60 * 60 * 1000) {
-    return { ok: false, error: 'Entries can only be deleted within 24 hours.' };
-  }
-
   const { error } = await admin.from('time_entries').delete().eq('id', id);
   if (error) return { ok: false, error: error.message };
 
   revalidatePath('/w/time');
-  if (entry.project_id) revalidatePath(`/projects/${entry.project_id}`);
+  if (check.entry.project_id) revalidatePath(`/projects/${check.entry.project_id}`);
   return { ok: true, id };
 }

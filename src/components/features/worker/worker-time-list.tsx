@@ -1,16 +1,22 @@
 'use client';
 
-import { Trash2 } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import { useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import type { WorkerTimeEntry } from '@/lib/db/queries/worker-time';
 import { deleteWorkerTimeAction } from '@/server/actions/worker-time';
 
-type Props = { entries: WorkerTimeEntry[] };
+type Props = {
+  entries: WorkerTimeEntry[];
+  /** Tenant-level flag. When true, workers can edit/delete entries older than 48h. */
+  canEditOld: boolean;
+};
+
+const GRACE_MS = 48 * 60 * 60 * 1000;
 
 function weekStart(iso: string): string {
-  // Monday-anchored ISO week start, local.
   const d = new Date(`${iso}T00:00`);
   const day = (d.getDay() + 6) % 7; // Mon=0 ... Sun=6
   d.setDate(d.getDate() - day);
@@ -22,10 +28,7 @@ function formatWeek(iso: string): string {
   const end = new Date(start);
   end.setDate(end.getDate() + 6);
   const sameMonth = start.getMonth() === end.getMonth();
-  const s = start.toLocaleDateString('en-CA', {
-    month: 'short',
-    day: 'numeric',
-  });
+  const s = start.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
   const e = end.toLocaleDateString('en-CA', {
     month: sameMonth ? undefined : 'short',
     day: 'numeric',
@@ -33,11 +36,19 @@ function formatWeek(iso: string): string {
   return `${s} – ${e}`;
 }
 
-function canDelete(createdAt: string): boolean {
-  return Date.now() - new Date(createdAt).getTime() < 24 * 60 * 60 * 1000;
+function formatDay(iso: string): string {
+  return new Date(`${iso}T00:00`).toLocaleDateString('en-CA', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
-export function WorkerTimeList({ entries }: Props) {
+function isWithinGrace(createdAt: string): boolean {
+  return Date.now() - new Date(createdAt).getTime() < GRACE_MS;
+}
+
+export function WorkerTimeList({ entries, canEditOld }: Props) {
   const [pending, startTransition] = useTransition();
 
   if (entries.length === 0) {
@@ -48,12 +59,20 @@ export function WorkerTimeList({ entries }: Props) {
     );
   }
 
-  const groups = new Map<string, WorkerTimeEntry[]>();
+  // Group by week, then by day within each week. Entries arrive newest-first
+  // (listWorkerTimeEntries orders by entry_date desc), so iteration order
+  // preserves that.
+  const weeks = new Map<string, Map<string, WorkerTimeEntry[]>>();
   for (const entry of entries) {
-    const key = weekStart(entry.entry_date);
-    const arr = groups.get(key) ?? [];
+    const wkKey = weekStart(entry.entry_date);
+    let byDay = weeks.get(wkKey);
+    if (!byDay) {
+      byDay = new Map();
+      weeks.set(wkKey, byDay);
+    }
+    const arr = byDay.get(entry.entry_date) ?? [];
     arr.push(entry);
-    groups.set(key, arr);
+    byDay.set(entry.entry_date, arr);
   }
 
   function handleDelete(id: string) {
@@ -67,53 +86,77 @@ export function WorkerTimeList({ entries }: Props) {
     });
   }
 
+  function canMutate(entry: WorkerTimeEntry): boolean {
+    return canEditOld || isWithinGrace(entry.created_at);
+  }
+
   return (
     <div className="flex flex-col gap-5">
-      {Array.from(groups.entries()).map(([weekKey, rows]) => {
-        const total = rows.reduce((s, r) => s + r.hours, 0);
+      {Array.from(weeks.entries()).map(([weekKey, byDay]) => {
+        const weekTotal = Array.from(byDay.values())
+          .flat()
+          .reduce((s, r) => s + r.hours, 0);
         return (
           <section key={weekKey} className="space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold">{formatWeek(weekKey)}</h2>
-              <span className="text-xs text-muted-foreground">{total.toFixed(2)}h</span>
+              <span className="text-xs text-muted-foreground">{weekTotal.toFixed(2)}h</span>
             </div>
-            <div className="divide-y rounded-lg border">
-              {rows.map((entry) => (
-                <div key={entry.id} className="flex items-start gap-3 p-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="font-medium">{entry.hours.toFixed(2)}h</span>
-                      <span className="text-muted-foreground">
-                        {new Date(`${entry.entry_date}T00:00`).toLocaleDateString('en-CA', {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric',
-                        })}
+            <div className="space-y-3">
+              {Array.from(byDay.entries()).map(([dayKey, rows]) => {
+                const dayTotal = rows.reduce((s, r) => s + r.hours, 0);
+                return (
+                  <div key={dayKey} className="rounded-lg border">
+                    <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-2">
+                      <span className="text-sm font-medium">{formatDay(dayKey)}</span>
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {dayTotal.toFixed(2)}h
                       </span>
                     </div>
-                    <p className="text-sm">
-                      {entry.project_name ?? 'Unknown project'}
-                      {entry.bucket_name ? (
-                        <span className="text-muted-foreground"> · {entry.bucket_name}</span>
-                      ) : null}
-                    </p>
-                    {entry.notes ? (
-                      <p className="text-xs text-muted-foreground">{entry.notes}</p>
-                    ) : null}
+                    <div className="divide-y">
+                      {rows.map((entry) => {
+                        const editable = canMutate(entry);
+                        return (
+                          <div key={entry.id} className="flex items-start gap-3 p-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-medium">{entry.hours.toFixed(2)}h</span>
+                                <span className="text-muted-foreground truncate">
+                                  {entry.project_name ?? 'Unknown project'}
+                                  {entry.bucket_name ? ` · ${entry.bucket_name}` : ''}
+                                </span>
+                              </div>
+                              {entry.notes ? (
+                                <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                                  {entry.notes}
+                                </p>
+                              ) : null}
+                            </div>
+                            {editable ? (
+                              <div className="flex shrink-0 items-center gap-1">
+                                <Button asChild variant="ghost" size="icon" aria-label="Edit entry">
+                                  <Link href={`/w/time/${entry.id}/edit`}>
+                                    <Pencil className="size-4" />
+                                  </Link>
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={pending}
+                                  onClick={() => handleDelete(entry.id)}
+                                  aria-label="Delete entry"
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  {canDelete(entry.created_at) ? (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={pending}
-                      onClick={() => handleDelete(entry.id)}
-                      aria-label="Delete entry"
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  ) : null}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         );
