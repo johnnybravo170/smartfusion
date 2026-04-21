@@ -128,20 +128,17 @@ remove the external pinger. Vercel will inject the auth header automatically.
 
 ## Compliance notes
 
-- **RFC 8058 one-click unsubscribe**: the `POST /unsubscribe/:token` route
-  satisfies `List-Unsubscribe-Post: List-Unsubscribe=One-Click`. Every
-  marketing email must include both the `List-Unsubscribe` URL header AND the
-  `List-Unsubscribe-Post: List-Unsubscribe=One-Click` header. Phase 3 admin UI
-  will enforce this when building/sending; for Phase 1 manual sends, the
-  executor needs these headers added — tracked as TODO.
+- **RFC 8058 one-click unsubscribe**: the executor injects both the
+  `List-Unsubscribe: <{appUrl}/unsubscribe/{token}>` header and
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click` on every AR email, and
+  the `POST /unsubscribe/:token` route handles the one-click confirmation.
+  Tokens are per-contact/global-scope, signed via `AR_UNSUB_SECRET`.
 - **CASL / CAN-SPAM**: unsubscribe link is global (writes to suppression list),
   so re-enrollment via any tenant is blocked.
 - **SMS quiet hours** are stricter than email: 21:00–10:00 Mon–Fri by default.
 
 ## Known Phase 1 gaps (tracked for later)
 
-- Email headers don't include `List-Unsubscribe` / `List-Unsubscribe-Post` yet;
-  add to `sendEmail` or dedicated AR send helper.
 - Branch steps are no-ops.
 - No duplicate-enrollment guard; `allow_reenrollment` is read but not enforced.
 - MCP tools / UI / broadcasts / segments — all Phase 2+.

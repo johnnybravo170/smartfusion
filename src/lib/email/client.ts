@@ -12,4 +12,14 @@ export function getResend(): Resend {
   return _resend;
 }
 
-export const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@heyhenry.io';
+// Transactional class — invoices, quotes, change orders, auth, account.
+// Verified on mail.heyhenry.io. Falls back to legacy RESEND_FROM_EMAIL so
+// existing Vercel envs keep working during the split-rollout.
+export const FROM_EMAIL =
+  process.env.RESEND_FROM_EMAIL_TRANSACTIONAL ||
+  process.env.RESEND_FROM_EMAIL ||
+  'noreply@heyhenry.io';
+
+// Marketing class — autoresponder sends. Verified on send.heyhenry.io so a
+// marketing spam complaint can't tank transactional deliverability.
+export const FROM_EMAIL_MARKETING = process.env.RESEND_FROM_EMAIL_MARKETING || FROM_EMAIL;

@@ -27,10 +27,12 @@ import {
   arSteps,
   arTemplates,
 } from '@/lib/db/schema/ar';
+import { FROM_EMAIL_MARKETING } from '@/lib/email/client';
 import { sendEmail } from '@/lib/email/send';
 import { sendSms } from '@/lib/twilio/client';
 import { type Channel, checkSendPolicy, defaultWindow, type SendWindow } from './policy';
 import { renderTemplate } from './render';
+import { signUnsubToken } from './unsub-token';
 
 const CLAIM_LIMIT = 50;
 
@@ -230,18 +232,29 @@ async function runChannelStep(
     // Build a proper RFC 5322 From header so Resend renders a display name
     // (e.g. "Jon's Amazing Service <hello@mail.heyhenry.io>") instead of a
     // bare email. Escape quotes in the display name just in case.
-    const fromHeader = (() => {
-      if (!template.fromEmail) return undefined;
-      if (!template.fromName) return template.fromEmail;
-      const safeName = template.fromName.replace(/"/g, '');
-      return `"${safeName}" <${template.fromEmail}>`;
-    })();
+    // AR is marketing-class — default to send.heyhenry.io unless the template
+    // pins its own verified address. Never fall through to transactional.
+    const fromAddress = template.fromEmail || FROM_EMAIL_MARKETING;
+    const fromHeader = template.fromName
+      ? `"${template.fromName.replace(/"/g, '')}" <${fromAddress}>`
+      : fromAddress;
+    // RFC 8058 one-click unsubscribe. Gmail/Yahoo require these on bulk mail.
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io').replace(
+      /\/$/,
+      '',
+    );
+    const unsubToken = signUnsubToken(contact.id, 'all');
+    const unsubUrl = `${appUrl}/unsubscribe/${unsubToken}`;
     const result = await sendEmail({
       to: toAddress as string,
       subject,
       html: html ?? '',
       from: fromHeader,
       replyTo: template.replyTo || undefined,
+      headers: {
+        'List-Unsubscribe': `<${unsubUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      },
     });
     await db
       .update(arSendLog)

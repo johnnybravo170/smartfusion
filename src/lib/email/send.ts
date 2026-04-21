@@ -27,6 +27,7 @@ export async function sendEmail({
   replyTo,
   attachments,
   tenantId,
+  headers,
 }: {
   to: string;
   subject: string;
@@ -35,6 +36,7 @@ export async function sendEmail({
   replyTo?: string;
   attachments?: EmailAttachment[];
   tenantId?: string;
+  headers?: Record<string, string>;
 }): Promise<{ ok: boolean; error?: string; id?: string }> {
   try {
     let resolvedFrom = from || FROM_EMAIL;
@@ -53,6 +55,7 @@ export async function sendEmail({
       subject,
       html,
       replyTo: resolvedReplyTo,
+      headers,
       attachments: attachments?.map((a) => ({
         filename: a.filename,
         content: a.content,
