@@ -1,31 +1,29 @@
 # GC Quote-to-Invoice Workflow — Build Plan
 
-**Date:** 2026-04-19
+**Date:** 2026-04-19 (last updated 2026-04-21)
 **Vertical:** Renovation / General Contracting (JVD)
-**Status:** Schema complete. UI gaps listed below.
+**Status:** Stages 1–6 UI complete end-to-end. Backlog items below remain.
+
+## Decisions locked in (2026-04-21)
+
+- **Milestone label default:** `Draw #N` (auto-increments from count of non-void, non-final invoices on the project). Free-form edit after.
+- **Management fee:** displayed as a transparent line on both estimate-sourced invoices and the final invoice (not baked into totals).
+- **BC 10% holdback:** skipped for v1. Revisit if JVD asks.
+- **Residency:** every tenant has a `region` column (ca-central-1 today). All payment/tax code goes through `src/lib/providers/`. See `INFRA_RESIDENCY_PLAN.md` for the multi-region runbook.
 
 ---
 
-## What's already built
+## Schema foundation
 
-**Schema (all migrations applied):**
-- `projects` — status (planning/in_progress/complete/cancelled), percent_complete, management_fee_rate (12% default), portal_slug, portal_enabled
-- `project_cost_buckets` — per-project buckets (interior/exterior/general), estimate_cents
-- `cost_bucket_templates` — per-tenant reusable bucket sets
-- `project_memos` — voice memo → transcript → AI extraction pipeline
-- `time_entries` — hours against project + bucket (workers + owner)
-- `expenses` — receipts against project + bucket, receipt_url
-- `change_orders` — full approval flow (draft → pending_approval → approved/declined/voided), cost + timeline impact, approval_code
-- `project_portal_updates` — progress/photo/milestone/message/system updates
-- `quotes.approval_code` — public quote acceptance without login
-- `invoices.line_items` JSONB + `customer_note` + `payment_method`
+All migrations applied (latest: 0063). See "Workflow stages — current state" below for what each table powers.
 
-**UI already live:**
-- `/projects` list (functional)
-- `/projects/new` (exists — need to verify completeness)
-- `/projects/[id]` (exists — need to verify completeness)
-- `/portal/[slug]` — homeowner portal (functional: loads project, status, updates)
-- `/approve/[code]` — change order approval page (fully functional: approve/decline with name entry)
+- `projects`, `project_cost_buckets`, `project_cost_lines` (+ `photo_storage_paths`, migration 0063)
+- `cost_bucket_templates`
+- `project_memos` (voice memo → transcript → AI extraction)
+- `time_entries`, `expenses` (+ `receipt_storage_path`)
+- `change_orders` (full approval state machine)
+- `project_portal_updates` (+ `photo_storage_path`, migration 0062)
+- `invoices.line_items` JSONB + `customer_note` + `payment_method` + `project_id`
 
 ---
 
@@ -45,124 +43,91 @@ Key differences:
 
 ---
 
-## Workflow stages + UI gaps
+## Workflow stages — current state
 
-### Stage 1 — Estimate (Quote)
+### Stage 1 — Estimate (Quote) ✅
 
-**What:** Line-item quote against cost buckets. Customer approves without logging in.
-
-**Already built:** `quotes` table, quote PDF, Resend email, `approval_code` + `/approve/[code]` page (for change orders — verify quote approval reuses same pattern or has its own route).
-
-**Gaps to verify:**
-- [ ] Does the quote form support line-item entry (not just polygon area) for renovation? If not, add a "renovation mode" line-item form path based on `tenant.vertical`.
-- [ ] Public quote acceptance page at `/q/[approval_code]` — distinct from change order approval.
-
----
+- Line-item estimate UI at `/projects/[id]?tab=estimate` — cost lines with category, qty, unit cost/price, markup, notes, reference photos.
+- Photos on cost lines: `project_cost_lines.photo_storage_paths` jsonb (migration 0063) + [CostLinePhotoStrip](src/components/features/projects/cost-line-photo-strip.tsx) + attach/remove actions.
+- "Generate estimate from buckets" seeds cost lines from bucket estimates.
+- "Send for approval" → emails customer a link to `/approve-estimate/[code]` (migration 0050 fields).
+- "Create invoice from estimate" button on estimate tab → `createInvoiceFromEstimateAction` rolls up lines + adds management-fee line + 5% GST.
 
 ### Stage 2 — Project Creation (Quote → Project)
 
-**What:** Accepted quote converts to a project. Cost buckets are seeded from the quote line items. Portal slug generated. Customer receives portal link.
+Quotes→projects in the pressure-washing sense (quote object) is still separate from GC estimates (cost-line form). JVD currently creates projects directly at `/projects/new`. Conversion from an accepted quote is **still a gap** — low priority since the GC flow starts at project creation today, but the cross-path would help operators who quoted via the legacy quote form.
 
-**Gaps:**
-- [ ] "Convert to project" action on accepted quote detail page.
-- [ ] On conversion: create `project`, seed `project_cost_buckets` from quote line items, set `portal_slug` (nanoid), optionally enable portal + email homeowner the link.
-- [ ] `cost_bucket_templates` management UI in Settings (so JVD doesn't rebuild buckets for every similar reno job).
+Backlog:
+- [ ] "Convert to project" action on accepted quote detail page — seed `project_cost_buckets` + optional portal.
+- [ ] `cost_bucket_templates` management UI in Settings.
 
----
+### Stage 3 — Active Project (Time, Expenses, Progress) ✅
 
-### Stage 3 — Active Project (Time, Expenses, Progress)
+- Time entries: `TimeForm` in [TimeExpenseTab](src/components/features/projects/time-expense-tab.tsx) → `logTimeAction`.
+- Expenses with receipt upload: `ExpenseForm` → `logExpenseWithReceiptAction` (FormData variant) → private `receipts` bucket; project page signs URLs at render.
+- Budget tracker: [BudgetSummaryCard](src/components/features/projects/budget-summary.tsx) shows totals **and** per-bucket breakdown (estimate / labour / expenses / actual / remaining, with over-budget highlight).
+- Percent-complete slider: [PercentCompleteEditor](src/components/features/projects/percent-complete-editor.tsx) → `updateProjectAction`.
+- Portal update composer: [PortalUpdateForm](src/components/features/portal/portal-update-form.tsx) posts progress/photo/milestone/message with optional photo upload to private `photos` bucket (`photo_storage_path` column, migration 0062); portal signs at render.
 
-**What:** Day-to-day tracking. Time entries and expenses log against buckets. Homeowner sees updates on the portal.
+### Stage 4 — Change Orders ✅
 
-**Gaps:**
-- [ ] Time entry form on project detail (owner + worker — workers see stripped-down view).
-- [ ] Expense logging form with receipt photo upload → receipt_url stored.
-- [ ] Budget tracker on project detail: estimate vs actual per bucket, running management fee.
-- [ ] Portal update composer: post progress update / milestone / photo to `/portal/[slug]`.
-- [ ] Percent-complete slider on project detail (visible on portal).
+- `ChangeOrderForm` at `/projects/[id]/change-orders/new` writes a draft via `createChangeOrderAction`, optionally chains `sendChangeOrderAction` to generate `approval_code` and email the customer.
+- Public approval at `/approve/[code]`.
+- Change order list + status badges on project detail.
 
----
+### Stage 5 — Progress Invoicing (Milestone Draws) ✅
 
-### Stage 4 — Change Orders
+- "+ Milestone invoice" button on project's Invoices tab opens `MilestoneForm`.
+- Label defaults to `Draw #N` (non-void, non-final invoice count + 1). Free-form edit.
+- `createMilestoneInvoiceAction` inserts draft invoice with label in `customer_note` + line items + 5% GST.
+- Post-creation: invoice detail page allows editing label ([InvoiceNote](src/components/features/invoices/invoice-note.tsx) → `updateInvoiceNoteAction`) and line items ([InvoiceLineItems](src/components/features/invoices/invoice-line-items.tsx) → `addInvoiceLineItemAction` / `removeInvoiceLineItemAction`). Both gated on `isDraft` — locked once sent/paid.
+- Running total billed vs contract value still inferable from the list but not yet surfaced prominently; see backlog.
 
-**What:** Scope change → draft CO → send for approval → homeowner approves at `/approve/[code]` → budget + timeline updated automatically.
+### Stage 6 — Final Invoice ✅
 
-**Already built:** Full approval page at `/approve/[code]` (approve/decline with name capture). Schema has full status machine.
+- "Generate final invoice" button on Invoices tab → `generateFinalInvoiceAction` reads all time_entries + expenses, applies `management_fee_rate` on the sum, subtracts prior non-void invoice amounts, produces a draft invoice with Labour / Materials & Expenses / Management Fee (transparent line) / Less: Prior Invoices.
 
-**Gaps:**
-- [ ] Change order creation form on project detail page (title, description, reason, cost impact, timeline impact, affected buckets).
-- [ ] "Send for approval" action: sets status to `pending_approval`, generates `approval_code` (nanoid), emails homeowner the `/approve/[code]` link.
-- [ ] On approval webhook/server action: update `project_cost_buckets` estimate_cents + project target_end_date.
-- [ ] Change order list on project detail with status badges.
-
----
-
-### Stage 5 — Progress Invoicing (Milestone Draws)
-
-**What:** Invoice a portion of the project at a milestone (deposit, rough-in complete, etc.) before the job is done. Uses `invoices.line_items` JSONB.
-
-**Gaps:**
-- [ ] "Create milestone invoice" action on project detail.
-- [ ] Invoice form for GC: free-form line items (label + amount) + optional `customer_note` + management fee line.
-- [ ] Track which milestones have been invoiced; show running total billed vs contract value on project detail.
-- [ ] `payment_method` selector on invoice (stripe/cash/cheque/e-transfer/other) — already in schema.
+Backlog:
+- [ ] Final-invoice PDF template with project-name header + per-bucket cost breakdown.
 
 ---
 
-### Stage 6 — Final Invoice
+## Build order (historical — all complete)
 
-**What:** Project complete → final invoice calculates actuals (time + expenses + management fee) vs amount already invoiced → produces balance-owing invoice.
-
-**Gaps:**
-- [ ] "Generate final invoice" action: reads all time_entries + expenses for the project, applies management_fee_rate, subtracts prior invoiced amounts, produces a pre-filled invoice draft.
-- [ ] Final invoice PDF (same template as existing, but with project name header and cost breakdown).
-
----
-
-## Build order
-
-These are independent enough to parallelize in tracks after Stage 2 is done.
-
-| Order | Track | Unlocks |
+| Order | Track | Status |
 |---|---|---|
-| 1 | Quote line-item mode + quote acceptance page | Stage 1 |
-| 2 | Quote → Project conversion | Stage 2 |
-| 3A | Time + expense logging | Stage 3 actuals |
-| 3B | Change order creation + send | Stage 4 |
-| 3C | Portal update composer + percent-complete | Stage 3 visibility |
-| 4 | Budget tracker (estimate vs actual per bucket) | Milestone invoicing |
-| 5 | Milestone invoice creation | Stage 5 |
-| 6 | Final invoice generation | Stage 6 |
+| 1 | Estimate line-item mode + public approval | ✅ |
+| 2 | Quote → Project conversion | ⏸ deferred (quotes/projects are parallel entry paths today) |
+| 3A | Time + expense logging + receipt upload | ✅ |
+| 3B | Change order creation + send | ✅ |
+| 3C | Portal update composer + percent-complete + photo upload | ✅ |
+| 4 | Budget tracker (estimate vs actual per bucket) | ✅ |
+| 5 | Milestone invoice creation (Draw #N default) | ✅ |
+| 6 | Final invoice generation | ✅ |
 
 ---
 
-## Key decisions to confirm before building
+## Open decisions still pending
 
-1. **Quote line items for renovation** — does the existing quote form need a vertical-aware mode, or do we build a separate "project estimate" flow that lives under `/projects/new` rather than `/quotes/new`?
-2. **Milestone invoice naming** — "Draw #1", "Deposit", etc. — free-form label or predefined types?
-3. **Management fee display** — show as a separate line on invoice to customer (transparent) or baked into totals (simpler)?
-4. **Holdback** — BC construction lien holdback (10%) on each draw? JVD to confirm if he needs this.
-5. **Portal email cadence** — auto-notify homeowner on every portal update, or only when contractor explicitly triggers it?
+1. **Quote → Project conversion** — quotes and projects currently have parallel entry paths. Low priority; revisit if operators ask.
+2. **Portal email cadence** — auto-notify homeowner on every portal update, or only when contractor explicitly triggers it? Today: manual trigger only.
+3. **Billed-vs-contract surfacing** — running total is computable from the invoice list but no prominent "Billed so far: $X of $Y contract" header on Invoices tab. Ship when JVD asks.
 
 ---
 
 ## Backlog / future features
 
----
+### Estimate-screen polish — closed 2026-04-21
 
-### Estimate-screen polish (immediate — in progress)
-
-UX papercuts on the estimate flow JVD flagged 2026-04-20:
-
-- [x] "Generate estimate from buckets" button → rename to "Generate Estimate", auto-switch to the estimate tab after run (don't make the user click).
-- [ ] Cost line description becomes a multi-line textarea (room for a full paragraph, not a tiny input). Use case: JVD attaches a photo of a designer fireplace and writes a paragraph about building something similar with matching stone/hearth.
-- [ ] Photos on cost lines: attach one or more reference images to any line. Click to enlarge. Stored in Supabase Storage. New `project_cost_line_photos` table or a `photo_urls jsonb` column on `project_cost_lines`.
-- [ ] Management fee visibility on the estimate. Pull from `projects.management_fee_rate` (default 12%). Show as a computed line at the bottom of the estimate totals — transparent to the customer by default, with a per-project toggle later (see Key Decisions #3). Do not require the user to add it manually.
-- [ ] Estimate → Invoice action: "Create invoice from estimate" button on the estimate tab. Pre-fills `invoices.line_items` from current cost lines + management fee.
+- [x] "Generate estimate from buckets" → auto-switch to estimate tab after run.
+- [x] Cost line description multi-line textarea (already a Textarea in current form).
+- [x] Photos on cost lines — migration 0063, `photo_storage_paths` jsonb array, thumbnail strip in estimate tab.
+- [x] Management fee auto-applied on estimate-sourced invoice (transparent line via `createInvoiceFromEstimateAction`).
+- [x] "Create invoice from estimate" button on the estimate tab.
 
 ### Project name inline editing
 
-Click the project name on the detail page to rename in-place. Add a small edit affordance on the project list row too (unobtrusive but discoverable). Single `updateProjectAction({id, name})`.
+Click the project name on the detail page to rename in-place. Add a small edit affordance on the project list row too (unobtrusive but discoverable). Single `updateProjectAction({id, name})`. **Status:** ProjectNameEditor already exists on the detail page — confirm it's wired before closing.
 
 ---
 
