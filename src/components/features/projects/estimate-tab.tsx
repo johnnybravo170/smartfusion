@@ -12,6 +12,7 @@ import { createInvoiceFromEstimateAction } from '@/server/actions/invoices';
 import { deleteCostLineAction } from '@/server/actions/project-cost-control';
 import { CostLineForm } from './cost-line-form';
 import { CostLinePhotoStrip } from './cost-line-photo-strip';
+import { EstimateFeedbackCard, type FeedbackRow } from './estimate-feedback-card';
 
 export type EstimateApprovalInfo = {
   status: 'draft' | 'pending_approval' | 'approved' | 'declined';
@@ -32,6 +33,7 @@ export function EstimateTab({
   managementFeeRate,
   approval,
   costLinePhotoUrls,
+  feedback,
 }: {
   projectId: string;
   costLines: CostLineRow[];
@@ -39,6 +41,7 @@ export function EstimateTab({
   managementFeeRate: number;
   approval: EstimateApprovalInfo;
   costLinePhotoUrls: Record<string, string>;
+  feedback: FeedbackRow[];
 }) {
   const [showForm, setShowForm] = useState(false);
   const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
@@ -126,6 +129,8 @@ export function EstimateTab({
 
   return (
     <div className="space-y-4">
+      <EstimateFeedbackCard projectId={projectId} feedback={feedback} />
+
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-4 py-3">
         <div className="flex items-center gap-3">
           {statusChip}

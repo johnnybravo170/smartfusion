@@ -9,6 +9,7 @@ import { estimateApprovalEmailHtml } from '@/lib/email/templates/estimate-approv
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { sendSms } from '@/lib/twilio/client';
 
 export type EstimateActionResult =
   | { ok: true; id?: string; code?: string }
@@ -286,5 +287,172 @@ export async function logEstimateViewAction(input: {
     actor: 'customer',
   });
 
+  return { ok: true };
+}
+
+// ============================================================================
+// Customer feedback on pending estimates
+// ============================================================================
+
+export type FeedbackComment = {
+  /** Null or missing → general comment (shown at the bottom, not tied to a line). */
+  costLineId?: string | null;
+  body: string;
+};
+
+/**
+ * Customer submits feedback on the estimate. The estimate status does not
+ * change — we just write comments. The operator sees them on the dashboard
+ * with an unseen badge and can decide whether to revise/resend.
+ *
+ * Also fires per-member notifications (email/sms) based on tenant_members
+ * notify_prefs. Notification failures are logged but don't block the write.
+ */
+export async function submitEstimateFeedbackAction(
+  approvalCode: string,
+  comments: FeedbackComment[],
+): Promise<EstimateActionResult> {
+  const cleaned = comments
+    .map((c) => ({
+      costLineId: c.costLineId ?? null,
+      body: (c.body ?? '').trim(),
+    }))
+    .filter((c) => c.body.length > 0);
+
+  if (cleaned.length === 0) {
+    return { ok: false, error: 'Nothing to send — add a comment first.' };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: project } = await admin
+    .from('projects')
+    .select('id, tenant_id, name, estimate_status, customers:customer_id (name)')
+    .eq('estimate_approval_code', approvalCode)
+    .maybeSingle();
+
+  if (!project) return { ok: false, error: 'Estimate not found.' };
+
+  const p = project as Record<string, unknown>;
+  const projectId = p.id as string;
+  const tenantId = p.tenant_id as string;
+
+  const rows = cleaned.map((c) => ({
+    project_id: projectId,
+    tenant_id: tenantId,
+    cost_line_id: c.costLineId,
+    body: c.body,
+  }));
+
+  const { error: insErr } = await admin.from('project_estimate_comments').insert(rows);
+  if (insErr) return { ok: false, error: insErr.message };
+
+  await emitProjectEvent(admin, {
+    tenant_id: tenantId,
+    project_id: projectId,
+    kind: 'estimate_feedback_submitted',
+    meta: { count: rows.length },
+    actor: 'customer',
+  });
+
+  // Fire notifications per tenant member prefs. Best-effort — one bad
+  // member shouldn't block the others.
+  const customerName =
+    ((p.customers as Record<string, unknown> | null)?.name as string | undefined) ?? 'the customer';
+  const projectName = (p.name as string) ?? 'their project';
+
+  await dispatchFeedbackNotifications({
+    admin,
+    tenantId,
+    projectId,
+    projectName,
+    customerName,
+    commentCount: rows.length,
+  }).catch((err) => {
+    console.error('[feedback] notification dispatch failed:', err);
+  });
+
+  return { ok: true, id: projectId };
+}
+
+async function dispatchFeedbackNotifications(args: {
+  admin: ReturnType<typeof createAdminClient>;
+  tenantId: string;
+  projectId: string;
+  projectName: string;
+  customerName: string;
+  commentCount: number;
+}) {
+  const { admin, tenantId, projectId, projectName, customerName, commentCount } = args;
+
+  const { data: members } = await admin
+    .from('tenant_members')
+    .select('user_id, first_name, notification_phone, notify_prefs')
+    .eq('tenant_id', tenantId);
+
+  const userIds = (members ?? []).map((m) => m.user_id as string).filter(Boolean);
+  if (userIds.length === 0) return;
+
+  const { data: users } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const emailByUserId = new Map<string, string>();
+  for (const u of users?.users ?? []) {
+    if (u.id && u.email) emailByUserId.set(u.id, u.email);
+  }
+
+  const feedbackUrl = `https://app.heyhenry.io/projects/${projectId}?tab=estimate#feedback`;
+  const preview = `${customerName} left ${commentCount} comment${commentCount === 1 ? '' : 's'} on the estimate for ${projectName}.`;
+
+  for (const m of members ?? []) {
+    const prefs = (m.notify_prefs as Record<string, Record<string, boolean> | undefined>) ?? {};
+    const want = prefs.customer_feedback ?? { email: true, sms: false };
+
+    if (want.email) {
+      const email = emailByUserId.get(m.user_id as string);
+      if (email) {
+        await sendEmail({
+          tenantId,
+          to: email,
+          subject: `New estimate feedback from ${customerName}`,
+          html: `<p>${preview}</p><p><a href="${feedbackUrl}">Open in HeyHenry</a></p>`,
+        }).catch((err) => console.error('[feedback] email send failed:', err));
+      }
+    }
+
+    if (want.sms) {
+      const phone = (m.notification_phone as string | null) ?? '';
+      if (phone) {
+        await sendSms({
+          tenantId,
+          to: phone,
+          body: `${preview} ${feedbackUrl}`,
+          relatedType: 'platform',
+        }).catch((err) => console.error('[feedback] sms send failed:', err));
+      }
+    }
+  }
+}
+
+export async function markEstimateFeedbackSeenAction(input: {
+  projectId: string;
+  commentIds?: string[]; // if omitted, mark all for this project seen
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+  let query = supabase
+    .from('project_estimate_comments')
+    .update({ seen_at: new Date().toISOString() })
+    .eq('project_id', input.projectId)
+    .is('seen_at', null);
+
+  if (input.commentIds && input.commentIds.length > 0) {
+    query = query.in('id', input.commentIds);
+  }
+
+  const { error } = await query;
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/projects/${input.projectId}`);
   return { ok: true };
 }

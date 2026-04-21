@@ -41,6 +41,9 @@ export const operatorProfileSchema = z.object({
   firstName: OPTIONAL_STRING,
   lastName: OPTIONAL_STRING,
   title: OPTIONAL_STRING,
+  notificationPhone: OPTIONAL_STRING,
+  notifyCustomerFeedbackEmail: z.boolean().default(true),
+  notifyCustomerFeedbackSms: z.boolean().default(false),
 });
 
 export type OperatorProfileInput = z.infer<typeof operatorProfileSchema>;

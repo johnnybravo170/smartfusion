@@ -82,6 +82,9 @@ export type OperatorProfile = {
   title: string | null;
   role: string;
   email: string | null;
+  notificationPhone: string | null;
+  notifyCustomerFeedbackEmail: boolean;
+  notifyCustomerFeedbackSms: boolean;
 };
 
 export async function getOperatorProfile(
@@ -91,7 +94,7 @@ export async function getOperatorProfile(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('tenant_members')
-    .select('first_name, last_name, title, role')
+    .select('first_name, last_name, title, role, notification_phone, notify_prefs')
     .eq('tenant_id', tenantId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -101,12 +104,19 @@ export async function getOperatorProfile(
     data: { user },
   } = await supabase.auth.getUser();
 
+  const prefs =
+    (data.notify_prefs as Record<string, Record<string, boolean> | undefined> | null) ?? {};
+  const feedback = prefs.customer_feedback ?? { email: true, sms: false };
+
   return {
     firstName: (data.first_name as string | null) ?? null,
     lastName: (data.last_name as string | null) ?? null,
     title: (data.title as string | null) ?? null,
     role: data.role as string,
     email: user?.email ?? null,
+    notificationPhone: (data.notification_phone as string | null) ?? null,
+    notifyCustomerFeedbackEmail: !!feedback.email,
+    notifyCustomerFeedbackSms: !!feedback.sms,
   };
 }
 

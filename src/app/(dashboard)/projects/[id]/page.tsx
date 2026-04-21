@@ -143,6 +143,26 @@ export default async function ProjectDetailPage({
     listWorkerProfiles(project.tenant_id),
   ]);
 
+  // Customer feedback on the estimate. Attach line labels so the operator
+  // sees which item each comment refers to.
+  const { data: feedbackRowsRaw } = await supabase
+    .from('project_estimate_comments')
+    .select('id, body, cost_line_id, seen_at, created_at')
+    .eq('project_id', id)
+    .order('created_at', { ascending: false });
+  const costLineLabelById = new Map(costLines.map((l) => [l.id, l.label]));
+  const feedbackRows = (feedbackRowsRaw ?? []).map((r) => ({
+    id: r.id as string,
+    body: r.body as string,
+    cost_line_id: (r.cost_line_id as string | null) ?? null,
+    cost_line_label: r.cost_line_id
+      ? (costLineLabelById.get(r.cost_line_id as string) ?? null)
+      : null,
+    seen_at: (r.seen_at as string | null) ?? null,
+    created_at: r.created_at as string,
+  }));
+  const unseenFeedbackCount = feedbackRows.filter((f) => !f.seen_at).length;
+
   // Sign receipt URLs for any expense with a storage-backed receipt.
   const expenseReceiptUrls = new Map<string, string>();
   const receiptPaths = expenses
@@ -273,7 +293,10 @@ export default async function ProjectDetailPage({
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'buckets', label: 'Cost Buckets' },
-    { key: 'estimate', label: 'Estimate' },
+    {
+      key: 'estimate',
+      label: unseenFeedbackCount > 0 ? `Estimate (${unseenFeedbackCount})` : 'Estimate',
+    },
     { key: 'costs', label: 'POs & Bills' },
     { key: 'variance', label: 'Variance' },
     { key: 'invoices', label: 'Invoices' },
@@ -399,6 +422,7 @@ export default async function ProjectDetailPage({
           catalog={catalog}
           costLinePhotoUrls={costLinePhotoUrls}
           managementFeeRate={project.management_fee_rate}
+          feedback={feedbackRows}
           approval={{
             status: project.estimate_status,
             approval_code: project.estimate_approval_code,

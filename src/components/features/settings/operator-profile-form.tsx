@@ -12,12 +12,22 @@ export function OperatorProfileForm({ profile }: { profile: OperatorProfile }) {
   const [firstName, setFirstName] = useState(profile.firstName ?? '');
   const [lastName, setLastName] = useState(profile.lastName ?? '');
   const [title, setTitle] = useState(profile.title ?? '');
+  const [notificationPhone, setNotificationPhone] = useState(profile.notificationPhone ?? '');
+  const [notifyEmail, setNotifyEmail] = useState(profile.notifyCustomerFeedbackEmail);
+  const [notifySms, setNotifySms] = useState(profile.notifyCustomerFeedbackSms);
   const [pending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     startTransition(async () => {
-      const result = await updateOperatorProfileAction({ firstName, lastName, title });
+      const result = await updateOperatorProfileAction({
+        firstName,
+        lastName,
+        title,
+        notificationPhone,
+        notifyCustomerFeedbackEmail: notifyEmail,
+        notifyCustomerFeedbackSms: notifySms,
+      });
       if (result.ok) toast.success('Your info saved.');
       else toast.error(result.error);
     });
@@ -61,6 +71,58 @@ export function OperatorProfileForm({ profile }: { profile: OperatorProfile }) {
           </div>
         </div>
       ) : null}
+
+      <div className="mt-2 rounded-lg border p-4">
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold">Notifications</h3>
+          <p className="text-xs text-muted-foreground">
+            Choose how you'd like to be notified when a customer leaves feedback on an estimate.
+          </p>
+        </div>
+
+        <div className="mb-4">
+          <Label htmlFor="op-notify-phone" className="mb-1.5 block text-sm">
+            SMS phone number
+          </Label>
+          <Input
+            id="op-notify-phone"
+            value={notificationPhone}
+            onChange={(e) => setNotificationPhone(e.target.value)}
+            placeholder="+1 555 123 4567"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Only used for SMS alerts. Leave blank to disable SMS.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Customer feedback on estimates
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={notifyEmail}
+              onChange={(e) => setNotifyEmail(e.target.checked)}
+              className="size-4"
+            />
+            Email me
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={notifySms}
+              onChange={(e) => setNotifySms(e.target.checked)}
+              className="size-4"
+              disabled={!notificationPhone.trim()}
+            />
+            Text me
+            {!notificationPhone.trim() ? (
+              <span className="text-xs text-muted-foreground">(add a phone number first)</span>
+            ) : null}
+          </label>
+        </div>
+      </div>
 
       <div className="pt-2">
         <Button type="submit" disabled={pending}>

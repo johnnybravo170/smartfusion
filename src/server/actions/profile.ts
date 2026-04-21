@@ -122,6 +122,13 @@ export async function updateOperatorProfileAction(
       first_name: emptyToNull(parsed.data.firstName),
       last_name: emptyToNull(parsed.data.lastName),
       title: emptyToNull(parsed.data.title),
+      notification_phone: emptyToNull(parsed.data.notificationPhone),
+      notify_prefs: {
+        customer_feedback: {
+          email: parsed.data.notifyCustomerFeedbackEmail,
+          sms: parsed.data.notifyCustomerFeedbackSms,
+        },
+      },
       updated_at: new Date().toISOString(),
     })
     .eq('tenant_id', tenant.id)

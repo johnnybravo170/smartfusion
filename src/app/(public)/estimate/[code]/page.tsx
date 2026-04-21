@@ -68,7 +68,10 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
 
       {status === 'pending_approval' ? (
         <div className="mt-8 rounded-lg border p-5">
-          <EstimateApprovalForm approvalCode={code} />
+          <EstimateApprovalForm
+            approvalCode={code}
+            lines={(lines ?? []).map((l) => ({ id: l.id, label: l.label }))}
+          />
         </div>
       ) : null}
     </div>
