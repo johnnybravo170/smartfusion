@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2 } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { ProjectWithBuckets } from '@/lib/db/queries/worker-time';
+import { extractReceiptFieldsAction } from '@/server/actions/extract-receipt';
 import { logWorkerExpenseAction } from '@/server/actions/worker-expenses';
 
 type Props = { projects: ProjectWithBuckets[] };
@@ -27,6 +28,7 @@ export function WorkerExpenseForm({ projects }: Props) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
 
   const [pending, startTransition] = useTransition();
+  const [extracting, setExtracting] = useState(false);
   const [projectId, setProjectId] = useState(initialProject);
   const [bucketId, setBucketId] = useState('');
   const [amount, setAmount] = useState('');
@@ -39,6 +41,51 @@ export function WorkerExpenseForm({ projects }: Props) {
     () => projects.find((p) => p.project_id === projectId)?.buckets ?? [],
     [projects, projectId],
   );
+
+  async function handleReceiptPick(file: File | null) {
+    setReceipt(file);
+    if (!file) return;
+
+    // Only auto-extract on images. PDFs fall back to plain upload.
+    if (!file.type.startsWith('image/')) return;
+
+    setExtracting(true);
+    try {
+      const fd = new FormData();
+      fd.append('receipt', file);
+      const res = await extractReceiptFieldsAction(fd);
+      if (!res.ok) {
+        toast.error(`Could not read receipt: ${res.error}`);
+        return;
+      }
+      // Only fill fields the user hasn't already typed into.
+      const { amountCents, vendor: v, expenseDate, description: d } = res.fields;
+      let filled = 0;
+      if (amountCents != null && !amount) {
+        setAmount((amountCents / 100).toFixed(2));
+        filled++;
+      }
+      if (v && !vendor) {
+        setVendor(v);
+        filled++;
+      }
+      if (expenseDate && date === today) {
+        setDate(expenseDate);
+        filled++;
+      }
+      if (d && !description) {
+        setDescription(d);
+        filled++;
+      }
+      if (filled > 0) {
+        toast.success(`Read ${filled} field${filled === 1 ? '' : 's'} from the receipt.`);
+      } else {
+        toast.message("Couldn't read anything clearly — fill in below.");
+      }
+    } finally {
+      setExtracting(false);
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -79,6 +126,34 @@ export function WorkerExpenseForm({ projects }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {/* Receipt dropzone — top of form. Picking triggers auto-extract so the
+          fields below pre-fill. User reviews + corrects before submit. */}
+      <div className="space-y-1.5 rounded-lg border-2 border-dashed bg-muted/30 p-4">
+        <Label htmlFor="receipt" className="text-sm font-medium">
+          Scan receipt
+        </Label>
+        <Input
+          id="receipt"
+          type="file"
+          accept="image/*,application/pdf"
+          capture="environment"
+          onChange={(e) => handleReceiptPick(e.target.files?.[0] ?? null)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Snap or upload a photo and the amount, vendor, and date will fill themselves in. PDFs
+          upload but won&apos;t auto-read.
+        </p>
+        {extracting ? (
+          <p className="flex items-center gap-1.5 text-xs text-primary">
+            <Loader2 className="size-3 animate-spin" /> Reading receipt…
+          </p>
+        ) : receipt ? (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Sparkles className="size-3" /> {receipt.name}
+          </p>
+        ) : null}
+      </div>
+
       <div className="space-y-1.5">
         <Label htmlFor="project">Project</Label>
         <Select
@@ -156,19 +231,6 @@ export function WorkerExpenseForm({ projects }: Props) {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="receipt">Receipt photo (optional)</Label>
-        <Input
-          id="receipt"
-          type="file"
-          accept="image/*,application/pdf"
-          onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
-        />
-        <p className="text-xs text-muted-foreground">
-          On iPhone, tap Choose Files → ⋯ → Scan Documents for auto-cropped receipts.
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
         <Label htmlFor="description">Notes (optional)</Label>
         <Textarea
           id="description"
@@ -178,7 +240,7 @@ export function WorkerExpenseForm({ projects }: Props) {
         />
       </div>
 
-      <Button type="submit" disabled={pending} className="w-full">
+      <Button type="submit" disabled={pending || extracting} className="w-full">
         {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
         Log expense
       </Button>
