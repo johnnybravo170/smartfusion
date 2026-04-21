@@ -24,15 +24,16 @@ import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { toGeminiFunctionDeclarations } from '@/lib/henry/adapter';
 import { clientFunctionDeclarations } from '@/lib/henry/client-tools';
 
-// Live-capable models for this API key (confirmed via ListModels): only the
-// 2.5 Flash native-audio family supports bidiGenerateContent on v1alpha/v1beta.
-// Using the dated preview (vs "latest") for stability.
+// gemini-2.5-flash-native-audio-preview-09-2025 was deprecated 2026-03-19
+// and now hard-closes the Live socket with 1006 as of 2026-04-21. Forced
+// onto 3.1-flash-live-preview (launched 2026-03-26).
 //
-// Tried 3.1-flash-live-preview 2026-04-21 — responses were unusably slow
-// even with thinkingLevel: MINIMAL. Likely the SDK (@google/genai@1.50.1)
-// isn't wiring thinkingConfig through to BidiGenerateContent for 3.1 yet,
-// or the Live backend ignores it. Revisit when SDK catches up.
-const LIVE_MODEL = 'gemini-2.5-flash-native-audio-preview-09-2025';
+// First 3.1 attempt added `thinkingConfig: { thinkingLevel: MINIMAL }` per
+// the launch blog; responses were unusably slow. Theory: the SDK
+// (@google/genai@1.50.1) or the Live backend doesn't honor MINIMAL and
+// defaults to a higher thinking level. Removed the config — using the
+// model's own defaults.
+const LIVE_MODEL = 'gemini-3.1-flash-live-preview';
 
 export async function POST() {
   try {
