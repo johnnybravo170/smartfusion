@@ -343,24 +343,39 @@ export default async function ProjectDetailPage({
         <DeleteProjectButton projectId={project.id} projectName={project.name} />
       </header>
 
-      {/* Tab navigation — horizontal scroll on narrow screens so 12+ tabs
-          don't overflow and get clipped. */}
-      <div className="mb-6 -mx-4 overflow-x-auto border-b sm:mx-0">
-        <div className="flex min-w-max gap-1 px-4 sm:px-0">
+      {/* Tab navigation: native <select> on narrow screens (quick, familiar,
+          no horizontal scroll), full row above the lg breakpoint. */}
+      <div className="mb-6 lg:hidden">
+        <select
+          value={tab}
+          onChange={(e) => {
+            if (typeof window !== 'undefined') {
+              window.location.href = `/projects/${id}?tab=${e.target.value}`;
+            }
+          }}
+          className="w-full rounded-md border bg-background px-3 py-2 text-sm font-medium"
+        >
           {tabs.map((t) => (
-            <Link
-              key={t.key}
-              href={`/projects/${id}?tab=${t.key}`}
-              className={`shrink-0 whitespace-nowrap border-b-2 -mb-px px-4 py-2 text-sm font-medium transition-colors ${
-                tab === t.key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground'
-              }`}
-            >
+            <option key={t.key} value={t.key}>
               {t.label}
-            </Link>
+            </option>
           ))}
-        </div>
+        </select>
+      </div>
+      <div className="mb-6 hidden flex-wrap gap-1 border-b lg:flex">
+        {tabs.map((t) => (
+          <Link
+            key={t.key}
+            href={`/projects/${id}?tab=${t.key}`}
+            className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              tab === t.key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground'
+            }`}
+          >
+            {t.label}
+          </Link>
+        ))}
       </div>
 
       {/* Tab content */}
