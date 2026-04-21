@@ -10,6 +10,7 @@ import { PortalUpdateForm } from '@/components/features/portal/portal-update-for
 import { BudgetSummaryCard } from '@/components/features/projects/budget-summary';
 import { CostBucketsTable } from '@/components/features/projects/cost-buckets-table';
 import { CostsTab } from '@/components/features/projects/costs-tab';
+import { CrewTab } from '@/components/features/projects/crew-tab';
 import { EstimateTab } from '@/components/features/projects/estimate-tab';
 import { InvoicesTab } from '@/components/features/projects/invoices-tab';
 import { PercentCompleteEditor } from '@/components/features/projects/percent-complete-editor';
@@ -23,12 +24,14 @@ import { getVarianceReport, listCostLines } from '@/lib/db/queries/cost-lines';
 import { listExpenses } from '@/lib/db/queries/expenses';
 import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
 import { listPhotosByProject } from '@/lib/db/queries/photos';
+import { listAssignmentsForProject } from '@/lib/db/queries/project-assignments';
 import { listProjectBills } from '@/lib/db/queries/project-bills';
 import { getBudgetVsActual } from '@/lib/db/queries/project-buckets';
 import { getEstimateViewStats, listProjectEvents } from '@/lib/db/queries/project-events';
 import { getProject } from '@/lib/db/queries/projects';
 import { listPurchaseOrders } from '@/lib/db/queries/purchase-orders';
 import { listTimeEntries } from '@/lib/db/queries/time-entries';
+import { listWorkerProfiles } from '@/lib/db/queries/worker-profiles';
 import { createClient } from '@/lib/supabase/server';
 import type { ProjectStatus } from '@/lib/validators/project';
 
@@ -53,7 +56,8 @@ type Tab =
   | 'memos'
   | 'gallery'
   | 'change-orders'
-  | 'portal';
+  | 'portal'
+  | 'crew';
 
 export default async function ProjectDetailPage({
   params,
@@ -124,6 +128,11 @@ export default async function ProjectDetailPage({
     getEstimateViewStats(id),
   ]);
 
+  const [crewAssignments, crewWorkers] = await Promise.all([
+    listAssignmentsForProject(project.tenant_id, id),
+    listWorkerProfiles(project.tenant_id),
+  ]);
+
   // Load project invoices
   const { data: projectInvoices } = await supabase
     .from('invoices')
@@ -161,6 +170,7 @@ export default async function ProjectDetailPage({
     { key: 'variance', label: 'Variance' },
     { key: 'invoices', label: 'Invoices' },
     { key: 'time', label: 'Time & Expenses' },
+    { key: 'crew', label: 'Crew' },
     { key: 'change-orders', label: coLabel },
     { key: 'memos', label: 'Memos' },
     { key: 'gallery', label: 'Gallery' },
@@ -329,6 +339,25 @@ export default async function ProjectDetailPage({
             amount_cents: e.amount_cents,
             vendor: e.vendor ?? null,
             description: e.description ?? null,
+          }))}
+        />
+      ) : null}
+
+      {tab === 'crew' ? (
+        <CrewTab
+          projectId={id}
+          workers={crewWorkers.map((w) => ({
+            profile_id: w.id,
+            display_name: w.display_name ?? 'Worker',
+            worker_type: w.worker_type,
+            default_hourly_rate_cents: w.default_hourly_rate_cents,
+          }))}
+          assignments={crewAssignments.map((a) => ({
+            id: a.id,
+            worker_profile_id: a.worker_profile_id,
+            scheduled_date: a.scheduled_date,
+            hourly_rate_cents: a.hourly_rate_cents,
+            notes: a.notes,
           }))}
         />
       ) : null}

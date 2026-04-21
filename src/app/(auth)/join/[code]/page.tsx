@@ -30,6 +30,7 @@ import { workerSignupAction } from '@/server/actions/worker-auth';
 type InviteInfo = {
   valid: boolean;
   tenantName?: string;
+  logoUrl?: string | null;
 };
 
 export default function JoinPage() {
@@ -49,7 +50,11 @@ export default function JoinPage() {
         const res = await fetch(`/api/invite/${code}`);
         if (res.ok) {
           const data = await res.json();
-          setInviteInfo({ valid: true, tenantName: data.tenantName });
+          setInviteInfo({
+            valid: true,
+            tenantName: data.tenantName,
+            logoUrl: data.logoUrl ?? null,
+          });
         } else {
           setInviteInfo({ valid: false });
         }
@@ -110,6 +115,14 @@ export default function JoinPage() {
   return (
     <Card>
       <CardHeader>
+        {inviteInfo.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={inviteInfo.logoUrl}
+            alt={`${inviteInfo.tenantName} logo`}
+            className="mb-3 h-16 w-auto object-contain"
+          />
+        ) : null}
         <CardTitle className="text-2xl">Join {inviteInfo.tenantName}</CardTitle>
         <CardDescription>
           {inviteInfo.tenantName} has invited you to join their team on HeyHenry.
