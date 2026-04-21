@@ -554,16 +554,17 @@ function Bar({
 }) {
   const left = `calc(${(startIdx / totalDays) * 100}% + 2px)`;
   const width = `calc(${((endIdx - startIdx + 1) / totalDays) * 100}% - 4px)`;
-  const vStyle = position === 'top' ? { top: 6 } : { bottom: 6 };
+  const vStyle = position === 'top' ? { top: 3 } : { bottom: 3 };
   return (
     <div
       className={`absolute truncate rounded px-1.5 text-[10px] font-medium ${className}`}
       style={{
         left,
         width,
-        height: 18,
-        lineHeight: '18px',
+        height: 24,
+        lineHeight: '24px',
         cursor: 'grab',
+        zIndex: 10,
         ...vStyle,
       }}
       title={label}
