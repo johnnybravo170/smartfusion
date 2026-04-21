@@ -32,7 +32,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { commitQuoteImportAction } from '@/server/actions/commit-quote-import';
+import {
+  type CustomerMatch,
+  commitQuoteImportAction,
+  searchCustomerMatchesAction,
+} from '@/server/actions/commit-quote-import';
 import { parseQuotePdfAction, type QuoteExtraction } from '@/server/actions/parse-quote-pdf';
 
 type Stage = 'idle' | 'parsing' | 'review';
@@ -53,7 +57,13 @@ function newBucketId(): string {
 }
 
 type ReviewState = {
-  customer: { type: 'residential' | 'commercial' | 'agent'; name: string; address: string };
+  customer: {
+    /** If set → attach to this existing customer, ignore name/address/type. */
+    attachedCustomerId: string | null;
+    type: 'residential' | 'commercial' | 'agent';
+    name: string;
+    address: string;
+  };
   project: {
     name: string;
     description: string;
@@ -78,6 +88,7 @@ function dollarsToCents(v: string): number {
 function extractionToState(e: QuoteExtraction): ReviewState {
   return {
     customer: {
+      attachedCustomerId: null,
       type: 'residential',
       name: e.customer.name ?? '',
       address: e.customer.address ?? '',
@@ -118,6 +129,7 @@ export function QuoteImportFlow({ manualFormSlot }: QuoteImportFlowProps) {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>('idle');
   const [state, setState] = useState<ReviewState | null>(null);
+  const [matches, setMatches] = useState<CustomerMatch[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isCommitting, startCommit] = useTransition();
@@ -139,6 +151,14 @@ export function QuoteImportFlow({ manualFormSlot }: QuoteImportFlowProps) {
     }
     setState(extractionToState(result.extraction));
     setStage('review');
+    // Fire-and-forget: fuzzy-match the extracted name against existing
+    // customers so the operator can attach instead of duplicating.
+    const extractedName = result.extraction.customer.name ?? '';
+    if (extractedName.trim()) {
+      searchCustomerMatchesAction(extractedName)
+        .then(setMatches)
+        .catch(() => setMatches([]));
+    }
   }
 
   function updateBucket(i: number, patch: Partial<BucketDraft>) {
@@ -179,6 +199,7 @@ export function QuoteImportFlow({ manualFormSlot }: QuoteImportFlowProps) {
     startCommit(async () => {
       const result = await commitQuoteImportAction({
         customer: {
+          id: state.customer.attachedCustomerId ?? undefined,
           type: state.customer.type,
           name: state.customer.name,
           address: state.customer.address || undefined,
@@ -300,47 +321,112 @@ export function QuoteImportFlow({ manualFormSlot }: QuoteImportFlowProps) {
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Customer</h2>
-        <div className="grid grid-cols-[1fr_160px] gap-3">
-          <div>
-            <Label>Name</Label>
-            <Input
-              value={state.customer.name}
-              onChange={(e) =>
-                setState({ ...state, customer: { ...state.customer, name: e.target.value } })
-              }
-            />
+
+        {matches.length > 0 && !state.customer.attachedCustomerId ? (
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm">
+            <div className="mb-2 font-medium text-blue-900">
+              {matches.length === 1
+                ? 'This might be an existing customer.'
+                : 'Possible existing customers.'}
+            </div>
+            <ul className="space-y-1">
+              {matches.map((m) => (
+                <li key={m.id} className="flex items-center justify-between gap-2">
+                  <span className="text-blue-900">
+                    {m.name}
+                    <span className="ml-2 text-xs text-blue-700">
+                      {m.type}
+                      {m.city ? ` · ${m.city}` : ''} · added{' '}
+                      {new Date(m.created_at).toLocaleDateString()}
+                    </span>
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setState((s) =>
+                        s
+                          ? {
+                              ...s,
+                              customer: { ...s.customer, attachedCustomerId: m.id, name: m.name },
+                            }
+                          : s,
+                      )
+                    }
+                  >
+                    Attach
+                  </Button>
+                </li>
+              ))}
+            </ul>
           </div>
-          <div>
-            <Label>Type</Label>
-            <Select
-              value={state.customer.type}
-              onValueChange={(v) =>
-                setState({
-                  ...state,
-                  customer: { ...state.customer, type: v as ReviewState['customer']['type'] },
-                })
+        ) : null}
+
+        {state.customer.attachedCustomerId ? (
+          <div className="flex items-center justify-between rounded-md border border-blue-300 bg-blue-50 p-3 text-sm">
+            <div className="text-blue-900">
+              Attaching to <span className="font-medium">{state.customer.name}</span>. New project
+              will land under this customer; no duplicate will be created.
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                setState((s) =>
+                  s ? { ...s, customer: { ...s.customer, attachedCustomerId: null } } : s,
+                )
               }
             >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="residential">Residential</SelectItem>
-                <SelectItem value="commercial">Commercial</SelectItem>
-                <SelectItem value="agent">Agent</SelectItem>
-              </SelectContent>
-            </Select>
+              Create new instead
+            </Button>
           </div>
-        </div>
-        <div>
-          <Label>Address</Label>
-          <Input
-            value={state.customer.address}
-            onChange={(e) =>
-              setState({ ...state, customer: { ...state.customer, address: e.target.value } })
-            }
-          />
-        </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-[1fr_160px] gap-3">
+              <div>
+                <Label>Name</Label>
+                <Input
+                  value={state.customer.name}
+                  onChange={(e) =>
+                    setState({ ...state, customer: { ...state.customer, name: e.target.value } })
+                  }
+                />
+              </div>
+              <div>
+                <Label>Type</Label>
+                <Select
+                  value={state.customer.type}
+                  onValueChange={(v) =>
+                    setState({
+                      ...state,
+                      customer: { ...state.customer, type: v as ReviewState['customer']['type'] },
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="residential">Residential</SelectItem>
+                    <SelectItem value="commercial">Commercial</SelectItem>
+                    <SelectItem value="agent">Agent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label>Address</Label>
+              <Input
+                value={state.customer.address}
+                onChange={(e) =>
+                  setState({ ...state, customer: { ...state.customer, address: e.target.value } })
+                }
+              />
+            </div>
+          </>
+        )}
       </section>
 
       <section className="space-y-3">

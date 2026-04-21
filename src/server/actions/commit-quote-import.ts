@@ -13,6 +13,49 @@ import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
 
+export type CustomerMatch = {
+  id: string;
+  name: string;
+  type: 'residential' | 'commercial' | 'agent';
+  city: string | null;
+  created_at: string;
+};
+
+/**
+ * Fuzzy-match a PDF-extracted customer name against existing tenant
+ * customers so the operator can attach instead of duplicating.
+ *
+ * Tokenizes the extracted name (words >=4 chars, minus common stopwords)
+ * and runs an `ilike` OR across all of them. Returns up to 5 hits most
+ * recent first. Zero hits is a clean signal to create new.
+ */
+export async function searchCustomerMatchesAction(extractedName: string): Promise<CustomerMatch[]> {
+  const stop = new Set(['and', 'the', 'their', 'mrs', 'family', 'household']);
+  const tokens = extractedName
+    .split(/[\s,&]+/)
+    .map((t) => t.replace(/[^\p{L}0-9]/gu, ''))
+    .filter((t) => t.length >= 4 && !stop.has(t.toLowerCase()));
+
+  if (tokens.length === 0) return [];
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) return [];
+  const supabase = await createClient();
+
+  // Build: name.ilike.%Graham%,name.ilike.%Heather%,name.ilike.%Brandscombe%
+  const orExpr = tokens.map((t) => `name.ilike.%${t.replace(/[\\%,()]/g, '\\$&')}%`).join(',');
+
+  const { data } = await supabase
+    .from('customers')
+    .select('id, name, type, city, created_at')
+    .is('deleted_at', null)
+    .or(orExpr)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  return (data ?? []) as CustomerMatch[];
+}
+
 export type QuoteImportInput = {
   customer: {
     id?: string; // if set, use existing customer
