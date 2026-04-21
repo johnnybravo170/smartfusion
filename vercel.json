@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/ar/cron", "schedule": "* * * * *" },
     { "path": "/api/photos/ai-worker", "schedule": "* * * * *" },
-    { "path": "/api/projects/estimate-nudge", "schedule": "0 * * * *" }
+    { "path": "/api/projects/estimate-nudge", "schedule": "0 * * * *" },
+    { "path": "/api/workers/time-nudge", "schedule": "0 1 * * *" }
   ]
 }
