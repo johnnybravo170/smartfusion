@@ -1,6 +1,11 @@
 # Contractor OS — Phase 1 Implementation Plan
 <!-- STATUS: COMPLETE — Archived 2026-04-19. All phases (1A foundation, 1B feature tracks, 1C integration, 1D hardening) shipped. See ACCEPTANCE.md for gate results. -->
 
+> ⚠️ **UNBUILT CARVEOUT: Backup infrastructure (§1D.1).** Called "non-negotiable from day 1"
+> in this doc, then deferred and forgotten. Production today runs on Supabase daily defaults
+> only — no PITR, no off-platform copy, no tested restore drill. See **BACKUPS_PLAN.md**
+> for the catch-up plan. Target: ship before first paying customer.
+
 > **Code name:** Smartfusion (placeholder — Jonathan owns smartfusion.ca; final brand TBD)
 > **Target:** Ship a working quoting + job + invoicing app that Will (pressure washing, Abbotsford BC) uses for real customers.
 > **Definition of done:** Will sends 3 real quotes through the app, collects payment on at least 1 completed job through Stripe Connect, and says "I'd pay for this today."
