@@ -60,7 +60,10 @@ export async function getEmailBrandingForTenant(tenantId: string): Promise<Email
 export function brandingLogoHtml(logoUrl: string | null | undefined, businessName: string): string {
   if (!logoUrl) return '';
   const alt = escapeHtml(`${businessName} logo`);
-  return `<img src="${logoUrl}" alt="${alt}" style="max-height:48px;max-width:220px;margin-bottom:16px;display:block" />`;
+  // `height:auto;width:auto` keeps aspect ratio across clients that ignore
+  // `max-*` (older Outlook especially) and would otherwise stretch the image
+  // to fill its container.
+  return `<img src="${logoUrl}" alt="${alt}" style="max-height:48px;max-width:220px;height:auto;width:auto;margin-bottom:16px;display:block" />`;
 }
 
 export function brandingFooterHtml(templateKey: EmailTemplateKey): string {

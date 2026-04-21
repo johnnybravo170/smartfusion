@@ -40,6 +40,7 @@ import { listTimeEntries } from '@/lib/db/queries/time-entries';
 import { listInvoicesForProject } from '@/lib/db/queries/worker-invoices';
 import { listWorkerProfiles } from '@/lib/db/queries/worker-profiles';
 import { listUnavailabilityForTenant, REASON_LABELS } from '@/lib/db/queries/worker-unavailability';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import type { ProjectStatus } from '@/lib/validators/project';
 
@@ -167,13 +168,17 @@ export default async function ProjectDetailPage({
     }
   }
 
-  // Sign cost-line photos (private `photos` bucket).
+  // Sign cost-line photos (private `photos` bucket). Use the service-role
+  // admin client to sign — the authed client silently returns no URLs under
+  // storage RLS even when the user legitimately owns the objects (same
+  // pattern as the showcase and portal flows).
   const costLinePhotoUrls: Record<string, string> = {};
   const costLinePhotoPaths = Array.from(
     new Set(costLines.flatMap((l) => l.photo_storage_paths ?? [])),
   );
   if (costLinePhotoPaths.length > 0) {
-    const { data: signed } = await supabase.storage
+    const admin = createAdminClient();
+    const { data: signed } = await admin.storage
       .from('photos')
       .createSignedUrls(costLinePhotoPaths, 3600);
     for (const row of signed ?? []) {
