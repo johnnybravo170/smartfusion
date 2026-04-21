@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarDays, Clock, FolderKanban, Home, User } from 'lucide-react';
+import { CalendarDays, Clock, FolderKanban, Home, Receipt, User } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,12 @@ const ITEMS = [
     label: 'Time',
     icon: Clock,
     match: (p: string) => p.startsWith('/w/time'),
+  },
+  {
+    href: '/w/expenses',
+    label: 'Expenses',
+    icon: Receipt,
+    match: (p: string) => p.startsWith('/w/expenses'),
   },
   {
     href: '/w/profile',

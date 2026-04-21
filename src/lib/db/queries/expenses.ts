@@ -8,6 +8,7 @@ export type ExpenseRow = {
   id: string;
   tenant_id: string;
   user_id: string;
+  worker_profile_id: string | null;
   project_id: string | null;
   bucket_id: string | null;
   job_id: string | null;
@@ -15,6 +16,7 @@ export type ExpenseRow = {
   vendor: string | null;
   description: string | null;
   receipt_url: string | null;
+  receipt_storage_path: string | null;
   expense_date: string;
   created_at: string;
   updated_at: string;

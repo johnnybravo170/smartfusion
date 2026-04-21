@@ -22,6 +22,9 @@ type Expense = {
   amount_cents: number;
   vendor: string | null;
   description: string | null;
+  worker_profile_id: string | null;
+  worker_name: string | null;
+  receipt_url: string | null;
 };
 
 function TimeForm({
@@ -380,9 +383,11 @@ export function TimeExpenseTab({
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="px-3 py-2 text-left font-medium">Date</th>
+                  <th className="px-3 py-2 text-left font-medium">Worker</th>
                   <th className="px-3 py-2 text-right font-medium">Amount</th>
                   <th className="px-3 py-2 text-left font-medium">Vendor</th>
                   <th className="px-3 py-2 text-left font-medium">Description</th>
+                  <th className="px-3 py-2 text-left font-medium">Receipt</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -390,9 +395,24 @@ export function TimeExpenseTab({
                 {expenses.map((exp) => (
                   <tr key={exp.id} className="border-b last:border-0">
                     <td className="px-3 py-2">{exp.expense_date}</td>
+                    <td className="px-3 py-2">{exp.worker_name ?? 'Owner/admin'}</td>
                     <td className="px-3 py-2 text-right">{formatCurrency(exp.amount_cents)}</td>
                     <td className="px-3 py-2">{exp.vendor || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{exp.description || '—'}</td>
+                    <td className="px-3 py-2">
+                      {exp.receipt_url ? (
+                        <a
+                          href={exp.receipt_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary underline"
+                        >
+                          View
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-right">
                       <Button
                         size="xs"

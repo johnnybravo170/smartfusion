@@ -1,0 +1,141 @@
+'use server';
+
+import { randomUUID } from 'node:crypto';
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+import { requireWorker } from '@/lib/auth/helpers';
+import { isWorkerAssignedToProject } from '@/lib/db/queries/project-assignments';
+import { getOrCreateWorkerProfile } from '@/lib/db/queries/worker-profiles';
+import { createAdminClient } from '@/lib/supabase/admin';
+
+export type WorkerExpenseResult = { ok: true; id: string } | { ok: false; error: string };
+
+const schema = z.object({
+  project_id: z.string().uuid({ message: 'Pick a project.' }),
+  bucket_id: z.string().uuid().optional().or(z.literal('')),
+  amount_cents: z.coerce.number().int().positive(),
+  vendor: z.string().trim().max(200).optional().or(z.literal('')),
+  description: z.string().trim().max(2000).optional().or(z.literal('')),
+  expense_date: z.string().min(1),
+});
+
+const RECEIPTS_BUCKET = 'receipts';
+const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
+
+function extFromContentType(contentType: string): string {
+  if (contentType === 'image/png') return 'png';
+  if (contentType === 'image/webp') return 'webp';
+  if (contentType === 'image/heic' || contentType === 'image/heif') return 'heic';
+  if (contentType === 'application/pdf') return 'pdf';
+  return 'jpg';
+}
+
+export async function logWorkerExpenseAction(formData: FormData): Promise<WorkerExpenseResult> {
+  const input = {
+    project_id: String(formData.get('project_id') ?? ''),
+    bucket_id: String(formData.get('bucket_id') ?? ''),
+    amount_cents: Number(formData.get('amount_cents') ?? 0),
+    vendor: String(formData.get('vendor') ?? ''),
+    description: String(formData.get('description') ?? ''),
+    expense_date: String(formData.get('expense_date') ?? ''),
+  };
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    const first = Object.values(parsed.error.flatten().fieldErrors)[0]?.[0];
+    return { ok: false, error: first ?? 'Invalid input.' };
+  }
+
+  const { user, tenant } = await requireWorker();
+  const profile = await getOrCreateWorkerProfile(tenant.id, tenant.member.id);
+
+  const admin = createAdminClient();
+
+  // Capability check: profile override, else tenant default.
+  const { data: tenantRow } = await admin
+    .from('tenants')
+    .select('workers_can_log_expenses')
+    .eq('id', tenant.id)
+    .maybeSingle();
+  const canLog = profile.can_log_expenses ?? tenantRow?.workers_can_log_expenses ?? true;
+  if (!canLog) return { ok: false, error: 'Expense logging is disabled for your account.' };
+
+  const assigned = await isWorkerAssignedToProject(tenant.id, profile.id, parsed.data.project_id);
+  if (!assigned) return { ok: false, error: 'You are not assigned to this project.' };
+
+  let receiptStoragePath: string | null = null;
+  const receipt = formData.get('receipt');
+  if (receipt && receipt instanceof File && receipt.size > 0) {
+    if (receipt.size > MAX_RECEIPT_BYTES) {
+      return { ok: false, error: 'Receipt is larger than 10MB.' };
+    }
+    const ext = extFromContentType(receipt.type);
+    const path = `${tenant.id}/${profile.id}/${randomUUID()}.${ext}`;
+    const { error: upErr } = await admin.storage
+      .from(RECEIPTS_BUCKET)
+      .upload(path, receipt, { contentType: receipt.type || 'image/jpeg', upsert: false });
+    if (upErr) return { ok: false, error: `Receipt upload failed: ${upErr.message}` };
+    receiptStoragePath = path;
+  }
+
+  const { data, error } = await admin
+    .from('expenses')
+    .insert({
+      tenant_id: tenant.id,
+      user_id: user.id,
+      worker_profile_id: profile.id,
+      project_id: parsed.data.project_id,
+      bucket_id: parsed.data.bucket_id || null,
+      amount_cents: parsed.data.amount_cents,
+      vendor: parsed.data.vendor?.trim() || null,
+      description: parsed.data.description?.trim() || null,
+      receipt_storage_path: receiptStoragePath,
+      expense_date: parsed.data.expense_date,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    if (receiptStoragePath) {
+      await admin.storage.from(RECEIPTS_BUCKET).remove([receiptStoragePath]);
+    }
+    return { ok: false, error: error?.message ?? 'Failed to log expense.' };
+  }
+
+  revalidatePath('/w/expenses');
+  revalidatePath('/w');
+  revalidatePath(`/projects/${parsed.data.project_id}`);
+  return { ok: true, id: data.id };
+}
+
+export async function deleteWorkerExpenseAction(id: string): Promise<WorkerExpenseResult> {
+  if (!id) return { ok: false, error: 'Missing id.' };
+  const { tenant } = await requireWorker();
+  const profile = await getOrCreateWorkerProfile(tenant.id, tenant.member.id);
+
+  const admin = createAdminClient();
+  const { data: row } = await admin
+    .from('expenses')
+    .select('id, worker_profile_id, project_id, receipt_storage_path, created_at')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (!row || row.worker_profile_id !== profile.id) {
+    return { ok: false, error: 'Expense not found.' };
+  }
+
+  const ageMs = Date.now() - new Date(row.created_at as string).getTime();
+  if (ageMs > 24 * 60 * 60 * 1000) {
+    return { ok: false, error: 'Expenses can only be deleted within 24 hours.' };
+  }
+
+  const { error } = await admin.from('expenses').delete().eq('id', id);
+  if (error) return { ok: false, error: error.message };
+
+  if (row.receipt_storage_path) {
+    await admin.storage.from(RECEIPTS_BUCKET).remove([row.receipt_storage_path as string]);
+  }
+
+  revalidatePath('/w/expenses');
+  if (row.project_id) revalidatePath(`/projects/${row.project_id as string}`);
+  return { ok: true, id };
+}
