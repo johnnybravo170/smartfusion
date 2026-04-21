@@ -4,6 +4,7 @@
  * page so both show the exact same thing.
  */
 
+import { Fragment } from 'react';
 import { formatCurrency } from '@/lib/pricing/calculator';
 
 export type EstimateRenderLine = {
@@ -105,100 +106,70 @@ function renderGroups(lines: EstimateRenderLine[]) {
     .sort((a, b) => a.order - b.order);
 
   return (
-    <div className="space-y-7">
-      {sections.map((sec) => {
-        const sectionTotal = sec.buckets.reduce(
-          (s, b) => s + b.lines.reduce((ls, l) => ls + l.line_price_cents, 0),
-          0,
-        );
-        return (
-          <div key={sec.key} className="space-y-4">
-            {sec.section ? (
-              <div className="flex items-baseline justify-between gap-4 border-b pb-1">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {sec.section}
-                </h3>
-                <span className="text-xs font-medium text-muted-foreground">
-                  {formatCurrency(sectionTotal)}
-                </span>
-              </div>
-            ) : null}
-            {sec.buckets.map((g) => {
-              const groupTotal = g.lines.reduce((s, l) => s + l.line_price_cents, 0);
-              const hideHeader =
-                g.lines.length === 1 &&
-                g.lines[0].label.trim().toLowerCase() === g.bucketName.trim().toLowerCase();
-              return (
-                <div key={g.key}>
-                  {hideHeader ? null : (
-                    <div className="mb-2 flex items-baseline justify-between gap-4">
-                      <h4 className="text-sm font-semibold">{g.bucketName}</h4>
-                      <span className="text-sm font-medium text-muted-foreground">
-                        {formatCurrency(groupTotal)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="overflow-x-auto rounded-md border">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b bg-muted/50">
-                          <th className="px-3 py-2 text-left font-medium">Item</th>
-                          <th className="px-3 py-2 text-right font-medium">Qty</th>
-                          <th className="px-3 py-2 text-left font-medium">Unit</th>
-                          <th className="px-3 py-2 text-right font-medium">Price</th>
-                          <th className="px-3 py-2 text-right font-medium">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {g.lines.map((l) => (
-                          <tr key={l.id} className="align-top border-b last:border-0">
-                            <td className="px-3 py-2">
-                              <p className="font-medium">{l.label}</p>
-                              {l.notes ? (
-                                <p className="whitespace-pre-wrap text-xs text-muted-foreground">
-                                  {l.notes}
-                                </p>
-                              ) : null}
-                              {l.photo_urls && l.photo_urls.length > 0 ? (
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                  {l.photo_urls.map((url) => (
-                                    <a
-                                      key={url}
-                                      href={url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="block h-14 w-14 overflow-hidden rounded-md border"
-                                    >
-                                      {/* biome-ignore lint/performance/noImgElement: signed URLs bypass next/image */}
-                                      <img
-                                        src={url}
-                                        alt=""
-                                        className="h-full w-full object-cover"
-                                      />
-                                    </a>
-                                  ))}
-                                </div>
-                              ) : null}
-                            </td>
-                            <td className="px-3 py-2 text-right">{Number(l.qty)}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{l.unit}</td>
-                            <td className="px-3 py-2 text-right">
-                              {formatCurrency(l.unit_price_cents)}
-                            </td>
-                            <td className="px-3 py-2 text-right font-medium">
-                              {formatCurrency(l.line_price_cents)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
+    <div className="overflow-x-auto rounded-md border">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b bg-muted/50">
+            <th className="px-3 py-2 text-left font-medium">Item</th>
+            <th className="px-3 py-2 text-right font-medium">Qty</th>
+            <th className="px-3 py-2 text-left font-medium">Unit</th>
+            <th className="px-3 py-2 text-right font-medium">Price</th>
+            <th className="px-3 py-2 text-right font-medium">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sections.map((sec) => (
+            <Fragment key={sec.key}>
+              {sec.section ? (
+                <tr className="border-b bg-muted/30">
+                  <td
+                    colSpan={5}
+                    className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
+                    {sec.section}
+                  </td>
+                </tr>
+              ) : null}
+              {sec.buckets.flatMap((g) =>
+                g.lines.map((l) => (
+                  <tr key={l.id} className="align-top border-b last:border-0">
+                    <td className="px-3 py-2">
+                      <p className="font-medium">{l.label}</p>
+                      {l.notes ? (
+                        <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+                          {l.notes}
+                        </p>
+                      ) : null}
+                      {l.photo_urls && l.photo_urls.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {l.photo_urls.map((url) => (
+                            <a
+                              key={url}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block h-14 w-14 overflow-hidden rounded-md border"
+                            >
+                              {/* biome-ignore lint/performance/noImgElement: signed URLs bypass next/image */}
+                              <img src={url} alt="" className="h-full w-full object-cover" />
+                            </a>
+                          ))}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-2 text-right">{Number(l.qty)}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{l.unit}</td>
+                    <td className="px-3 py-2 text-right">{formatCurrency(l.unit_price_cents)}</td>
+                    <td className="px-3 py-2 text-right font-medium">
+                      {formatCurrency(l.line_price_cents)}
+                    </td>
+                  </tr>
+                )),
+              )}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

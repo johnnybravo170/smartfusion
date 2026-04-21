@@ -257,123 +257,118 @@ export function EstimateTab({
           No cost lines yet. Add your first item above.
         </p>
       ) : (
-        <div className="space-y-6">
-          {sections.map((sec) => (
-            <div key={sec.key} className="space-y-3">
-              {sec.section ? (
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {sec.section}
-                </h3>
-              ) : null}
-              {sec.buckets.map(({ key, bucketName, lines }) => {
-                const hideHeader =
-                  lines.length === 1 &&
-                  lines[0].label.trim().toLowerCase() === bucketName.trim().toLowerCase();
-                return (
-                  <div key={key}>
-                    {hideHeader ? null : (
-                      <h4 className="mb-2 text-sm font-semibold">{bucketName}</h4>
+        <div className="space-y-4">
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="px-3 py-2 text-left font-medium">Item</th>
+                  <th className="px-3 py-2 text-right font-medium">Qty</th>
+                  <th className="px-3 py-2 text-left font-medium">Unit</th>
+                  <th className="px-3 py-2 text-right font-medium">Cost</th>
+                  <th className="px-3 py-2 text-right font-medium">Price</th>
+                  <th className="px-3 py-2 text-right font-medium">Line Price</th>
+                  <th className="px-3 py-2 text-right font-medium">Markup</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {sections.map((sec) => (
+                  <Fragment key={sec.key}>
+                    {sec.section ? (
+                      <tr className="border-b bg-muted/30">
+                        <td
+                          colSpan={8}
+                          className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                        >
+                          {sec.section}
+                        </td>
+                      </tr>
+                    ) : null}
+                    {sec.buckets.flatMap(({ lines }) =>
+                      lines.map((line) => {
+                        const isEditing = editingLine?.id === line.id;
+                        return (
+                          <Fragment key={line.id}>
+                            <tr className="border-b last:border-0">
+                              <td className="px-3 py-2">
+                                <p className="font-medium">{line.label}</p>
+                                {line.notes && (
+                                  <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+                                    {line.notes}
+                                  </p>
+                                )}
+                                <CostLinePhotoStrip
+                                  costLineId={line.id}
+                                  projectId={projectId}
+                                  showAddButton={false}
+                                  photos={(line.photo_storage_paths ?? [])
+                                    .map((path) => ({
+                                      path,
+                                      url: costLinePhotoUrls[path] ?? '',
+                                    }))
+                                    .filter((p) => p.url)}
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-right">{Number(line.qty)}</td>
+                              <td className="px-3 py-2 text-muted-foreground">{line.unit}</td>
+                              <td className="px-3 py-2 text-right text-muted-foreground">
+                                {formatCurrency(line.unit_cost_cents)}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {formatCurrency(line.unit_price_cents)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-medium">
+                                {formatCurrency(line.line_price_cents)}
+                              </td>
+                              <td className="px-3 py-2 text-right text-muted-foreground">
+                                {Number(line.markup_pct).toFixed(1)}%
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex justify-end gap-1">
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setEditingLine(isEditing ? null : line);
+                                      setShowForm(false);
+                                    }}
+                                  >
+                                    {isEditing ? 'Close' : 'Edit'}
+                                  </Button>
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => deleteLine(line.id)}
+                                  >
+                                    Del
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                            {isEditing ? (
+                              <tr className="border-b bg-muted/30">
+                                <td colSpan={8} className="p-4">
+                                  <CostLineForm
+                                    projectId={projectId}
+                                    initial={line}
+                                    catalog={catalog}
+                                    photoUrls={costLinePhotoUrls}
+                                    onDone={() => setEditingLine(null)}
+                                  />
+                                </td>
+                              </tr>
+                            ) : null}
+                          </Fragment>
+                        );
+                      }),
                     )}
-                    <div className="overflow-x-auto rounded-md border">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b bg-muted/50">
-                            <th className="px-3 py-2 text-left font-medium">Item</th>
-                            <th className="px-3 py-2 text-right font-medium">Qty</th>
-                            <th className="px-3 py-2 text-left font-medium">Unit</th>
-                            <th className="px-3 py-2 text-right font-medium">Cost</th>
-                            <th className="px-3 py-2 text-right font-medium">Price</th>
-                            <th className="px-3 py-2 text-right font-medium">Line Price</th>
-                            <th className="px-3 py-2 text-right font-medium">Markup</th>
-                            <th className="px-3 py-2" />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {lines.map((line) => {
-                            const isEditing = editingLine?.id === line.id;
-                            return (
-                              <Fragment key={line.id}>
-                                <tr className="border-b last:border-0">
-                                  <td className="px-3 py-2">
-                                    <p className="font-medium">{line.label}</p>
-                                    {line.notes && (
-                                      <p className="whitespace-pre-wrap text-xs text-muted-foreground">
-                                        {line.notes}
-                                      </p>
-                                    )}
-                                    <CostLinePhotoStrip
-                                      costLineId={line.id}
-                                      projectId={projectId}
-                                      showAddButton={false}
-                                      photos={(line.photo_storage_paths ?? [])
-                                        .map((path) => ({
-                                          path,
-                                          url: costLinePhotoUrls[path] ?? '',
-                                        }))
-                                        .filter((p) => p.url)}
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2 text-right">{Number(line.qty)}</td>
-                                  <td className="px-3 py-2 text-muted-foreground">{line.unit}</td>
-                                  <td className="px-3 py-2 text-right text-muted-foreground">
-                                    {formatCurrency(line.unit_cost_cents)}
-                                  </td>
-                                  <td className="px-3 py-2 text-right">
-                                    {formatCurrency(line.unit_price_cents)}
-                                  </td>
-                                  <td className="px-3 py-2 text-right font-medium">
-                                    {formatCurrency(line.line_price_cents)}
-                                  </td>
-                                  <td className="px-3 py-2 text-right text-muted-foreground">
-                                    {Number(line.markup_pct).toFixed(1)}%
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <div className="flex justify-end gap-1">
-                                      <Button
-                                        size="xs"
-                                        variant="ghost"
-                                        onClick={() => {
-                                          setEditingLine(isEditing ? null : line);
-                                          setShowForm(false);
-                                        }}
-                                      >
-                                        {isEditing ? 'Close' : 'Edit'}
-                                      </Button>
-                                      <Button
-                                        size="xs"
-                                        variant="ghost"
-                                        className="text-destructive hover:text-destructive"
-                                        onClick={() => deleteLine(line.id)}
-                                      >
-                                        Del
-                                      </Button>
-                                    </div>
-                                  </td>
-                                </tr>
-                                {isEditing ? (
-                                  <tr className="border-b bg-muted/30">
-                                    <td colSpan={8} className="p-4">
-                                      <CostLineForm
-                                        projectId={projectId}
-                                        initial={line}
-                                        catalog={catalog}
-                                        photoUrls={costLinePhotoUrls}
-                                        onDone={() => setEditingLine(null)}
-                                      />
-                                    </td>
-                                  </tr>
-                                ) : null}
-                              </Fragment>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
             <div className="flex justify-end gap-8">
