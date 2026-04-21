@@ -46,8 +46,9 @@ export function WorkerExpenseForm({ projects }: Props) {
     setReceipt(file);
     if (!file) return;
 
-    // Only auto-extract on images. PDFs fall back to plain upload.
-    if (!file.type.startsWith('image/')) return;
+    // gpt-4o-mini reads images and PDFs both; anything else skips extract.
+    const supported = file.type.startsWith('image/') || file.type === 'application/pdf';
+    if (!supported) return;
 
     setExtracting(true);
     try {
@@ -140,8 +141,7 @@ export function WorkerExpenseForm({ projects }: Props) {
           onChange={(e) => handleReceiptPick(e.target.files?.[0] ?? null)}
         />
         <p className="text-xs text-muted-foreground">
-          Snap or upload a photo and the amount, vendor, and date will fill themselves in. PDFs
-          upload but won&apos;t auto-read.
+          Snap or upload a photo (or PDF) and the amount, vendor, and date will fill themselves in.
         </p>
         {extracting ? (
           <p className="flex items-center gap-1.5 text-xs text-primary">

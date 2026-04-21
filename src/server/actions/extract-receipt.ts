@@ -48,17 +48,35 @@ export async function extractReceiptFieldsAction(
   }
 
   const mime = file.type || 'image/jpeg';
-  // PDFs are not directly supported by chat.completions image input — we
-  // could render to PNG server-side, but keep scope tight for now.
-  if (!mime.startsWith('image/')) {
-    return {
-      ok: true,
-      fields: { amountCents: null, vendor: null, expenseDate: null, description: null },
-    };
+  const isPdf = mime === 'application/pdf';
+  const isImage = mime.startsWith('image/');
+  if (!isPdf && !isImage) {
+    return { ok: false, error: `Unsupported file type: ${mime}` };
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const dataUrl = `data:${mime};base64,${buf.toString('base64')}`;
+  const b64 = buf.toString('base64');
+
+  // Chat Completions accepts PDFs directly via the `file` content block
+  // (base64 inline, up to 32MB). Images use the `image_url` block. Both
+  // paths go through gpt-4o-mini.
+  const userContent: Array<Record<string, unknown>> = [
+    { type: 'text', text: 'Extract the fields from this receipt.' },
+  ];
+  if (isPdf) {
+    userContent.push({
+      type: 'file',
+      file: {
+        filename: file.name || 'receipt.pdf',
+        file_data: `data:application/pdf;base64,${b64}`,
+      },
+    });
+  } else {
+    userContent.push({
+      type: 'image_url',
+      image_url: { url: `data:${mime};base64,${b64}` },
+    });
+  }
 
   const body = {
     model: EXTRACT_MODEL,
@@ -66,15 +84,9 @@ export async function extractReceiptFieldsAction(
       {
         role: 'system',
         content:
-          'You extract structured fields from receipt photos. Return ONLY JSON matching the schema. Use null for anything you cannot read with confidence. Dates must be YYYY-MM-DD. Amounts must be the receipt total in cents (integer). Vendor is the merchant name as shown. Description is a 1-line summary of what was purchased (e.g., "lumber and fasteners" or "lunch for crew"); omit if not clear.',
+          'You extract structured fields from receipt photos or PDFs. Return ONLY JSON matching the schema. Use null for anything you cannot read with confidence. Dates must be YYYY-MM-DD. Amounts must be the receipt total in cents (integer). Vendor is the merchant name as shown. Description is a 1-line summary of what was purchased (e.g., "lumber and fasteners" or "lunch for crew"); omit if not clear.',
       },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Extract the fields from this receipt.' },
-          { type: 'image_url', image_url: { url: dataUrl } },
-        ],
-      },
+      { role: 'user', content: userContent },
     ],
     response_format: {
       type: 'json_schema',
