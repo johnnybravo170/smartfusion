@@ -298,11 +298,27 @@ export function EstimateTab({
                             url: costLinePhotoUrls[path] ?? '',
                           }))
                           .filter((p) => p.url);
-                        const hasDetail = !!line.notes || photos.length > 0;
                         return (
                           <Fragment key={line.id}>
-                            <tr className={hasDetail || isEditing ? '' : 'border-b last:border-0'}>
-                              <td className="px-3 py-2 font-medium">{line.label}</td>
+                            <tr
+                              className={
+                                isEditing ? 'align-top' : 'align-top border-b last:border-0'
+                              }
+                            >
+                              <td className="px-3 py-2">
+                                <p className="font-medium">{line.label}</p>
+                                {line.notes ? (
+                                  <p className="mt-0.5 whitespace-pre-wrap text-xs text-muted-foreground">
+                                    {line.notes}
+                                  </p>
+                                ) : null}
+                                <CostLinePhotoStrip
+                                  costLineId={line.id}
+                                  projectId={projectId}
+                                  showAddButton={false}
+                                  photos={photos}
+                                />
+                              </td>
                               <td className="px-3 py-2 text-right text-muted-foreground">
                                 {formatCurrency(line.line_cost_cents)}
                               </td>
@@ -335,23 +351,6 @@ export function EstimateTab({
                                 </div>
                               </td>
                             </tr>
-                            {hasDetail ? (
-                              <tr className={isEditing ? '' : 'border-b last:border-0'}>
-                                <td colSpan={5} className="px-3 pb-3 pt-0">
-                                  {line.notes ? (
-                                    <p className="whitespace-pre-wrap text-xs text-muted-foreground">
-                                      {line.notes}
-                                    </p>
-                                  ) : null}
-                                  <CostLinePhotoStrip
-                                    costLineId={line.id}
-                                    projectId={projectId}
-                                    showAddButton={false}
-                                    photos={photos}
-                                  />
-                                </td>
-                              </tr>
-                            ) : null}
                             {isEditing ? (
                               <tr className="border-b bg-muted/30">
                                 <td colSpan={5} className="p-4">
