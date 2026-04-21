@@ -51,7 +51,7 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
   // Load portal updates
   const { data: updates } = await admin
     .from('project_portal_updates')
-    .select('id, type, title, body, photo_url, created_at')
+    .select('id, type, title, body, photo_url, photo_storage_path, created_at')
     .eq('project_id', projectId)
     .eq('is_visible', true)
     .order('created_at', { ascending: false })
@@ -88,6 +88,18 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
   );
 
   const totalBudget = originalEstimate + approvedCOTotal;
+
+  // Sign portal update photo storage paths (private photos bucket).
+  const photoPaths = (updates ?? [])
+    .map((u) => (u as Record<string, unknown>).photo_storage_path as string | null)
+    .filter((p): p is string => !!p);
+  const photoSignedUrls = new Map<string, string>();
+  if (photoPaths.length > 0) {
+    const { data: signed } = await admin.storage.from('photos').createSignedUrls(photoPaths, 3600);
+    for (const row of signed ?? []) {
+      if (row.path && row.signedUrl) photoSignedUrls.set(row.path, row.signedUrl);
+    }
+  }
 
   // Group updates by date
   const updatesByDate = new Map<string, typeof updates>();
@@ -253,13 +265,19 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
                             {ud.body as string}
                           </p>
                         ) : null}
-                        {ud.photo_url ? (
-                          <img
-                            src={ud.photo_url as string}
-                            alt=""
-                            className="mt-2 max-h-64 rounded-md object-cover"
-                          />
-                        ) : null}
+                        {(() => {
+                          const storagePath = ud.photo_storage_path as string | null;
+                          const signed = storagePath ? photoSignedUrls.get(storagePath) : null;
+                          const src = signed ?? (ud.photo_url as string | null);
+                          return src ? (
+                            // biome-ignore lint/performance/noImgElement: signed URLs bypass next/image optimizer
+                            <img
+                              src={src}
+                              alt=""
+                              className="mt-2 max-h-64 rounded-md object-cover"
+                            />
+                          ) : null;
+                        })()}
                         <p className="mt-1 text-xs text-muted-foreground">
                           {new Date(ud.created_at as string).toLocaleTimeString('en-CA', {
                             hour: 'numeric',

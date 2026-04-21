@@ -16,6 +16,7 @@ export type CostLineRow = {
   line_price_cents: number;
   sort_order: number;
   notes: string | null;
+  photo_storage_paths: string[];
   created_at: string;
   updated_at: string;
 };
@@ -29,7 +30,7 @@ export type VarianceRow = {
 };
 
 const COLS =
-  'id, project_id, bucket_id, catalog_item_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, markup_pct, line_cost_cents, line_price_cents, sort_order, notes, created_at, updated_at';
+  'id, project_id, bucket_id, catalog_item_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, markup_pct, line_cost_cents, line_price_cents, sort_order, notes, photo_storage_paths, created_at, updated_at';
 
 export async function listCostLines(projectId: string): Promise<CostLineRow[]> {
   const supabase = await createClient();
@@ -65,17 +66,15 @@ export async function getVarianceReport(projectId: string): Promise<{
       .select('total_cents, status')
       .eq('project_id', projectId)
       .in('status', ['sent', 'acknowledged', 'received']),
-    supabase
-      .from('project_bills')
-      .select('amount_cents')
-      .eq('project_id', projectId),
-    supabase
-      .from('expenses')
-      .select('amount_cents')
-      .eq('project_id', projectId),
+    supabase.from('project_bills').select('amount_cents').eq('project_id', projectId),
+    supabase.from('expenses').select('amount_cents').eq('project_id', projectId),
   ]);
 
-  const lines = (linesRes.data ?? []) as { category: string; line_cost_cents: number; line_price_cents: number }[];
+  const lines = (linesRes.data ?? []) as {
+    category: string;
+    line_cost_cents: number;
+    line_price_cents: number;
+  }[];
   const pos = (posRes.data ?? []) as { total_cents: number }[];
   const bills = (billsRes.data ?? []) as { amount_cents: number }[];
   const expenseRows = (expensesRes.data ?? []) as { amount_cents: number }[];

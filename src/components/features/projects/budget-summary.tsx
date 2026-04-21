@@ -49,6 +49,63 @@ export function BudgetSummaryCard({ budget }: { budget: BudgetSummary }) {
         />
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{progress}% of budget used</p>
+
+      {budget.lines.length > 0 && (
+        <div className="mt-6 overflow-x-auto rounded-md border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50 text-xs">
+                <th className="px-3 py-2 text-left font-medium">Bucket</th>
+                <th className="px-3 py-2 text-right font-medium">Estimate</th>
+                <th className="px-3 py-2 text-right font-medium">Labour</th>
+                <th className="px-3 py-2 text-right font-medium">Expenses</th>
+                <th className="px-3 py-2 text-right font-medium">Actual</th>
+                <th className="px-3 py-2 text-right font-medium">Remaining</th>
+              </tr>
+            </thead>
+            <tbody>
+              {budget.lines.map((line) => {
+                const over = line.remaining_cents < 0;
+                const pct =
+                  line.estimate_cents > 0
+                    ? Math.round((line.actual_cents / line.estimate_cents) * 100)
+                    : 0;
+                return (
+                  <tr key={line.bucket_id} className="border-b last:border-b-0">
+                    <td className="px-3 py-2">
+                      <div className="font-medium">{line.bucket_name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {line.section} · {pct}%
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatCurrency(line.estimate_cents)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                      {formatCurrency(line.labor_cents)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                      {formatCurrency(line.expense_cents)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums font-medium">
+                      {formatCurrency(line.actual_cents)}
+                    </td>
+                    <td
+                      className={cn(
+                        'px-3 py-2 text-right tabular-nums font-medium',
+                        over && 'text-red-600',
+                      )}
+                    >
+                      {formatCurrency(Math.abs(line.remaining_cents))}
+                      {over ? ' over' : ''}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

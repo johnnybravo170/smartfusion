@@ -14,6 +14,7 @@ import {
 import { createInvoiceFromEstimateAction } from '@/server/actions/invoices';
 import { deleteCostLineAction } from '@/server/actions/project-cost-control';
 import { CostLineForm } from './cost-line-form';
+import { CostLinePhotoStrip } from './cost-line-photo-strip';
 
 export type EstimateApprovalInfo = {
   status: 'draft' | 'pending_approval' | 'approved' | 'declined';
@@ -33,12 +34,14 @@ export function EstimateTab({
   catalog,
   managementFeeRate,
   approval,
+  costLinePhotoUrls,
 }: {
   projectId: string;
   costLines: CostLineRow[];
   catalog: MaterialsCatalogRow[];
   managementFeeRate: number;
   approval: EstimateApprovalInfo;
+  costLinePhotoUrls: Record<string, string>;
 }) {
   const [showForm, setShowForm] = useState(false);
   const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
@@ -248,8 +251,17 @@ export function EstimateTab({
                         <td className="px-3 py-2">
                           <p className="font-medium">{line.label}</p>
                           {line.notes && (
-                            <p className="text-xs text-muted-foreground">{line.notes}</p>
+                            <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                              {line.notes}
+                            </p>
                           )}
+                          <CostLinePhotoStrip
+                            costLineId={line.id}
+                            projectId={projectId}
+                            photos={(line.photo_storage_paths ?? [])
+                              .map((path) => ({ path, url: costLinePhotoUrls[path] ?? '' }))
+                              .filter((p) => p.url)}
+                          />
                         </td>
                         <td className="px-3 py-2 text-right">{Number(line.qty)}</td>
                         <td className="px-3 py-2 text-muted-foreground">{line.unit}</td>

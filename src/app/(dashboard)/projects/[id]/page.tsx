@@ -166,6 +166,20 @@ export default async function ProjectDetailPage({
     }
   }
 
+  // Sign cost-line photos (private `photos` bucket).
+  const costLinePhotoUrls: Record<string, string> = {};
+  const costLinePhotoPaths = Array.from(
+    new Set(costLines.flatMap((l) => l.photo_storage_paths ?? [])),
+  );
+  if (costLinePhotoPaths.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from('photos')
+      .createSignedUrls(costLinePhotoPaths, 3600);
+    for (const row of signed ?? []) {
+      if (row.path && row.signedUrl) costLinePhotoUrls[row.path] = row.signedUrl;
+    }
+  }
+
   // Build a 14-day crew schedule grid starting today.
   const scheduleStart = new Date().toLocaleDateString('en-CA');
   const scheduleEnd = (() => {
@@ -376,6 +390,7 @@ export default async function ProjectDetailPage({
           projectId={id}
           costLines={costLines}
           catalog={catalog}
+          costLinePhotoUrls={costLinePhotoUrls}
           managementFeeRate={project.management_fee_rate}
           approval={{
             status: project.estimate_status,

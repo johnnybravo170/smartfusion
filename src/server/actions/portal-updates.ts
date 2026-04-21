@@ -4,12 +4,16 @@
  * Server actions for the homeowner portal updates.
  */
 
+import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getEmailBrandingForTenant } from '@/lib/email/branding';
 import { sendEmail } from '@/lib/email/send';
 import { portalInviteEmailHtml } from '@/lib/email/templates/portal-invite';
+import { uploadToStorage } from '@/lib/storage/photos';
 import { createClient } from '@/lib/supabase/server';
+
+const MAX_PORTAL_PHOTO_BYTES = 10 * 1024 * 1024;
 
 export type PortalActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -50,6 +54,71 @@ export async function addPortalUpdateAction(input: {
   }
 
   revalidatePath(`/projects/${input.projectId}`);
+  return { ok: true, id: data.id };
+}
+
+/**
+ * FormData-based variant that supports uploading a photo alongside the
+ * update. Uploads to the private photos bucket; portal renders via signed
+ * URL.
+ */
+export async function addPortalUpdateWithPhotoAction(
+  formData: FormData,
+): Promise<PortalActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const projectId = String(formData.get('projectId') ?? '');
+  const type = String(formData.get('type') ?? 'progress') as
+    | 'progress'
+    | 'photo'
+    | 'milestone'
+    | 'message';
+  const title = String(formData.get('title') ?? '').trim();
+  const body = String(formData.get('body') ?? '').trim();
+
+  if (!projectId) return { ok: false, error: 'Project is required.' };
+  if (!title) return { ok: false, error: 'Title is required.' };
+
+  let photoStoragePath: string | null = null;
+  const photo = formData.get('photo');
+  if (photo && photo instanceof File && photo.size > 0) {
+    if (photo.size > MAX_PORTAL_PHOTO_BYTES) {
+      return { ok: false, error: 'Photo is larger than 10MB.' };
+    }
+    const ext = photo.type === 'image/png' ? 'png' : photo.type === 'image/webp' ? 'webp' : 'jpg';
+    const uploaded = await uploadToStorage({
+      tenantId: tenant.id,
+      projectId,
+      photoId: randomUUID(),
+      file: photo,
+      contentType: photo.type || 'image/jpeg',
+      extension: ext,
+    });
+    if ('error' in uploaded) return { ok: false, error: uploaded.error };
+    photoStoragePath = uploaded.path;
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('project_portal_updates')
+    .insert({
+      project_id: projectId,
+      tenant_id: tenant.id,
+      type,
+      title,
+      body: body || null,
+      photo_storage_path: photoStoragePath,
+      created_by: tenant.member.id,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? 'Failed to add portal update.' };
+  }
+
+  revalidatePath(`/projects/${projectId}`);
   return { ok: true, id: data.id };
 }
 

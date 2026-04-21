@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { addPortalUpdateAction } from '@/server/actions/portal-updates';
+import { addPortalUpdateWithPhotoAction } from '@/server/actions/portal-updates';
 
 export function PortalUpdateForm({ projectId }: { projectId: string }) {
   const router = useRouter();
@@ -13,16 +13,18 @@ export function PortalUpdateForm({ projectId }: { projectId: string }) {
   const [type, setType] = useState<'progress' | 'photo' | 'milestone' | 'message'>('progress');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [photo, setPhoto] = useState<File | null>(null);
 
   async function handleSubmit() {
     setLoading(true);
     setError(null);
-    const result = await addPortalUpdateAction({
-      projectId,
-      type,
-      title,
-      body: body || undefined,
-    });
+    const fd = new FormData();
+    fd.set('projectId', projectId);
+    fd.set('type', type);
+    fd.set('title', title);
+    fd.set('body', body);
+    if (photo) fd.set('photo', photo);
+    const result = await addPortalUpdateWithPhotoAction(fd);
     if (!result.ok) {
       setError(result.error);
       setLoading(false);
@@ -30,6 +32,7 @@ export function PortalUpdateForm({ projectId }: { projectId: string }) {
     }
     setTitle('');
     setBody('');
+    setPhoto(null);
     setOpen(false);
     setLoading(false);
     router.refresh();
@@ -82,6 +85,26 @@ export function PortalUpdateForm({ projectId }: { projectId: string }) {
         className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         placeholder="Details (optional)"
       />
+      <div>
+        <label
+          htmlFor="portal-update-photo"
+          className="mb-1 block text-xs font-medium text-muted-foreground"
+        >
+          Photo (optional)
+        </label>
+        <input
+          id="portal-update-photo"
+          type="file"
+          accept="image/*"
+          onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+          className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium"
+        />
+        {photo && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {photo.name} · {(photo.size / 1024).toFixed(0)} KB
+          </p>
+        )}
+      </div>
       <div className="flex gap-2">
         <button
           type="button"

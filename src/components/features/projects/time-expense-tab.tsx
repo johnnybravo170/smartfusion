@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { CostBucketSummary } from '@/lib/db/queries/projects';
 import { formatCurrency } from '@/lib/pricing/calculator';
-import { deleteExpenseAction, logExpenseAction } from '@/server/actions/expenses';
+import { deleteExpenseAction, logExpenseWithReceiptAction } from '@/server/actions/expenses';
 import { deleteTimeEntryAction, logTimeAction } from '@/server/actions/time-entries';
 
 type TimeEntry = {
@@ -132,23 +132,26 @@ function ExpenseForm({
   const [vendor, setVendor] = useState('');
   const [description, setDescription] = useState('');
   const [bucketId, setBucketId] = useState('');
+  const [receipt, setReceipt] = useState<File | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     startTransition(async () => {
-      const res = await logExpenseAction({
-        project_id: projectId,
-        expense_date: date,
-        amount_cents: Math.round(parseFloat(amountRaw) * 100),
-        vendor: vendor || undefined,
-        description: description || undefined,
-        bucket_id: bucketId || undefined,
-      });
+      const fd = new FormData();
+      fd.set('project_id', projectId);
+      fd.set('expense_date', date);
+      fd.set('amount_cents', String(Math.round(parseFloat(amountRaw) * 100)));
+      fd.set('vendor', vendor);
+      fd.set('description', description);
+      fd.set('bucket_id', bucketId);
+      if (receipt) fd.set('receipt', receipt);
+      const res = await logExpenseWithReceiptAction(fd);
       if (res.ok) {
         setAmountRaw('');
         setVendor('');
         setDescription('');
+        setReceipt(null);
         onDone();
       } else setError(res.error);
     });
@@ -205,6 +208,19 @@ function ExpenseForm({
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Optional"
           />
+        </div>
+        <div className="sm:col-span-4">
+          <span className="mb-1 block text-xs font-medium">Receipt</span>
+          <Input
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
+          />
+          {receipt && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {receipt.name} · {(receipt.size / 1024).toFixed(0)} KB
+            </p>
+          )}
         </div>
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}

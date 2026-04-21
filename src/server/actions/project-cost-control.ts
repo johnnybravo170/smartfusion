@@ -1,9 +1,13 @@
 'use server';
 
+import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { uploadToStorage } from '@/lib/storage/photos';
 import { createClient } from '@/lib/supabase/server';
+
+const MAX_COST_LINE_PHOTO_BYTES = 10 * 1024 * 1024;
 
 export type CostControlResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -284,4 +288,84 @@ export async function deleteBillAction(id: string, projectId: string): Promise<C
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/projects/${projectId}`);
   return { ok: true, id };
+}
+
+// ─── Cost line photos ─────────────────────────────────────────────────────────
+
+export async function attachCostLinePhotoAction(formData: FormData): Promise<CostControlResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const costLineId = String(formData.get('cost_line_id') ?? '');
+  const projectId = String(formData.get('project_id') ?? '');
+  const file = formData.get('photo');
+  if (!costLineId || !projectId) return { ok: false, error: 'Missing line or project.' };
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: 'No photo provided.' };
+  }
+  if (file.size > MAX_COST_LINE_PHOTO_BYTES) {
+    return { ok: false, error: 'Photo is larger than 10MB.' };
+  }
+
+  const supabase = await createClient();
+  const { data: row, error: loadErr } = await supabase
+    .from('project_cost_lines')
+    .select('photo_storage_paths')
+    .eq('id', costLineId)
+    .single();
+  if (loadErr || !row) return { ok: false, error: loadErr?.message ?? 'Line not found.' };
+
+  const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+  const uploaded = await uploadToStorage({
+    tenantId: tenant.id,
+    projectId,
+    photoId: randomUUID(),
+    file,
+    contentType: file.type || 'image/jpeg',
+    extension: ext,
+  });
+  if ('error' in uploaded) return { ok: false, error: uploaded.error };
+
+  const existing = (row.photo_storage_paths as string[] | null) ?? [];
+  const next = [...existing, uploaded.path];
+
+  const { error: updErr } = await supabase
+    .from('project_cost_lines')
+    .update({ photo_storage_paths: next })
+    .eq('id', costLineId);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true, id: costLineId };
+}
+
+export async function removeCostLinePhotoAction(input: {
+  costLineId: string;
+  projectId: string;
+  storagePath: string;
+}): Promise<CostControlResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+  const { data: row, error: loadErr } = await supabase
+    .from('project_cost_lines')
+    .select('photo_storage_paths')
+    .eq('id', input.costLineId)
+    .single();
+  if (loadErr || !row) return { ok: false, error: loadErr?.message ?? 'Line not found.' };
+
+  const existing = (row.photo_storage_paths as string[] | null) ?? [];
+  const next = existing.filter((p) => p !== input.storagePath);
+
+  const { error: updErr } = await supabase
+    .from('project_cost_lines')
+    .update({ photo_storage_paths: next })
+    .eq('id', input.costLineId);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  await supabase.storage.from('photos').remove([input.storagePath]);
+
+  revalidatePath(`/projects/${input.projectId}`);
+  return { ok: true, id: input.costLineId };
 }
