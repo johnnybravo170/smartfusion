@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils';
 import { type PhotoTag, photoTagLabels } from '@/lib/validators/photo';
 import { acceptAiTagAction } from '@/server/actions/photos';
 import { DeletePhotoButton } from './delete-photo-button';
+import { PhotoFavoriteButton } from './photo-favorite-button';
 
 const TAG_CLASS: Record<PhotoTag, string> = {
   before: 'bg-sky-100 text-sky-800 border-sky-200 hover:bg-sky-100',
@@ -55,7 +56,13 @@ function qualityWarning(flags: PhotoQualityFlags): string | null {
   return issues.join(' · ');
 }
 
-export function PhotoCard({ photo }: { photo: PhotoWithUrl }) {
+export function PhotoCard({
+  photo,
+  tenantJobTypes = [],
+}: {
+  photo: PhotoWithUrl;
+  tenantJobTypes?: string[];
+}) {
   const [open, setOpen] = useState(false);
   const [broken, setBroken] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -165,7 +172,13 @@ export function PhotoCard({ photo }: { photo: PhotoWithUrl }) {
           </span>
         ) : null}
       </div>
-      <div className="absolute right-2 top-2 opacity-80 transition-opacity group-hover:opacity-100">
+      <div className="absolute right-2 top-2 flex items-center gap-1 opacity-80 transition-opacity group-hover:opacity-100">
+        <PhotoFavoriteButton
+          photoId={photo.id}
+          isFavorite={photo.is_favorite}
+          jobType={photo.job_type}
+          suggestedJobTypes={tenantJobTypes}
+        />
         <DeletePhotoButton photoId={photo.id} />
       </div>
       {caption ? (

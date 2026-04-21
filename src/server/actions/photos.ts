@@ -236,6 +236,39 @@ export async function acceptAiTagAction(photoId: string): Promise<PhotoActionRes
 }
 
 /**
+ * Toggle favourite + optionally set a job_type (freeform). Used by the Star
+ * button on the project photo gallery. Job type is a tenant-scoped free
+ * string — see PhotoShowcase plan.
+ */
+export async function toggleFavoritePhotoAction(input: {
+  id: string;
+  is_favorite: boolean;
+  job_type?: string | null;
+}): Promise<PhotoActionResult> {
+  if (!input.id) return { ok: false, error: 'Missing photo id.' };
+  const supabase = await createClient();
+  const trimmed = input.job_type?.trim();
+  const patch: Record<string, unknown> = {
+    is_favorite: input.is_favorite,
+    updated_at: new Date().toISOString(),
+  };
+  if (input.job_type !== undefined) {
+    patch.job_type = trimmed ? trimmed : null;
+  }
+  const { data, error } = await supabase
+    .from('photos')
+    .update(patch)
+    .eq('id', input.id)
+    .select('id, job_id, project_id')
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? 'Failed to update photo.' };
+
+  if (data.job_id) revalidatePath(`/jobs/${data.job_id}`);
+  if (data.project_id) revalidatePath(`/projects/${data.project_id}`);
+  return { ok: true, id: input.id };
+}
+
+/**
  * Derive a safe file extension from a File. We default to `.jpg` when the
  * name has no recognisable suffix (camera captures on iOS sometimes come in
  * without one). The extension is purely cosmetic — the bucket enforces no

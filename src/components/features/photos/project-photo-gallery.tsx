@@ -6,11 +6,20 @@
  */
 
 import { ImagePlus } from 'lucide-react';
-import { listPhotosByProject } from '@/lib/db/queries/photos';
+import { listPhotosByProject, listTenantJobTypes } from '@/lib/db/queries/photos';
 import { PhotoCard } from './photo-card';
 
-export async function ProjectPhotoGallery({ projectId }: { projectId: string }) {
-  const photos = await listPhotosByProject(projectId);
+export async function ProjectPhotoGallery({
+  projectId,
+  tenantId,
+}: {
+  projectId: string;
+  tenantId: string;
+}) {
+  const [photos, tenantJobTypes] = await Promise.all([
+    listPhotosByProject(projectId),
+    listTenantJobTypes(tenantId),
+  ]);
 
   if (photos.length === 0) {
     return (
@@ -32,7 +41,7 @@ export async function ProjectPhotoGallery({ projectId }: { projectId: string }) 
       data-count={photos.length}
     >
       {photos.map((photo) => (
-        <PhotoCard key={photo.id} photo={photo} />
+        <PhotoCard key={photo.id} photo={photo} tenantJobTypes={tenantJobTypes} />
       ))}
     </div>
   );

@@ -518,7 +518,7 @@ export default async function ProjectDetailPage({
       {tab === 'gallery' ? (
         <div className="space-y-6">
           <PhotoUpload projectId={id} />
-          <ProjectPhotoGallery projectId={id} />
+          <ProjectPhotoGallery projectId={id} tenantId={project.tenant_id} />
         </div>
       ) : null}
 
