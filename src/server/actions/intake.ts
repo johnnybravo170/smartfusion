@@ -210,9 +210,9 @@ export async function acceptInboundLeadAction(draft: ParsedIntake): Promise<Acce
       const qty = Number(l.qty) || 1;
       const unitPrice = Number(l.unit_price_cents ?? 0) || 0;
       lineRows.push({
-        tenant_id: tenant.id,
         project_id: proj.id,
         bucket_id: bucketId,
+        category: 'material',
         label: l.label,
         notes: l.notes?.trim() || null,
         qty,

@@ -322,9 +322,9 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
         .map((i) => indexToPath[i])
         .filter((p): p is string => !!p);
       lineRows.push({
-        tenant_id: tenant.id,
         project_id: input.projectId,
         bucket_id: bucketId,
+        category: 'material',
         label: l.label,
         notes: l.notes?.trim() || null,
         qty,
