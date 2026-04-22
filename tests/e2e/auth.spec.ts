@@ -28,7 +28,7 @@ const canRun = Boolean(url && serviceRoleKey);
 test.describe('auth flow', () => {
   test.skip(!canRun, 'NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required');
 
-  const email = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@smartfusion.test`;
+  const email = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@heyhenry.test`;
   const password = 'Correct-Horse-9';
   const businessName = `E2E Co ${Date.now()}`;
 

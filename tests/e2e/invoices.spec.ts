@@ -25,7 +25,7 @@ test.describe
     test.skip(!canRun, 'NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required');
 
     const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const email = `e2e-inv-${stamp}@smartfusion.test`;
+    const email = `e2e-inv-${stamp}@heyhenry.test`;
     const password = 'Correct-Horse-9';
     const businessName = `Invoice E2E Co ${stamp}`;
     const customerName = `Invoice Customer ${stamp}`;

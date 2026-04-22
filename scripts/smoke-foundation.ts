@@ -83,8 +83,8 @@ async function main(): Promise<void> {
   });
 
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const emailA = `smoke-a-${stamp}@smartfusion.test`;
-  const emailB = `smoke-b-${stamp}@smartfusion.test`;
+  const emailA = `smoke-a-${stamp}@heyhenry.test`;
+  const emailB = `smoke-b-${stamp}@heyhenry.test`;
   const password = 'Correct-Horse-9';
   const nameA = `Smoke A ${stamp}`;
   const nameB = `Smoke B ${stamp}`;

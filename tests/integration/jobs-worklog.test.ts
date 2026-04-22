@@ -40,7 +40,7 @@ describe.skipIf(!canRun)('jobs status-change logs worklog entry (integration)', 
     );
 
     const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const email = `jobs-int-${stamp}@smartfusion.test`;
+    const email = `jobs-int-${stamp}@heyhenry.test`;
     const password = 'Correct-Horse-9';
 
     let userId: string | null = null;

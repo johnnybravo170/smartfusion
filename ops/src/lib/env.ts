@@ -28,7 +28,7 @@ export const env = {
     return process.env.OPS_ALERTS_FROM_EMAIL ?? 'ops@mail.heyhenry.io';
   },
   get alertsToEmail() {
-    return process.env.OPS_ALERTS_TO_EMAIL ?? 'jonathan@smartfusion.ca';
+    return process.env.OPS_ALERTS_TO_EMAIL ?? 'riffninjavideos@gmail.com';
   },
   get resendApiKey() {
     return process.env.RESEND_API_KEY ?? null;

@@ -4,8 +4,8 @@
  *
  * Usage:
  *   set -a && source .env.local && set +a
- *   pnpm tsx scripts/seed-test-data.ts --email jonathan@smartfusion.ca
- *   pnpm tsx scripts/seed-test-data.ts --email jonathan@smartfusion.ca --reset
+ *   pnpm tsx scripts/seed-test-data.ts --email jonathan@heyhenry.io
+ *   pnpm tsx scripts/seed-test-data.ts --email jonathan@heyhenry.io --reset
  *
  * --reset wipes all existing tenant data first (keeps the tenant + members).
  */

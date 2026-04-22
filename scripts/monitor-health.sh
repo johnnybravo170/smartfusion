@@ -1,11 +1,11 @@
 #!/bin/bash
-# Combined health monitor for Smartfusion
+# Combined health monitor for HeyHenry
 # Checks: CI status, Vercel deploy, health endpoint, DB connectivity
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo "=== Smartfusion Health Monitor ==="
+echo "=== HeyHenry Health Monitor ==="
 echo "$(date)"
 echo ""
 
@@ -32,7 +32,7 @@ fi
 echo ""
 
 # 3. Health endpoint
-HEALTH=$(curl -s --max-time 10 "https://app.smartfusion.ca/api/health" 2>/dev/null || echo '{"status":"unreachable"}')
+HEALTH=$(curl -s --max-time 10 "https://app.heyhenry.io/api/health" 2>/dev/null || echo '{"status":"unreachable"}')
 if echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='ok'" 2>/dev/null; then
   echo "[health] OK: $HEALTH"
 else

@@ -35,7 +35,7 @@ describe.skipIf(!canRun)('signup flow (integration)', () => {
       { auth: { autoRefreshToken: false, persistSession: false } },
     );
 
-    const email = `integration-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@smartfusion.test`;
+    const email = `integration-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@heyhenry.test`;
     const password = 'Correct-Horse-9';
     const businessName = `Integration Co ${Date.now()}`;
 

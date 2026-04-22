@@ -24,8 +24,8 @@ test.describe
     const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const businessName = `Referral E2E Co ${stamp}`;
     const refCode = `e2e-ref-${stamp}`.slice(0, 40).replace(/[^a-z0-9-]/g, '');
-    const referrerEmail = `referrer-${stamp}@smartfusion.test`;
-    const referredEmail = `referred-${stamp}@smartfusion.test`;
+    const referrerEmail = `referrer-${stamp}@heyhenry.test`;
+    const referredEmail = `referred-${stamp}@heyhenry.test`;
 
     let createdTenantId: string | null = null;
     let createdUserId: string | null = null;

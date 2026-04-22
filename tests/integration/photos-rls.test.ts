@@ -51,8 +51,8 @@ describe.skipIf(!canRun)('photos RLS isolation (integration)', () => {
     });
 
     const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const emailA = `photo-rls-a-${stamp}@smartfusion.test`;
-    const emailB = `photo-rls-b-${stamp}@smartfusion.test`;
+    const emailA = `photo-rls-a-${stamp}@heyhenry.test`;
+    const emailB = `photo-rls-b-${stamp}@heyhenry.test`;
     const password = 'Correct-Horse-9';
 
     let userIdA: string | null = null;

@@ -25,7 +25,7 @@ test.describe
     test.skip(!canRun, 'NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required');
 
     const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const email = `e2e-co-${stamp}@smartfusion.test`;
+    const email = `e2e-co-${stamp}@heyhenry.test`;
     const password = 'Correct-Horse-9';
     const businessName = `CO E2E Co ${stamp}`;
     const customerName = `Test Customer ${stamp}`;
@@ -129,7 +129,7 @@ test.describe
         const { data: co } = await admin
           .from('change_orders')
           .insert({
-            project_id: project!.id,
+            project_id: project?.id,
             tenant_id: createdTenantId,
             title: 'Add pot lights',
             description: 'Install 6 pot lights in kitchen ceiling.',
@@ -143,7 +143,7 @@ test.describe
           .single();
 
         expect(co).toBeTruthy();
-        approvalCode = co!.approval_code as string;
+        approvalCode = co?.approval_code as string;
       }
     });
 
@@ -185,8 +185,8 @@ test.describe
         .single();
 
       expect(co).toBeTruthy();
-      expect(co!.status).toBe('approved');
-      expect(co!.approved_by_name).toBe('John Homeowner');
-      expect(co!.approved_at).toBeTruthy();
+      expect(co?.status).toBe('approved');
+      expect(co?.approved_by_name).toBe('John Homeowner');
+      expect(co?.approved_at).toBeTruthy();
     });
   });

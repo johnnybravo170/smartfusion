@@ -23,17 +23,17 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
   "mcpServers": {
     "heyhenry": {
       "command": "npx",
-      "args": ["tsx", "/path/to/smartfusion/mcp/src/index.ts"],
+      "args": ["tsx", "/path/to/heyhenry/mcp/src/index.ts"],
       "env": {
-        "SMARTFUSION_TENANT_ID": "your-tenant-uuid",
-        "SMARTFUSION_DATABASE_URL": "postgres://postgres.ref:password@aws-1-ca-central-1.pooler.supabase.com:5432/postgres"
+        "HEYHENRY_TENANT_ID": "your-tenant-uuid",
+        "HEYHENRY_DATABASE_URL": "postgres://postgres.ref:password@aws-1-ca-central-1.pooler.supabase.com:5432/postgres"
       }
     }
   }
 }
 ```
 
-Replace `/path/to/smartfusion` with the actual path on your machine, and fill in the tenant UUID and database URL.
+Replace `/path/to/heyhenry` with the actual path on your machine, and fill in the tenant UUID and database URL. (Old `SMARTFUSION_*` env names still work as fall-backs.)
 
 ## Available Tools
 

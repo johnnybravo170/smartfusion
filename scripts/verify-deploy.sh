@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERCEL_TOKEN=$(grep '^VERCEL_TOKEN=' .env.local | cut -d= -f2)
-APP_URL="https://app.smartfusion.ca"
+APP_URL="https://app.heyhenry.io"
 MAX_WAIT=180
 
 echo "[deploy-check] Waiting for Vercel deployment..."

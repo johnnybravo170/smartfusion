@@ -11,9 +11,9 @@ let sql: ReturnType<typeof postgres>;
 
 export function getDb(): ReturnType<typeof postgres> {
   if (!sql) {
-    const url = process.env.SMARTFUSION_DATABASE_URL;
+    const url = process.env.HEYHENRY_DATABASE_URL ?? process.env.SMARTFUSION_DATABASE_URL;
     if (!url) {
-      throw new Error('SMARTFUSION_DATABASE_URL is not set');
+      throw new Error('HEYHENRY_DATABASE_URL is not set');
     }
     sql = postgres(url, {
       max: 3,

@@ -71,7 +71,7 @@ test.describe
 
       // --- 1. Seed tenant + user + catalog via admin ---
       // Create a test user (needed for tenant_members FK).
-      const testEmail = `e2e-operator-${stamp}@smartfusion.test`;
+      const testEmail = `e2e-operator-${stamp}@heyhenry.test`;
       const { data: authUser } = await admin.auth.admin.createUser({
         email: testEmail,
         password: 'Test-Password-123',

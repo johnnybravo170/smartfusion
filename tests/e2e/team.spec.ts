@@ -91,7 +91,7 @@ test.describe('worker invite flow', () => {
     expect(inviteLink).toContain('/join/');
 
     // 4. Worker opens the invite link in a new context (simulates incognito).
-    const workerContext = await context.browser()!.newContext();
+    const workerContext = await context.browser()?.newContext();
     const workerPage = await workerContext.newPage();
 
     // Extract the path from the invite link.

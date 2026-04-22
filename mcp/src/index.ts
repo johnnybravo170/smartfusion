@@ -9,8 +9,8 @@
  * (bypasses RLS) but always filters by tenant_id explicitly.
  *
  * AR scope:
- *   - SMARTFUSION_AR_PLATFORM=1  → AR tools operate on platform scope (tenant_id NULL)
- *   - otherwise                  → AR tools operate on SMARTFUSION_TENANT_ID
+ *   - HEYHENRY_AR_PLATFORM=1  → AR tools operate on platform scope (tenant_id NULL)
+ *   - otherwise               → AR tools operate on HEYHENRY_TENANT_ID
  *
  * TENANT_ID is required for tenant-scoped tools (customers, jobs, etc.). When
  * only AR_PLATFORM is in use (e.g. Jonathan managing Hey Henry's own marketing
@@ -31,17 +31,21 @@ import { registerQuoteTools } from './tools/quotes.js';
 import { registerTodoTools } from './tools/todos.js';
 import { registerWorklogTools } from './tools/worklog.js';
 
-const TENANT_ID = process.env.SMARTFUSION_TENANT_ID;
-const DATABASE_URL = process.env.SMARTFUSION_DATABASE_URL;
-const AR_PLATFORM = process.env.SMARTFUSION_AR_PLATFORM === '1';
+// HEYHENRY_* names are canonical; SMARTFUSION_* fall-backs kept for any
+// existing MCP configs that haven't been updated yet. Drop after all
+// callers migrate.
+const TENANT_ID = process.env.HEYHENRY_TENANT_ID ?? process.env.SMARTFUSION_TENANT_ID;
+const DATABASE_URL = process.env.HEYHENRY_DATABASE_URL ?? process.env.SMARTFUSION_DATABASE_URL;
+const AR_PLATFORM =
+  process.env.HEYHENRY_AR_PLATFORM === '1' || process.env.SMARTFUSION_AR_PLATFORM === '1';
 
 if (!DATABASE_URL) {
-  process.stderr.write('Error: SMARTFUSION_DATABASE_URL must be set.\n');
+  process.stderr.write('Error: HEYHENRY_DATABASE_URL must be set.\n');
   process.exit(1);
 }
 if (!TENANT_ID && !AR_PLATFORM) {
   process.stderr.write(
-    'Error: set SMARTFUSION_TENANT_ID for tenant tools, or SMARTFUSION_AR_PLATFORM=1 for platform AR only.\n',
+    'Error: set HEYHENRY_TENANT_ID for tenant tools, or HEYHENRY_AR_PLATFORM=1 for platform AR only.\n',
   );
   process.exit(1);
 }
