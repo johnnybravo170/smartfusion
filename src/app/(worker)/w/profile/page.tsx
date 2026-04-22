@@ -1,4 +1,6 @@
+import Link from 'next/link';
 import { WorkerProfileForm } from '@/components/features/worker/worker-profile-form';
+import { Button } from '@/components/ui/button';
 import { requireWorker } from '@/lib/auth/helpers';
 import { getOrCreateWorkerProfile } from '@/lib/db/queries/worker-profiles';
 
@@ -16,6 +18,11 @@ export default async function WorkerProfilePage() {
         </p>
       </div>
       <WorkerProfileForm profile={profile} />
+      <div className="border-t pt-4">
+        <Button asChild variant="outline">
+          <Link href="/logout">Log out</Link>
+        </Button>
+      </div>
     </div>
   );
 }
