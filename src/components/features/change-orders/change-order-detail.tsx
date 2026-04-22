@@ -1,7 +1,8 @@
 'use client';
 
+import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type { ChangeOrderRow } from '@/lib/db/queries/change-orders';
 import { formatCurrency } from '@/lib/pricing/calculator';
@@ -19,7 +20,38 @@ export function ChangeOrderDetail({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const co = changeOrder;
+  const [co, setCo] = useState(changeOrder);
+
+  // Live-update when the customer approves or declines remotely.
+  useEffect(() => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+
+    const channel = supabase
+      .channel(`change-order-${co.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'change_orders',
+          filter: `id=eq.${co.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as Partial<ChangeOrderRow>;
+          setCo((prev) => ({ ...prev, ...updated }));
+          if (updated.status === 'approved') toast.success('Change order approved by customer.');
+          if (updated.status === 'declined') toast.error('Change order declined by customer.');
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [co.id]);
 
   async function handleSend() {
     setLoading(true);
