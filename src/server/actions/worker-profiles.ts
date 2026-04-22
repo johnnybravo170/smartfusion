@@ -118,6 +118,7 @@ const defaultsSchema = z.object({
   workers_can_log_expenses: z.boolean(),
   workers_can_invoice_default: z.boolean(),
   workers_can_edit_old_entries: z.boolean(),
+  auto_assign_crew: z.boolean(),
 });
 
 export async function updateWorkerDefaultsAction(
@@ -139,6 +140,7 @@ export async function updateWorkerDefaultsAction(
       workers_can_log_expenses: parsed.data.workers_can_log_expenses,
       workers_can_invoice_default: parsed.data.workers_can_invoice_default,
       workers_can_edit_old_entries: parsed.data.workers_can_edit_old_entries,
+      auto_assign_crew: parsed.data.auto_assign_crew,
     })
     .eq('id', tenant.id);
 

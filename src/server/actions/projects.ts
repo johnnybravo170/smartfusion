@@ -101,6 +101,30 @@ export async function createProjectAction(input: {
     return { ok: false, error: error?.message ?? 'Failed to create project.' };
   }
 
+  // Auto-assign crew if the tenant preference is on
+  const { data: tenantPrefs } = await supabase
+    .from('tenants')
+    .select('auto_assign_crew')
+    .eq('id', tenant.id)
+    .single();
+
+  if (tenantPrefs?.auto_assign_crew) {
+    const { data: workers } = await supabase
+      .from('worker_profiles')
+      .select('id')
+      .eq('tenant_id', tenant.id);
+
+    if (workers && workers.length > 0) {
+      await supabase.from('project_assignments').insert(
+        workers.map((w) => ({
+          tenant_id: tenant.id,
+          project_id: data.id,
+          worker_profile_id: w.id,
+        })),
+      );
+    }
+  }
+
   // Seed default cost buckets
   const bucketRows = [
     ...DEFAULT_INTERIOR_BUCKETS.map((name, i) => ({

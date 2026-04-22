@@ -26,7 +26,9 @@ export default async function TeamPage() {
     listInvitesByTenantId(tenant.id),
     admin
       .from('tenants')
-      .select('workers_can_log_expenses, workers_can_invoice_default, workers_can_edit_old_entries')
+      .select(
+        'workers_can_log_expenses, workers_can_invoice_default, workers_can_edit_old_entries, auto_assign_crew',
+      )
       .eq('id', tenant.id)
       .single(),
   ]);
@@ -53,6 +55,7 @@ export default async function TeamPage() {
         workersCanLogExpenses={defaults?.workers_can_log_expenses ?? true}
         workersCanInvoiceDefault={defaults?.workers_can_invoice_default ?? false}
         workersCanEditOldEntries={defaults?.workers_can_edit_old_entries ?? false}
+        autoAssignCrew={defaults?.auto_assign_crew ?? false}
       />
 
       <div className="space-y-3">
