@@ -24,12 +24,22 @@ export function Header({ businessName, vertical }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button asChild size="sm" className="gap-1">
-          <Link href="/projects/new">
-            <Plus className="size-3.5" />
-            <span className="hidden sm:inline">New Project</span>
-          </Link>
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" className="gap-1">
+              <Plus className="size-3.5" />
+              <span className="hidden sm:inline">New Project</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem asChild>
+              <Link href="/projects/new">Blank project</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/leads/new">From text thread</Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
