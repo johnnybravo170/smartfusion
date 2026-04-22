@@ -209,6 +209,8 @@ export type ApplyAugmentInput = {
     source_image_index: number | null;
   }>;
   mergeSignals: AugmentResult['signals'] | null;
+  /** If set, persist as a kind='reply_draft' note in the project Notes feed. */
+  replyDraft: string | null;
 };
 
 /**
@@ -437,6 +439,21 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
       })
       .eq('id', input.projectId);
     if (error) return { ok: false, error: `Signals: ${error.message}` };
+    applied++;
+  }
+
+  // 4b. Persist reply draft to the Notes feed.
+  if (input.replyDraft?.trim()) {
+    const user = await getCurrentUser();
+    const { error } = await supabase.from('project_notes').insert({
+      project_id: input.projectId,
+      tenant_id: tenant.id,
+      user_id: user?.id ?? null,
+      body: input.replyDraft.trim(),
+      kind: 'reply_draft',
+      metadata: { source: 'project-intake' },
+    });
+    if (error) return { ok: false, error: `Reply draft note: ${error.message}` };
     applied++;
   }
 

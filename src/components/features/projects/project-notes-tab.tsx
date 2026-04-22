@@ -10,7 +10,17 @@
  * button so the primary surface is the feed and the inline note input.
  */
 
-import { Loader2, Mic, Sparkles, StickyNote, Trash2 } from 'lucide-react';
+import {
+  Bot,
+  Loader2,
+  MessageSquare,
+  Mic,
+  Send,
+  Sparkles,
+  StickyNote,
+  Trash2,
+  User as UserIcon,
+} from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { MemoUpload, type MemoUploadProps } from '@/components/features/memos/memo-upload';
@@ -23,7 +33,11 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { addProjectNoteAction, deleteProjectNoteAction } from '@/server/actions/project-notes';
+import {
+  addProjectNoteAction,
+  askHenryAboutProjectAction,
+  deleteProjectNoteAction,
+} from '@/server/actions/project-notes';
 
 export type NoteFeedItem =
   | {
@@ -32,6 +46,24 @@ export type NoteFeedItem =
       created_at: string;
       body: string;
       author_name: string | null;
+    }
+  | {
+      kind: 'reply_draft';
+      id: string;
+      created_at: string;
+      body: string;
+    }
+  | {
+      kind: 'henry_q';
+      id: string;
+      created_at: string;
+      body: string;
+    }
+  | {
+      kind: 'henry_a';
+      id: string;
+      created_at: string;
+      body: string;
     }
   | {
       kind: 'memo';
@@ -60,7 +92,9 @@ export function ProjectNotesTab({
   memoUploadProps: MemoUploadProps;
 }) {
   const [draft, setDraft] = useState('');
+  const [henryQ, setHenryQ] = useState('');
   const [isAdding, startAdding] = useTransition();
+  const [isAsking, startAsking] = useTransition();
   const [isDeleting, startDeleting] = useTransition();
   const [memoOpen, setMemoOpen] = useState(false);
 
@@ -75,6 +109,19 @@ export function ProjectNotesTab({
       }
       setDraft('');
       toast.success('Note added');
+    });
+  }
+
+  function handleAskHenry() {
+    const q = henryQ.trim();
+    if (!q) return;
+    startAsking(async () => {
+      const res = await askHenryAboutProjectAction({ projectId, question: q });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setHenryQ('');
     });
   }
 
@@ -128,6 +175,42 @@ export function ProjectNotesTab({
         </div>
       </div>
 
+      {/* Ask Henry */}
+      <div className="rounded-md border bg-muted/10 p-3">
+        <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <Bot className="size-3.5" />
+          Ask Henry about this project
+        </div>
+        <div className="flex items-end gap-2">
+          <Textarea
+            rows={1}
+            value={henryQ}
+            onChange={(e) => setHenryQ(e.target.value)}
+            placeholder="e.g. What's the biggest variance risk on this job?"
+            className="border-0 px-0 py-1 text-sm focus-visible:ring-0"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleAskHenry();
+              }
+            }}
+          />
+          <Button
+            size="sm"
+            onClick={handleAskHenry}
+            disabled={isAsking || !henryQ.trim()}
+            className="gap-1.5"
+          >
+            {isAsking ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Send className="size-3.5" />
+            )}
+            Ask
+          </Button>
+        </div>
+      </div>
+
       {/* Feed */}
       {feed.length === 0 ? (
         <p className="rounded-md border bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
@@ -141,6 +224,29 @@ export function ProjectNotesTab({
                 <NoteCard
                   body={item.body}
                   author={item.author_name}
+                  createdAt={item.created_at}
+                  onDelete={() => handleDelete(item.id)}
+                  isDeleting={isDeleting}
+                />
+              ) : item.kind === 'reply_draft' ? (
+                <ReplyDraftCard
+                  body={item.body}
+                  createdAt={item.created_at}
+                  onDelete={() => handleDelete(item.id)}
+                  isDeleting={isDeleting}
+                />
+              ) : item.kind === 'henry_q' ? (
+                <ChatCard
+                  speaker="user"
+                  body={item.body}
+                  createdAt={item.created_at}
+                  onDelete={() => handleDelete(item.id)}
+                  isDeleting={isDeleting}
+                />
+              ) : item.kind === 'henry_a' ? (
+                <ChatCard
+                  speaker="henry"
+                  body={item.body}
                   createdAt={item.created_at}
                   onDelete={() => handleDelete(item.id)}
                   isDeleting={isDeleting}
@@ -197,6 +303,96 @@ function NoteCard({
           onClick={onDelete}
           disabled={isDeleting}
           aria-label="Delete note"
+          className="text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReplyDraftCard({
+  body,
+  createdAt,
+  onDelete,
+  isDeleting,
+}: {
+  body: string;
+  createdAt: string;
+  onDelete: () => void;
+  isDeleting: boolean;
+}) {
+  function copy() {
+    navigator.clipboard.writeText(body).then(() => toast.success('Reply copied'));
+  }
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+      <div className="flex items-start gap-2">
+        <MessageSquare className="mt-0.5 size-3.5 shrink-0 text-amber-700" />
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-amber-800">
+            Henry drafted a reply
+          </p>
+          <p className="whitespace-pre-wrap text-sm text-amber-950">{body}</p>
+          <div className="mt-2 flex items-center gap-2">
+            <Button size="xs" variant="outline" onClick={copy} className="bg-white">
+              Copy reply
+            </Button>
+            <span className="text-[10px] text-amber-700/80">{formatWhen(createdAt)}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={isDeleting}
+          aria-label="Delete reply draft"
+          className="text-amber-700/60 hover:text-destructive"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ChatCard({
+  speaker,
+  body,
+  createdAt,
+  onDelete,
+  isDeleting,
+}: {
+  speaker: 'user' | 'henry';
+  body: string;
+  createdAt: string;
+  onDelete: () => void;
+  isDeleting: boolean;
+}) {
+  const isUser = speaker === 'user';
+  return (
+    <div className={`rounded-md border p-3 ${isUser ? 'bg-card' : 'border-blue-200 bg-blue-50'}`}>
+      <div className="flex items-start gap-2">
+        {isUser ? (
+          <UserIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <Bot className="mt-0.5 size-3.5 shrink-0 text-blue-700" />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className={`whitespace-pre-wrap text-sm ${isUser ? '' : 'text-blue-950'}`}>{body}</p>
+          <div
+            className={`mt-1 flex items-center gap-2 text-[10px] ${isUser ? 'text-muted-foreground' : 'text-blue-700/80'}`}
+          >
+            <span>{isUser ? 'You asked' : 'Henry'}</span>
+            <span>·</span>
+            <span>{formatWhen(createdAt)}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={isDeleting}
+          aria-label="Delete"
           className="text-muted-foreground hover:text-destructive"
         >
           <Trash2 className="size-3.5" />

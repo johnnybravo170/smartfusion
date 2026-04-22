@@ -80,13 +80,37 @@ function buildNotesFeed(input: {
 }): NoteFeedItem[] {
   const items: NoteFeedItem[] = [];
   for (const n of input.notes ?? []) {
-    items.push({
-      kind: 'note',
-      id: n.id as string,
-      created_at: n.created_at as string,
-      body: n.body as string,
-      author_name: null,
-    });
+    const k = (n.kind as string) ?? 'text';
+    if (k === 'reply_draft') {
+      items.push({
+        kind: 'reply_draft',
+        id: n.id as string,
+        created_at: n.created_at as string,
+        body: n.body as string,
+      });
+    } else if (k === 'henry_q') {
+      items.push({
+        kind: 'henry_q',
+        id: n.id as string,
+        created_at: n.created_at as string,
+        body: n.body as string,
+      });
+    } else if (k === 'henry_a') {
+      items.push({
+        kind: 'henry_a',
+        id: n.id as string,
+        created_at: n.created_at as string,
+        body: n.body as string,
+      });
+    } else {
+      items.push({
+        kind: 'note',
+        id: n.id as string,
+        created_at: n.created_at as string,
+        body: n.body as string,
+        author_name: null,
+      });
+    }
   }
   for (const m of input.memos ?? []) {
     items.push({
@@ -140,7 +164,7 @@ export default async function ProjectDetailPage({
     listPhotosByProject(id),
     supabase
       .from('project_notes')
-      .select('id, body, created_at, user_id')
+      .select('id, body, created_at, user_id, kind, metadata')
       .eq('project_id', id)
       .order('created_at', { ascending: false }),
     supabase

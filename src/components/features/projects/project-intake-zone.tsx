@@ -146,6 +146,7 @@ export function ProjectIntakeZone({ projectId }: { projectId: string }) {
             source_image_index: e.source_image_index,
           })),
         mergeSignals: includeSignals ? suggestions.signals : null,
+        replyDraft: suggestions.reply_draft?.trim() || null,
       };
       const fd = new FormData();
       fd.set('plan', JSON.stringify(plan));
