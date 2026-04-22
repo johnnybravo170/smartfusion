@@ -29,6 +29,7 @@ export type BudgetLine = {
   estimate_cents: number;
   labor_cents: number;
   expense_cents: number;
+  bills_cents: number;
   actual_cents: number;
   remaining_cents: number;
   is_visible_in_report: boolean;
@@ -82,6 +83,16 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
     throw new Error(`Failed to load expenses: ${expErr.message}`);
   }
 
+  // 4. Load bills for this project, grouped by bucket_id (pre-GST subtotal only)
+  const { data: billData, error: billErr } = await supabase
+    .from('project_bills')
+    .select('bucket_id, amount_cents')
+    .eq('project_id', projectId);
+
+  if (billErr) {
+    throw new Error(`Failed to load bills: ${billErr.message}`);
+  }
+
   // Aggregate labor by bucket_id
   const laborByBucket = new Map<string, number>();
   for (const entry of timeData ?? []) {
@@ -103,11 +114,20 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
     expenseByBucket.set(e.bucket_id, (expenseByBucket.get(e.bucket_id) ?? 0) + e.amount_cents);
   }
 
+  // Aggregate bills by bucket_id (pre-GST subtotal — GST is an ITC, not a project cost)
+  const billsByBucket = new Map<string, number>();
+  for (const entry of billData ?? []) {
+    const e = entry as { bucket_id: string | null; amount_cents: number };
+    if (!e.bucket_id) continue;
+    billsByBucket.set(e.bucket_id, (billsByBucket.get(e.bucket_id) ?? 0) + e.amount_cents);
+  }
+
   // Build budget lines
   const lines: BudgetLine[] = buckets.map((b) => {
     const labor_cents = laborByBucket.get(b.id) ?? 0;
     const expense_cents = expenseByBucket.get(b.id) ?? 0;
-    const actual_cents = labor_cents + expense_cents;
+    const bills_cents = billsByBucket.get(b.id) ?? 0;
+    const actual_cents = labor_cents + expense_cents + bills_cents;
     return {
       bucket_id: b.id,
       bucket_name: b.name,
@@ -115,6 +135,7 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
       estimate_cents: b.estimate_cents,
       labor_cents,
       expense_cents,
+      bills_cents,
       actual_cents,
       remaining_cents: b.estimate_cents - actual_cents,
       is_visible_in_report: b.is_visible_in_report,

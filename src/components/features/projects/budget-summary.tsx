@@ -59,6 +59,7 @@ export function BudgetSummaryCard({ budget }: { budget: BudgetSummary }) {
                 <th className="px-3 py-2 text-right font-medium">Estimate</th>
                 <th className="px-3 py-2 text-right font-medium">Labour</th>
                 <th className="px-3 py-2 text-right font-medium">Expenses</th>
+                <th className="px-3 py-2 text-right font-medium">Bills</th>
                 <th className="px-3 py-2 text-right font-medium">Actual</th>
                 <th className="px-3 py-2 text-right font-medium">Remaining</th>
               </tr>
@@ -86,6 +87,9 @@ export function BudgetSummaryCard({ budget }: { budget: BudgetSummary }) {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                       {formatCurrency(line.expense_cents)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                      {formatCurrency(line.bills_cents)}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums font-medium">
                       {formatCurrency(line.actual_cents)}
