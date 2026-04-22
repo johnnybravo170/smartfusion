@@ -26,6 +26,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { patchCustomerEmailAction } from '@/server/actions/customers';
 import { sendEstimateForApprovalAction } from '@/server/actions/estimate-approval';
 
@@ -58,6 +59,8 @@ export function EstimatePreviewSendBar({
   // Track the live email so the confirm dialog shows it after the patch step.
   const [resolvedEmail, setResolvedEmail] = useState(initialEmail);
 
+  const [note, setNote] = useState('');
+
   const canSend = lineCount > 0;
   const needsEmail = !resolvedEmail;
 
@@ -65,7 +68,7 @@ export function EstimatePreviewSendBar({
 
   function handleSend() {
     startTransition(async () => {
-      const res = await sendEstimateForApprovalAction({ projectId });
+      const res = await sendEstimateForApprovalAction({ projectId, note: note.trim() || null });
       if (res.ok) {
         toast.success('Estimate sent to customer');
         setOpen(false);
@@ -92,7 +95,7 @@ export function EstimatePreviewSendBar({
       }
       setResolvedEmail(trimmed);
       // Now send.
-      const res = await sendEstimateForApprovalAction({ projectId });
+      const res = await sendEstimateForApprovalAction({ projectId, note: note.trim() || null });
       if (res.ok) {
         toast.success('Estimate sent to customer');
         setOpen(false);
@@ -126,6 +129,7 @@ export function EstimatePreviewSendBar({
             if (!o) {
               setEmail('');
               setEmailError(null);
+              setNote('');
             }
           }}
         >
@@ -147,25 +151,41 @@ export function EstimatePreviewSendBar({
                 </AlertDialogDescription>
               </AlertDialogHeader>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="inline-email">Email address</Label>
-                <Input
-                  id="inline-email"
-                  ref={emailInputRef}
-                  type="email"
-                  autoFocus
-                  placeholder="customer@example.com"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setEmailError(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !pending) handleSaveEmailAndSend();
-                  }}
-                  disabled={pending}
-                />
-                {emailError ? <p className="text-xs text-destructive">{emailError}</p> : null}
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="inline-email">Email address</Label>
+                  <Input
+                    id="inline-email"
+                    ref={emailInputRef}
+                    type="email"
+                    autoFocus
+                    placeholder="customer@example.com"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setEmailError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !pending) handleSaveEmailAndSend();
+                    }}
+                    disabled={pending}
+                  />
+                  {emailError ? <p className="text-xs text-destructive">{emailError}</p> : null}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="inline-note">
+                    Personal note{' '}
+                    <span className="text-muted-foreground font-normal">(optional)</span>
+                  </Label>
+                  <Textarea
+                    id="inline-note"
+                    placeholder="e.g. Great meeting you — let me know if you have any questions!"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    disabled={pending}
+                    rows={3}
+                  />
+                </div>
               </div>
 
               <AlertDialogFooter>
@@ -195,22 +215,36 @@ export function EstimatePreviewSendBar({
                   {alreadySent ? 'Resend estimate?' : 'Send estimate?'}
                 </AlertDialogTitle>
                 <AlertDialogDescription asChild>
-                  <div className="space-y-2 text-sm">
-                    <p>
-                      The estimate above will be emailed to{' '}
-                      <span className="font-medium text-foreground">{customerName}</span> at{' '}
-                      <span className="font-medium text-foreground">{resolvedEmail}</span>.
-                    </p>
-                    <p>
-                      Total <span className="font-medium text-foreground">{totalFormatted}</span>{' '}
-                      across {lineCount} line {lineCount === 1 ? 'item' : 'items'}.
-                    </p>
-                    {alreadySent ? (
-                      <p className="text-amber-700">
-                        This estimate has already been sent. Resending will keep the same approval
-                        link but email the customer again.
+                  <div className="space-y-3 text-sm">
+                    <div className="space-y-1">
+                      <p>
+                        Emailing <span className="font-medium text-foreground">{customerName}</span>{' '}
+                        at <span className="font-medium text-foreground">{resolvedEmail}</span>.
                       </p>
-                    ) : null}
+                      <p>
+                        Total <span className="font-medium text-foreground">{totalFormatted}</span>{' '}
+                        across {lineCount} line {lineCount === 1 ? 'item' : 'items'}.
+                      </p>
+                      {alreadySent ? (
+                        <p className="text-amber-700">
+                          Already sent once — resending keeps the same approval link.
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="confirm-note">
+                        Personal note{' '}
+                        <span className="font-normal text-muted-foreground">(optional)</span>
+                      </Label>
+                      <Textarea
+                        id="confirm-note"
+                        placeholder="e.g. Great meeting you — let me know if you have any questions!"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        disabled={pending}
+                        rows={3}
+                      />
+                    </div>
                   </div>
                 </AlertDialogDescription>
               </AlertDialogHeader>

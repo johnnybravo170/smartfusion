@@ -39,6 +39,7 @@ async function emitProjectEvent(
 
 export async function sendEstimateForApprovalAction(input: {
   projectId: string;
+  note?: string | null;
 }): Promise<EstimateActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
@@ -113,6 +114,7 @@ export async function sendEstimateForApprovalAction(input: {
     projectName: p.name as string,
     approveUrl,
     customerName,
+    note: input.note ?? null,
   });
 
   await sendEmail({

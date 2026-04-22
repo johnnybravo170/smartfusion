@@ -6,13 +6,19 @@ export function estimateApprovalEmailHtml({
   projectName,
   approveUrl,
   customerName,
+  note,
 }: {
   businessName: string;
   logoUrl?: string | null;
   projectName: string;
   approveUrl: string;
   customerName: string;
+  note?: string | null;
 }): string {
+  const noteHtml = note?.trim()
+    ? `<p style="font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${note.trim()}</p>`
+    : '';
+
   return `<!DOCTYPE html>
 <html>
 <body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
@@ -24,6 +30,7 @@ export function estimateApprovalEmailHtml({
   <p style="font-size: 15px; line-height: 1.6;">
     Your estimate for <strong>${projectName}</strong> is ready. Click below to review the details and approve or decline.
   </p>
+  ${noteHtml}
 
   <p>
     <a href="${approveUrl}" style="display: inline-block; padding: 12px 24px; background: #0a0a0a; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">
