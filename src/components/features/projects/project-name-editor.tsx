@@ -1,6 +1,7 @@
 'use client';
 
 import { Check, Pencil, X } from 'lucide-react';
+import Link from 'next/link';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -89,7 +90,9 @@ export function ProjectNameEditor({ projectId, name, variant = 'heading' }: Prop
   if (variant === 'heading') {
     return (
       <span className="group inline-flex items-center gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{name}</h1>
+        <Link href={`/projects/${projectId}`} className="hover:underline">
+          <h1 className="text-2xl font-semibold tracking-tight">{name}</h1>
+        </Link>
         <button
           type="button"
           onClick={() => setEditing(true)}
