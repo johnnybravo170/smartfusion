@@ -591,7 +591,12 @@ export default async function ProjectDetailPage({
       ) : null}
 
       {tab === 'costs' ? (
-        <CostsTab projectId={id} purchaseOrders={purchaseOrders} bills={bills} />
+        <CostsTab
+          projectId={id}
+          purchaseOrders={purchaseOrders}
+          bills={bills}
+          buckets={projectBuckets.map((b) => ({ id: b.id, name: b.name }))}
+        />
       ) : null}
 
       {tab === 'variance' ? <VarianceTab variance={variance} /> : null}

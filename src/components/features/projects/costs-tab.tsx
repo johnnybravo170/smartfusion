@@ -1,17 +1,18 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { Paperclip } from 'lucide-react';
+import { useRef, useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import type { ProjectBillRow } from '@/lib/db/queries/project-bills';
+import type { PurchaseOrderRow, PurchaseOrderStatus } from '@/lib/db/queries/purchase-orders';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import {
   createPurchaseOrderAction,
-  updatePurchaseOrderStatusAction,
-  upsertBillAction,
   deleteBillAction,
+  updatePurchaseOrderStatusAction,
+  upsertBillWithAttachmentAction,
 } from '@/server/actions/project-cost-control';
-import type { PurchaseOrderRow, PurchaseOrderStatus } from '@/lib/db/queries/purchase-orders';
-import type { ProjectBillRow } from '@/lib/db/queries/project-bills';
-import { formatCurrency } from '@/lib/pricing/calculator';
 
 function displayToCents(val: string) {
   return Math.round(parseFloat(val || '0') * 100);
@@ -89,24 +90,60 @@ function POForm({ projectId, onDone }: { projectId: string; onDone: () => void }
     <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border bg-muted/30 p-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-medium">Vendor</label>
-          <Input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Supplier name" required />
+          <label htmlFor="po-vendor" className="mb-1 block text-xs font-medium">
+            Vendor
+          </label>
+          <Input
+            id="po-vendor"
+            value={vendor}
+            onChange={(e) => setVendor(e.target.value)}
+            placeholder="Supplier name"
+            required
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">PO #</label>
-          <Input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="Optional" />
+          <label htmlFor="po-number" className="mb-1 block text-xs font-medium">
+            PO #
+          </label>
+          <Input
+            id="po-number"
+            value={poNumber}
+            onChange={(e) => setPoNumber(e.target.value)}
+            placeholder="Optional"
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Issue Date</label>
-          <Input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} />
+          <label htmlFor="po-issued" className="mb-1 block text-xs font-medium">
+            Issue Date
+          </label>
+          <Input
+            id="po-issued"
+            type="date"
+            value={issuedDate}
+            onChange={(e) => setIssuedDate(e.target.value)}
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Expected Date</label>
-          <Input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} />
+          <label htmlFor="po-expected" className="mb-1 block text-xs font-medium">
+            Expected Date
+          </label>
+          <Input
+            id="po-expected"
+            type="date"
+            value={expectedDate}
+            onChange={(e) => setExpectedDate(e.target.value)}
+          />
         </div>
         <div className="sm:col-span-3">
-          <label className="mb-1 block text-xs font-medium">Notes</label>
-          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
+          <label htmlFor="po-notes" className="mb-1 block text-xs font-medium">
+            Notes
+          </label>
+          <Input
+            id="po-notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Optional"
+          />
         </div>
       </div>
 
@@ -114,6 +151,7 @@ function POForm({ projectId, onDone }: { projectId: string; onDone: () => void }
         <p className="mb-2 text-xs font-medium">Line Items</p>
         <div className="space-y-2">
           {items.map((item, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: stable ephemeral list, no external IDs
             <div key={i} className="grid grid-cols-12 gap-2">
               <div className="col-span-4">
                 <Input
@@ -125,7 +163,9 @@ function POForm({ projectId, onDone }: { projectId: string; onDone: () => void }
               </div>
               <div className="col-span-2">
                 <Input
-                  type="number" step="0.01" min="0.01"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
                   value={item.qty}
                   onChange={(e) => updateItem(i, 'qty', e.target.value)}
                   placeholder="Qty"
@@ -140,7 +180,9 @@ function POForm({ projectId, onDone }: { projectId: string; onDone: () => void }
               </div>
               <div className="col-span-3">
                 <Input
-                  type="number" step="0.01" min="0"
+                  type="number"
+                  step="0.01"
+                  min="0"
                   value={item.costRaw}
                   onChange={(e) => updateItem(i, 'costRaw', e.target.value)}
                   placeholder="Cost / unit"
@@ -148,22 +190,34 @@ function POForm({ projectId, onDone }: { projectId: string; onDone: () => void }
               </div>
               <div className="col-span-1 flex items-center">
                 {items.length > 1 && (
-                  <Button type="button" size="xs" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => removeItem(i)}>×</Button>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => removeItem(i)}
+                  >
+                    ×
+                  </Button>
                 )}
               </div>
             </div>
           ))}
         </div>
-        <Button type="button" size="sm" variant="ghost" className="mt-2" onClick={addItem}>+ Add item</Button>
+        <Button type="button" size="sm" variant="ghost" className="mt-2" onClick={addItem}>
+          + Add item
+        </Button>
       </div>
 
-      {total > 0 && (
-        <p className="text-sm font-medium">Total: {formatCurrency(total)}</p>
-      )}
+      {total > 0 && <p className="text-sm font-medium">Total: {formatCurrency(total)}</p>}
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={pending}>{pending ? 'Creating…' : 'Create PO'}</Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
+        <Button type="submit" size="sm" disabled={pending}>
+          {pending ? 'Creating…' : 'Create PO'}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
       </div>
     </form>
   );
@@ -171,36 +225,86 @@ function POForm({ projectId, onDone }: { projectId: string; onDone: () => void }
 
 // ─── Bill form ────────────────────────────────────────────────────────────────
 
+const GST_RATE = 0.05;
+
 function BillForm({
   projectId,
+  buckets,
   initial,
   onDone,
 }: {
   projectId: string;
+  buckets: Array<{ id: string; name: string }>;
   initial?: ProjectBillRow;
   onDone: () => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const [vendor, setVendor] = useState(initial?.vendor ?? '');
   const [billDate, setBillDate] = useState(initial?.bill_date ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
-  const [amountRaw, setAmountRaw] = useState(initial ? (initial.amount_cents / 100).toFixed(2) : '');
+  const [subtotalRaw, setSubtotalRaw] = useState(
+    initial ? (initial.amount_cents / 100).toFixed(2) : '',
+  );
+  const [hasGst, setHasGst] = useState((initial?.gst_cents ?? 0) > 0 || !initial);
+  const [gstRaw, setGstRaw] = useState(
+    initial && initial.gst_cents > 0 ? (initial.gst_cents / 100).toFixed(2) : '',
+  );
+  const [bucketId, setBucketId] = useState(initial?.bucket_id ?? '');
   const [costCode, setCostCode] = useState(initial?.cost_code ?? '');
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+
+  // Auto-compute GST whenever subtotal changes, but only if the user hasn't
+  // overridden it manually.
+  const [gstManual, setGstManual] = useState(initial?.gst_cents != null && initial.gst_cents > 0);
+
+  function handleSubtotalChange(val: string) {
+    setSubtotalRaw(val);
+    if (hasGst && !gstManual) {
+      const sub = parseFloat(val) || 0;
+      setGstRaw(sub > 0 ? (sub * GST_RATE).toFixed(2) : '');
+    }
+  }
+
+  function handleGstChange(val: string) {
+    setGstRaw(val);
+    setGstManual(true);
+  }
+
+  function handleHasGstToggle(checked: boolean) {
+    setHasGst(checked);
+    if (!checked) {
+      setGstRaw('');
+      setGstManual(false);
+    } else if (!gstManual) {
+      const sub = parseFloat(subtotalRaw) || 0;
+      setGstRaw(sub > 0 ? (sub * GST_RATE).toFixed(2) : '');
+    }
+  }
+
+  const subtotalCents = displayToCents(subtotalRaw);
+  const gstCents = hasGst ? displayToCents(gstRaw) : 0;
+  const totalCents = subtotalCents + gstCents;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     startTransition(async () => {
-      const res = await upsertBillAction({
-        id: initial?.id,
-        project_id: projectId,
-        vendor,
-        bill_date: billDate,
-        description,
-        amount_cents: displayToCents(amountRaw),
-        cost_code: costCode,
-      });
+      const fd = new FormData();
+      if (initial?.id) fd.set('id', initial.id);
+      fd.set('project_id', projectId);
+      fd.set('vendor', vendor);
+      fd.set('bill_date', billDate);
+      fd.set('description', description);
+      fd.set('amount_cents', String(subtotalCents));
+      fd.set('gst_cents', String(gstCents));
+      fd.set('bucket_id', bucketId);
+      fd.set('cost_code', costCode);
+      if (attachmentFile) fd.set('attachment', attachmentFile);
+
+      const res = await upsertBillWithAttachmentAction(fd);
       if (res.ok) onDone();
       else setError(res.error);
     });
@@ -210,30 +314,187 @@ function BillForm({
     <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border bg-muted/30 p-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-medium">Vendor</label>
-          <Input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Vendor name" required />
+          <label htmlFor="bill-vendor" className="mb-1 block text-xs font-medium">
+            Vendor
+          </label>
+          <Input
+            id="bill-vendor"
+            value={vendor}
+            onChange={(e) => setVendor(e.target.value)}
+            placeholder="Vendor name"
+            required
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Date</label>
-          <Input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} required />
+          <label htmlFor="bill-date" className="mb-1 block text-xs font-medium">
+            Date
+          </label>
+          <Input
+            id="bill-date"
+            type="date"
+            value={billDate}
+            onChange={(e) => setBillDate(e.target.value)}
+            required
+          />
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium">Amount ($)</label>
-          <Input type="number" step="0.01" min="0.01" value={amountRaw} onChange={(e) => setAmountRaw(e.target.value)} placeholder="0.00" required />
-        </div>
+        {buckets.length > 0 && (
+          <div>
+            <label htmlFor="bill-bucket" className="mb-1 block text-xs font-medium">
+              Bucket
+            </label>
+            <select
+              id="bill-bucket"
+              value={bucketId}
+              onChange={(e) => setBucketId(e.target.value)}
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="">— none —</option>
+              {buckets.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-medium">Description</label>
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" />
+          <label htmlFor="bill-desc" className="mb-1 block text-xs font-medium">
+            Description
+          </label>
+          <Input
+            id="bill-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optional"
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Cost Code</label>
-          <Input value={costCode} onChange={(e) => setCostCode(e.target.value)} placeholder="Optional" />
+          <label htmlFor="bill-code" className="mb-1 block text-xs font-medium">
+            Cost Code
+          </label>
+          <Input
+            id="bill-code"
+            value={costCode}
+            onChange={(e) => setCostCode(e.target.value)}
+            placeholder="Optional"
+          />
         </div>
       </div>
+
+      {/* Amount + GST */}
+      <div className="space-y-2 rounded-md border bg-background p-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div>
+            <label htmlFor="bill-subtotal" className="mb-1 block text-xs font-medium">
+              Subtotal ($)
+            </label>
+            <Input
+              id="bill-subtotal"
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={subtotalRaw}
+              onChange={(e) => handleSubtotalChange(e.target.value)}
+              placeholder="0.00"
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="bill-gst" className="mb-1 block text-xs font-medium">
+              GST ($)
+              <span className="ml-1 font-normal text-muted-foreground">5%</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="bill-has-gst"
+                checked={hasGst}
+                onChange={(e) => handleHasGstToggle(e.target.checked)}
+                className="size-4 shrink-0"
+              />
+              {hasGst ? (
+                <Input
+                  id="bill-gst"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={gstRaw}
+                  onChange={(e) => handleGstChange(e.target.value)}
+                  placeholder="0.00"
+                />
+              ) : (
+                <span className="text-sm text-muted-foreground">No GST</span>
+              )}
+            </div>
+          </div>
+          {totalCents > 0 && (
+            <div className="flex items-end pb-1 sm:col-span-2">
+              <p className="text-sm font-semibold">
+                Total: {formatCurrency(totalCents)}
+                {gstCents > 0 && (
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    (incl. {formatCurrency(gstCents)} GST)
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Attachment */}
+      <div>
+        <p className="mb-1 text-xs font-medium">Attachment</p>
+        {initial?.attachment_storage_path && !attachmentFile ? (
+          <p className="mb-1 text-xs text-muted-foreground">
+            Existing attachment on file.{' '}
+            <button type="button" className="underline" onClick={() => fileRef.current?.click()}>
+              Replace
+            </button>
+          </p>
+        ) : null}
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground hover:bg-muted/30"
+          onClick={() => fileRef.current?.click()}
+        >
+          <Paperclip className="size-4 shrink-0" />
+          {attachmentFile ? (
+            <span className="truncate text-foreground">{attachmentFile.name}</span>
+          ) : (
+            <span>Attach invoice PDF or photo</span>
+          )}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*,application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) setAttachmentFile(f);
+            e.target.value = '';
+          }}
+        />
+        {attachmentFile && (
+          <button
+            type="button"
+            className="mt-1 text-xs text-muted-foreground underline"
+            onClick={() => setAttachmentFile(null)}
+          >
+            Remove
+          </button>
+        )}
+      </div>
+
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={pending}>{pending ? 'Saving…' : initial ? 'Update' : 'Log bill'}</Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
+        <Button type="submit" size="sm" disabled={pending}>
+          {pending ? 'Saving…' : initial ? 'Update' : 'Log bill'}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
       </div>
     </form>
   );
@@ -245,10 +506,12 @@ export function CostsTab({
   projectId,
   purchaseOrders,
   bills,
+  buckets,
 }: {
   projectId: string;
   purchaseOrders: PurchaseOrderRow[];
   bills: ProjectBillRow[];
+  buckets: Array<{ id: string; name: string }>;
 }) {
   const [showPOForm, setShowPOForm] = useState(false);
   const [showBillForm, setShowBillForm] = useState(false);
@@ -258,12 +521,16 @@ export function CostsTab({
   function advancePOStatus(po: PurchaseOrderRow) {
     const next = STATUS_NEXT[po.status];
     if (!next) return;
-    startTransition(async () => { await updatePurchaseOrderStatusAction(po.id, next, projectId); });
+    startTransition(async () => {
+      await updatePurchaseOrderStatusAction(po.id, next, projectId);
+    });
   }
 
   function handleDeleteBill(id: string) {
     if (!confirm('Delete this bill?')) return;
-    startTransition(async () => { await deleteBillAction(id, projectId); });
+    startTransition(async () => {
+      await deleteBillAction(id, projectId);
+    });
   }
 
   const totalPOs = purchaseOrders
@@ -279,7 +546,9 @@ export function CostsTab({
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold">Purchase Orders</h3>
           {!showPOForm && (
-            <Button size="sm" onClick={() => setShowPOForm(true)}>+ New PO</Button>
+            <Button size="sm" onClick={() => setShowPOForm(true)}>
+              + New PO
+            </Button>
           )}
         </div>
 
@@ -322,8 +591,12 @@ export function CostsTab({
                           {po.items.map((item) => (
                             <tr key={item.id} className="border-b last:border-0">
                               <td className="py-1 pr-4">{item.label}</td>
-                              <td className="py-1 pr-4 text-muted-foreground">{Number(item.qty)} {item.unit}</td>
-                              <td className="py-1 text-right">{formatCurrency(item.line_total_cents)}</td>
+                              <td className="py-1 pr-4 text-muted-foreground">
+                                {Number(item.qty)} {item.unit}
+                              </td>
+                              <td className="py-1 text-right">
+                                {formatCurrency(item.line_total_cents)}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -349,7 +622,9 @@ export function CostsTab({
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold">Bills & Sub Invoices</h3>
           {!showBillForm && !editingBill && (
-            <Button size="sm" onClick={() => setShowBillForm(true)}>+ Log bill</Button>
+            <Button size="sm" onClick={() => setShowBillForm(true)}>
+              + Log bill
+            </Button>
           )}
         </div>
 
@@ -357,8 +632,12 @@ export function CostsTab({
           <div className="mb-4">
             <BillForm
               projectId={projectId}
+              buckets={buckets}
               initial={editingBill ?? undefined}
-              onDone={() => { setShowBillForm(false); setEditingBill(null); }}
+              onDone={() => {
+                setShowBillForm(false);
+                setEditingBill(null);
+              }}
             />
           </div>
         )}
@@ -372,24 +651,67 @@ export function CostsTab({
                 <tr className="border-b bg-muted/50">
                   <th className="px-3 py-2 text-left font-medium">Vendor</th>
                   <th className="px-3 py-2 text-left font-medium">Date</th>
+                  <th className="px-3 py-2 text-left font-medium">Bucket</th>
                   <th className="px-3 py-2 text-left font-medium">Description</th>
                   <th className="px-3 py-2 text-left font-medium">Status</th>
-                  <th className="px-3 py-2 text-right font-medium">Amount</th>
+                  <th className="px-3 py-2 text-right font-medium">Subtotal</th>
+                  <th className="px-3 py-2 text-right font-medium">GST</th>
+                  <th className="px-3 py-2 text-right font-medium">Total</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
                 {bills.map((bill) => (
                   <tr key={bill.id} className="border-b last:border-0">
-                    <td className="px-3 py-2 font-medium">{bill.vendor}</td>
+                    <td className="px-3 py-2 font-medium">
+                      <div className="flex items-center gap-1.5">
+                        {bill.attachment_storage_path && (
+                          <Paperclip className="size-3 shrink-0 text-muted-foreground" />
+                        )}
+                        {bill.vendor}
+                      </div>
+                    </td>
                     <td className="px-3 py-2 text-muted-foreground">{bill.bill_date}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {bill.bucket_name ? (
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider">
+                          {bill.bucket_name}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-muted-foreground">{bill.description || '—'}</td>
                     <td className="px-3 py-2 capitalize text-muted-foreground">{bill.status}</td>
-                    <td className="px-3 py-2 text-right font-medium">{formatCurrency(bill.amount_cents)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatCurrency(bill.amount_cents)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                      {bill.gst_cents > 0 ? formatCurrency(bill.gst_cents) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium tabular-nums">
+                      {formatCurrency(bill.amount_cents + bill.gst_cents)}
+                    </td>
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1">
-                        <Button size="xs" variant="ghost" onClick={() => { setEditingBill(bill); setShowBillForm(false); }}>Edit</Button>
-                        <Button size="xs" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => handleDeleteBill(bill.id)}>Del</Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditingBill(bill);
+                            setShowBillForm(false);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteBill(bill.id)}
+                        >
+                          Del
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -397,8 +719,13 @@ export function CostsTab({
               </tbody>
             </table>
             <div className="border-t px-3 py-2 text-right text-sm">
-              <span className="text-muted-foreground">Total billed: </span>
+              <span className="text-muted-foreground">Total billed (subtotal): </span>
               <span className="font-semibold">{formatCurrency(totalBills)}</span>
+              {bills.some((b) => b.gst_cents > 0) && (
+                <span className="ml-3 text-muted-foreground">
+                  + {formatCurrency(bills.reduce((s, b) => s + b.gst_cents, 0))} GST
+                </span>
+              )}
             </div>
           </div>
         )}

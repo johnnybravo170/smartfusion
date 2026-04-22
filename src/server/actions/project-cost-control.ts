@@ -4,8 +4,9 @@ import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import sharp from 'sharp';
 import { z } from 'zod';
-import { getCurrentTenant } from '@/lib/auth/helpers';
+import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { uploadToStorage } from '@/lib/storage/photos';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 const MAX_COST_LINE_PHOTO_BYTES = 10 * 1024 * 1024;
@@ -236,27 +237,121 @@ export async function updatePurchaseOrderStatusAction(
 
 // ─── Project bills ────────────────────────────────────────────────────────────
 
-const billSchema = z.object({
-  id: z.string().uuid().optional(),
-  project_id: z.string().uuid(),
-  vendor: z.string().trim().min(1, 'Vendor is required').max(200),
-  bill_date: z.string().min(1, 'Date is required'),
-  description: z.string().trim().max(1000).optional().or(z.literal('')),
-  amount_cents: z.coerce.number().int().min(1, 'Amount must be greater than 0'),
-  status: z.enum(['pending', 'approved', 'paid']).optional().default('pending'),
-  cost_code: z.string().trim().max(50).optional().or(z.literal('')),
-});
+const BILL_ATTACHMENT_BUCKET = 'receipts';
+const MAX_BILL_ATTACHMENT_BYTES = 20 * 1024 * 1024; // 20 MB
 
+/**
+ * Upsert a project bill.
+ * Accepts FormData so it can optionally carry an attachment file.
+ *
+ * FormData fields:
+ *   id?                      — existing bill UUID (for edits)
+ *   project_id               — required
+ *   vendor                   — required
+ *   bill_date                — required YYYY-MM-DD
+ *   description?
+ *   amount_cents             — pre-GST subtotal, integer cents
+ *   gst_cents                — GST amount, integer cents (0 if no GST)
+ *   bucket_id?               — cost bucket UUID
+ *   cost_code?
+ *   attachment?              — File (PDF or image)
+ */
+export async function upsertBillWithAttachmentAction(
+  formData: FormData,
+): Promise<CostControlResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const id = (formData.get('id') as string | null) || undefined;
+  const project_id = String(formData.get('project_id') ?? '');
+  const vendor = String(formData.get('vendor') ?? '').trim();
+  const bill_date = String(formData.get('bill_date') ?? '').trim();
+  const description = String(formData.get('description') ?? '').trim() || null;
+  const amount_cents = Math.round(parseFloat(String(formData.get('amount_cents') || '0')) || 0);
+  const gst_cents = Math.round(parseFloat(String(formData.get('gst_cents') || '0')) || 0);
+  const bucket_id = (formData.get('bucket_id') as string | null)?.trim() || null;
+  const cost_code = (formData.get('cost_code') as string | null)?.trim() || null;
+  const attachmentFile = formData.get('attachment');
+
+  if (!project_id) return { ok: false, error: 'Missing project_id.' };
+  if (!vendor) return { ok: false, error: 'Vendor is required.' };
+  if (!bill_date) return { ok: false, error: 'Date is required.' };
+  if (amount_cents <= 0) return { ok: false, error: 'Amount must be greater than 0.' };
+
+  // Upload attachment if provided.
+  let attachment_storage_path: string | null = null;
+  if (attachmentFile instanceof File && attachmentFile.size > 0) {
+    if (attachmentFile.size > MAX_BILL_ATTACHMENT_BYTES) {
+      return { ok: false, error: 'Attachment is larger than 20MB.' };
+    }
+    const isImage = attachmentFile.type.startsWith('image/');
+    const isPdf = attachmentFile.type === 'application/pdf';
+    if (!isImage && !isPdf) {
+      return { ok: false, error: 'Attachment must be an image or PDF.' };
+    }
+    const user = await getCurrentUser();
+    if (!user) return { ok: false, error: 'Not signed in.' };
+    const ext = isPdf ? 'pdf' : attachmentFile.type === 'image/png' ? 'png' : 'jpg';
+    const path = `${tenant.id}/${user.id}/${randomUUID()}.${ext}`;
+    const admin = createAdminClient();
+    const { error: upErr } = await admin.storage
+      .from(BILL_ATTACHMENT_BUCKET)
+      .upload(path, attachmentFile, {
+        contentType: attachmentFile.type || 'application/octet-stream',
+        upsert: false,
+      });
+    if (upErr) return { ok: false, error: `Upload failed: ${upErr.message}` };
+    attachment_storage_path = path;
+  }
+
+  const supabase = await createClient();
+  const row: Record<string, unknown> = {
+    project_id,
+    vendor,
+    bill_date,
+    description,
+    amount_cents,
+    gst_cents,
+    bucket_id: bucket_id || null,
+    cost_code,
+    status: 'pending',
+    updated_at: new Date().toISOString(),
+  };
+  if (attachment_storage_path) row.attachment_storage_path = attachment_storage_path;
+
+  if (id) {
+    const { error } = await supabase.from('project_bills').update(row).eq('id', id);
+    if (error) return { ok: false, error: error.message };
+    revalidatePath(`/projects/${project_id}`);
+    return { ok: true, id };
+  }
+
+  row.tenant_id = tenant.id;
+  const { data, error } = await supabase.from('project_bills').insert(row).select('id').single();
+  if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create bill.' };
+  revalidatePath(`/projects/${project_id}`);
+  return { ok: true, id: data.id as string };
+}
+
+/** @deprecated use upsertBillWithAttachmentAction */
 export async function upsertBillAction(input: unknown): Promise<CostControlResult> {
+  const billSchema = z.object({
+    id: z.string().uuid().optional(),
+    project_id: z.string().uuid(),
+    vendor: z.string().trim().min(1, 'Vendor is required').max(200),
+    bill_date: z.string().min(1, 'Date is required'),
+    description: z.string().trim().max(1000).optional().or(z.literal('')),
+    amount_cents: z.coerce.number().int().min(1, 'Amount must be greater than 0'),
+    status: z.enum(['pending', 'approved', 'paid']).optional().default('pending'),
+    cost_code: z.string().trim().max(50).optional().or(z.literal('')),
+  });
   const parsed = billSchema.safeParse(input);
   if (!parsed.success) {
     const first = Object.values(parsed.error.flatten().fieldErrors)[0]?.[0];
     return { ok: false, error: first ?? 'Invalid input.' };
   }
-
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
-
   const supabase = await createClient();
   const { id, description, cost_code, ...fields } = parsed.data;
   const row = {
@@ -265,14 +360,12 @@ export async function upsertBillAction(input: unknown): Promise<CostControlResul
     cost_code: cost_code || null,
     updated_at: new Date().toISOString(),
   };
-
   if (id) {
     const { error } = await supabase.from('project_bills').update(row).eq('id', id);
     if (error) return { ok: false, error: error.message };
     revalidatePath(`/projects/${fields.project_id}`);
     return { ok: true, id };
   }
-
   const { data, error } = await supabase
     .from('project_bills')
     .insert({ ...row, tenant_id: tenant.id })
