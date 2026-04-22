@@ -43,6 +43,7 @@ const PROMPT = `You are extracting a renovation contractor's quote into structur
 Rules:
 - Preserve task/section names EXACTLY as written on the quote. Do not normalize "UPSTAIRS WORK" to "upstairs", do not rename "Vanity" to "Bathroom Fixtures". The contractor's words win.
 - Every distinct line item becomes one bucket. A section header (like "UPSTAIRS WORK", "DOWNSTAIRS", "EXTERIOR") is the bucket's "section" string.
+- "name" is the short label for the line item. "description" is any additional detail on that line — sub-bullets, scope notes, inclusions/exclusions, materials called out, quantities, comments. Preserve the contractor's wording. If a line has no extra detail, use an empty string. Do NOT duplicate the name into the description.
 - "estimate_cents" is the line's dollar amount × 100, integer.
 - "management_fee_rate" is a decimal (15% → 0.15). Null if not stated.
 - "quote_date" is ISO (YYYY-MM-DD). If only a month is given (e.g. "April 2026"), use the 1st of that month.
