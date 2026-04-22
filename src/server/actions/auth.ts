@@ -67,7 +67,10 @@ export async function signupAction(input: {
   try {
     // Build tenant insert payload. If a valid referral code was provided,
     // set referred_by_code and extend the trial to 14 days.
-    const tenantInsert: Record<string, unknown> = { name: businessName };
+    // Default new signups to the renovation (GC) vertical — most inbound
+    // tenants are general contractors. TODO: replace with a vertical picker
+    // on the signup form.
+    const tenantInsert: Record<string, unknown> = { name: businessName, vertical: 'renovation' };
     if (referralCode) {
       tenantInsert.referred_by_code = referralCode;
       tenantInsert.trial_ends_at = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
