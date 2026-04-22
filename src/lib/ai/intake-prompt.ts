@@ -11,14 +11,15 @@ import { HUMAN_VOICE_RULES } from './human-voice';
 
 export const INTAKE_SYSTEM_PROMPT = `You are an intake specialist for a Canadian general contractor.
 
-You receive screenshots of a text/iMessage thread between the contractor and a prospective client, plus reference photos the client sent (existing conditions, hand-drawn measurements, inspiration shots). Your job:
+You receive a mixed bag of artifacts the contractor just dropped in: screenshots of a text/iMessage thread, reference photos the client sent (existing conditions, hand-drawn measurements, inspiration shots), and possibly PDFs (sub-trade quotes, supplier estimates, architectural drawings, specs). Your job:
 
-1. Read the conversation. Extract scope, opt-outs ("baseboards OK as-is"), design intent ("chunky brick"), and competitive signals ("getting other quotes").
-2. Tell screenshots apart from reference photos. Screenshots are flat UI captures with chat bubbles; reference photos are real-world (rooms, fireplaces, sketches).
-3. Draft a starting estimate. Group cost lines into buckets that match the contractor's mental model (Floors, Fireplace, Demo, etc). Use the bucket section field for higher-level grouping if obvious (e.g. "Upstairs Work" / "Downstairs"); otherwise leave section null.
-4. Leave unit_price_cents NULL whenever you don't have a real basis to price something. Do NOT guess prices.
-5. Draft a short reply in the contractor's voice — see VOICE rules below. Answer their questions, address opt-outs, propose next step.
-6. Tag image roles so the contractor knows which is which.
+1. Read the conversation and any PDFs. Extract scope, opt-outs ("baseboards OK as-is"), design intent ("chunky brick"), and competitive signals ("getting other quotes").
+2. Classify each artifact: conversation screenshot, reference photo, sketch with measurements, PDF quote (sub-trade pricing → becomes a sub-trade bucket), PDF doc (drawings/specs/scope), or other.
+3. For a PDF quote from a sub-trade: create a bucket named after the trade (e.g. "Plumbing — Sub" or use the company name) and add line items from the quote. Capture prices when stated.
+4. Draft a starting estimate. Group cost lines into buckets that match the contractor's mental model (Floors, Fireplace, Demo, etc). Use the bucket section field for higher-level grouping if obvious (e.g. "Upstairs Work" / "Downstairs"); otherwise leave section null.
+5. Leave unit_price_cents NULL whenever you don't have a real basis to price something. Do NOT guess prices (except where a PDF quote states a real number).
+6. Draft a short reply in the contractor's voice — see VOICE rules below. Answer their questions, address opt-outs, propose next step.
+7. Tag artifact roles so the contractor knows which is which.
 
 Return ONLY JSON matching the schema. Use empty arrays / null for anything you cannot confidently extract. Never invent details that aren't in the message or photos.
 
@@ -122,7 +123,7 @@ export const INTAKE_JSON_SCHEMA = {
             index: { type: 'integer' },
             role: {
               type: 'string',
-              enum: ['screenshot', 'reference', 'measurement', 'other'],
+              enum: ['screenshot', 'reference', 'measurement', 'pdf_quote', 'pdf_doc', 'other'],
             },
             tags: { type: 'array', items: { type: 'string' } },
           },
@@ -164,7 +165,7 @@ export type ParsedIntake = {
   reply_draft: string;
   image_roles: Array<{
     index: number;
-    role: 'screenshot' | 'reference' | 'measurement' | 'other';
+    role: 'screenshot' | 'reference' | 'measurement' | 'pdf_quote' | 'pdf_doc' | 'other';
     tags: string[];
   }>;
 };

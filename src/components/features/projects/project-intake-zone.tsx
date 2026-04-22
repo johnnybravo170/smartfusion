@@ -11,7 +11,7 @@
  * V1 scope: images only. PDFs / receipts / audio land in later phases.
  */
 
-import { Loader2, Sparkles, Upload, X } from 'lucide-react';
+import { FileText, Loader2, Sparkles, Upload, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -47,17 +47,19 @@ export function ProjectIntakeZone({ projectId }: { projectId: string }) {
   const [isApplying, startApplying] = useTransition();
 
   const reset = useCallback(() => {
-    for (const s of staged) URL.revokeObjectURL(s.previewUrl);
+    for (const s of staged) {
+      if (s.previewUrl) URL.revokeObjectURL(s.previewUrl);
+    }
     setStaged([]);
     setSuggestions(null);
   }, [staged]);
 
   function addFiles(files: FileList | File[]) {
     const next = Array.from(files)
-      .filter((f) => f.type.startsWith('image/'))
+      .filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf')
       .map((f) => ({
         file: f,
-        previewUrl: URL.createObjectURL(f),
+        previewUrl: f.type.startsWith('image/') ? URL.createObjectURL(f) : '',
         key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       }));
     setStaged((s) => [...s, ...next]);
@@ -66,7 +68,7 @@ export function ProjectIntakeZone({ projectId }: { projectId: string }) {
   function removeStaged(key: string) {
     setStaged((s) => {
       const target = s.find((x) => x.key === key);
-      if (target) URL.revokeObjectURL(target.previewUrl);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
       return s.filter((x) => x.key !== key);
     });
   }
@@ -143,20 +145,29 @@ export function ProjectIntakeZone({ projectId }: { projectId: string }) {
         {!suggestions ? (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Drop screenshots, reference photos, sketches — anything for this project. Henry will
-              sort it into the right buckets.
+              Drop screenshots, photos, sketches, PDFs — anything for this project. Henry will sort
+              it into the right buckets.
             </p>
             <DropArea onFiles={addFiles} />
             {staged.length > 0 ? (
               <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
                 {staged.map((s) => (
                   <div key={s.key} className="relative">
-                    {/* biome-ignore lint/performance/noImgElement: local blob URL */}
-                    <img
-                      src={s.previewUrl}
-                      alt=""
-                      className="aspect-square w-full rounded-md border object-cover"
-                    />
+                    {s.previewUrl ? (
+                      // biome-ignore lint/performance/noImgElement: local blob URL
+                      <img
+                        src={s.previewUrl}
+                        alt=""
+                        className="aspect-square w-full rounded-md border object-cover"
+                      />
+                    ) : (
+                      <div className="flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-md border bg-muted/30 p-2 text-center">
+                        <FileText className="size-5 text-muted-foreground" />
+                        <p className="line-clamp-2 text-[10px] text-muted-foreground">
+                          {s.file.name}
+                        </p>
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => removeStaged(s.key)}
@@ -392,12 +403,12 @@ function DropArea({ onFiles }: { onFiles: (files: FileList | File[]) => void }) 
       <Upload className="size-5 text-muted-foreground" />
       <p className="text-sm font-medium">Drop or tap to add</p>
       <p className="text-xs text-muted-foreground">
-        Screenshots, reference photos, sketches. Up to 12 images, 10MB each.
+        Screenshots, photos, sketches, PDFs (sub-trade quotes, drawings). Up to 12 files, 10MB each.
       </p>
       <input
         id="intake-files"
         type="file"
-        accept="image/*"
+        accept="image/*,application/pdf"
         multiple
         className="hidden"
         onChange={(e) => {

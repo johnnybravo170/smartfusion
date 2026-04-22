@@ -107,20 +107,20 @@ export function LeadIntakeForm() {
 
       <div>
         <label htmlFor="images" className="mb-1 block text-sm font-medium">
-          Screenshots + reference photos
+          Screenshots, photos, sketches, PDFs
         </label>
         <input
           id="images"
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,application/pdf"
           multiple
           className="block w-full text-sm file:mr-3 file:rounded file:border file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-muted/80"
           onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
         />
         {files.length > 0 ? (
           <p className="mt-1 text-xs text-muted-foreground">
-            {files.length} image{files.length === 1 ? '' : 's'} ready.
+            {files.length} file{files.length === 1 ? '' : 's'} ready.
           </p>
         ) : null}
       </div>

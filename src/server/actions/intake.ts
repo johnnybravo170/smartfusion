@@ -44,14 +44,16 @@ export async function parseInboundLeadAction(formData: FormData): Promise<ParseI
 
   const files = formData.getAll('images').filter((f): f is File => f instanceof File && f.size > 0);
   if (files.length > MAX_IMAGES) {
-    return { ok: false, error: `Too many images (max ${MAX_IMAGES}).` };
+    return { ok: false, error: `Too many files (max ${MAX_IMAGES}).` };
   }
   for (const f of files) {
     if (f.size > MAX_BYTES) {
       return { ok: false, error: `${f.name} is larger than 10MB.` };
     }
-    if (!f.type.startsWith('image/')) {
-      return { ok: false, error: `${f.name} is not an image (${f.type}).` };
+    const isImage = f.type.startsWith('image/');
+    const isPdf = f.type === 'application/pdf';
+    if (!isImage && !isPdf) {
+      return { ok: false, error: `${f.name} is not an image or PDF (${f.type}).` };
     }
   }
 
@@ -64,18 +66,28 @@ export async function parseInboundLeadAction(formData: FormData): Promise<ParseI
       ? `Pasted message text:\n${pastedText}`
       : '(No pasted text — extract everything from the screenshots.)',
     files.length
-      ? `${files.length} image(s) follow, indexed 0..${files.length - 1}.`
-      : '(No images.)',
+      ? `${files.length} artifact(s) follow (images and/or PDFs), indexed 0..${files.length - 1}.`
+      : '(No artifacts.)',
   ].join('\n\n');
   userContent.push({ type: 'text', text: intro });
 
   for (const f of files) {
     const buf = Buffer.from(await f.arrayBuffer());
     const b64 = buf.toString('base64');
-    userContent.push({
-      type: 'image_url',
-      image_url: { url: `data:${f.type};base64,${b64}` },
-    });
+    if (f.type === 'application/pdf') {
+      userContent.push({
+        type: 'file',
+        file: {
+          filename: f.name || 'document.pdf',
+          file_data: `data:application/pdf;base64,${b64}`,
+        },
+      });
+    } else {
+      userContent.push({
+        type: 'image_url',
+        image_url: { url: `data:${f.type};base64,${b64}` },
+      });
+    }
   }
 
   const body = {

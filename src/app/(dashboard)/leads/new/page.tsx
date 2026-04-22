@@ -17,10 +17,11 @@ export default function NewLeadPage() {
           <ArrowLeft className="size-3.5" />
           Back to projects
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">New lead from text thread</h1>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">New project from intake</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Drop a screenshot of the conversation plus any reference photos. Henry will extract scope,
-          opt-outs, design intent, and competitive signals, and draft a reply you can send back.
+          Drop screenshots, reference photos, sketches, PDFs (sub-trade quotes, drawings) — anything
+          you have. Henry will extract scope, build a starting estimate, and draft a reply you can
+          send back.
         </p>
       </div>
 

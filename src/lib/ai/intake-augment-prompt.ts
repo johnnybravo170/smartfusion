@@ -11,14 +11,15 @@ export const AUGMENT_SYSTEM_PROMPT = `You help a Canadian general contractor add
 You are given:
 - The existing project (name, description, customer)
 - The existing buckets (each with a name, an optional section, and the cost lines already in it)
-- One or more new artifacts (images)
+- One or more new artifacts (images and/or PDFs — sub-trade quotes, drawings, specs)
 
 Your job: return a list of additions and updates the operator can review.
 
 Rules:
 1. Reuse existing bucket names whenever the artifact's content fits one. Only propose a NEW bucket when nothing existing fits.
 2. When proposing a new line, name the target bucket EXACTLY as it appears in the existing project, or use a new bucket name you also propose.
-3. Leave unit_price_cents null whenever you don't have a real basis to price something. Do NOT guess prices.
+3. For a PDF quote from a sub-trade: create a new bucket named after the trade (e.g. "Plumbing — Sub") or the company name, and add line items from the quote. Capture the prices stated in the quote (unit_price_cents in integer cents).
+4. Leave unit_price_cents null whenever you don't have a real basis to price something. Do NOT guess prices (except where a PDF quote states a real number).
 4. Description addendum: only set if the artifact reveals scope/context that's not in the current description. Append, don't replace.
 5. Signals: only set fields the artifact actually evidences. Don't restate prior signals.
 6. Reply draft: only generate one if the artifacts include a conversation screenshot the operator should respond to. See VOICE rules below.
@@ -114,6 +115,8 @@ export const AUGMENT_JSON_SCHEMA = {
                 'reference_photo',
                 'sketch_with_measurements',
                 'inspiration',
+                'pdf_quote',
+                'pdf_doc',
                 'other',
               ],
             },
@@ -163,6 +166,8 @@ export type AugmentResult = {
       | 'reference_photo'
       | 'sketch_with_measurements'
       | 'inspiration'
+      | 'pdf_quote'
+      | 'pdf_doc'
       | 'other';
     tags: string[];
   }>;
