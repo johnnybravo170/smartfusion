@@ -45,6 +45,7 @@ import { listTimeEntries } from '@/lib/db/queries/time-entries';
 import { listInvoicesForProject } from '@/lib/db/queries/worker-invoices';
 import { listWorkerProfiles } from '@/lib/db/queries/worker-profiles';
 import { listUnavailabilityForTenant, REASON_LABELS } from '@/lib/db/queries/worker-unavailability';
+import { getSignedUrls } from '@/lib/storage/photos';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import type { ProjectStatus } from '@/lib/validators/project';
@@ -77,6 +78,7 @@ function buildNotesFeed(input: {
   notes: Array<Record<string, unknown>> | null;
   memos: Array<Record<string, unknown>> | null;
   events: Array<Record<string, unknown>> | null;
+  artifactUrls: Map<string, string>;
 }): NoteFeedItem[] {
   const items: NoteFeedItem[] = [];
   for (const n of input.notes ?? []) {
@@ -101,6 +103,18 @@ function buildNotesFeed(input: {
         id: n.id as string,
         created_at: n.created_at as string,
         body: n.body as string,
+      });
+    } else if (k === 'artifact') {
+      const meta = (n.metadata as Record<string, unknown> | null) ?? {};
+      const imagePath = (meta.image_path as string | undefined) ?? null;
+      items.push({
+        kind: 'artifact',
+        id: n.id as string,
+        created_at: n.created_at as string,
+        body: n.body as string,
+        artifact_kind: (meta.kind as string) ?? 'sketch',
+        label: (meta.label as string) ?? 'Reference',
+        image_url: imagePath ? (input.artifactUrls.get(imagePath) ?? null) : null,
       });
     } else {
       items.push({
@@ -175,6 +189,14 @@ export default async function ProjectDetailPage({
       .order('created_at', { ascending: false })
       .limit(100),
   ]);
+
+  // Sign all artifact image paths up front so the Notes feed can render
+  // thumbnails without per-card round trips.
+  const artifactPaths = (notes ?? [])
+    .filter((n) => (n.kind as string | undefined) === 'artifact')
+    .map((n) => (n.metadata as { image_path?: string } | null)?.image_path)
+    .filter((p): p is string => !!p);
+  const artifactUrls = await getSignedUrls(artifactPaths);
 
   const memoPhotosByMemo = new Map<
     string,
@@ -676,7 +698,7 @@ export default async function ProjectDetailPage({
       {tab === 'memos' ? (
         <ProjectNotesTab
           projectId={id}
-          feed={buildNotesFeed({ notes, memos, events })}
+          feed={buildNotesFeed({ notes, memos, events, artifactUrls })}
           memoUploadProps={{
             projectId: id,
             memos: (memos ?? []).map((m) => ({

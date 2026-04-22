@@ -135,6 +135,12 @@ export function ProjectIntakeZone({ projectId }: { projectId: string }) {
             unit_price_cents: l.unit_price_cents,
             source_image_indexes: l.source_image_indexes ?? [],
           })),
+        new_artifacts: (suggestions.new_artifacts ?? []).map((a) => ({
+          kind: a.kind,
+          label: a.label,
+          summary: a.summary,
+          source_image_index: a.source_image_index,
+        })),
         new_expenses: (suggestions.new_expenses ?? [])
           .filter((_, i) => includeExpenses[i])
           .map((e) => ({
@@ -353,6 +359,30 @@ export function ProjectIntakeZone({ projectId }: { projectId: string }) {
                     </SuggestionRow>
                   ))}
                 </div>
+              </div>
+            ) : null}
+
+            {suggestions.new_artifacts && suggestions.new_artifacts.length > 0 ? (
+              <div className="rounded-md border">
+                <p className="border-b bg-muted/30 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Reference artifacts → Notes ({suggestions.new_artifacts.length})
+                </p>
+                <ul className="divide-y">
+                  {suggestions.new_artifacts.map((a, i) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: parallel arrays bound by index
+                    <li key={`a-${i}`} className="flex items-start gap-2 px-3 py-2">
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        {a.kind}
+                      </span>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{a.label}</p>
+                        {a.summary ? (
+                          <p className="text-xs text-muted-foreground">{a.summary}</p>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
 

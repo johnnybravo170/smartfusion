@@ -51,9 +51,13 @@ export function DeleteProjectButton({
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="destructive" size="sm">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Delete project"
+          className="size-8 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        >
           <Trash2 className="size-3.5" />
-          Delete
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>

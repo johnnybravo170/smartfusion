@@ -66,6 +66,15 @@ export type NoteFeedItem =
       body: string;
     }
   | {
+      kind: 'artifact';
+      id: string;
+      created_at: string;
+      body: string;
+      artifact_kind: string; // 'sketch' | 'inspiration' | 'drawing'
+      label: string;
+      image_url: string | null;
+    }
+  | {
       kind: 'memo';
       id: string;
       created_at: string;
@@ -251,6 +260,16 @@ export function ProjectNotesTab({
                   onDelete={() => handleDelete(item.id)}
                   isDeleting={isDeleting}
                 />
+              ) : item.kind === 'artifact' ? (
+                <ArtifactCard
+                  body={item.body}
+                  label={item.label}
+                  artifactKind={item.artifact_kind}
+                  imageUrl={item.image_url}
+                  createdAt={item.created_at}
+                  onDelete={() => handleDelete(item.id)}
+                  isDeleting={isDeleting}
+                />
               ) : item.kind === 'memo' ? (
                 <MemoCard
                   transcript={item.transcript}
@@ -393,6 +412,65 @@ function ChatCard({
           onClick={onDelete}
           disabled={isDeleting}
           aria-label="Delete"
+          className="text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ArtifactCard({
+  body,
+  label,
+  artifactKind,
+  imageUrl,
+  createdAt,
+  onDelete,
+  isDeleting,
+}: {
+  body: string;
+  label: string;
+  artifactKind: string;
+  imageUrl: string | null;
+  createdAt: string;
+  onDelete: () => void;
+  isDeleting: boolean;
+}) {
+  return (
+    <div className="rounded-md border bg-card p-3">
+      <div className="flex items-start gap-3">
+        {imageUrl ? (
+          <a
+            href={imageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block h-20 w-20 shrink-0 overflow-hidden rounded-md border"
+          >
+            {/* biome-ignore lint/performance/noImgElement: signed URL bypasses next/image */}
+            <img src={imageUrl} alt={label} className="h-full w-full object-cover" />
+          </a>
+        ) : (
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-md border bg-muted/30 text-xs text-muted-foreground">
+            no preview
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {artifactKind}
+          </p>
+          <p className="text-sm font-medium">{label}</p>
+          {body && body !== label ? (
+            <p className="mt-0.5 whitespace-pre-wrap text-xs text-muted-foreground">{body}</p>
+          ) : null}
+          <p className="mt-1 text-[10px] text-muted-foreground">{formatWhen(createdAt)}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={isDeleting}
+          aria-label="Delete artifact"
           className="text-muted-foreground hover:text-destructive"
         >
           <Trash2 className="size-3.5" />

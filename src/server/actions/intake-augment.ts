@@ -208,6 +208,13 @@ export type ApplyAugmentInput = {
     /** Index into the FormData "images" list — uploaded as receipt_url. */
     source_image_index: number | null;
   }>;
+  new_artifacts: Array<{
+    kind: 'sketch' | 'inspiration' | 'drawing';
+    label: string;
+    summary: string | null;
+    /** Index into the FormData "images" list — persisted to project_notes. */
+    source_image_index: number;
+  }>;
   mergeSignals: AugmentResult['signals'] | null;
   /** If set, persist as a kind='reply_draft' note in the project Notes feed. */
   replyDraft: string | null;
@@ -323,6 +330,9 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
     }
     for (const e of input.new_expenses ?? []) {
       if (e.source_image_index != null) claimed.add(e.source_image_index);
+    }
+    for (const a of input.new_artifacts ?? []) {
+      claimed.add(a.source_image_index);
     }
     const orphanPaths = Object.entries(indexToPath)
       .filter(([i]) => !claimed.has(Number(i)))
@@ -440,6 +450,37 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
       .eq('id', input.projectId);
     if (error) return { ok: false, error: `Signals: ${error.message}` };
     applied++;
+  }
+
+  // 4a. Persist artifact notes (sketches, inspiration, drawings) to the
+  // Notes feed with the uploaded image path in metadata so the card can
+  // render a thumbnail.
+  if (input.new_artifacts?.length) {
+    const user = await getCurrentUser();
+    const artifactRows = input.new_artifacts
+      .map((a) => {
+        const path = indexToPath[a.source_image_index];
+        if (!path) return null;
+        const body = a.summary?.trim() || a.label;
+        return {
+          project_id: input.projectId,
+          tenant_id: tenant.id,
+          user_id: user?.id ?? null,
+          body,
+          kind: 'artifact',
+          metadata: {
+            kind: a.kind,
+            label: a.label,
+            image_path: path,
+          },
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    if (artifactRows.length) {
+      const { error } = await supabase.from('project_notes').insert(artifactRows);
+      if (error) return { ok: false, error: `Artifacts: ${error.message}` };
+      applied += artifactRows.length;
+    }
   }
 
   // 4b. Persist reply draft to the Notes feed.
