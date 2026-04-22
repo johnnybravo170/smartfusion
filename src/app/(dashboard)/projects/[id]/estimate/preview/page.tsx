@@ -24,6 +24,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
       `id, name, description, management_fee_rate, estimate_sent_at,
        estimate_status, estimate_approved_at, estimate_approved_by_name,
        estimate_declined_reason,
+       customer_id,
        customers:customer_id (name, email, address_line1),
        tenants:tenant_id (name, logo_storage_path, gst_rate, gst_number, wcb_number)`,
     )
@@ -121,6 +122,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
     <div className="mx-auto max-w-2xl px-4 pb-10">
       <EstimatePreviewSendBar
         projectId={id}
+        customerId={p.customer_id as string}
         customerName={(customerRaw?.name as string) ?? 'Customer'}
         customerEmail={(customerRaw?.email as string | null) ?? null}
         totalFormatted={formatCurrency(total)}

@@ -116,6 +116,32 @@ export async function updateCustomerAction(
 }
 
 /**
+ * Lightweight patch — just the email field. Used by the estimate send flow
+ * when a customer is missing an email and the operator fills it in inline.
+ */
+export async function patchCustomerEmailAction(
+  customerId: string,
+  email: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const trimmed = email.trim();
+  if (!trimmed || !trimmed.includes('@')) {
+    return { ok: false, error: 'Please enter a valid email address.' };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('customers')
+    .update({ email: trimmed, updated_at: new Date().toISOString() })
+    .eq('id', customerId)
+    .is('deleted_at', null);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/customers/${customerId}`);
+  return { ok: true };
+}
+
+/**
  * Soft-delete. `customers.deleted_at` exists (migration 0018), so we set it
  * and leave the row in place to preserve foreign-key references from quotes,
  * jobs, and invoices.
