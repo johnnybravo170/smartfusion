@@ -49,8 +49,6 @@ export default async function TeamPage() {
         <p className="text-sm text-muted-foreground">Invite workers and manage your team.</p>
       </div>
 
-      <InviteWorkerCard />
-
       <WorkerDefaultsCard
         workersCanLogExpenses={defaults?.workers_can_log_expenses ?? true}
         workersCanInvoiceDefault={defaults?.workers_can_invoice_default ?? false}
@@ -59,13 +57,14 @@ export default async function TeamPage() {
       />
 
       <div className="space-y-3">
-        <h2 className="text-lg font-medium">Invites</h2>
-        <InvitesTable invites={invites} />
+        <h2 className="text-lg font-medium">Team Members</h2>
+        <TeamMembersTable members={members} />
       </div>
 
       <div className="space-y-3">
-        <h2 className="text-lg font-medium">Team Members</h2>
-        <TeamMembersTable members={members} />
+        <h2 className="text-lg font-medium">Invites</h2>
+        <InviteWorkerCard />
+        <InvitesTable invites={invites} />
       </div>
     </div>
   );

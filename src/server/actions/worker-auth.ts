@@ -67,12 +67,38 @@ export async function workerSignupAction(input: {
 
   // 5. Add to tenant_members with the invite's role.
   try {
-    const { error: memberErr } = await admin.from('tenant_members').insert({
-      tenant_id: invite.tenant_id,
-      user_id: userId,
-      role: invite.role,
-    });
-    if (memberErr) throw new Error(memberErr.message);
+    const { data: member, error: memberErr } = await admin
+      .from('tenant_members')
+      .insert({
+        tenant_id: invite.tenant_id,
+        user_id: userId,
+        role: invite.role,
+      })
+      .select('id')
+      .single();
+    if (memberErr || !member) throw new Error(memberErr?.message ?? 'Failed to add member.');
+
+    // Apply pre-set worker prefs if the owner filled them in before invite acceptance.
+    if (invite.invite_prefs) {
+      const prefs = invite.invite_prefs;
+      function triToBool(v: 'inherit' | 'yes' | 'no' | undefined): boolean | null {
+        if (!v || v === 'inherit') return null;
+        return v === 'yes';
+      }
+      const profilePatch: Record<string, unknown> = {
+        tenant_id: invite.tenant_id,
+        tenant_member_id: member.id,
+      };
+      if (prefs.worker_type) profilePatch.worker_type = prefs.worker_type;
+      if (prefs.can_log_expenses) profilePatch.can_log_expenses = triToBool(prefs.can_log_expenses);
+      if (prefs.can_invoice) profilePatch.can_invoice = triToBool(prefs.can_invoice);
+      if (prefs.default_hourly_rate_cents !== undefined)
+        profilePatch.default_hourly_rate_cents = prefs.default_hourly_rate_cents;
+      if (prefs.default_charge_rate_cents !== undefined)
+        profilePatch.default_charge_rate_cents = prefs.default_charge_rate_cents;
+      // Upsert — if profile already exists from a previous session, update it.
+      await admin.from('worker_profiles').upsert(profilePatch, { onConflict: 'tenant_member_id' });
+    }
 
     // 6. Mark invite as used.
     await markInviteUsed(invite.id, userId);

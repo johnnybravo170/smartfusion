@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * Table showing all invite codes for the current tenant.
- * Owners can revoke active invites.
+ * Table showing all invites for the current tenant.
+ * Owners can delete any unused invite.
  */
 
-import { Loader2, X } from 'lucide-react';
+import { Loader2, Trash2 } from 'lucide-react';
 import { useTransition } from 'react';
 import { toast } from 'sonner';
 import {
@@ -30,7 +30,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { WorkerInviteRow } from '@/lib/db/queries/worker-invites';
-import { revokeInviteAction } from '@/server/actions/team';
+import { deleteInviteAction } from '@/server/actions/team';
 
 function inviteStatus(invite: WorkerInviteRow): {
   label: string;
@@ -42,37 +42,41 @@ function inviteStatus(invite: WorkerInviteRow): {
   return { label: 'Active', variant: 'default' };
 }
 
-function RevokeButton({ inviteId }: { inviteId: string }) {
+function DeleteButton({ inviteId }: { inviteId: string }) {
   const [pending, startTransition] = useTransition();
 
-  function handleRevoke() {
+  function handleDelete() {
     startTransition(async () => {
-      const result = await revokeInviteAction(inviteId);
+      const result = await deleteInviteAction(inviteId);
       if (!result.ok) {
-        toast.error(result.error ?? 'Failed to revoke invite.');
+        toast.error(result.error ?? 'Failed to delete invite.');
         return;
       }
-      toast.success('Invite revoked.');
+      toast.success('Invite deleted.');
     });
   }
 
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon" disabled={pending}>
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <X className="size-4" />}
+        <Button variant="ghost" size="icon" disabled={pending} title="Delete invite">
+          {pending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Trash2 className="size-4 text-muted-foreground" />
+          )}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Revoke invite?</AlertDialogTitle>
+          <AlertDialogTitle>Delete invite?</AlertDialogTitle>
           <AlertDialogDescription>
-            This invite link will stop working. You can create a new one later.
+            This invite link will be permanently removed. You can create a new one anytime.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={handleRevoke}>Revoke</AlertDialogAction>
+          <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -85,38 +89,45 @@ type Props = {
 
 export function InvitesTable({ invites }: Props) {
   if (invites.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No invites yet. Generate one above to get started.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">No invites yet.</p>;
   }
 
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Code</TableHead>
+          <TableHead>Worker</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Created</TableHead>
-          <TableHead className="w-[60px]" />
+          <TableHead className="w-[52px]" />
         </TableRow>
       </TableHeader>
       <TableBody>
         {invites.map((invite) => {
           const status = inviteStatus(invite);
-          const isActive = status.label === 'Active';
+          const canDelete = status.label !== 'Used';
 
           return (
             <TableRow key={invite.id}>
-              <TableCell className="font-mono text-sm">{invite.code.slice(0, 8)}...</TableCell>
+              <TableCell className="text-sm">
+                {invite.invited_name ?? (
+                  <span className="text-muted-foreground">
+                    {invite.invited_email ?? (
+                      <span className="font-mono">{invite.code.slice(0, 8)}…</span>
+                    )}
+                  </span>
+                )}
+                {invite.invited_name && invite.invited_email ? (
+                  <div className="text-xs text-muted-foreground">{invite.invited_email}</div>
+                ) : null}
+              </TableCell>
               <TableCell>
                 <Badge variant={status.variant}>{status.label}</Badge>
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {new Date(invite.created_at).toLocaleDateString()}
               </TableCell>
-              <TableCell>{isActive ? <RevokeButton inviteId={invite.id} /> : null}</TableCell>
+              <TableCell>{canDelete ? <DeleteButton inviteId={invite.id} /> : null}</TableCell>
             </TableRow>
           );
         })}

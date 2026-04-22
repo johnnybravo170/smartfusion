@@ -16,6 +16,14 @@ function generateCode(): string {
   return randomBytes(9).toString('base64url').slice(0, 12);
 }
 
+export type InvitePrefs = {
+  worker_type?: 'employee' | 'subcontractor';
+  can_log_expenses?: 'inherit' | 'yes' | 'no';
+  can_invoice?: 'inherit' | 'yes' | 'no';
+  default_hourly_rate_cents?: number | null;
+  default_charge_rate_cents?: number | null;
+};
+
 export type WorkerInviteRow = {
   id: string;
   tenant_id: string;
@@ -27,6 +35,9 @@ export type WorkerInviteRow = {
   expires_at: string;
   revoked_at: string | null;
   created_at: string;
+  invited_name: string | null;
+  invited_email: string | null;
+  invite_prefs: InvitePrefs | null;
 };
 
 export type WorkerInviteWithTenant = WorkerInviteRow & {
@@ -34,7 +45,15 @@ export type WorkerInviteWithTenant = WorkerInviteRow & {
 };
 
 /** Create a new invite code with 7-day expiry. */
-export async function createWorkerInvite(tenantId: string, createdBy: string) {
+export async function createWorkerInvite(
+  tenantId: string,
+  createdBy: string,
+  opts?: {
+    invited_name?: string;
+    invited_email?: string;
+    invite_prefs?: InvitePrefs;
+  },
+) {
   const supabase = await createClient();
   const code = generateCode();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -46,6 +65,9 @@ export async function createWorkerInvite(tenantId: string, createdBy: string) {
       code,
       created_by: createdBy,
       expires_at: expiresAt,
+      invited_name: opts?.invited_name ?? null,
+      invited_email: opts?.invited_email ?? null,
+      invite_prefs: opts?.invite_prefs ?? null,
     })
     .select()
     .single();
@@ -87,6 +109,18 @@ export async function markInviteUsed(inviteId: string, userId: string) {
     .from('worker_invites')
     .update({ used_by: userId, used_at: new Date().toISOString() })
     .eq('id', inviteId);
+
+  if (error) throw new Error(error.message);
+}
+
+/** Hard-delete an invite that was never used (e.g. wrong email). */
+export async function deleteInvite(inviteId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('worker_invites')
+    .delete()
+    .eq('id', inviteId)
+    .is('used_at', null); // safety: never delete a used invite
 
   if (error) throw new Error(error.message);
 }

@@ -1,35 +1,73 @@
 'use client';
 
 /**
- * Card that generates a worker invite link and lets the owner copy or email it.
+ * Card for creating worker invites. Collects name, email, and pre-set worker
+ * settings so the owner can configure the worker before they even sign up.
  */
 
-import { Check, Copy, Loader2, Mail, Plus, Send } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Copy, Loader2, Plus } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { createWorkerInviteAction, sendWorkerInviteEmailAction } from '@/server/actions/team';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import type { InvitePrefs } from '@/lib/db/queries/worker-invites';
+import { createWorkerInviteAction } from '@/server/actions/team';
 
 export function InviteWorkerCard() {
   const [pending, startTransition] = useTransition();
-  const [sendingEmail, startEmailTransition] = useTransition();
-  const [joinUrl, setJoinUrl] = useState<string | null>(null);
-  const [inviteCode, setInviteCode] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [email, setEmail] = useState('');
 
-  function handleGenerate() {
+  // Form state
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [workerType, setWorkerType] = useState<'employee' | 'subcontractor'>('employee');
+  const [canExpenses, setCanExpenses] = useState<'inherit' | 'yes' | 'no'>('inherit');
+  const [canInvoice, setCanInvoice] = useState<'inherit' | 'yes' | 'no'>('inherit');
+  const [payRate, setPayRate] = useState('');
+  const [chargeRate, setChargeRate] = useState('');
+
+  // Result state
+  const [joinUrl, setJoinUrl] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  function handleCreate() {
     startTransition(async () => {
-      const result = await createWorkerInviteAction();
+      const prefs: InvitePrefs = {
+        worker_type: workerType,
+        can_log_expenses: canExpenses,
+        can_invoice: canInvoice,
+        default_hourly_rate_cents: payRate ? Math.round(Number(payRate) * 100) : null,
+        default_charge_rate_cents: chargeRate ? Math.round(Number(chargeRate) * 100) : null,
+      };
+
+      const result = await createWorkerInviteAction({
+        invited_name: name.trim() || undefined,
+        invited_email: email.trim() || undefined,
+        invite_prefs: prefs,
+      });
+
       if (!result.ok) {
         toast.error(result.error ?? 'Failed to create invite.');
         return;
       }
+
       setJoinUrl(result.joinUrl ?? null);
-      setInviteCode(result.code ?? null);
-      toast.success('Invite link created.');
+      setSentTo(email.trim() || null);
+      if (email.trim()) {
+        toast.success(`Invite sent to ${email.trim()}.`);
+      } else {
+        toast.success('Invite link created.');
+      }
     });
   }
 
@@ -37,73 +75,170 @@ export function InviteWorkerCard() {
     if (!joinUrl) return;
     await navigator.clipboard.writeText(joinUrl);
     setCopied(true);
-    toast.success('Link copied to clipboard.');
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function handleSendEmail() {
-    if (!email.trim() || !joinUrl) return;
-    startEmailTransition(async () => {
-      const result = await sendWorkerInviteEmailAction(email.trim(), joinUrl);
-      if (!result.ok) {
-        toast.error(result.error ?? 'Failed to send invite.');
-        return;
-      }
-      toast.success(`Invite sent to ${email}`);
-      setEmail('');
-    });
+  function handleReset() {
+    setJoinUrl(null);
+    setSentTo(null);
+    setName('');
+    setEmail('');
+  }
+
+  if (joinUrl) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Invite created</CardTitle>
+          <CardDescription>
+            {sentTo ? `Invite email sent to ${sentTo}.` : 'Share this link with the worker.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded border bg-muted px-3 py-2 text-sm">
+              {joinUrl}
+            </code>
+            <Button variant="outline" size="icon" onClick={handleCopy} title="Copy link">
+              {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+            </Button>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleReset}>
+            <Plus className="size-3.5" />
+            Invite another worker
+          </Button>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Invite a Worker</CardTitle>
-        <CardDescription>
-          Generate a link to invite someone to your team, or send it directly via email. Links
-          expire after 7 days.
-        </CardDescription>
+        <CardTitle className="text-base">Invite a Worker</CardTitle>
+        <CardDescription>Generate an invite link. Links expire after 7 days.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {joinUrl ? (
-          <>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 truncate rounded border bg-muted px-3 py-2 text-sm">
-                {joinUrl}
-              </code>
-              <Button variant="outline" size="icon" onClick={handleCopy}>
-                {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-              </Button>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="invite-name" className="text-xs">
+              Name <span className="text-muted-foreground">(optional)</span>
+            </Label>
+            <Input
+              id="invite-name"
+              placeholder="Jane Smith"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="invite-email" className="text-xs">
+              Email <span className="text-muted-foreground">(sends invite automatically)</span>
+            </Label>
+            <Input
+              id="invite-email"
+              type="email"
+              placeholder="jane@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+            />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowSettings((v) => !v)}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          {showSettings ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          Worker settings
+        </button>
+
+        {showSettings ? (
+          <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Type</Label>
+              <Select
+                value={workerType}
+                onValueChange={(v) => setWorkerType(v as typeof workerType)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="employee">Employee</SelectItem>
+                  <SelectItem value="subcontractor">Subcontractor</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="flex items-center gap-2">
-              <Mail className="size-4 shrink-0 text-muted-foreground" />
+            <div className="space-y-1">
+              <Label className="text-xs">Log expenses</Label>
+              <Select
+                value={canExpenses}
+                onValueChange={(v) => setCanExpenses(v as typeof canExpenses)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inherit">Default</SelectItem>
+                  <SelectItem value="yes">Allow</SelectItem>
+                  <SelectItem value="no">Block</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Submit invoices</Label>
+              <Select
+                value={canInvoice}
+                onValueChange={(v) => setCanInvoice(v as typeof canInvoice)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inherit">Default</SelectItem>
+                  <SelectItem value="yes">Allow</SelectItem>
+                  <SelectItem value="no">Block</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Pay ($/hr)</Label>
               <Input
-                type="email"
-                placeholder="worker@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendEmail()}
-                className="h-9"
+                type="number"
+                step="0.01"
+                min="0"
+                value={payRate}
+                onChange={(e) => setPayRate(e.target.value)}
+                placeholder="—"
               />
-              <Button size="sm" onClick={handleSendEmail} disabled={sendingEmail || !email.trim()}>
-                {sendingEmail ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Send className="size-4" />
-                )}
-              </Button>
             </div>
-          </>
+            <div className="space-y-1">
+              <Label className="text-xs">Charge ($/hr)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={chargeRate}
+                onChange={(e) => setChargeRate(e.target.value)}
+                placeholder="—"
+              />
+            </div>
+          </div>
         ) : null}
-        <Button onClick={handleGenerate} disabled={pending}>
+
+        <Button onClick={handleCreate} disabled={pending} size="sm">
           {pending ? (
             <>
               <Loader2 className="mr-2 size-4 animate-spin" />
-              Generating...
+              Creating...
             </>
           ) : (
             <>
               <Plus className="mr-2 size-4" />
-              Generate invite link
+              {email.trim() ? 'Create & send invite' : 'Create invite link'}
             </>
           )}
         </Button>

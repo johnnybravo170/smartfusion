@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Receipt,
   Settings,
+  UserCog,
   Users,
 } from 'lucide-react';
 
@@ -24,6 +25,7 @@ const CORE_ITEMS: NavItem[] = [
   { href: '/jobs', label: 'Jobs', icon: ClipboardList },
   { href: '/invoices', label: 'Invoices', icon: Receipt },
   { href: '/inbox', label: 'Inbox', icon: Inbox },
+  { href: '/settings/team', label: 'Team', icon: UserCog },
   { href: '/referrals', label: 'Refer & Earn', icon: Gift },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];

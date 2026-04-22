@@ -46,8 +46,7 @@ export function EstimatePreviewSendBar({
   const [pending, startTransition] = useTransition();
   const canSend = !!customerEmail && lineCount > 0;
 
-  function handleSend(event: React.MouseEvent) {
-    event.preventDefault();
+  function handleSend() {
     startTransition(async () => {
       const res = await sendEstimateForApprovalAction({ projectId });
       if (res.ok) {
@@ -84,7 +83,14 @@ export function EstimatePreviewSendBar({
               {alreadySent ? 'Resend to customer' : 'Send to customer'}
             </Button>
           </AlertDialogTrigger>
-          <AlertDialogContent>
+          <AlertDialogContent
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !pending && canSend) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+          >
             <AlertDialogHeader>
               <AlertDialogTitle>
                 {alreadySent ? 'Resend estimate?' : 'Send estimate?'}
@@ -111,7 +117,7 @@ export function EstimatePreviewSendBar({
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleSend} disabled={pending}>
+              <AlertDialogAction onClick={() => handleSend()} disabled={pending}>
                 {pending ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (

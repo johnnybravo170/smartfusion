@@ -4,14 +4,12 @@ export function estimateApprovalEmailHtml({
   businessName,
   logoUrl,
   projectName,
-  totalFormatted,
   approveUrl,
   customerName,
 }: {
   businessName: string;
   logoUrl?: string | null;
   projectName: string;
-  totalFormatted: string;
   approveUrl: string;
   customerName: string;
 }): string {
@@ -24,13 +22,8 @@ export function estimateApprovalEmailHtml({
 
   <p style="font-size: 15px; line-height: 1.6;">Hi ${customerName},</p>
   <p style="font-size: 15px; line-height: 1.6;">
-    Please review the estimate for <strong>${projectName}</strong>. You can approve or decline online.
+    Your estimate for <strong>${projectName}</strong> is ready. Click below to review the details and approve or decline.
   </p>
-
-  <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 24px 0; text-align: center;">
-    <p style="font-size: 12px; color: #666; margin: 0;">Estimate Total</p>
-    <p style="font-size: 28px; font-weight: 600; margin: 6px 0 0;">${totalFormatted}</p>
-  </div>
 
   <p>
     <a href="${approveUrl}" style="display: inline-block; padding: 12px 24px; background: #0a0a0a; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">

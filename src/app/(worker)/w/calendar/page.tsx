@@ -139,9 +139,9 @@ export default async function WorkerCalendarPage({
         </Button>
       </div>
 
-      <div className="grid grid-cols-7 gap-px rounded-md bg-border text-center text-xs">
+      <div className="grid grid-cols-7 gap-px rounded-md bg-border text-xs">
         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
-          <div key={d} className="bg-background py-1 text-muted-foreground">
+          <div key={d} className="bg-background py-1 text-center text-muted-foreground">
             {d.slice(0, 1)}
           </div>
         ))}
@@ -149,48 +149,63 @@ export default async function WorkerCalendarPage({
           if (!c.iso) {
             return (
               // biome-ignore lint/suspicious/noArrayIndexKey: padding cells are positional
-              <div key={`pad-${year}-${month}-${i}`} className="aspect-square bg-background" />
+              <div key={`pad-${year}-${month}-${i}`} className="min-h-[56px] bg-background" />
             );
           }
           const isToday = c.iso === today;
           const isSelected = c.iso === selectedDate;
-          const hasScheduled = scheduledByDate.has(c.iso);
-          const hasTime = timeByDate.has(c.iso);
+          const scheduled = scheduledByDate.get(c.iso) ?? [];
+          const timeEntries = timeByDate.get(c.iso) ?? [];
           const isUnavailable = unavailableByDate.has(c.iso);
           const monthParam = `${year}-${String(month + 1).padStart(2, '0')}`;
           return (
             <Link
               key={c.iso}
               href={`/w/calendar?month=${monthParam}&date=${c.iso}`}
-              className={`flex aspect-square flex-col items-center justify-center gap-1 bg-background text-sm ${
-                isSelected
-                  ? 'bg-foreground text-background'
-                  : isToday
-                    ? 'font-semibold text-foreground'
-                    : 'text-foreground'
+              className={`flex min-h-[56px] flex-col gap-0.5 bg-background p-1 ${
+                isSelected ? 'ring-1 ring-inset ring-foreground' : ''
               }`}
             >
-              <span>{c.day}</span>
-              <span className="flex h-1.5 items-center gap-0.5">
-                {hasScheduled ? <span className="size-1.5 rounded-full bg-blue-500" /> : null}
-                {hasTime ? <span className="size-1.5 rounded-full bg-emerald-500" /> : null}
-                {isUnavailable ? <span className="size-1.5 rounded-full bg-amber-500" /> : null}
+              <span
+                className={`mb-0.5 flex size-5 items-center justify-center rounded-full text-xs font-medium ${
+                  isToday
+                    ? 'bg-foreground text-background'
+                    : isSelected
+                      ? 'font-semibold text-foreground'
+                      : 'text-foreground'
+                }`}
+              >
+                {c.day}
               </span>
+              {isUnavailable ? (
+                <span className="truncate rounded bg-amber-100 px-1 py-px text-[10px] font-medium text-amber-800">
+                  Off
+                </span>
+              ) : null}
+              {scheduled.slice(0, 2).map((s) => (
+                <span
+                  key={s.project_id}
+                  className="truncate rounded bg-sky-100 px-1 py-px text-[10px] font-medium text-sky-800"
+                >
+                  {s.project_name}
+                </span>
+              ))}
+              {timeEntries.slice(0, 2).map((t) => (
+                <span
+                  key={t.id}
+                  className="truncate rounded bg-emerald-100 px-1 py-px text-[10px] font-medium text-emerald-800"
+                >
+                  {t.hours.toFixed(1)}h{t.project_name ? ` ${t.project_name}` : ''}
+                </span>
+              ))}
+              {scheduled.length + timeEntries.length > 4 ? (
+                <span className="text-[10px] text-muted-foreground">
+                  +{scheduled.length + timeEntries.length - 4}
+                </span>
+              ) : null}
             </Link>
           );
         })}
-      </div>
-
-      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <span className="size-2 rounded-full bg-blue-500" /> Scheduled
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="size-2 rounded-full bg-emerald-500" /> Logged
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="size-2 rounded-full bg-amber-500" /> Unavailable
-        </span>
       </div>
 
       {selectedDate ? (

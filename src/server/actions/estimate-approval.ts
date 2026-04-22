@@ -6,7 +6,6 @@ import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getEmailBrandingForTenant } from '@/lib/email/branding';
 import { sendEmail } from '@/lib/email/send';
 import { estimateApprovalEmailHtml } from '@/lib/email/templates/estimate-approval';
-import { formatCurrency } from '@/lib/pricing/calculator';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { sendSms } from '@/lib/twilio/client';
@@ -112,7 +111,6 @@ export async function sendEstimateForApprovalAction(input: {
     businessName: branding.businessName,
     logoUrl: branding.logoUrl,
     projectName: p.name as string,
-    totalFormatted: formatCurrency(total),
     approveUrl,
     customerName,
   });
