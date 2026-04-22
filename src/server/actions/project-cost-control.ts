@@ -87,7 +87,7 @@ export async function generateEstimateFromBucketsAction(input: {
 
   const { data: buckets, error: bErr } = await supabase
     .from('project_cost_buckets')
-    .select('id, name, estimate_cents')
+    .select('id, name, description, estimate_cents')
     .eq('project_id', input.project_id)
     .gt('estimate_cents', 0);
   if (bErr) return { ok: false, error: bErr.message };
@@ -108,6 +108,7 @@ export async function generateEstimateFromBucketsAction(input: {
   const toSeed = buckets.filter((b) => !usedBucketIds.has((b as { id: string }).id)) as {
     id: string;
     name: string;
+    description: string | null;
     estimate_cents: number;
   }[];
 
@@ -120,6 +121,7 @@ export async function generateEstimateFromBucketsAction(input: {
     bucket_id: b.id,
     category: 'material' as const,
     label: b.name,
+    notes: b.description?.trim() || null,
     qty: 1,
     unit: 'lot',
     unit_cost_cents: b.estimate_cents,
