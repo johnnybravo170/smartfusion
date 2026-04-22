@@ -296,7 +296,7 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
         project_id: input.projectId,
         tenant_id: tenant.id,
         name: b.name,
-        section: b.section || null,
+        section: b.section?.trim() || 'General',
         display_order: nextOrder + i,
       }));
       const { data: inserted, error } = await supabase

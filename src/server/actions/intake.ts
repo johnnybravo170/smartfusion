@@ -189,7 +189,7 @@ export async function acceptInboundLeadAction(draft: ParsedIntake): Promise<Acce
     project_id: proj.id,
     tenant_id: tenant.id,
     name: b.name,
-    section: b.section || null,
+    section: b.section?.trim() || 'General',
     display_order: i,
   }));
   let bucketIds: string[] = [];
