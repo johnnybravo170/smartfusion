@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import type { ProjectBillRow } from '@/lib/db/queries/project-bills';
 import type { SubQuoteRow } from '@/lib/db/queries/project-sub-quotes';
 import type { PurchaseOrderRow, PurchaseOrderStatus } from '@/lib/db/queries/purchase-orders';
-import { formatCurrency } from '@/lib/pricing/calculator';
+import { formatCurrency, formatCurrencyCompact } from '@/lib/pricing/calculator';
 import {
   createPurchaseOrderAction,
   deleteBillAction,
@@ -567,24 +567,28 @@ export function CostsTab({
 
   return (
     <div className="space-y-4">
-      {/* Summary strip — preserves the at-a-glance view vertical stacking
-          used to give, now that only one section is visible at a time. */}
-      <div className="flex flex-wrap gap-4 rounded-lg border bg-muted/20 px-4 py-3 text-sm">
+      {/* Summary strip. Narrow screens get a 2-column grid (readable and
+          predictable); sm+ flows to a single row so the whole story is on
+          one line where there's space. formatCurrencyCompact drops .00 on
+          whole-dollar amounts to save width on mobile. */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg border bg-muted/20 px-4 py-3 text-sm sm:flex sm:flex-wrap sm:gap-4">
         <div>
           <span className="text-muted-foreground">Committed</span>{' '}
-          <span className="font-semibold tabular-nums">{formatCurrency(committedTotal)}</span>
+          <span className="font-semibold tabular-nums">
+            {formatCurrencyCompact(committedTotal)}
+          </span>
         </div>
         <div>
           <span className="text-muted-foreground">PO&apos;d</span>{' '}
-          <span className="font-semibold tabular-nums">{formatCurrency(totalPOs)}</span>
+          <span className="font-semibold tabular-nums">{formatCurrencyCompact(totalPOs)}</span>
         </div>
         <div>
           <span className="text-muted-foreground">Billed</span>{' '}
-          <span className="font-semibold tabular-nums">{formatCurrency(totalBills)}</span>
+          <span className="font-semibold tabular-nums">{formatCurrencyCompact(totalBills)}</span>
         </div>
         <div>
           <span className="text-muted-foreground">Paid</span>{' '}
-          <span className="font-semibold tabular-nums">{formatCurrency(totalExpenses)}</span>
+          <span className="font-semibold tabular-nums">{formatCurrencyCompact(totalExpenses)}</span>
         </div>
       </div>
 

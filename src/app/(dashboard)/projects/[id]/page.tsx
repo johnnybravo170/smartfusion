@@ -131,7 +131,7 @@ export default async function ProjectDetailPage({
             <PercentCompleteEditor project={project} />
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {secondaryTabs.map((s) => {
             const active = tab === s.key;
             const Icon =
