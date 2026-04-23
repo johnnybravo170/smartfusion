@@ -302,6 +302,123 @@ export async function updateProjectStatusAction(input: {
   return { ok: true, id: parsed.data.id };
 }
 
+export async function cloneProjectAction(input: {
+  source_id: string;
+  customer_id: string;
+  name: string;
+  clone_cost_buckets: boolean;
+  clone_notes: boolean;
+}): Promise<ProjectActionResult> {
+  if (!input.source_id) return { ok: false, error: 'Missing source project id.' };
+  if (!input.customer_id) return { ok: false, error: 'Pick a customer.' };
+  const name = input.name.trim();
+  if (!name) return { ok: false, error: 'Project name is required.' };
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+
+  const { data: source, error: srcErr } = await supabase
+    .from('projects')
+    .select('description, start_date, target_end_date, management_fee_rate')
+    .eq('id', input.source_id)
+    .is('deleted_at', null)
+    .single();
+
+  if (srcErr || !source) {
+    return { ok: false, error: srcErr?.message ?? 'Source project not found.' };
+  }
+
+  const { data: created, error: insErr } = await supabase
+    .from('projects')
+    .insert({
+      tenant_id: tenant.id,
+      customer_id: input.customer_id,
+      name,
+      description: source.description,
+      start_date: null,
+      target_end_date: null,
+      management_fee_rate: source.management_fee_rate,
+    })
+    .select('id')
+    .single();
+
+  if (insErr || !created) {
+    return { ok: false, error: insErr?.message ?? 'Failed to create project.' };
+  }
+
+  // Auto-assign crew if the tenant preference is on (matches createProjectAction).
+  const { data: tenantPrefs } = await supabase
+    .from('tenants')
+    .select('auto_assign_crew')
+    .eq('id', tenant.id)
+    .single();
+
+  if (tenantPrefs?.auto_assign_crew) {
+    const { data: workers } = await supabase
+      .from('worker_profiles')
+      .select('id')
+      .eq('tenant_id', tenant.id);
+
+    if (workers && workers.length > 0) {
+      await supabase.from('project_assignments').insert(
+        workers.map((w) => ({
+          tenant_id: tenant.id,
+          project_id: created.id,
+          worker_profile_id: w.id,
+        })),
+      );
+    }
+  }
+
+  if (input.clone_cost_buckets) {
+    const { data: srcBuckets } = await supabase
+      .from('project_cost_buckets')
+      .select('name, section, description, estimate_cents, display_order, is_visible_in_report')
+      .eq('project_id', input.source_id);
+
+    if (srcBuckets && srcBuckets.length > 0) {
+      const rows = srcBuckets.map((b) => ({
+        ...b,
+        tenant_id: tenant.id,
+        project_id: created.id,
+      }));
+      const { error: bErr } = await supabase.from('project_cost_buckets').insert(rows);
+      if (bErr) console.error('Failed to clone cost buckets:', bErr.message);
+    }
+  }
+
+  if (input.clone_notes) {
+    const { data: srcNotes } = await supabase
+      .from('project_notes')
+      .select('body, user_id')
+      .eq('project_id', input.source_id);
+
+    if (srcNotes && srcNotes.length > 0) {
+      const rows = srcNotes.map((n) => ({
+        ...n,
+        tenant_id: tenant.id,
+        project_id: created.id,
+      }));
+      const { error: nErr } = await supabase.from('project_notes').insert(rows);
+      if (nErr) console.error('Failed to clone project notes:', nErr.message);
+    }
+  }
+
+  await supabase.from('worklog_entries').insert({
+    tenant_id: tenant.id,
+    entry_type: 'system',
+    title: 'Project cloned',
+    body: `Project "${name}" cloned from ${input.source_id}.`,
+    related_type: 'project',
+    related_id: created.id,
+  });
+
+  revalidatePath('/projects');
+  return { ok: true, id: created.id };
+}
+
 export async function deleteProjectAction(id: string): Promise<ProjectActionResult | never> {
   if (!id || typeof id !== 'string') {
     return { ok: false, error: 'Missing project id.' };

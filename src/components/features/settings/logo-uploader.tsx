@@ -51,14 +51,20 @@ export function LogoUploader({ currentLogoUrl }: { currentLogoUrl: string | null
 
   return (
     <div className="flex items-start gap-4">
-      <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted">
+      <button
+        type="button"
+        onClick={handlePick}
+        disabled={pending}
+        aria-label={preview ? 'Replace logo' : 'Upload logo'}
+        className="flex size-24 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border bg-muted transition hover:border-foreground/40 hover:bg-muted/70 disabled:cursor-not-allowed disabled:opacity-60"
+      >
         {preview ? (
           // biome-ignore lint/performance/noImgElement: signed URL + local blob
           <img src={preview} alt="Business logo" className="size-full object-contain" />
         ) : (
           <ImageIcon className="size-8 text-muted-foreground" aria-hidden />
         )}
-      </div>
+      </button>
       <div className="flex flex-col gap-2">
         <input
           ref={inputRef}

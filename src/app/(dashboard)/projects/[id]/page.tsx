@@ -7,6 +7,7 @@ import { ProjectPhotoGallery } from '@/components/features/photos/project-photo-
 import { PortalToggle } from '@/components/features/portal/portal-toggle';
 import { PortalUpdateForm } from '@/components/features/portal/portal-update-form';
 import { BudgetSummaryCard } from '@/components/features/projects/budget-summary';
+import { CloneProjectDialog } from '@/components/features/projects/clone-project-dialog';
 import { CostBucketsTable } from '@/components/features/projects/cost-buckets-table';
 import { CostsTab } from '@/components/features/projects/costs-tab';
 import {
@@ -33,6 +34,7 @@ import { WorkerInvoicesSection } from '@/components/features/projects/worker-inv
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { getChangeOrderSummaryForProject, listChangeOrders } from '@/lib/db/queries/change-orders';
 import { getVarianceReport, listCostLines } from '@/lib/db/queries/cost-lines';
+import { listCustomers } from '@/lib/db/queries/customers';
 import { listExpenses } from '@/lib/db/queries/expenses';
 import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
 import { listPhotosByProject } from '@/lib/db/queries/photos';
@@ -248,10 +250,11 @@ export default async function ProjectDetailPage({
     getEstimateViewStats(id),
   ]);
 
-  const [crewAssignments, crewWorkers, projectBuckets] = await Promise.all([
+  const [crewAssignments, crewWorkers, projectBuckets, allCustomers] = await Promise.all([
     listAssignmentsForProject(project.tenant_id, id),
     listWorkerProfiles(project.tenant_id),
     listBucketsForProject(id),
+    listCustomers({ limit: 500 }),
   ]);
   // Lookup map for the estimate tab's grouping (bucket_id → name/section/order).
   const bucketsById: Record<string, { name: string; section: string | null; order: number }> = {};
@@ -483,6 +486,12 @@ export default async function ProjectDetailPage({
             );
           })}
           <ProjectIntakeZone projectId={project.id} />
+          <CloneProjectDialog
+            projectId={project.id}
+            projectName={project.name}
+            defaultCustomerId={project.customer_id}
+            customers={allCustomers.map((c) => ({ id: c.id, name: c.name }))}
+          />
           <DeleteProjectButton projectId={project.id} projectName={project.name} />
         </div>
       </header>

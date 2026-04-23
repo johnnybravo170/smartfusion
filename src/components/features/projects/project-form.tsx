@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { CustomerPicker } from '@/components/features/customers/customer-picker';
+import { CustomerPickerWithCreate } from '@/components/features/customers/customer-picker-with-create';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -25,7 +25,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useHenryForm } from '@/hooks/use-henry-form';
 import { type ProjectInput, projectCreateSchema } from '@/lib/validators/project';
-import { createCustomerAction } from '@/server/actions/customers';
 import type { ProjectActionResult } from '@/server/actions/projects';
 
 export type ProjectFormCustomerOption = {
@@ -67,9 +66,6 @@ export function ProjectForm({
   // Local copy so a new customer created inline shows up in the picker
   // without a server round-trip.
   const [customers, setCustomers] = useState(initialCustomers);
-  const [showInlineCustomer, setShowInlineCustomer] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ name: '', email: '', phone: '' });
-  const [savingCustomer, setSavingCustomer] = useState(false);
 
   const form = useForm({
     resolver: zodResolver(projectCreateSchema),
@@ -188,79 +184,14 @@ export function ProjectForm({
             <FormItem>
               <FormLabel>Customer</FormLabel>
               <FormControl>
-                <CustomerPicker
+                <CustomerPickerWithCreate
                   customers={customers}
                   value={field.value}
                   onChange={field.onChange}
-                  onAddNew={() => {
-                    setNewCustomer({ name: '', email: '', phone: '' });
-                    setShowInlineCustomer(true);
-                  }}
+                  onCustomerCreated={(c) => setCustomers((cs) => [c, ...cs])}
                 />
               </FormControl>
               <FormMessage />
-              {showInlineCustomer ? (
-                <div className="mt-2 space-y-2 rounded-md border bg-muted/30 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    New customer
-                  </p>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <Input
-                      placeholder="Name *"
-                      value={newCustomer.name}
-                      onChange={(e) => setNewCustomer((c) => ({ ...c, name: e.target.value }))}
-                    />
-                    <Input
-                      placeholder="Email"
-                      value={newCustomer.email}
-                      onChange={(e) => setNewCustomer((c) => ({ ...c, email: e.target.value }))}
-                    />
-                    <Input
-                      placeholder="Phone"
-                      value={newCustomer.phone}
-                      onChange={(e) => setNewCustomer((c) => ({ ...c, phone: e.target.value }))}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setShowInlineCustomer(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={savingCustomer || !newCustomer.name.trim()}
-                      onClick={async () => {
-                        setSavingCustomer(true);
-                        const res = await createCustomerAction({
-                          type: 'residential',
-                          name: newCustomer.name.trim(),
-                          email: newCustomer.email.trim(),
-                          phone: newCustomer.phone.trim(),
-                        });
-                        setSavingCustomer(false);
-                        if (!res.ok) {
-                          toast.error(res.error);
-                          return;
-                        }
-                        setCustomers((cs) => [
-                          { id: res.id, name: newCustomer.name.trim() },
-                          ...cs,
-                        ]);
-                        form.setValue('customer_id', res.id, { shouldValidate: true });
-                        setShowInlineCustomer(false);
-                        toast.success('Customer added');
-                      }}
-                    >
-                      {savingCustomer ? 'Saving…' : 'Save customer'}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
             </FormItem>
           )}
         />
