@@ -273,26 +273,38 @@ export function JobCalendar({ jobs, initialYear, initialMonth }: Props) {
             const colIdx = date.getDay();
 
             return (
+              // biome-ignore lint/a11y/useSemanticElements: cell wraps Link pills, can't be a <button>
               <div
                 key={key}
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  // Ignore clicks on the pills (Links navigate themselves).
+                  if ((e.target as HTMLElement).closest('a,button')) return;
+                  handleDayClick(date);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleDayClick(date);
+                  }
+                }}
                 className={cn(
-                  'min-h-[100px] border-b border-r p-1.5 transition-colors',
+                  'min-h-[100px] cursor-pointer border-b border-r p-1.5 transition-colors hover:bg-muted/40',
                   view === 'week' ? 'min-h-[200px]' : '',
                   !isCurrentMonth && view === 'month' && 'bg-muted/30',
                   colIdx === 0 && 'border-l',
                 )}
               >
-                <button
-                  type="button"
-                  onClick={() => handleDayClick(date)}
+                <div
                   className={cn(
-                    'mb-1 flex size-7 items-center justify-center rounded-full text-sm transition-colors hover:bg-muted',
+                    'mb-1 flex size-7 items-center justify-center rounded-full text-sm',
                     isToday && 'bg-foreground text-background font-bold',
                     !isCurrentMonth && view === 'month' && 'text-muted-foreground',
                   )}
                 >
                   {date.getDate()}
-                </button>
+                </div>
                 <div className="flex flex-col gap-0.5">
                   {dayJobs.slice(0, view === 'week' ? 10 : 3).map((job) => (
                     <JobPill key={job.id} job={job} />

@@ -20,7 +20,7 @@
 
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -171,8 +171,10 @@ export function OwnerCalendar({
     router.push(`/calendar?${params.toString()}`);
   }
 
-  function openAssign(date: string, projectId: string | null) {
-    setDialog({ open: true, projectId, startDate: date, endDate: date });
+  function openAssign(startDate: string, endDate: string, projectId: string | null) {
+    const lo = startDate <= endDate ? startDate : endDate;
+    const hi = startDate <= endDate ? endDate : startDate;
+    setDialog({ open: true, projectId, startDate: lo, endDate: hi });
   }
 
   function handleRemove(assignmentId: string) {
@@ -259,7 +261,7 @@ export function OwnerCalendar({
           byDate={byDate}
           projectById={projectById}
           workerById={workerById}
-          onOpenAssign={(date) => openAssign(date, null)}
+          onOpenAssign={(date) => openAssign(date, date, null)}
           onRemove={handleRemove}
           pending={pending}
         />
@@ -269,7 +271,9 @@ export function OwnerCalendar({
           byDate={byDate}
           projects={visibleProjects}
           workerById={workerById}
-          onOpenAssign={openAssign}
+          onOpenAssign={(projectId, startDate, endDate) =>
+            openAssign(startDate, endDate, projectId)
+          }
           onRemove={handleRemove}
           pending={pending}
         />
@@ -340,26 +344,26 @@ function MonthGrid({
           const inMonth = date.getMonth() === anchorMonth;
           const items = byDate.get(iso) ?? [];
           return (
-            <div
+            <button
               key={iso}
+              type="button"
+              onClick={() => onOpenAssign(iso)}
+              aria-label={`Schedule on ${iso}`}
               className={cn(
-                'min-h-[110px] border-b border-r p-1.5 last:border-r-0',
+                'group/cell min-h-[110px] cursor-pointer border-b border-r p-1.5 text-left transition hover:bg-muted/40 last:border-r-0',
                 !inMonth && 'bg-muted/20',
                 isWeekend(iso) && 'bg-muted/10',
               )}
             >
-              <button
-                type="button"
-                onClick={() => onOpenAssign(iso)}
+              <div
                 className={cn(
-                  'mb-1 flex h-6 w-6 items-center justify-center rounded text-xs font-medium hover:bg-muted',
-                  isToday(iso) && 'bg-primary text-primary-foreground hover:bg-primary',
+                  'mb-1 flex h-6 w-6 items-center justify-center rounded text-xs font-medium',
+                  isToday(iso) && 'bg-primary text-primary-foreground',
                   !inMonth && 'text-muted-foreground/60',
                 )}
-                aria-label={`Schedule on ${iso}`}
               >
                 {date.getDate()}
-              </button>
+              </div>
               <div className="space-y-0.5">
                 {items.map((a) => {
                   const proj = projectById.get(a.project_id);
@@ -369,16 +373,19 @@ function MonthGrid({
                       key={a.id}
                       title={`${proj?.name ?? 'Project'} · ${w?.display_name ?? 'Worker'}`}
                       className={cn(
-                        'group flex items-center justify-between gap-1 rounded border px-1.5 py-0.5 text-[11px] leading-tight',
+                        'group/chip flex items-center justify-between gap-1 rounded border px-1.5 py-0.5 text-[11px] leading-tight',
                         projectColor(a.project_id),
                       )}
                     >
                       <span className="truncate">{w?.display_name ?? '?'}</span>
                       <button
                         type="button"
-                        onClick={() => onRemove(a.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemove(a.id);
+                        }}
                         disabled={pending}
-                        className="opacity-0 transition group-hover:opacity-100"
+                        className="opacity-0 transition group-hover/chip:opacity-100"
                         aria-label="Remove assignment"
                       >
                         <X className="size-2.5" />
@@ -387,7 +394,7 @@ function MonthGrid({
                   );
                 })}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -398,6 +405,12 @@ function MonthGrid({
 // ----------------------------------------------------------------------
 // Two-week grid (project rows × 14 days)
 // ----------------------------------------------------------------------
+
+type DragState = {
+  projectId: string;
+  startIdx: number;
+  endIdx: number;
+};
 
 function TwoWeekGrid({
   windowStart,
@@ -412,7 +425,7 @@ function TwoWeekGrid({
   byDate: Map<string, CalendarAssignment[]>;
   projects: CalendarProject[];
   workerById: Map<string, CalendarWorker>;
-  onOpenAssign: (date: string, projectId: string | null) => void;
+  onOpenAssign: (projectId: string, startDate: string, endDate: string) => void;
   onRemove: (assignmentId: string) => void;
   pending: boolean;
 }) {
@@ -435,10 +448,26 @@ function TwoWeekGrid({
     }
   }
 
+  const [drag, setDrag] = useState<DragState | null>(null);
+
+  // Document-level mouseup so the drag completes even if released outside a cell.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: days/onOpenAssign re-render each frame; only re-bind on drag start
+  useEffect(() => {
+    if (!drag) return;
+    const handleUp = () => {
+      const lo = Math.min(drag.startIdx, drag.endIdx);
+      const hi = Math.max(drag.startIdx, drag.endIdx);
+      onOpenAssign(drag.projectId, days[lo], days[hi]);
+      setDrag(null);
+    };
+    document.addEventListener('mouseup', handleUp);
+    return () => document.removeEventListener('mouseup', handleUp);
+  }, [drag]);
+
   return (
     <div className="overflow-x-auto rounded-lg border bg-background">
       <div
-        className="grid min-w-[1100px]"
+        className="grid min-w-[1100px] select-none"
         style={{ gridTemplateColumns: `200px repeat(14, minmax(70px, 1fr))` }}
       >
         {/* Header */}
@@ -475,13 +504,20 @@ function TwoWeekGrid({
               days={days}
               cellLookup={cellLookup}
               workerById={workerById}
-              onOpenAssign={onOpenAssign}
+              drag={drag}
+              onCellMouseDown={(idx) => setDrag({ projectId: p.id, startIdx: idx, endIdx: idx })}
+              onCellMouseEnter={(idx) =>
+                setDrag((cur) => (cur && cur.projectId === p.id ? { ...cur, endIdx: idx } : cur))
+              }
               onRemove={onRemove}
               pending={pending}
             />
           ))
         )}
       </div>
+      <p className="border-t bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground">
+        Click or drag across cells to schedule.
+      </p>
     </div>
   );
 }
@@ -491,7 +527,9 @@ function ProjectRow({
   days,
   cellLookup,
   workerById,
-  onOpenAssign,
+  drag,
+  onCellMouseDown,
+  onCellMouseEnter,
   onRemove,
   pending,
 }: {
@@ -499,11 +537,16 @@ function ProjectRow({
   days: string[];
   cellLookup: Map<string, CalendarAssignment[]>;
   workerById: Map<string, CalendarWorker>;
-  onOpenAssign: (date: string, projectId: string | null) => void;
+  drag: DragState | null;
+  onCellMouseDown: (idx: number) => void;
+  onCellMouseEnter: (idx: number) => void;
   onRemove: (assignmentId: string) => void;
   pending: boolean;
 }) {
   const color = projectColor(project.id);
+  const dragLo = drag && drag.projectId === project.id ? Math.min(drag.startIdx, drag.endIdx) : -1;
+  const dragHi = drag && drag.projectId === project.id ? Math.max(drag.startIdx, drag.endIdx) : -1;
+
   return (
     <>
       <div className="flex flex-col justify-center border-b border-r px-3 py-2">
@@ -512,17 +555,24 @@ function ProjectRow({
           <div className="truncate text-xs text-muted-foreground">{project.customer_name}</div>
         ) : null}
       </div>
-      {days.map((iso) => {
+      {days.map((iso, idx) => {
         const items = cellLookup.get(`${project.id}|${iso}`) ?? [];
+        const inDrag = idx >= dragLo && idx <= dragHi;
         return (
-          <button
+          // biome-ignore lint/a11y/noStaticElementInteractions: drag-select target wraps interactive children
+          <div
             key={iso}
-            type="button"
-            onClick={() => onOpenAssign(iso, project.id)}
+            onMouseDown={(e) => {
+              if ((e.target as HTMLElement).closest('button')) return;
+              e.preventDefault();
+              onCellMouseDown(idx);
+            }}
+            onMouseEnter={() => onCellMouseEnter(idx)}
             className={cn(
-              'group min-h-[60px] border-b border-r p-1 text-left transition hover:bg-muted/40 last:border-r-0',
+              'group relative min-h-[60px] cursor-pointer border-b border-r p-1 text-left transition hover:bg-muted/40 last:border-r-0',
               isWeekend(iso) && 'bg-muted/10',
               isToday(iso) && 'ring-1 ring-inset ring-primary/40',
+              inDrag && 'bg-primary/15 ring-1 ring-inset ring-primary/60',
             )}
           >
             <div className="space-y-0.5">
@@ -539,6 +589,7 @@ function ProjectRow({
                     <span className="truncate">{w?.display_name ?? '?'}</span>
                     <button
                       type="button"
+                      onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         onRemove(a.id);
@@ -553,7 +604,7 @@ function ProjectRow({
                 );
               })}
             </div>
-          </button>
+          </div>
         );
       })}
     </>
