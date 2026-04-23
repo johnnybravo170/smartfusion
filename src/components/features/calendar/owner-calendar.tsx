@@ -19,11 +19,20 @@
  */
 
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type {
   CalendarAssignment,
   CalendarProject,
@@ -31,6 +40,7 @@ import type {
 } from '@/lib/db/queries/owner-calendar';
 import { cn } from '@/lib/utils';
 import {
+  bulkAssignDatesAction,
   moveAssignmentToAction,
   removeAssignmentAction,
 } from '@/server/actions/project-assignments';
@@ -117,6 +127,7 @@ export function OwnerCalendar({
   const sp = useSearchParams();
   const [skipWeekends, setSkipWeekends] = useState(true);
   const [dialog, setDialog] = useState<DialogState>({ open: false });
+  const [activeChip, setActiveChip] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const workerById = useMemo(() => new Map(workers.map((w) => [w.profile_id, w])), [workers]);
@@ -207,6 +218,38 @@ export function OwnerCalendar({
     });
   }
 
+  function handleExtend(input: {
+    projectId: string;
+    workerProfileId: string;
+    fromDate: string;
+    throughDate: string;
+  }) {
+    // "Extend" = duplicate the chip across the swept date range. We bulk-assign
+    // every business day between fromDate (exclusive) and throughDate (inclusive),
+    // honoring the skip-weekends toggle.
+    const lo = input.fromDate < input.throughDate ? input.fromDate : input.throughDate;
+    const hi = input.fromDate < input.throughDate ? input.throughDate : input.fromDate;
+    const dates: string[] = [];
+    for (let d = parseIso(lo); isoDate(d) <= hi; d.setDate(d.getDate() + 1)) {
+      const iso = isoDate(d);
+      if (iso === input.fromDate) continue; // source already booked
+      const day = d.getDay();
+      if (skipWeekends && (day === 0 || day === 6)) continue;
+      dates.push(iso);
+    }
+    if (dates.length === 0) return;
+
+    startTransition(async () => {
+      const res = await bulkAssignDatesAction({
+        project_id: input.projectId,
+        worker_profile_id: input.workerProfileId,
+        dates,
+      });
+      if (!res.ok) toast.error(res.error ?? 'Failed to extend.');
+      else toast.success(`Added ${dates.length} day${dates.length === 1 ? '' : 's'}.`);
+    });
+  }
+
   const headerLabel =
     view === 'two-week'
       ? `${MONTH_NAMES[anchor.getMonth()]} ${anchor.getDate()}, ${anchor.getFullYear()}`
@@ -275,8 +318,41 @@ export function OwnerCalendar({
         </div>
       </div>
 
-      {view === 'month' ? (
-        <MonthGrid
+      {/* Desktop grids */}
+      <div className={cn('hidden sm:block', pending && 'pointer-events-none opacity-70')}>
+        {view === 'month' ? (
+          <MonthGrid
+            windowStart={windowStart}
+            windowEnd={windowEnd}
+            anchorMonth={anchor.getMonth()}
+            byDate={byDate}
+            projectById={projectById}
+            workerById={workerById}
+            onOpenAssign={(date) => openAssign(date, date, null)}
+            onSelectChip={(a) => setActiveChip(a.id)}
+            activeChipId={activeChip}
+          />
+        ) : (
+          <TwoWeekGrid
+            windowStart={windowStart}
+            byDate={byDate}
+            projects={visibleProjects}
+            workerById={workerById}
+            onOpenAssign={(projectId, startDate, endDate) =>
+              openAssign(startDate, endDate, projectId)
+            }
+            onMove={handleMove}
+            onExtend={handleExtend}
+            onSelectChip={(a) => setActiveChip(a.id)}
+            activeChipId={activeChip}
+          />
+        )}
+      </div>
+
+      {/* Mobile stacked day list */}
+      <div className={cn('sm:hidden', pending && 'pointer-events-none opacity-70')}>
+        <MobileDayList
+          view={view}
           windowStart={windowStart}
           windowEnd={windowEnd}
           anchorMonth={anchor.getMonth()}
@@ -285,22 +361,32 @@ export function OwnerCalendar({
           workerById={workerById}
           onOpenAssign={(date) => openAssign(date, date, null)}
           onRemove={handleRemove}
-          pending={pending}
         />
-      ) : (
-        <TwoWeekGrid
-          windowStart={windowStart}
-          byDate={byDate}
-          projects={visibleProjects}
-          workerById={workerById}
-          onOpenAssign={(projectId, startDate, endDate) =>
-            openAssign(startDate, endDate, projectId)
-          }
-          onRemove={handleRemove}
-          onMove={handleMove}
-          pending={pending}
-        />
-      )}
+      </div>
+
+      {/* Chip popover (action sheet for the focused chip). */}
+      {activeChip
+        ? (() => {
+            const a = assignments.find((x) => x.id === activeChip);
+            if (!a) return null;
+            const proj = projectById.get(a.project_id);
+            const w = workerById.get(a.worker_profile_id);
+            return (
+              <ChipActionSheet
+                projectName={proj?.name ?? 'Project'}
+                projectId={a.project_id}
+                workerName={w?.display_name ?? 'Worker'}
+                date={a.scheduled_date}
+                onClose={() => setActiveChip(null)}
+                onRemove={() => {
+                  handleRemove(a.id);
+                  setActiveChip(null);
+                }}
+                pending={pending}
+              />
+            );
+          })()
+        : null}
 
       {dialog.open ? (
         <AssignWorkersDialog
@@ -332,8 +418,8 @@ function MonthGrid({
   projectById,
   workerById,
   onOpenAssign,
-  onRemove,
-  pending,
+  onSelectChip,
+  activeChipId,
 }: {
   windowStart: string;
   windowEnd: string;
@@ -342,8 +428,8 @@ function MonthGrid({
   projectById: Map<string, CalendarProject>;
   workerById: Map<string, CalendarWorker>;
   onOpenAssign: (date: string) => void;
-  onRemove: (assignmentId: string) => void;
-  pending: boolean;
+  onSelectChip: (assignment: CalendarAssignment) => void;
+  activeChipId: string | null;
 }) {
   const days: string[] = [];
   const start = parseIso(windowStart);
@@ -392,28 +478,22 @@ function MonthGrid({
                   const proj = projectById.get(a.project_id);
                   const w = workerById.get(a.worker_profile_id);
                   return (
-                    <div
+                    <button
                       key={a.id}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectChip(a);
+                      }}
                       title={`${proj?.name ?? 'Project'} · ${w?.display_name ?? 'Worker'}`}
                       className={cn(
-                        'group/chip flex items-center justify-between gap-1 rounded border px-1.5 py-0.5 text-[11px] leading-tight',
+                        'flex w-full items-center gap-1 rounded border px-1.5 py-0.5 text-left text-[11px] leading-tight transition hover:brightness-95',
                         projectColor(a.project_id),
+                        activeChipId === a.id && 'ring-2 ring-foreground ring-offset-1',
                       )}
                     >
                       <span className="truncate">{w?.display_name ?? '?'}</span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRemove(a.id);
-                        }}
-                        disabled={pending}
-                        className="opacity-0 transition group-hover/chip:opacity-100"
-                        aria-label="Remove assignment"
-                      >
-                        <X className="size-2.5" />
-                      </button>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -448,18 +528,25 @@ function TwoWeekGrid({
   projects,
   workerById,
   onOpenAssign,
-  onRemove,
   onMove,
-  pending,
+  onExtend,
+  onSelectChip,
+  activeChipId,
 }: {
   windowStart: string;
   byDate: Map<string, CalendarAssignment[]>;
   projects: CalendarProject[];
   workerById: Map<string, CalendarWorker>;
   onOpenAssign: (projectId: string, startDate: string, endDate: string) => void;
-  onRemove: (assignmentId: string) => void;
   onMove: (input: ChipDrag & { toProjectId: string; toDate: string }) => void;
-  pending: boolean;
+  onExtend: (input: {
+    projectId: string;
+    workerProfileId: string;
+    fromDate: string;
+    throughDate: string;
+  }) => void;
+  onSelectChip: (assignment: CalendarAssignment) => void;
+  activeChipId: string | null;
 }) {
   const days: string[] = [];
   const start = parseIso(windowStart);
@@ -482,20 +569,38 @@ function TwoWeekGrid({
 
   const [drag, setDrag] = useState<DragState | null>(null);
   const [chipDrag, setChipDrag] = useState<ChipDrag | null>(null);
+  const [extend, setExtend] = useState<{
+    assignmentId: string;
+    projectId: string;
+    workerProfileId: string;
+    fromDate: string;
+    throughIdx: number;
+  } | null>(null);
 
-  // Document-level mouseup so the drag completes even if released outside a cell.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: days/onOpenAssign re-render each frame; only re-bind on drag start
+  // Document-level mouseup completes whichever drag is active.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: days re-renders each frame; only re-bind on drag/extend change
   useEffect(() => {
-    if (!drag) return;
+    if (!drag && !extend) return;
     const handleUp = () => {
-      const lo = Math.min(drag.startIdx, drag.endIdx);
-      const hi = Math.max(drag.startIdx, drag.endIdx);
-      onOpenAssign(drag.projectId, days[lo], days[hi]);
-      setDrag(null);
+      if (drag) {
+        const lo = Math.min(drag.startIdx, drag.endIdx);
+        const hi = Math.max(drag.startIdx, drag.endIdx);
+        onOpenAssign(drag.projectId, days[lo], days[hi]);
+        setDrag(null);
+      }
+      if (extend) {
+        onExtend({
+          projectId: extend.projectId,
+          workerProfileId: extend.workerProfileId,
+          fromDate: extend.fromDate,
+          throughDate: days[extend.throughIdx],
+        });
+        setExtend(null);
+      }
     };
     document.addEventListener('mouseup', handleUp);
     return () => document.removeEventListener('mouseup', handleUp);
-  }, [drag]);
+  }, [drag, extend]);
 
   return (
     <div className="overflow-x-auto rounded-lg border bg-background">
@@ -539,29 +644,50 @@ function TwoWeekGrid({
               workerById={workerById}
               drag={drag}
               chipDrag={chipDrag}
+              extend={extend && extend.projectId === p.id ? extend : null}
+              activeChipId={activeChipId}
               onCellMouseDown={(idx) => setDrag({ projectId: p.id, startIdx: idx, endIdx: idx })}
-              onCellMouseEnter={(idx) =>
-                setDrag((cur) => (cur && cur.projectId === p.id ? { ...cur, endIdx: idx } : cur))
-              }
+              onCellMouseEnter={(idx) => {
+                setDrag((cur) => (cur && cur.projectId === p.id ? { ...cur, endIdx: idx } : cur));
+                setExtend((cur) =>
+                  cur && cur.projectId === p.id ? { ...cur, throughIdx: idx } : cur,
+                );
+              }}
               onChipDragStart={setChipDrag}
               onChipDragEnd={() => setChipDrag(null)}
               onChipDrop={(toDate) => {
                 if (chipDrag) onMove({ ...chipDrag, toProjectId: p.id, toDate });
                 setChipDrag(null);
               }}
-              onRemove={onRemove}
-              pending={pending}
+              onExtendStart={(a, idx) =>
+                setExtend({
+                  assignmentId: a.id,
+                  projectId: a.project_id,
+                  workerProfileId: a.worker_profile_id,
+                  fromDate: a.scheduled_date,
+                  throughIdx: idx,
+                })
+              }
+              onSelectChip={onSelectChip}
             />
           ))
         )}
       </div>
       <p className="border-t bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground">
-        Click or drag across empty cells to schedule. Drag a worker chip to any other day or project
-        row to move it.
+        Click cells to schedule, drag across empty cells to schedule a range, drag a chip to move
+        it, or grab a chip's right edge to extend it across days.
       </p>
     </div>
   );
 }
+
+type ExtendState = {
+  assignmentId: string;
+  projectId: string;
+  workerProfileId: string;
+  fromDate: string;
+  throughIdx: number;
+};
 
 function ProjectRow({
   project,
@@ -570,13 +696,15 @@ function ProjectRow({
   workerById,
   drag,
   chipDrag,
+  extend,
+  activeChipId,
   onCellMouseDown,
   onCellMouseEnter,
   onChipDragStart,
   onChipDragEnd,
   onChipDrop,
-  onRemove,
-  pending,
+  onExtendStart,
+  onSelectChip,
 }: {
   project: CalendarProject;
   days: string[];
@@ -584,17 +712,30 @@ function ProjectRow({
   workerById: Map<string, CalendarWorker>;
   drag: DragState | null;
   chipDrag: ChipDrag | null;
+  extend: ExtendState | null;
+  activeChipId: string | null;
   onCellMouseDown: (idx: number) => void;
   onCellMouseEnter: (idx: number) => void;
   onChipDragStart: (drag: ChipDrag) => void;
   onChipDragEnd: () => void;
   onChipDrop: (toDate: string) => void;
-  onRemove: (assignmentId: string) => void;
-  pending: boolean;
+  onExtendStart: (assignment: CalendarAssignment, idx: number) => void;
+  onSelectChip: (assignment: CalendarAssignment) => void;
 }) {
   const color = projectColor(project.id);
   const dragLo = drag && drag.projectId === project.id ? Math.min(drag.startIdx, drag.endIdx) : -1;
   const dragHi = drag && drag.projectId === project.id ? Math.max(drag.startIdx, drag.endIdx) : -1;
+
+  // Compute the extend "preview" highlight range: from the source date to the
+  // currently-hovered idx in this row.
+  const extendLo =
+    extend && days.indexOf(extend.fromDate) >= 0
+      ? Math.min(days.indexOf(extend.fromDate), extend.throughIdx)
+      : -1;
+  const extendHi =
+    extend && days.indexOf(extend.fromDate) >= 0
+      ? Math.max(days.indexOf(extend.fromDate), extend.throughIdx)
+      : -1;
 
   return (
     <>
@@ -607,13 +748,16 @@ function ProjectRow({
       {days.map((iso, idx) => {
         const items = cellLookup.get(`${project.id}|${iso}`) ?? [];
         const inDrag = idx >= dragLo && idx <= dragHi;
+        const inExtend = extend ? idx >= extendLo && idx <= extendHi : false;
         return (
           // biome-ignore lint/a11y/noStaticElementInteractions: drag-select target wraps interactive children
           <div
             key={iso}
             onMouseDown={(e) => {
-              if ((e.target as HTMLElement).closest('button')) return;
-              if ((e.target as HTMLElement).closest('[data-chip="1"]')) return;
+              const target = e.target as HTMLElement;
+              if (target.closest('button')) return;
+              if (target.closest('[data-chip="1"]')) return;
+              if (target.closest('[data-extend-handle="1"]')) return;
               e.preventDefault();
               onCellMouseDown(idx);
             }}
@@ -634,6 +778,7 @@ function ProjectRow({
               isWeekend(iso) && 'bg-muted/10',
               isToday(iso) && 'ring-1 ring-inset ring-primary/40',
               inDrag && 'bg-primary/15 ring-1 ring-inset ring-primary/60',
+              inExtend && 'bg-emerald-100/50',
               chipDrag &&
                 !(chipDrag.fromProjectId === project.id && chipDrag.fromDate === iso) &&
                 'bg-primary/5',
@@ -643,15 +788,16 @@ function ProjectRow({
               {items.map((a) => {
                 const w = workerById.get(a.worker_profile_id);
                 const isBeingDragged = chipDrag?.assignmentId === a.id;
+                const isActive = activeChipId === a.id;
                 return (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: drag handle for HTML5 DnD; keyboard alternative is the X remove + click-to-add
+                  // biome-ignore lint/a11y/noStaticElementInteractions: HTML5 drag source; keyboard alt is the action sheet via click
+                  // biome-ignore lint/a11y/useKeyWithClickEvents: chip is also reachable via the action sheet on mobile
                   <div
                     key={a.id}
                     data-chip="1"
                     draggable
                     onDragStart={(e) => {
                       e.dataTransfer.effectAllowed = 'move';
-                      // Required for Firefox to start the drag.
                       e.dataTransfer.setData('text/plain', a.id);
                       onChipDragStart({
                         assignmentId: a.id,
@@ -661,27 +807,31 @@ function ProjectRow({
                       });
                     }}
                     onDragEnd={onChipDragEnd}
-                    title="Drag to move to another day"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectChip(a);
+                    }}
+                    title={`${w?.display_name ?? 'Worker'} — click for actions`}
                     className={cn(
-                      'flex cursor-grab items-center justify-between gap-1 rounded border px-1 py-0.5 text-[11px] active:cursor-grabbing',
+                      'group/chip relative flex cursor-grab items-center gap-1 rounded border pl-1 pr-2 py-0.5 text-[11px] active:cursor-grabbing',
                       color,
                       isBeingDragged && 'opacity-40',
+                      isActive && 'ring-2 ring-foreground ring-offset-1',
                     )}
                   >
-                    <span className="truncate">{w?.display_name ?? '?'}</span>
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
+                    <span className="flex-1 truncate">{w?.display_name ?? '?'}</span>
+                    {/* Extend handle on the right edge — mouse-only by design (drag-resize). */}
+                    {/* biome-ignore lint/a11y/noStaticElementInteractions: pure mouse drag handle, no semantic equivalent */}
+                    <span
+                      data-extend-handle="1"
+                      aria-hidden="true"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
-                        onRemove(a.id);
+                        onExtendStart(a, idx);
                       }}
-                      disabled={pending}
-                      className="opacity-0 transition hover:opacity-100 group-hover:opacity-60"
-                      aria-label="Remove assignment"
-                    >
-                      <X className="size-2.5" />
-                    </button>
+                      className="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize opacity-0 transition hover:bg-foreground/40 group-hover/chip:opacity-60"
+                    />
                   </div>
                 );
               })}
@@ -690,5 +840,171 @@ function ProjectRow({
         );
       })}
     </>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Mobile: stacked day list (replaces grid below sm:)
+// ----------------------------------------------------------------------
+
+function MobileDayList({
+  view,
+  windowStart,
+  windowEnd,
+  anchorMonth,
+  byDate,
+  projectById,
+  workerById,
+  onOpenAssign,
+  onRemove,
+}: {
+  view: View;
+  windowStart: string;
+  windowEnd: string;
+  anchorMonth: number;
+  byDate: Map<string, CalendarAssignment[]>;
+  projectById: Map<string, CalendarProject>;
+  workerById: Map<string, CalendarWorker>;
+  onOpenAssign: (date: string) => void;
+  onRemove: (assignmentId: string) => void;
+}) {
+  const days: string[] = [];
+  const start = parseIso(windowStart);
+  const end = parseIso(windowEnd);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const iso = isoDate(d);
+    // For month view, only show days in the anchor month (not the leading/trailing pad days).
+    if (view === 'month' && parseIso(iso).getMonth() !== anchorMonth) continue;
+    days.push(iso);
+  }
+
+  return (
+    <div className="space-y-2">
+      {days.map((iso) => {
+        const date = parseIso(iso);
+        const items = byDate.get(iso) ?? [];
+        return (
+          <div
+            key={iso}
+            className={cn(
+              'rounded-lg border bg-background',
+              isToday(iso) && 'border-primary/40 bg-primary/5',
+              isWeekend(iso) && 'bg-muted/20',
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => onOpenAssign(iso)}
+              className="flex w-full items-center justify-between px-3 py-2 text-left"
+            >
+              <div className="text-sm font-medium">
+                {date.toLocaleDateString('en-CA', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                })}
+                {isToday(iso) && (
+                  <span className="ml-2 rounded-full bg-primary px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-primary-foreground">
+                    Today
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {items.length === 0 ? 'Tap to schedule' : `${items.length} booked · tap to add`}
+              </span>
+            </button>
+            {items.length > 0 ? (
+              <div className="space-y-1 border-t px-3 py-2">
+                {items.map((a) => {
+                  const proj = projectById.get(a.project_id);
+                  const w = workerById.get(a.worker_profile_id);
+                  return (
+                    <div
+                      key={a.id}
+                      className={cn(
+                        'flex items-center gap-2 rounded border px-2 py-1.5 text-xs',
+                        projectColor(a.project_id),
+                      )}
+                    >
+                      <div className="flex-1 truncate">
+                        <div className="font-medium">{w?.display_name ?? 'Worker'}</div>
+                        <div className="truncate text-[11px] opacity-75">
+                          {proj?.name ?? 'Project'}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onRemove(a.id)}
+                        className="rounded p-1 hover:bg-foreground/10"
+                        aria-label="Remove assignment"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Chip action sheet (popover-ish detail panel for a focused chip)
+// ----------------------------------------------------------------------
+
+function ChipActionSheet({
+  projectName,
+  projectId,
+  workerName,
+  date,
+  onClose,
+  onRemove,
+  pending,
+}: {
+  projectName: string;
+  projectId: string;
+  workerName: string;
+  date: string;
+  onClose: () => void;
+  onRemove: () => void;
+  pending: boolean;
+}) {
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{workerName}</DialogTitle>
+          <DialogDescription>
+            {projectName} ·{' '}
+            {parseIso(date).toLocaleDateString('en-CA', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+          <Link href={`/projects/${projectId}`} className="w-full sm:w-auto">
+            <Button type="button" variant="outline" className="w-full">
+              Open project
+            </Button>
+          </Link>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={pending}
+            onClick={onRemove}
+            className="w-full sm:w-auto"
+          >
+            Remove
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
