@@ -84,7 +84,19 @@ Colored pill, one component per status enum. When you add a new status value to 
 
 ---
 
-## 8. Tabs / sub-navigation
+## 8. Calendar / schedule grids
+
+Two grid surfaces today, both built on `project_assignments`. **Forked on purpose** — the per-project view is drag-heavy, the owner view is click-to-modal. Once the owner view stabilizes, evaluate extracting a shared core (date math, weekend handling, project-color hash).
+
+- `src/components/features/projects/crew-schedule-grid.tsx` — per-project drag-to-schedule grid (rows = workers).
+- `src/components/features/calendar/owner-calendar.tsx` — tenant-wide month + 14-day views (rows = projects in 14-day; calendar cells in month).
+- `src/components/features/jobs/job-calendar.tsx` — month grid for jobs only.
+
+Shared concerns to keep aligned: weekend dimming, `isToday` highlight, project color hash, ISO date helpers (`parseIso`/`isoDate`).
+
+---
+
+## 9. Tabs / sub-navigation
 
 URL-param driven (`?tab=estimate`); `router.replace()` to avoid history pollution; mobile uses a native `<select>` rather than horizontal scroll.
 

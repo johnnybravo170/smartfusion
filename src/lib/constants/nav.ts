@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+  CalendarDays,
   ClipboardList,
   FileText,
   FolderKanban,
@@ -36,15 +37,21 @@ const PROJECTS_ITEM: NavItem = {
   icon: FolderKanban,
 };
 
+const CALENDAR_ITEM: NavItem = {
+  href: '/calendar',
+  label: 'Calendar',
+  icon: CalendarDays,
+};
+
 /**
  * Returns the navigation items for the given vertical.
- * Renovation tenants get a "Projects" item between Customers and Quotes.
+ * Renovation tenants get "Projects" + "Calendar" between Customers and Quotes.
  */
 export function getNavItems(vertical: string): NavItem[] {
   if (vertical === 'renovation' || vertical === 'tile') {
-    // Insert Projects after Customers (index 1 = Customers, so insert at index 2)
+    // Insert Projects + Calendar after Customers (index 1 = Customers).
     const items = [...CORE_ITEMS];
-    items.splice(2, 0, PROJECTS_ITEM);
+    items.splice(2, 0, PROJECTS_ITEM, CALENDAR_ITEM);
     return items;
   }
   return CORE_ITEMS;

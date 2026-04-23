@@ -144,6 +144,7 @@ export async function bulkAssignDatesAction(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/projects/${v.project_id}`);
+  revalidatePath('/calendar');
   return { ok: true };
 }
 
@@ -261,6 +262,7 @@ export async function deleteAssignmentsByDatesAction(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/projects/${v.project_id}`);
+  revalidatePath('/calendar');
   return { ok: true };
 }
 
@@ -292,5 +294,6 @@ export async function removeAssignmentAction(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/projects/${existing.project_id}`);
+  revalidatePath('/calendar');
   return { ok: true };
 }
