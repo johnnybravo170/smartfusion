@@ -375,17 +375,50 @@ export async function cloneProjectAction(input: {
   if (input.clone_cost_buckets) {
     const { data: srcBuckets } = await supabase
       .from('project_cost_buckets')
-      .select('name, section, description, estimate_cents, display_order, is_visible_in_report')
+      .select('id, name, section, description, estimate_cents, display_order, is_visible_in_report')
       .eq('project_id', input.source_id);
 
+    // Pre-generate new bucket UUIDs so we can remap cost-line bucket_ids
+    // without a second round-trip to read back inserted rows.
+    const bucketIdMap = new Map<string, string>();
     if (srcBuckets && srcBuckets.length > 0) {
-      const rows = srcBuckets.map((b) => ({
-        ...b,
-        tenant_id: tenant.id,
-        project_id: created.id,
-      }));
+      const rows = srcBuckets.map((b) => {
+        const newId = crypto.randomUUID();
+        bucketIdMap.set(b.id, newId);
+        return {
+          id: newId,
+          tenant_id: tenant.id,
+          project_id: created.id,
+          name: b.name,
+          section: b.section,
+          description: b.description,
+          estimate_cents: b.estimate_cents,
+          display_order: b.display_order,
+          is_visible_in_report: b.is_visible_in_report,
+        };
+      });
       const { error: bErr } = await supabase.from('project_cost_buckets').insert(rows);
       if (bErr) console.error('Failed to clone cost buckets:', bErr.message);
+    }
+
+    // Estimate line items live on project_cost_lines, keyed by bucket_id.
+    // Without these, cloned projects show empty buckets with no prices.
+    const { data: srcLines } = await supabase
+      .from('project_cost_lines')
+      .select(
+        'bucket_id, catalog_item_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, markup_pct, line_cost_cents, line_price_cents, sort_order, notes, photo_storage_paths',
+      )
+      .eq('project_id', input.source_id);
+
+    if (srcLines && srcLines.length > 0) {
+      const lineRows = srcLines.map((l) => ({
+        ...l,
+        tenant_id: tenant.id,
+        project_id: created.id,
+        bucket_id: l.bucket_id ? (bucketIdMap.get(l.bucket_id) ?? null) : null,
+      }));
+      const { error: lErr } = await supabase.from('project_cost_lines').insert(lineRows);
+      if (lErr) console.error('Failed to clone cost lines:', lErr.message);
     }
   }
 

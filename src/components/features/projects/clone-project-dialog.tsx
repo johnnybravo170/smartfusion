@@ -150,9 +150,10 @@ export function CloneProjectDialog({
                 disabled={pending}
               />
               <div className="flex-1">
-                <p className="text-sm font-medium">Cost buckets</p>
+                <p className="text-sm font-medium">Estimate (buckets + line items)</p>
                 <p className="text-xs text-muted-foreground">
-                  Bucket names, sections, display order, and estimate amounts. Actuals reset.
+                  Bucket structure plus every line item with its quantity, cost, and price. Actuals
+                  (time, expenses, bills) are not copied.
                 </p>
               </div>
             </label>
