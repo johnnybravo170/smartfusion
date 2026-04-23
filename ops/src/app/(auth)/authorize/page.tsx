@@ -43,25 +43,67 @@ export default async function AuthorizePage({
     errors.push(`redirect_uri must start with ${ALLOWED_REDIRECT_PREFIX}`);
   }
 
-  // Look up the client in ops.oauth_clients. It must have been registered
-  // via /register before this authorize step.
+  // Resolve the client. Two supported modes:
+  //   1. DCR — client was registered at /register, lookup in ops.oauth_clients
+  //   2. CIMD — client_id is an https:// URL pointing to a metadata JSON doc
+  //      (RFC-ish — what Anthropic actually uses). Fetch it, cache in
+  //      ops.oauth_clients, use its redirect_uris to validate.
   let clientName: string | null = null;
   if (client_id && errors.length === 0) {
     const service = createServiceClient();
-    const { data: clientRow } = await service
-      .schema('ops')
-      .from('oauth_clients')
-      .select('client_id, client_name, redirect_uris')
-      .eq('client_id', client_id)
-      .maybeSingle();
-    if (!clientRow) {
-      errors.push(`invalid_client: ${client_id} not registered`);
-    } else {
-      const registered = (clientRow.redirect_uris as string[]) ?? [];
-      if (!registered.includes(redirect_uri)) {
-        errors.push('redirect_uri does not match a registered redirect_uri for this client');
+    let registeredRedirects: string[] = [];
+
+    if (client_id.startsWith('https://')) {
+      // CIMD path
+      try {
+        const res = await fetch(client_id, { headers: { accept: 'application/json' } });
+        if (!res.ok) {
+          errors.push(`Could not fetch client metadata at ${client_id} (status ${res.status})`);
+        } else {
+          const meta = (await res.json()) as {
+            client_name?: string;
+            redirect_uris?: string[];
+          };
+          registeredRedirects = meta.redirect_uris ?? [];
+          clientName = meta.client_name ?? null;
+          // Cache in ops.oauth_clients so /token can look it up by client_id.
+          await service
+            .schema('ops')
+            .from('oauth_clients')
+            .upsert(
+              {
+                client_id,
+                client_name: clientName,
+                redirect_uris: registeredRedirects,
+                grant_types: ['authorization_code', 'refresh_token'],
+                token_endpoint_auth_method: 'none',
+              },
+              { onConflict: 'client_id' },
+            );
+        }
+      } catch (e) {
+        errors.push(
+          `Failed to fetch client metadata: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
-      clientName = (clientRow.client_name as string | null) ?? null;
+    } else {
+      // DCR path
+      const { data: clientRow } = await service
+        .schema('ops')
+        .from('oauth_clients')
+        .select('client_id, client_name, redirect_uris')
+        .eq('client_id', client_id)
+        .maybeSingle();
+      if (!clientRow) {
+        errors.push(`invalid_client: ${client_id} not registered`);
+      } else {
+        registeredRedirects = (clientRow.redirect_uris as string[]) ?? [];
+        clientName = (clientRow.client_name as string | null) ?? null;
+      }
+    }
+
+    if (errors.length === 0 && !registeredRedirects.includes(redirect_uri)) {
+      errors.push('redirect_uri does not match a registered redirect_uri for this client');
     }
   }
 
