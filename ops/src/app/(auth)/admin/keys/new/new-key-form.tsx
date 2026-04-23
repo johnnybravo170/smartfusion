@@ -18,6 +18,16 @@ const ALL_SCOPES = [
   'write:decisions',
   'read:knowledge',
   'write:knowledge',
+  'read:competitors',
+  'write:competitors',
+  'read:incidents',
+  'write:incidents',
+  'read:social',
+  'write:social',
+  'read:docs',
+  'write:docs',
+  'read:review_queue',
+  'write:escalate',
   'admin:maintenance',
 ];
 
