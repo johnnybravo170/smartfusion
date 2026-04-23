@@ -87,7 +87,8 @@ export default async function SettingsProfilePage() {
               <div>
                 <CardTitle>Your info</CardTitle>
                 <CardDescription>
-                  How you're introduced on customer-facing emails and PDFs.
+                  Your name and title. Shown on customer-facing emails and PDFs, and used on in-app
+                  activity (expenses, time, notes) so your team knows who logged what.
                 </CardDescription>
               </div>
             </div>
