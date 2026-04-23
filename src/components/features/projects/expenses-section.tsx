@@ -357,7 +357,7 @@ export function ExpensesSection({
             <thead>
               <tr className="border-b bg-muted/50">
                 <th className="px-3 py-2 text-left font-medium">Date</th>
-                <th className="px-3 py-2 text-left font-medium">Worker</th>
+                <th className="px-3 py-2 text-left font-medium">Logged by</th>
                 <th className="px-3 py-2 text-right font-medium">Amount</th>
                 <th className="px-3 py-2 text-left font-medium">Vendor</th>
                 <th className="px-3 py-2 text-left font-medium">Description</th>
