@@ -36,6 +36,33 @@ type AllocationDraft = {
   notes: string;
 };
 
+export type SubQuoteInitialValues = {
+  vendor_name?: string;
+  vendor_email?: string;
+  vendor_phone?: string;
+  total_cents?: number | null;
+  scope_description?: string;
+  quote_date?: string;
+  valid_until?: string;
+  allocations?: Array<{
+    bucket_id: string;
+    allocated_cents: number;
+    notes?: string;
+  }>;
+  /**
+   * The original file that was parsed. Passed straight through to
+   * createSubQuoteAction as the attachment so we don't re-upload/
+   * re-parse it. Omitted for a blank "New sub quote" form.
+   */
+  attachment?: File;
+  /**
+   * Free-form notes to pre-populate — used to surface AI-unmatched
+   * bucket suggestions ("AI suggested: $X for 'Kitchen tile' but no
+   * matching bucket") so the operator can act on them.
+   */
+  notes?: string;
+};
+
 function newRow(): AllocationDraft {
   return {
     key: crypto.randomUUID(),
@@ -54,26 +81,40 @@ function toCents(raw: string): number {
 export function SubQuoteForm({
   projectId,
   buckets: initialBuckets,
+  initialValues,
   onDone,
 }: {
   projectId: string;
   buckets: Bucket[];
+  /** AI-parsed suggestions, pre-filled on mount. Undefined = blank form. */
+  initialValues?: SubQuoteInitialValues;
   onDone: () => void;
 }) {
   const [buckets, setBuckets] = useState<Bucket[]>(initialBuckets);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [vendor, setVendor] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [totalRaw, setTotalRaw] = useState('');
-  const [scope, setScope] = useState('');
-  const [notes, setNotes] = useState('');
-  const [quoteDate, setQuoteDate] = useState('');
-  const [validUntil, setValidUntil] = useState('');
-  const [attachment, setAttachment] = useState<File | null>(null);
+  const [vendor, setVendor] = useState(initialValues?.vendor_name ?? '');
+  const [email, setEmail] = useState(initialValues?.vendor_email ?? '');
+  const [phone, setPhone] = useState(initialValues?.vendor_phone ?? '');
+  const [totalRaw, setTotalRaw] = useState(() =>
+    initialValues?.total_cents != null ? (initialValues.total_cents / 100).toFixed(2) : '',
+  );
+  const [scope, setScope] = useState(initialValues?.scope_description ?? '');
+  const [notes, setNotes] = useState(initialValues?.notes ?? '');
+  const [quoteDate, setQuoteDate] = useState(initialValues?.quote_date ?? '');
+  const [validUntil, setValidUntil] = useState(initialValues?.valid_until ?? '');
+  const [attachment, setAttachment] = useState<File | null>(initialValues?.attachment ?? null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [rows, setRows] = useState<AllocationDraft[]>([newRow()]);
+  const [rows, setRows] = useState<AllocationDraft[]>(() => {
+    const prefilled = initialValues?.allocations ?? [];
+    if (prefilled.length === 0) return [newRow()];
+    return prefilled.map((a) => ({
+      key: crypto.randomUUID(),
+      bucket_id: a.bucket_id,
+      amount_raw: (a.allocated_cents / 100).toFixed(2),
+      notes: a.notes ?? '',
+    }));
+  });
   const [newBucketOpen, setNewBucketOpen] = useState(false);
   const [pendingRowKey, setPendingRowKey] = useState<string | null>(null);
 

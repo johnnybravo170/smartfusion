@@ -153,9 +153,10 @@ Operator confirms or edits, same UI as Phase 1. The AI suggestion is never silen
 1. Operator forwards a sub's email (with quote attachment) to `henry@heyhenry.io`.
 2. Postmark/Resend inbound webhook delivers the parsed email to HeyHenry. SPF + DKIM alignment enforced — unaligned mail is rejected (standard anti-spoofing).
 3. Match the from-address against:
-   - `auth.users.email` (primary operator email, already verified at signup)
+   - `auth.users.email` **of a tenant_member with role='owner'** (primary operator email, already verified at signup)
    - `tenant_members.additional_forwarding_emails` (future: verified aliases, e.g. personal iPhone mail)
-4. If the operator is on multiple tenants: look at subject line for tenant-name hints, else show a disambiguation card.
+   - Worker accounts are NOT valid forwarding sources — only the GC owner forwards quotes.
+4. Under the one-owner-per-tenant rule, a verified owner email maps to exactly one tenant, so no tenant disambiguation needed. (Platform admins who happen to be owners on multiple test tenants are the exception; they'll get a disambiguation UI if they ever forward.)
 5. Pick the project: AI scans subject + body + attachment for customer/project name hints, matches against this tenant's projects. If multiple candidates or low confidence: land the item in a **"Needs assignment"** triage queue on the dashboard.
 6. Once routed to a project, pipeline is identical to Phase 2 — same parse prompt, same bucket-allocation confirmation UI.
 

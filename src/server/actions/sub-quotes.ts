@@ -15,12 +15,18 @@
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import {
+  SUB_QUOTE_PARSE_JSON_SCHEMA,
+  SUB_QUOTE_PARSE_SYSTEM_PROMPT,
+  type SubQuoteParseResult,
+} from '@/lib/ai/sub-quote-parse-prompt';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 const ATTACHMENTS_BUCKET = 'sub-quotes';
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB
+const PARSE_MODEL = 'gpt-4o-mini';
 
 export type SubQuoteResult =
   | { ok: true; id: string }
@@ -429,5 +435,227 @@ export async function createProjectBucketAction(input: {
       name: data.name as string,
       section: data.section as 'interior' | 'exterior' | 'general',
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// AI parsing — Phase 2
+// ---------------------------------------------------------------------------
+
+export type ParseSubQuoteResult =
+  | {
+      ok: true;
+      docType: 'sub_quote' | 'not_sub_quote';
+      confidence: 'high' | 'medium' | 'low';
+      reasonIfNot: string | null;
+      extracted: SubQuoteParseResult['extracted'];
+      /**
+       * Allocations already mapped to real bucket IDs. AI returns names; we
+       * resolve to IDs server-side. Bucket names the AI suggests that don't
+       * match a real bucket are dropped (operator allocates manually).
+       */
+      allocations: Array<{
+        bucketId: string;
+        bucketName: string;
+        allocatedCents: number;
+        confidence: 'high' | 'medium' | 'low';
+        reasoning: string;
+      }>;
+      unmatchedAllocations: Array<{
+        proposedBucketName: string;
+        allocatedCents: number;
+        reasoning: string;
+      }>;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Parse an uploaded sub-quote document and return extracted fields +
+ * allocation suggestions. Does not persist anything — the operator
+ * reviews, edits, then submits via createSubQuoteAction (which will
+ * re-upload the same File as the attachment).
+ */
+export async function parseSubQuoteFromFileAction(
+  formData: FormData,
+): Promise<ParseSubQuoteResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return { ok: false, error: 'Server missing OPENAI_API_KEY.' };
+
+  const projectId = String(formData.get('project_id') ?? '');
+  if (!projectId) return { ok: false, error: 'Missing projectId.' };
+
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: 'No file provided.' };
+  }
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    return { ok: false, error: 'File is larger than 10MB.' };
+  }
+  const isImage = file.type.startsWith('image/');
+  const isPdf = file.type === 'application/pdf';
+  if (!isImage && !isPdf) {
+    return { ok: false, error: `Unsupported file type: ${file.type}.` };
+  }
+
+  const supabase = await createClient();
+
+  // Load project + existing buckets so the AI can map scope → buckets.
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id, name, description, customers:customer_id (name)')
+    .eq('id', projectId)
+    .maybeSingle();
+  if (!project) return { ok: false, error: 'Project not found.' };
+
+  const { data: bucketRows } = await supabase
+    .from('project_cost_buckets')
+    .select('id, name, section')
+    .eq('project_id', projectId)
+    .order('display_order');
+
+  const bucketsById = new Map<string, { id: string; name: string; section: string | null }>();
+  const bucketsByName = new Map<string, { id: string; name: string; section: string | null }>();
+  for (const b of bucketRows ?? []) {
+    const entry = {
+      id: b.id as string,
+      name: b.name as string,
+      section: (b.section as string | null) ?? null,
+    };
+    bucketsById.set(entry.id, entry);
+    // Case-preserving key; the prompt tells the model to match exactly.
+    bucketsByName.set(entry.name, entry);
+  }
+
+  if (bucketsByName.size === 0) {
+    return {
+      ok: false,
+      error:
+        'This project has no cost buckets yet. Create at least one bucket before parsing a quote.',
+    };
+  }
+
+  // Build the intro: project + customer + bucket roster.
+  const customerName = Array.isArray(project.customers)
+    ? (project.customers[0] as { name?: string } | undefined)?.name
+    : (project.customers as { name?: string } | null)?.name;
+  const bucketRoster = Array.from(bucketsByName.values())
+    .map((b) => `  - ${b.section ? `[${b.section}] ` : ''}${b.name}`)
+    .join('\n');
+
+  const intro = [
+    'PROJECT CONTEXT',
+    `Project: ${project.name}`,
+    `Customer: ${customerName ?? '(unknown)'}`,
+    `Description: ${project.description ?? '(none)'}`,
+    `Existing cost buckets (you may ONLY reference these exact names in allocations):`,
+    bucketRoster,
+    '',
+    'The document that follows is what the operator uploaded. Parse it.',
+  ].join('\n');
+
+  const buf = Buffer.from(await file.arrayBuffer());
+  const b64 = buf.toString('base64');
+  const userContent: Array<Record<string, unknown>> = [{ type: 'text', text: intro }];
+  if (isPdf) {
+    userContent.push({
+      type: 'file',
+      file: {
+        filename: file.name || 'quote.pdf',
+        file_data: `data:application/pdf;base64,${b64}`,
+      },
+    });
+  } else {
+    userContent.push({
+      type: 'image_url',
+      image_url: { url: `data:${file.type};base64,${b64}` },
+    });
+  }
+
+  const body = {
+    model: PARSE_MODEL,
+    messages: [
+      { role: 'system', content: SUB_QUOTE_PARSE_SYSTEM_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+    response_format: { type: 'json_schema', json_schema: SUB_QUOTE_PARSE_JSON_SCHEMA },
+  };
+
+  let res: Response;
+  try {
+    res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return { ok: false, error: `Network error: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    return { ok: false, error: `OpenAI ${res.status}: ${txt || res.statusText}` };
+  }
+
+  const payload = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const content = payload.choices?.[0]?.message?.content;
+  if (!content) return { ok: false, error: 'OpenAI returned no content.' };
+
+  let parsed: SubQuoteParseResult;
+  try {
+    parsed = JSON.parse(content) as SubQuoteParseResult;
+  } catch {
+    return { ok: false, error: 'OpenAI returned non-JSON.' };
+  }
+
+  // Map AI allocation bucket names back to real bucket IDs. Anything the
+  // AI invented (or mis-cased) goes into unmatchedAllocations so the UI
+  // can surface it as context without silently persisting junk.
+  type MatchedAllocation = {
+    bucketId: string;
+    bucketName: string;
+    allocatedCents: number;
+    confidence: 'high' | 'medium' | 'low';
+    reasoning: string;
+  };
+  type UnmatchedAllocation = {
+    proposedBucketName: string;
+    allocatedCents: number;
+    reasoning: string;
+  };
+  const matched: MatchedAllocation[] = [];
+  const unmatched: UnmatchedAllocation[] = [];
+
+  for (const a of parsed.allocations) {
+    const hit = bucketsByName.get(a.bucket_name);
+    if (hit) {
+      matched.push({
+        bucketId: hit.id,
+        bucketName: hit.name,
+        allocatedCents: a.allocated_cents,
+        confidence: a.confidence,
+        reasoning: a.reasoning,
+      });
+    } else {
+      unmatched.push({
+        proposedBucketName: a.bucket_name,
+        allocatedCents: a.allocated_cents,
+        reasoning: a.reasoning,
+      });
+    }
+  }
+
+  return {
+    ok: true,
+    docType: parsed.doc_type,
+    confidence: parsed.confidence,
+    reasonIfNot: parsed.reason_if_not,
+    extracted: parsed.extracted,
+    allocations: matched,
+    unmatchedAllocations: unmatched,
   };
 }

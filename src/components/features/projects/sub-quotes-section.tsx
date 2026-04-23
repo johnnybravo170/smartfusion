@@ -24,6 +24,7 @@ import {
   rejectSubQuoteAction,
 } from '@/server/actions/sub-quotes';
 import { SubQuoteForm } from './sub-quote-form';
+import { SubQuoteUploadButton } from './sub-quote-upload-button';
 
 type Bucket = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
 
@@ -72,14 +73,17 @@ export function SubQuotesSection({
           </p>
         </div>
         {!showForm && (
-          <Button
-            size="sm"
-            onClick={() => setShowForm(true)}
-            disabled={buckets.length === 0}
-            title={buckets.length === 0 ? 'Create at least one cost bucket first.' : undefined}
-          >
-            + New sub quote
-          </Button>
+          <div className="flex gap-2">
+            <SubQuoteUploadButton projectId={projectId} buckets={buckets} />
+            <Button
+              size="sm"
+              onClick={() => setShowForm(true)}
+              disabled={buckets.length === 0}
+              title={buckets.length === 0 ? 'Create at least one cost bucket first.' : undefined}
+            >
+              + New sub quote
+            </Button>
+          </div>
         )}
       </div>
 
