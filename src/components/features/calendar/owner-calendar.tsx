@@ -21,7 +21,7 @@
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -36,6 +36,7 @@ import {
 import type {
   CalendarAssignment,
   CalendarProject,
+  CalendarUnavailability,
   CalendarWorker,
 } from '@/lib/db/queries/owner-calendar';
 import { cn } from '@/lib/utils';
@@ -114,6 +115,7 @@ export function OwnerCalendar({
   projects,
   workers,
   assignments,
+  unavailability,
 }: {
   view: View;
   anchorDate: string;
@@ -122,6 +124,7 @@ export function OwnerCalendar({
   projects: CalendarProject[];
   workers: CalendarWorker[];
   assignments: CalendarAssignment[];
+  unavailability: CalendarUnavailability[];
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -146,13 +149,24 @@ export function OwnerCalendar({
 
   // For two-week view: only show projects that are active OR have any
   // assignment in the window. Avoids rendering 50 dormant projects.
+  // Sort by status (in_progress > planning > complete > cancelled), then name.
   const visibleProjects = useMemo(() => {
     const withAssignments = new Set(assignments.map((a) => a.project_id));
+    const statusRank: Record<string, number> = {
+      in_progress: 0,
+      planning: 1,
+      complete: 2,
+      cancelled: 3,
+    };
     return projects
       .filter(
         (p) => p.status !== 'cancelled' && (p.status !== 'complete' || withAssignments.has(p.id)),
       )
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort(
+        (a, b) =>
+          (statusRank[a.status] ?? 99) - (statusRank[b.status] ?? 99) ||
+          a.name.localeCompare(b.name),
+      );
   }, [projects, assignments]);
 
   const anchor = parseIso(anchorDate);
@@ -396,6 +410,8 @@ export function OwnerCalendar({
           }}
           projects={projects.filter((p) => p.status !== 'cancelled' && p.status !== 'complete')}
           workers={workers}
+          assignments={assignments}
+          unavailability={unavailability}
           initialProjectId={dialog.projectId}
           initialStartDate={dialog.startDate}
           initialEndDate={dialog.endDate}
@@ -522,6 +538,87 @@ type ChipDrag = {
   fromDate: string;
 };
 
+type Bar = {
+  workerProfileId: string;
+  workerName: string;
+  startIdx: number;
+  length: number;
+  assignmentIds: string[];
+  startDate: string;
+  endDate: string;
+  lane: number;
+};
+
+/** Group consecutive same-worker chips into spanning bars; assign vertical lanes. */
+function computeBars(
+  projectId: string,
+  days: string[],
+  byDate: Map<string, CalendarAssignment[]>,
+  workerById: Map<string, CalendarWorker>,
+): Bar[] {
+  // Collect all assignments for this project within the window, grouped by worker.
+  const byWorker = new Map<string, { idx: number; iso: string; assignmentId: string }[]>();
+  days.forEach((iso, idx) => {
+    for (const a of byDate.get(iso) ?? []) {
+      if (a.project_id !== projectId) continue;
+      const arr = byWorker.get(a.worker_profile_id) ?? [];
+      arr.push({ idx, iso, assignmentId: a.id });
+      byWorker.set(a.worker_profile_id, arr);
+    }
+  });
+
+  const raw: Omit<Bar, 'lane'>[] = [];
+  for (const [workerProfileId, items] of byWorker) {
+    items.sort((a, b) => a.idx - b.idx);
+    let runStart = items[0];
+    let runIds: string[] = [items[0].assignmentId];
+    let lastIdx = items[0].idx;
+    for (let i = 1; i < items.length; i++) {
+      if (items[i].idx === lastIdx + 1) {
+        runIds.push(items[i].assignmentId);
+        lastIdx = items[i].idx;
+      } else {
+        raw.push({
+          workerProfileId,
+          workerName: workerById.get(workerProfileId)?.display_name ?? '?',
+          startIdx: runStart.idx,
+          length: lastIdx - runStart.idx + 1,
+          assignmentIds: runIds,
+          startDate: runStart.iso,
+          endDate: days[lastIdx],
+        });
+        runStart = items[i];
+        runIds = [items[i].assignmentId];
+        lastIdx = items[i].idx;
+      }
+    }
+    raw.push({
+      workerProfileId,
+      workerName: workerById.get(workerProfileId)?.display_name ?? '?',
+      startIdx: runStart.idx,
+      length: lastIdx - runStart.idx + 1,
+      assignmentIds: runIds,
+      startDate: runStart.iso,
+      endDate: days[lastIdx],
+    });
+  }
+
+  // Greedy lane assignment so overlapping bars stack vertically.
+  raw.sort((a, b) => a.startIdx - b.startIdx);
+  const laneEnds: number[] = []; // for each lane, the rightmost endIdx so far
+  return raw.map((b) => {
+    const endIdx = b.startIdx + b.length - 1;
+    let lane = laneEnds.findIndex((e) => e < b.startIdx);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(endIdx);
+    } else {
+      laneEnds[lane] = endIdx;
+    }
+    return { ...b, lane };
+  });
+}
+
 function TwoWeekGrid({
   windowStart,
   byDate,
@@ -602,32 +699,45 @@ function TwoWeekGrid({
     return () => document.removeEventListener('mouseup', handleUp);
   }, [drag, extend]);
 
+  // Auto-scroll horizontally so today is visible on first render of this view.
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-run when the visible window shifts
+  useEffect(() => {
+    if (!scrollerRef.current) return;
+    const todayIdx = days.findIndex(isToday);
+    if (todayIdx < 0) return;
+    const cellWidth = scrollerRef.current.scrollWidth / (days.length + 200 / 70);
+    scrollerRef.current.scrollLeft = Math.max(0, cellWidth * todayIdx - cellWidth * 2);
+  }, [windowStart]);
+
   return (
-    <div className="overflow-x-auto rounded-lg border bg-background">
-      <div
-        className="grid min-w-[1100px] select-none"
-        style={{ gridTemplateColumns: `200px repeat(14, minmax(70px, 1fr))` }}
-      >
+    <div ref={scrollerRef} className="overflow-x-auto rounded-lg border bg-background">
+      <div className="grid min-w-[1100px] select-none" style={{ gridTemplateColumns: `200px 1fr` }}>
         {/* Header */}
         <div className="border-b border-r bg-muted/40 px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Project
         </div>
-        {days.map((iso) => {
-          const d = parseIso(iso);
-          return (
-            <div
-              key={iso}
-              className={cn(
-                'border-b border-r px-1 py-2 text-center text-xs font-medium last:border-r-0',
-                isWeekend(iso) ? 'bg-muted/30 text-muted-foreground' : 'bg-muted/40',
-                isToday(iso) && 'bg-primary/10 text-primary',
-              )}
-            >
-              <div>{DAY_NAMES[d.getDay()]}</div>
-              <div className="text-[10px]">{d.getDate()}</div>
-            </div>
-          );
-        })}
+        <div
+          className="grid border-b bg-muted/40"
+          style={{ gridTemplateColumns: `repeat(14, minmax(70px, 1fr))` }}
+        >
+          {days.map((iso) => {
+            const d = parseIso(iso);
+            return (
+              <div
+                key={iso}
+                className={cn(
+                  'border-r px-1 py-2 text-center text-xs font-medium last:border-r-0',
+                  isWeekend(iso) ? 'bg-muted/30 text-muted-foreground' : '',
+                  isToday(iso) && 'bg-primary/10 text-primary',
+                )}
+              >
+                <div>{DAY_NAMES[d.getDay()]}</div>
+                <div className="text-[10px]">{d.getDate()}</div>
+              </div>
+            );
+          })}
+        </div>
 
         {/* Rows */}
         {projects.length === 0 ? (
@@ -635,42 +745,59 @@ function TwoWeekGrid({
             No projects in this window.
           </div>
         ) : (
-          projects.map((p) => (
-            <ProjectRow
-              key={p.id}
-              project={p}
-              days={days}
-              cellLookup={cellLookup}
-              workerById={workerById}
-              drag={drag}
-              chipDrag={chipDrag}
-              extend={extend && extend.projectId === p.id ? extend : null}
-              activeChipId={activeChipId}
-              onCellMouseDown={(idx) => setDrag({ projectId: p.id, startIdx: idx, endIdx: idx })}
-              onCellMouseEnter={(idx) => {
-                setDrag((cur) => (cur && cur.projectId === p.id ? { ...cur, endIdx: idx } : cur));
-                setExtend((cur) =>
-                  cur && cur.projectId === p.id ? { ...cur, throughIdx: idx } : cur,
-                );
-              }}
-              onChipDragStart={setChipDrag}
-              onChipDragEnd={() => setChipDrag(null)}
-              onChipDrop={(toDate) => {
-                if (chipDrag) onMove({ ...chipDrag, toProjectId: p.id, toDate });
-                setChipDrag(null);
-              }}
-              onExtendStart={(a, idx) =>
-                setExtend({
-                  assignmentId: a.id,
-                  projectId: a.project_id,
-                  workerProfileId: a.worker_profile_id,
-                  fromDate: a.scheduled_date,
-                  throughIdx: idx,
-                })
-              }
-              onSelectChip={onSelectChip}
-            />
-          ))
+          projects.map((p) => {
+            const bars = computeBars(p.id, days, byDate, workerById);
+            const lanes = bars.length === 0 ? 1 : Math.max(...bars.map((b) => b.lane)) + 1;
+            return (
+              <ProjectRow
+                key={p.id}
+                project={p}
+                days={days}
+                bars={bars}
+                lanes={lanes}
+                cellLookup={cellLookup}
+                drag={drag}
+                chipDrag={chipDrag}
+                extend={extend && extend.projectId === p.id ? extend : null}
+                activeChipId={activeChipId}
+                onCellMouseDown={(idx) => setDrag({ projectId: p.id, startIdx: idx, endIdx: idx })}
+                onCellMouseEnter={(idx) => {
+                  setDrag((cur) => (cur && cur.projectId === p.id ? { ...cur, endIdx: idx } : cur));
+                  setExtend((cur) =>
+                    cur && cur.projectId === p.id ? { ...cur, throughIdx: idx } : cur,
+                  );
+                }}
+                onChipDragStart={setChipDrag}
+                onChipDragEnd={() => setChipDrag(null)}
+                onChipDrop={(toDate) => {
+                  if (chipDrag) onMove({ ...chipDrag, toProjectId: p.id, toDate });
+                  setChipDrag(null);
+                }}
+                onExtendStart={(bar) => {
+                  // Anchor extend on the LAST day of the bar so dragging right
+                  // adds new days; the extend handler treats `fromDate` as the
+                  // existing-source-date and adds days between fromDate and
+                  // throughDate.
+                  setExtend({
+                    assignmentId: bar.assignmentIds[bar.assignmentIds.length - 1],
+                    projectId: p.id,
+                    workerProfileId: bar.workerProfileId,
+                    fromDate: bar.endDate,
+                    throughIdx: bar.startIdx + bar.length - 1,
+                  });
+                }}
+                onSelectBar={(bar) =>
+                  onSelectChip({
+                    // Use leftmost assignment as the "anchor" for the action sheet.
+                    id: bar.assignmentIds[0],
+                    project_id: p.id,
+                    worker_profile_id: bar.workerProfileId,
+                    scheduled_date: bar.startDate,
+                  })
+                }
+              />
+            );
+          })
         )}
       </div>
       <p className="border-t bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground">
@@ -692,8 +819,9 @@ type ExtendState = {
 function ProjectRow({
   project,
   days,
+  bars,
+  lanes,
   cellLookup,
-  workerById,
   drag,
   chipDrag,
   extend,
@@ -704,12 +832,13 @@ function ProjectRow({
   onChipDragEnd,
   onChipDrop,
   onExtendStart,
-  onSelectChip,
+  onSelectBar,
 }: {
   project: CalendarProject;
   days: string[];
+  bars: Bar[];
+  lanes: number;
   cellLookup: Map<string, CalendarAssignment[]>;
-  workerById: Map<string, CalendarWorker>;
   drag: DragState | null;
   chipDrag: ChipDrag | null;
   extend: ExtendState | null;
@@ -719,15 +848,13 @@ function ProjectRow({
   onChipDragStart: (drag: ChipDrag) => void;
   onChipDragEnd: () => void;
   onChipDrop: (toDate: string) => void;
-  onExtendStart: (assignment: CalendarAssignment, idx: number) => void;
-  onSelectChip: (assignment: CalendarAssignment) => void;
+  onExtendStart: (bar: Bar) => void;
+  onSelectBar: (bar: Bar) => void;
 }) {
   const color = projectColor(project.id);
   const dragLo = drag && drag.projectId === project.id ? Math.min(drag.startIdx, drag.endIdx) : -1;
   const dragHi = drag && drag.projectId === project.id ? Math.max(drag.startIdx, drag.endIdx) : -1;
 
-  // Compute the extend "preview" highlight range: from the source date to the
-  // currently-hovered idx in this row.
   const extendLo =
     extend && days.indexOf(extend.fromDate) >= 0
       ? Math.min(days.indexOf(extend.fromDate), extend.throughIdx)
@@ -737,108 +864,147 @@ function ProjectRow({
       ? Math.max(days.indexOf(extend.fromDate), extend.throughIdx)
       : -1;
 
+  // Each lane is 22px tall + 4px gap; minimum row height accommodates lanes plus padding.
+  const rowMinHeight = Math.max(60, lanes * 26 + 14);
+
   return (
     <>
-      <div className="flex flex-col justify-center border-b border-r px-3 py-2">
+      {/* Project label (col 1 of the outer 200px+1fr grid) */}
+      <button
+        type="button"
+        onClick={() => onCellMouseDown(0)}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          onCellMouseDown(0);
+          requestAnimationFrame(() =>
+            document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })),
+          );
+        }}
+        style={{ minHeight: `${rowMinHeight}px` }}
+        className="flex flex-col justify-center border-b border-r px-3 py-2 text-left transition hover:bg-muted/40"
+        title={`Schedule on ${project.name}`}
+      >
         <div className="truncate text-sm font-medium">{project.name}</div>
         {project.customer_name ? (
           <div className="truncate text-xs text-muted-foreground">{project.customer_name}</div>
         ) : null}
-      </div>
-      {days.map((iso, idx) => {
-        const items = cellLookup.get(`${project.id}|${iso}`) ?? [];
-        const inDrag = idx >= dragLo && idx <= dragHi;
-        const inExtend = extend ? idx >= extendLo && idx <= extendHi : false;
-        return (
-          // biome-ignore lint/a11y/noStaticElementInteractions: drag-select target wraps interactive children
-          <div
-            key={iso}
-            onMouseDown={(e) => {
-              const target = e.target as HTMLElement;
-              if (target.closest('button')) return;
-              if (target.closest('[data-chip="1"]')) return;
-              if (target.closest('[data-extend-handle="1"]')) return;
-              e.preventDefault();
-              onCellMouseDown(idx);
-            }}
-            onMouseEnter={() => onCellMouseEnter(idx)}
-            onDragOver={(e) => {
-              if (chipDrag) {
+      </button>
+
+      {/* Right side: own 14-col grid where cells span the full height and bars sit in lanes */}
+      <div
+        className="grid border-b"
+        style={{
+          gridTemplateColumns: `repeat(14, minmax(70px, 1fr))`,
+          minHeight: `${rowMinHeight}px`,
+        }}
+      >
+        {/* Drop-target cells (each in its column, spanning all sub-rows) */}
+        {days.map((iso, idx) => {
+          const inDrag = idx >= dragLo && idx <= dragHi;
+          const inExtend = extend ? idx >= extendLo && idx <= extendHi : false;
+          return (
+            // biome-ignore lint/a11y/noStaticElementInteractions: drop target wraps interactive children
+            <div
+              key={iso}
+              style={{ gridColumn: idx + 1, gridRow: '1 / -1' }}
+              onMouseDown={(e) => {
+                const target = e.target as HTMLElement;
+                if (target.closest('button')) return;
+                if (target.closest('[data-chip="1"]')) return;
+                if (target.closest('[data-extend-handle="1"]')) return;
                 e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-              }
-            }}
-            onDrop={(e) => {
-              if (!chipDrag) return;
-              e.preventDefault();
-              onChipDrop(iso);
-            }}
-            className={cn(
-              'group relative min-h-[60px] cursor-pointer border-b border-r p-1 text-left transition hover:bg-muted/40 last:border-r-0',
-              isWeekend(iso) && 'bg-muted/10',
-              isToday(iso) && 'ring-1 ring-inset ring-primary/40',
-              inDrag && 'bg-primary/15 ring-1 ring-inset ring-primary/60',
-              inExtend && 'bg-emerald-100/50',
-              chipDrag &&
-                !(chipDrag.fromProjectId === project.id && chipDrag.fromDate === iso) &&
-                'bg-primary/5',
-            )}
-          >
-            <div className="space-y-0.5">
-              {items.map((a) => {
-                const w = workerById.get(a.worker_profile_id);
-                const isBeingDragged = chipDrag?.assignmentId === a.id;
-                const isActive = activeChipId === a.id;
-                return (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: HTML5 drag source; keyboard alt is the action sheet via click
-                  // biome-ignore lint/a11y/useKeyWithClickEvents: chip is also reachable via the action sheet on mobile
-                  <div
-                    key={a.id}
-                    data-chip="1"
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.effectAllowed = 'move';
-                      e.dataTransfer.setData('text/plain', a.id);
-                      onChipDragStart({
-                        assignmentId: a.id,
-                        fromProjectId: a.project_id,
-                        workerProfileId: a.worker_profile_id,
-                        fromDate: a.scheduled_date,
-                      });
-                    }}
-                    onDragEnd={onChipDragEnd}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelectChip(a);
-                    }}
-                    title={`${w?.display_name ?? 'Worker'} — click for actions`}
-                    className={cn(
-                      'group/chip relative flex cursor-grab items-center gap-1 rounded border pl-1 pr-2 py-0.5 text-[11px] active:cursor-grabbing',
-                      color,
-                      isBeingDragged && 'opacity-40',
-                      isActive && 'ring-2 ring-foreground ring-offset-1',
-                    )}
-                  >
-                    <span className="flex-1 truncate">{w?.display_name ?? '?'}</span>
-                    {/* Extend handle on the right edge — mouse-only by design (drag-resize). */}
-                    {/* biome-ignore lint/a11y/noStaticElementInteractions: pure mouse drag handle, no semantic equivalent */}
-                    <span
-                      data-extend-handle="1"
-                      aria-hidden="true"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onExtendStart(a, idx);
-                      }}
-                      className="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize opacity-0 transition hover:bg-foreground/40 group-hover/chip:opacity-60"
-                    />
-                  </div>
-                );
-              })}
+                onCellMouseDown(idx);
+              }}
+              onMouseEnter={() => onCellMouseEnter(idx)}
+              onDragOver={(e) => {
+                if (chipDrag) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }
+              }}
+              onDrop={(e) => {
+                if (!chipDrag) return;
+                e.preventDefault();
+                onChipDrop(iso);
+              }}
+              className={cn(
+                'cursor-pointer border-r transition hover:bg-muted/40 last:border-r-0',
+                isWeekend(iso) && 'bg-muted/10',
+                isToday(iso) && 'ring-1 ring-inset ring-primary/40',
+                inDrag && 'bg-primary/15 ring-1 ring-inset ring-primary/60',
+                inExtend && 'bg-emerald-100/50',
+                chipDrag && 'bg-primary/5',
+              )}
+            />
+          );
+        })}
+
+        {/* Spanning bars in their lanes (rows 2+, on top via z-index) */}
+        {bars.map((bar) => {
+          const isBeingDragged = chipDrag && bar.assignmentIds.includes(chipDrag.assignmentId);
+          const isActive = activeChipId !== null && bar.assignmentIds.includes(activeChipId);
+          return (
+            // biome-ignore lint/a11y/noStaticElementInteractions: HTML5 drag source; click also present
+            // biome-ignore lint/a11y/useKeyWithClickEvents: action sheet on tap is the keyboard alt
+            <div
+              key={`${bar.workerProfileId}-${bar.startIdx}`}
+              data-chip="1"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', bar.assignmentIds[0]);
+                onChipDragStart({
+                  assignmentId: bar.assignmentIds[0],
+                  fromProjectId: project.id,
+                  workerProfileId: bar.workerProfileId,
+                  fromDate: bar.startDate,
+                });
+              }}
+              onDragEnd={onChipDragEnd}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectBar(bar);
+              }}
+              title={`${bar.workerName} — ${bar.length === 1 ? bar.startDate : `${bar.startDate} → ${bar.endDate}`}`}
+              style={{
+                gridColumn: `${bar.startIdx + 1} / span ${bar.length}`,
+                gridRow: bar.lane + 2,
+                marginTop: '4px',
+                marginBottom: '2px',
+                marginLeft: '2px',
+                marginRight: '2px',
+                height: '22px',
+                zIndex: 5,
+              }}
+              className={cn(
+                'group/chip relative flex cursor-grab items-center overflow-hidden rounded border pl-1.5 pr-2 text-[11px] leading-tight active:cursor-grabbing',
+                color,
+                isBeingDragged && 'opacity-40',
+                isActive && 'ring-2 ring-foreground ring-offset-1',
+              )}
+            >
+              <span className="flex-1 truncate font-medium">{bar.workerName}</span>
+              {bar.length > 1 ? (
+                <span className="ml-1 shrink-0 rounded bg-foreground/10 px-1 text-[10px]">
+                  {bar.length}d
+                </span>
+              ) : null}
+              {/* Right-edge extend handle */}
+              {/* biome-ignore lint/a11y/noStaticElementInteractions: mouse-only drag handle */}
+              <span
+                data-extend-handle="1"
+                aria-hidden="true"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onExtendStart(bar);
+                }}
+                className="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize opacity-0 transition hover:bg-foreground/40 group-hover/chip:opacity-60"
+              />
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </>
   );
 }

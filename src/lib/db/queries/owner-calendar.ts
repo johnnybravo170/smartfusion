@@ -27,10 +27,17 @@ export type CalendarWorker = {
   display_name: string;
 };
 
+export type CalendarUnavailability = {
+  worker_profile_id: string;
+  unavailable_date: string;
+  reason_tag: string;
+};
+
 export type OwnerCalendarData = {
   assignments: CalendarAssignment[];
   projects: CalendarProject[];
   workers: CalendarWorker[];
+  unavailability: CalendarUnavailability[];
 };
 
 export async function getOwnerCalendarData(
@@ -40,7 +47,7 @@ export async function getOwnerCalendarData(
 ): Promise<OwnerCalendarData> {
   const admin = createAdminClient();
 
-  const [assignmentsRes, workersRes, projectsRes] = await Promise.all([
+  const [assignmentsRes, workersRes, projectsRes, unavailRes] = await Promise.all([
     admin
       .from('project_assignments')
       .select('id, project_id, worker_profile_id, scheduled_date')
@@ -57,11 +64,18 @@ export async function getOwnerCalendarData(
       .select('id, name, status, customers:customer_id (name)')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null),
+    admin
+      .from('worker_unavailability')
+      .select('worker_profile_id, unavailable_date, reason_tag')
+      .eq('tenant_id', tenantId)
+      .gte('unavailable_date', startDate)
+      .lte('unavailable_date', endDate),
   ]);
 
   if (assignmentsRes.error) throw new Error(assignmentsRes.error.message);
   if (workersRes.error) throw new Error(workersRes.error.message);
   if (projectsRes.error) throw new Error(projectsRes.error.message);
+  if (unavailRes.error) throw new Error(unavailRes.error.message);
 
   const assignments = (assignmentsRes.data ?? []).map((r) => ({
     id: r.id as string,
@@ -88,5 +102,11 @@ export async function getOwnerCalendarData(
     };
   });
 
-  return { assignments, projects, workers };
+  const unavailability: CalendarUnavailability[] = (unavailRes.data ?? []).map((u) => ({
+    worker_profile_id: u.worker_profile_id as string,
+    unavailable_date: u.unavailable_date as string,
+    reason_tag: u.reason_tag as string,
+  }));
+
+  return { assignments, projects, workers, unavailability };
 }

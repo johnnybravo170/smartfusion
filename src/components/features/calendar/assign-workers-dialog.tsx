@@ -29,7 +29,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { CalendarProject, CalendarWorker } from '@/lib/db/queries/owner-calendar';
+import type {
+  CalendarAssignment,
+  CalendarProject,
+  CalendarUnavailability,
+  CalendarWorker,
+} from '@/lib/db/queries/owner-calendar';
 import { bulkAssignDatesAction } from '@/server/actions/project-assignments';
 
 function parseIso(s: string): Date {
@@ -61,6 +66,8 @@ export function AssignWorkersDialog({
   onOpenChange,
   projects,
   workers,
+  assignments,
+  unavailability,
   initialProjectId,
   initialStartDate,
   initialEndDate,
@@ -70,6 +77,8 @@ export function AssignWorkersDialog({
   onOpenChange: (open: boolean) => void;
   projects: CalendarProject[];
   workers: CalendarWorker[];
+  assignments: CalendarAssignment[];
+  unavailability: CalendarUnavailability[];
   initialProjectId: string | null;
   initialStartDate: string;
   initialEndDate: string;
@@ -94,6 +103,30 @@ export function AssignWorkersDialog({
   }, [open, initialProjectId, initialStartDate, initialEndDate, parentSkipWeekends]);
 
   const dates = rangeDates(startDate, endDate, skipWeekends);
+  const dateSet = new Set(dates);
+
+  // For each worker, count how many of the selected dates clash with either
+  // existing assignments or worker_unavailability rows.
+  const conflictsByWorker = new Map<string, { unavailable: string[]; alreadyBooked: string[] }>();
+  if (dates.length > 0) {
+    for (const w of workers) {
+      const unav: string[] = [];
+      const booked: string[] = [];
+      for (const u of unavailability) {
+        if (u.worker_profile_id === w.profile_id && dateSet.has(u.unavailable_date)) {
+          unav.push(u.unavailable_date);
+        }
+      }
+      for (const a of assignments) {
+        if (a.worker_profile_id === w.profile_id && dateSet.has(a.scheduled_date)) {
+          booked.push(a.scheduled_date);
+        }
+      }
+      if (unav.length > 0 || booked.length > 0) {
+        conflictsByWorker.set(w.profile_id, { unavailable: unav, alreadyBooked: booked });
+      }
+    }
+  }
 
   function toggleWorker(id: string) {
     setWorkerIds((prev) => {
@@ -211,22 +244,42 @@ export function AssignWorkersDialog({
                 No workers in this tenant. Add one from Team.
               </p>
             ) : (
-              <div className="grid grid-cols-2 gap-1.5">
-                {workers.map((w) => (
-                  <label
-                    key={w.profile_id}
-                    htmlFor={`assign-w-${w.profile_id}`}
-                    className="flex cursor-pointer items-center gap-2 rounded border p-2 text-sm hover:bg-muted/40"
-                  >
-                    <Checkbox
-                      id={`assign-w-${w.profile_id}`}
-                      checked={workerIds.has(w.profile_id)}
-                      onCheckedChange={() => toggleWorker(w.profile_id)}
-                      disabled={pending}
-                    />
-                    <span className="truncate">{w.display_name}</span>
-                  </label>
-                ))}
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {workers.map((w) => {
+                  const conflict = conflictsByWorker.get(w.profile_id);
+                  const totalConflicts =
+                    (conflict?.unavailable.length ?? 0) + (conflict?.alreadyBooked.length ?? 0);
+                  return (
+                    <label
+                      key={w.profile_id}
+                      htmlFor={`assign-w-${w.profile_id}`}
+                      className="flex cursor-pointer items-start gap-2 rounded border p-2 text-sm hover:bg-muted/40"
+                    >
+                      <Checkbox
+                        id={`assign-w-${w.profile_id}`}
+                        checked={workerIds.has(w.profile_id)}
+                        onCheckedChange={() => toggleWorker(w.profile_id)}
+                        disabled={pending}
+                        className="mt-0.5"
+                      />
+                      <div className="flex-1 truncate">
+                        <div className="truncate">{w.display_name}</div>
+                        {conflict ? (
+                          <div className="text-[11px] text-amber-600">
+                            ⚠ {totalConflicts} {totalConflicts === 1 ? 'conflict' : 'conflicts'} in
+                            range
+                            {conflict.unavailable.length > 0
+                              ? ` (${conflict.unavailable.length} unavailable)`
+                              : ''}
+                            {conflict.alreadyBooked.length > 0
+                              ? ` (${conflict.alreadyBooked.length} already booked)`
+                              : ''}
+                          </div>
+                        ) : null}
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             )}
           </div>

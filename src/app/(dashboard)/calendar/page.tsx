@@ -58,7 +58,7 @@ export default async function CalendarPage({
     windowEnd.setDate(me.getDate() + (6 - me.getDay())); // forward to Saturday
   }
 
-  const { assignments, projects, workers } = await getOwnerCalendarData(
+  const { assignments, projects, workers, unavailability } = await getOwnerCalendarData(
     tenant.id,
     isoDate(windowStart),
     isoDate(windowEnd),
@@ -80,6 +80,7 @@ export default async function CalendarPage({
         projects={projects}
         workers={workers}
         assignments={assignments}
+        unavailability={unavailability}
       />
     </div>
   );
