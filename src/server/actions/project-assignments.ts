@@ -227,6 +227,7 @@ export async function moveAssignmentsAction(
   }
 
   revalidatePath(`/projects/${v.project_id}`);
+  revalidatePath('/calendar');
   return { ok: true };
 }
 

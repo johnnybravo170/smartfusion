@@ -30,7 +30,10 @@ import type {
   CalendarWorker,
 } from '@/lib/db/queries/owner-calendar';
 import { cn } from '@/lib/utils';
-import { removeAssignmentAction } from '@/server/actions/project-assignments';
+import {
+  moveAssignmentsAction,
+  removeAssignmentAction,
+} from '@/server/actions/project-assignments';
 import { AssignWorkersDialog } from './assign-workers-dialog';
 
 type View = 'month' | 'two-week';
@@ -185,6 +188,26 @@ export function OwnerCalendar({
     });
   }
 
+  function handleMove(input: {
+    assignmentId: string;
+    projectId: string;
+    workerProfileId: string;
+    fromDate: string;
+    toDate: string;
+  }) {
+    if (input.fromDate === input.toDate) return;
+    startTransition(async () => {
+      const res = await moveAssignmentsAction({
+        project_id: input.projectId,
+        worker_profile_id: input.workerProfileId,
+        from_dates: [input.fromDate],
+        to_dates: [input.toDate],
+      });
+      if (!res.ok) toast.error(res.error ?? 'Failed to move.');
+      else toast.success('Moved.');
+    });
+  }
+
   const headerLabel =
     view === 'two-week'
       ? `${MONTH_NAMES[anchor.getMonth()]} ${anchor.getDate()}, ${anchor.getFullYear()}`
@@ -275,6 +298,7 @@ export function OwnerCalendar({
             openAssign(startDate, endDate, projectId)
           }
           onRemove={handleRemove}
+          onMove={handleMove}
           pending={pending}
         />
       )}
@@ -412,6 +436,13 @@ type DragState = {
   endIdx: number;
 };
 
+type ChipDrag = {
+  assignmentId: string;
+  projectId: string;
+  workerProfileId: string;
+  fromDate: string;
+};
+
 function TwoWeekGrid({
   windowStart,
   byDate,
@@ -419,6 +450,7 @@ function TwoWeekGrid({
   workerById,
   onOpenAssign,
   onRemove,
+  onMove,
   pending,
 }: {
   windowStart: string;
@@ -427,6 +459,7 @@ function TwoWeekGrid({
   workerById: Map<string, CalendarWorker>;
   onOpenAssign: (projectId: string, startDate: string, endDate: string) => void;
   onRemove: (assignmentId: string) => void;
+  onMove: (input: ChipDrag & { toDate: string }) => void;
   pending: boolean;
 }) {
   const days: string[] = [];
@@ -449,6 +482,7 @@ function TwoWeekGrid({
   }
 
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [chipDrag, setChipDrag] = useState<ChipDrag | null>(null);
 
   // Document-level mouseup so the drag completes even if released outside a cell.
   // biome-ignore lint/correctness/useExhaustiveDependencies: days/onOpenAssign re-render each frame; only re-bind on drag start
@@ -505,10 +539,21 @@ function TwoWeekGrid({
               cellLookup={cellLookup}
               workerById={workerById}
               drag={drag}
+              chipDrag={chipDrag}
               onCellMouseDown={(idx) => setDrag({ projectId: p.id, startIdx: idx, endIdx: idx })}
               onCellMouseEnter={(idx) =>
                 setDrag((cur) => (cur && cur.projectId === p.id ? { ...cur, endIdx: idx } : cur))
               }
+              onChipDragStart={setChipDrag}
+              onChipDragEnd={() => setChipDrag(null)}
+              onChipDrop={(toDate) => {
+                if (chipDrag && chipDrag.projectId === p.id) {
+                  onMove({ ...chipDrag, toDate });
+                } else if (chipDrag) {
+                  toast.error('Cross-project moves not supported yet — remove and re-add.');
+                }
+                setChipDrag(null);
+              }}
               onRemove={onRemove}
               pending={pending}
             />
@@ -516,7 +561,7 @@ function TwoWeekGrid({
         )}
       </div>
       <p className="border-t bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground">
-        Click or drag across cells to schedule.
+        Click or drag across empty cells to schedule. Drag a worker chip to a new day to move it.
       </p>
     </div>
   );
@@ -528,8 +573,12 @@ function ProjectRow({
   cellLookup,
   workerById,
   drag,
+  chipDrag,
   onCellMouseDown,
   onCellMouseEnter,
+  onChipDragStart,
+  onChipDragEnd,
+  onChipDrop,
   onRemove,
   pending,
 }: {
@@ -538,8 +587,12 @@ function ProjectRow({
   cellLookup: Map<string, CalendarAssignment[]>;
   workerById: Map<string, CalendarWorker>;
   drag: DragState | null;
+  chipDrag: ChipDrag | null;
   onCellMouseDown: (idx: number) => void;
   onCellMouseEnter: (idx: number) => void;
+  onChipDragStart: (drag: ChipDrag) => void;
+  onChipDragEnd: () => void;
+  onChipDrop: (toDate: string) => void;
   onRemove: (assignmentId: string) => void;
   pending: boolean;
 }) {
@@ -564,26 +617,60 @@ function ProjectRow({
             key={iso}
             onMouseDown={(e) => {
               if ((e.target as HTMLElement).closest('button')) return;
+              if ((e.target as HTMLElement).closest('[data-chip="1"]')) return;
               e.preventDefault();
               onCellMouseDown(idx);
             }}
             onMouseEnter={() => onCellMouseEnter(idx)}
+            onDragOver={(e) => {
+              if (chipDrag) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              }
+            }}
+            onDrop={(e) => {
+              if (!chipDrag) return;
+              e.preventDefault();
+              onChipDrop(iso);
+            }}
             className={cn(
               'group relative min-h-[60px] cursor-pointer border-b border-r p-1 text-left transition hover:bg-muted/40 last:border-r-0',
               isWeekend(iso) && 'bg-muted/10',
               isToday(iso) && 'ring-1 ring-inset ring-primary/40',
               inDrag && 'bg-primary/15 ring-1 ring-inset ring-primary/60',
+              chipDrag &&
+                chipDrag.projectId === project.id &&
+                chipDrag.fromDate !== iso &&
+                'bg-primary/5',
             )}
           >
             <div className="space-y-0.5">
               {items.map((a) => {
                 const w = workerById.get(a.worker_profile_id);
+                const isBeingDragged = chipDrag?.assignmentId === a.id;
                 return (
+                  // biome-ignore lint/a11y/noStaticElementInteractions: drag handle for HTML5 DnD; keyboard alternative is the X remove + click-to-add
                   <div
                     key={a.id}
+                    data-chip="1"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = 'move';
+                      // Required for Firefox to start the drag.
+                      e.dataTransfer.setData('text/plain', a.id);
+                      onChipDragStart({
+                        assignmentId: a.id,
+                        projectId: a.project_id,
+                        workerProfileId: a.worker_profile_id,
+                        fromDate: a.scheduled_date,
+                      });
+                    }}
+                    onDragEnd={onChipDragEnd}
+                    title="Drag to move to another day"
                     className={cn(
-                      'flex items-center justify-between gap-1 rounded border px-1 py-0.5 text-[11px]',
+                      'flex cursor-grab items-center justify-between gap-1 rounded border px-1 py-0.5 text-[11px] active:cursor-grabbing',
                       color,
+                      isBeingDragged && 'opacity-40',
                     )}
                   >
                     <span className="truncate">{w?.display_name ?? '?'}</span>
