@@ -15,9 +15,11 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { updateReferralOnSignup } from '@/lib/db/queries/referrals';
+import { sendEmail } from '@/lib/email/send';
 import { generateReferralCode } from '@/lib/referral/code-generator';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { normalizePhone } from '@/lib/twilio/client';
 import { loginSchema, magicLinkSchema, signupSchema } from '@/lib/validators/auth';
 
 export type ActionError = { error: string; fieldErrors?: Record<string, string[]> };
@@ -35,6 +37,7 @@ export async function signupAction(input: {
   email: string;
   password: string;
   businessName: string;
+  phone: string;
   referralCode?: string;
 }): Promise<ActionError | never> {
   const parsed = signupSchema.safeParse(input);
@@ -44,15 +47,24 @@ export async function signupAction(input: {
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     };
   }
-  const { email, password, businessName } = parsed.data;
+  const { email, password, businessName, phone } = parsed.data;
+
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) {
+    return {
+      error:
+        'Could not parse phone number — please enter it with country code (e.g. +1 604 555 1234).',
+    };
+  }
 
   const admin = createAdminClient();
 
-  // 1. Create the auth user.
+  // 1. Create the auth user (email NOT auto-confirmed; verification email
+  //    is sent below after the tenant rows are in place).
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
     password,
-    email_confirm: true,
+    email_confirm: false,
   });
   if (createErr || !created?.user) {
     const msg = createErr?.message ?? 'Could not create user.';
@@ -85,9 +97,12 @@ export async function signupAction(input: {
       throw new Error(tenantErr?.message ?? 'Could not create tenant.');
     }
 
-    const { error: memberErr } = await admin
-      .from('tenant_members')
-      .insert({ tenant_id: tenant.id, user_id: userId, role: 'owner' });
+    const { error: memberErr } = await admin.from('tenant_members').insert({
+      tenant_id: tenant.id,
+      user_id: userId,
+      role: 'owner',
+      phone: normalizedPhone,
+    });
     if (memberErr) {
       // Tenant row exists but membership failed — delete the tenant too so
       // we don't leak a dangling row. `deleted_at` soft-delete is fine but
@@ -131,7 +146,51 @@ export async function signupAction(input: {
     return { error: `Account created but sign-in failed: ${signInErr.message}` };
   }
 
-  redirect('/dashboard');
+  // 5. Send the email-verification link via Resend (non-fatal — user can
+  //    request a re-send from /onboarding/verify if delivery fails).
+  await sendVerificationEmail({ email, businessName }).catch((err) => {
+    console.warn('Failed to send verification email on signup:', err);
+  });
+
+  redirect('/onboarding/verify');
+}
+
+async function sendVerificationEmail(input: {
+  email: string;
+  businessName: string;
+}): Promise<void> {
+  const admin = createAdminClient();
+  const origin = await originFromHeaders();
+  // 'magiclink' on an existing unconfirmed user both signs them in and
+  // marks email_confirmed_at — exactly what we want for verification.
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: 'magiclink',
+    email: input.email,
+    options: { redirectTo: `${origin}/callback?next=/onboarding/verify` },
+  });
+  if (error || !data?.properties?.action_link) {
+    throw new Error(error?.message ?? 'Could not generate verification link.');
+  }
+  const link = data.properties.action_link;
+  await sendEmail({
+    to: input.email,
+    subject: 'Confirm your HeyHenry email',
+    html: `
+      <p>Hi,</p>
+      <p>Confirm your email to finish setting up <strong>${escapeHtml(input.businessName)}</strong> on HeyHenry:</p>
+      <p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#0a0a0a;color:#fff;text-decoration:none;border-radius:6px;">Confirm email</a></p>
+      <p>Or open this link: <br/><a href="${link}">${link}</a></p>
+      <p>This link expires in 24 hours.</p>
+    `,
+  });
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 export async function loginAction(input: {

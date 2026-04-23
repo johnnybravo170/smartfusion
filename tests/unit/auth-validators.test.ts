@@ -14,6 +14,7 @@ describe('signupSchema', () => {
       email: 'will@example.com',
       password: 'correct-horse-9',
       businessName: "Will's Painting Co",
+      phone: '+1 604 555 1234',
     });
     expect(result.success).toBe(true);
   });
@@ -23,6 +24,7 @@ describe('signupSchema', () => {
       email: '  Will@Example.COM  ',
       password: 'abc12345',
       businessName: 'Acme',
+      phone: '+1 604 555 1234',
     });
     expect(result.email).toBe('will@example.com');
   });
@@ -32,6 +34,7 @@ describe('signupSchema', () => {
       email: 'a@b.co',
       password: '12345678',
       businessName: 'Acme',
+      phone: '+1 604 555 1234',
     });
     expect(result.success).toBe(false);
   });
@@ -41,6 +44,7 @@ describe('signupSchema', () => {
       email: 'a@b.co',
       password: 'abcdefgh',
       businessName: 'Acme',
+      phone: '+1 604 555 1234',
     });
     expect(result.success).toBe(false);
   });
@@ -50,6 +54,7 @@ describe('signupSchema', () => {
       email: 'a@b.co',
       password: 'abc123',
       businessName: 'Acme',
+      phone: '+1 604 555 1234',
     });
     expect(result.success).toBe(false);
   });
@@ -77,6 +82,7 @@ describe('signupSchema', () => {
       email: 'not-an-email',
       password: 'abc12345',
       businessName: 'Acme',
+      phone: '+1 604 555 1234',
     });
     expect(result.success).toBe(false);
   });

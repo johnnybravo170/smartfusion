@@ -28,6 +28,8 @@ export type CurrentTenant = {
   member: {
     id: string;
     role: string;
+    phone: string | null;
+    phone_verified_at: string | null;
   };
 };
 
@@ -45,7 +47,7 @@ export async function getCurrentTenant(): Promise<CurrentTenant | null> {
 
   const { data: member } = await supabase
     .from('tenant_members')
-    .select('id, role, tenants(id, name, slug, timezone, vertical)')
+    .select('id, role, phone, phone_verified_at, tenants(id, name, slug, timezone, vertical)')
     .eq('user_id', user.id)
     .maybeSingle();
 
@@ -63,7 +65,12 @@ export async function getCurrentTenant(): Promise<CurrentTenant | null> {
     slug: tenant.slug,
     timezone: tenant.timezone ?? 'America/Vancouver',
     vertical: tenant.vertical ?? 'pressure_washing',
-    member: { id: member.id, role: member.role },
+    member: {
+      id: member.id,
+      role: member.role,
+      phone: (member.phone as string | null) ?? null,
+      phone_verified_at: (member.phone_verified_at as string | null) ?? null,
+    },
   };
 }
 

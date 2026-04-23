@@ -27,6 +27,11 @@ export const signupSchema = z.object({
     .trim()
     .min(2, { message: 'Business name must be at least 2 characters.' })
     .max(100, { message: 'Business name must be at most 100 characters.' }),
+  phone: z
+    .string()
+    .trim()
+    .min(7, { message: 'Enter a phone number we can text a code to.' })
+    .max(20, { message: 'Phone number is too long.' }),
 });
 
 export const loginSchema = z.object({

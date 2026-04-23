@@ -28,6 +28,19 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   }
 
   const [tenant, currentUser] = await Promise.all([getCurrentTenant(), getCurrentUser()]);
+
+  // Verification gate: email + phone must both be confirmed before the
+  // dashboard renders. Existing users were grandfathered in the migration
+  // (phone_verified_at backfilled to created_at), so only fresh signups
+  // hit this redirect.
+  if (currentUser && tenant) {
+    const emailConfirmed = !!currentUser.email_confirmed_at;
+    const phoneConfirmed = !!tenant.member.phone_verified_at;
+    if (!emailConfirmed || !phoneConfirmed) {
+      redirect('/onboarding/verify');
+    }
+  }
+
   const businessName = tenant?.name;
   const timezone = tenant?.timezone || 'America/Vancouver';
   const vertical = tenant?.vertical || 'pressure_washing';

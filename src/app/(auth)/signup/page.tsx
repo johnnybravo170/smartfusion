@@ -48,9 +48,10 @@ function SignupForm() {
     const email = String(form.get('email') ?? '');
     const password = String(form.get('password') ?? '');
     const businessName = String(form.get('businessName') ?? '');
+    const phone = String(form.get('phone') ?? '');
 
     startTransition(async () => {
-      const result = await signupAction({ email, password, businessName, referralCode });
+      const result = await signupAction({ email, password, businessName, phone, referralCode });
       if (result && 'error' in result) {
         setError(result.error);
         toast.error(result.error);
@@ -94,6 +95,19 @@ function SignupForm() {
               required
               disabled={pending}
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="phone">Mobile phone</Label>
+            <Input
+              id="phone"
+              name="phone"
+              type="tel"
+              autoComplete="tel"
+              placeholder="+1 604 555 1234"
+              required
+              disabled={pending}
+            />
+            <p className="text-xs text-muted-foreground">We text a 6-digit code to verify it.</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>

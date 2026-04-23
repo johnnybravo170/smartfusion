@@ -73,6 +73,9 @@ export async function workerSignupAction(input: {
         tenant_id: invite.tenant_id,
         user_id: userId,
         role: invite.role,
+        // Workers join via vetted invite — skip the email+phone verification
+        // gate that owner signups go through.
+        phone_verified_at: new Date().toISOString(),
       })
       .select('id')
       .single();
