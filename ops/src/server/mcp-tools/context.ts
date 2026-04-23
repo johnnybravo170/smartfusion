@@ -10,7 +10,12 @@ import type { Scope } from '@/lib/keys';
 import { createServiceClient } from '@/lib/supabase';
 
 export type McpToolCtx = {
-  keyId: string;
+  /**
+   * `ops.api_keys.id` for HMAC api-key-authed calls; `null` for OAuth-authed
+   * calls (the row lives in `ops.oauth_tokens` instead, which doesn't FK
+   * here). Used as the `key_id` column on audit + resource rows.
+   */
+  keyId: string | null;
   actorName: string;
   scopes: string[];
 };

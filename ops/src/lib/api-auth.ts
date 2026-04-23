@@ -173,88 +173,69 @@ export async function authenticateRequest(
   };
 }
 
+export type OAuthToken = {
+  id: string;
+  client_id: string;
+  scopes: string[];
+  user_id: string;
+};
+
+export type OAuthAuthResult = { ok: true; token: OAuthToken } | { ok: false; response: Response };
+
 /**
- * Bearer-only auth for the remote MCP endpoint.
+ * OAuth 2.1 bearer-token auth for the remote MCP endpoint.
  *
- * Same key validation as `authenticateRequest` (lookup, hash compare,
- * revoked/expired/rate-limit) but skips the HMAC timestamp + signature
- * checks — Routines / Claude Code custom connectors only send a Bearer
- * token. Scope enforcement is done per-tool by the MCP route, not here.
+ * Looks up `Authorization: Bearer <opaque>` against `ops.oauth_tokens` by
+ * sha256 hash. Per-tool scope enforcement is still done inside each tool
+ * handler via `withAudit`. On 401 we attach a `WWW-Authenticate` header
+ * pointing at the protected-resource metadata so the client can discover
+ * the auth server (RFC 9728).
  */
-export async function authenticateBearer(req: Request): Promise<AuthResult> {
-  const url = new URL(req.url);
-  const path = url.pathname + url.search;
-  const method = req.method.toUpperCase();
-  const ip = readClientIp(req);
-  const userAgent = req.headers.get('user-agent') ?? null;
+export async function authenticateOAuthToken(req: Request): Promise<OAuthAuthResult> {
+  const origin = new URL(req.url).origin;
+  const wwwAuth = `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`;
 
   const authHeader = req.headers.get('authorization') ?? '';
-  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-  const parsed = parseKey(bearer);
-  if (!parsed) {
-    await audit(null, null, method, path, 401, ip, userAgent, null, null);
-    return { ok: false, response: json(401, 'Unauthorized') };
+  if (!authHeader.startsWith('Bearer ')) {
+    return { ok: false, response: oauthChallenge(401, 'invalid_token', wwwAuth) };
   }
+  const raw = authHeader.slice(7).trim();
+  if (!raw) return { ok: false, response: oauthChallenge(401, 'invalid_token', wwwAuth) };
 
+  const accessHash = await sha256Hex(raw);
   const service = createServiceClient();
-  const { data: keyRow } = await service
+  const { data: row } = await service
     .schema('ops')
-    .from('api_keys')
-    .select('id, name, scopes, secret_hash, expires_at, revoked_at')
-    .eq('id', parsed.keyId)
+    .from('oauth_tokens')
+    .select('id, client_id, scopes, user_id, expires_at, revoked_at')
+    .eq('access_token_hash', accessHash)
     .maybeSingle();
 
-  if (!keyRow) {
-    await audit(parsed.keyId, null, method, path, 401, ip, userAgent, null, null);
-    return { ok: false, response: json(401, 'Invalid key') };
+  if (!row) return { ok: false, response: oauthChallenge(401, 'invalid_token', wwwAuth) };
+  if (row.revoked_at) return { ok: false, response: oauthChallenge(401, 'invalid_token', wwwAuth) };
+  if (new Date(row.expires_at as string).getTime() < Date.now()) {
+    return { ok: false, response: oauthChallenge(401, 'invalid_token', wwwAuth) };
   }
-  if (keyRow.revoked_at) {
-    await audit(parsed.keyId, null, method, path, 401, ip, userAgent, null, null);
-    return { ok: false, response: json(401, 'Key revoked') };
-  }
-  if (new Date(keyRow.expires_at as string).getTime() < Date.now()) {
-    await audit(parsed.keyId, null, method, path, 401, ip, userAgent, null, null);
-    return { ok: false, response: json(401, 'Key expired') };
-  }
-
-  const expectedHash = await hashSecret(parsed.secret);
-  if (!safeEqual(expectedHash, keyRow.secret_hash as string)) {
-    await audit(parsed.keyId, null, method, path, 401, ip, userAgent, null, null);
-    return { ok: false, response: json(401, 'Invalid key') };
-  }
-
-  const scopes = (keyRow.scopes as string[]) ?? [];
-
-  const allowed = await checkRateLimit(parsed.keyId);
-  if (!allowed) {
-    await audit(parsed.keyId, null, method, path, 429, ip, userAgent, null, null);
-    return {
-      ok: false,
-      response: new NextResponse(JSON.stringify({ error: 'Rate limit exceeded' }), {
-        status: 429,
-        headers: { 'content-type': 'application/json', 'retry-after': '60' },
-      }),
-    };
-  }
-
-  await service
-    .schema('ops')
-    .from('api_keys')
-    .update({ last_used_at: new Date().toISOString(), last_used_ip: ip })
-    .eq('id', parsed.keyId);
 
   return {
     ok: true,
-    key: {
-      id: keyRow.id as string,
-      name: keyRow.name as string,
-      scopes,
-      ip,
-      reason: null,
+    token: {
+      id: row.id as string,
+      client_id: row.client_id as string,
+      scopes: (row.scopes as string[]) ?? [],
+      user_id: row.user_id as string,
     },
-    bodySha: '',
-    reason: null,
   };
+}
+
+function oauthChallenge(status: number, error: string, wwwAuth: string): Response {
+  return new NextResponse(JSON.stringify({ error }), {
+    status,
+    headers: {
+      'content-type': 'application/json',
+      'www-authenticate': `${wwwAuth}, error="${error}"`,
+    },
+  });
 }
 
 /** Call from a route AFTER the handler succeeds so success is logged too. */

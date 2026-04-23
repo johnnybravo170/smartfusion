@@ -2,25 +2,27 @@
  * Remote MCP server endpoint for Claude Code Routines (and any other
  * Streamable-HTTP MCP client).
  *
- * Auth: `Authorization: Bearer ops_<id>_<secret>` — the existing ops API
- * key. HMAC signing is NOT required here (unlike `/api/ops/*`); Routines'
- * custom-connector model only sends a static bearer token. Per-tool scope
+ * Auth: OAuth 2.1 bearer token issued via /authorize + /token. The opaque
+ * access token is looked up by sha256 in `ops.oauth_tokens`. Per-tool scope
  * checks happen inside the tool handler via `withAudit`.
  *
+ * On 401 we attach `WWW-Authenticate: Bearer resource_metadata="..."` so
+ * the client can discover the auth server (RFC 9728 / MCP auth spec).
+ *
  * Stateless mode: each POST is independent. We construct a fresh McpServer,
- * register only the tools the key's scopes allow, then hand the request to
- * the SDK's web-standard transport. No session storage.
+ * register only the tools the token's scopes allow, then hand the request
+ * to the SDK's web-standard transport.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { authenticateBearer } from '@/lib/api-auth';
+import { authenticateOAuthToken } from '@/lib/api-auth';
 import { registerScopedTools } from '@/server/mcp-tools';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  const auth = await authenticateBearer(req);
+  const auth = await authenticateOAuthToken(req);
   if (!auth.ok) return auth.response;
 
   const server = new McpServer(
@@ -28,10 +30,13 @@ export async function POST(req: Request) {
     { capabilities: { tools: {} } },
   );
 
+  // keyId is null because OAuth tokens live in ops.oauth_tokens, not
+  // ops.api_keys (which is what audit_log.key_id FKs to). actorName carries
+  // the client_id (Anthropic Routine name) instead.
   registerScopedTools(server, {
-    keyId: auth.key.id,
-    actorName: auth.key.name,
-    scopes: auth.key.scopes,
+    keyId: null,
+    actorName: auth.token.client_id,
+    scopes: auth.token.scopes,
   });
 
   // Stateless transport — no session IDs. enableJsonResponse=true returns
