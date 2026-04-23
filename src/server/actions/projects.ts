@@ -308,6 +308,7 @@ export async function cloneProjectAction(input: {
   name: string;
   clone_cost_buckets: boolean;
   clone_notes: boolean;
+  keep_line_photos?: boolean;
 }): Promise<ProjectActionResult> {
   if (!input.source_id) return { ok: false, error: 'Missing source project id.' };
   if (!input.customer_id) return { ok: false, error: 'Pick a customer.' };
@@ -416,6 +417,7 @@ export async function cloneProjectAction(input: {
         tenant_id: tenant.id,
         project_id: created.id,
         bucket_id: l.bucket_id ? (bucketIdMap.get(l.bucket_id) ?? null) : null,
+        photo_storage_paths: input.keep_line_photos ? l.photo_storage_paths : [],
       }));
       const { error: lErr } = await supabase.from('project_cost_lines').insert(lineRows);
       if (lErr) console.error('Failed to clone cost lines:', lErr.message);

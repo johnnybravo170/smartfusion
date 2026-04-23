@@ -33,7 +33,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cloneProjectAction } from '@/server/actions/projects';
 
-type CloneOption = 'cost_buckets' | 'notes';
+type CloneOption = 'cost_buckets' | 'notes' | 'line_photos';
 
 export function CloneProjectDialog({
   projectId,
@@ -56,6 +56,7 @@ export function CloneProjectDialog({
   const [include, setInclude] = useState<Record<CloneOption, boolean>>({
     cost_buckets: true,
     notes: true,
+    line_photos: false,
   });
 
   // Reset state every time the dialog opens.
@@ -64,7 +65,7 @@ export function CloneProjectDialog({
       setName(`Copy of ${projectName}`);
       setCustomerId(defaultCustomerId ?? '');
       setCustomerList(customers);
-      setInclude({ cost_buckets: true, notes: true });
+      setInclude({ cost_buckets: true, notes: true, line_photos: false });
     }
   }, [open, projectName, defaultCustomerId, customers]);
 
@@ -84,6 +85,7 @@ export function CloneProjectDialog({
         name: name.trim(),
         clone_cost_buckets: include.cost_buckets,
         clone_notes: include.notes,
+        keep_line_photos: include.line_photos,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -171,6 +173,29 @@ export function CloneProjectDialog({
                 <p className="text-sm font-medium">Project notes</p>
                 <p className="text-xs text-muted-foreground">
                   Plain-text notes from the Notes tab. Worklog history is not copied.
+                </p>
+              </div>
+            </label>
+            <label
+              htmlFor="clone-line-photos"
+              className={`flex items-start gap-2 rounded-md border p-2.5 ${
+                include.cost_buckets
+                  ? 'cursor-pointer hover:bg-muted/40'
+                  : 'cursor-not-allowed opacity-60'
+              }`}
+            >
+              <Checkbox
+                id="clone-line-photos"
+                checked={include.line_photos}
+                onCheckedChange={(v) => setInclude((s) => ({ ...s, line_photos: v === true }))}
+                disabled={pending || !include.cost_buckets}
+              />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Keep photo references on line items</p>
+                <p className="text-xs text-muted-foreground">
+                  Cost lines can have photos attached. Off (default) starts with a clean slate; on
+                  keeps the original photos visible on the cloned lines. Only applies when the
+                  estimate is being copied.
                 </p>
               </div>
             </label>
