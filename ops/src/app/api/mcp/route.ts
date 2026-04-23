@@ -21,32 +21,51 @@ import { registerScopedTools } from '@/server/mcp-tools';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: Request) {
+const CORS_HEADERS: Record<string, string> = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-headers':
+    'Authorization, Content-Type, mcp-protocol-version, mcp-session-id',
+  'access-control-expose-headers': 'mcp-protocol-version, mcp-session-id, www-authenticate',
+};
+
+function withCors(res: Response): Response {
+  for (const [k, v] of Object.entries(CORS_HEADERS)) res.headers.set(k, v);
+  return res;
+}
+
+async function handle(req: Request): Promise<Response> {
   const auth = await authenticateOAuthToken(req);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return withCors(auth.response);
 
   const server = new McpServer(
     { name: 'heyhenry-ops', version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
 
-  // keyId is null because OAuth tokens live in ops.oauth_tokens, not
-  // ops.api_keys (which is what audit_log.key_id FKs to). actorName carries
-  // the client_id (Anthropic Routine name) instead.
   registerScopedTools(server, {
     keyId: null,
     actorName: auth.token.client_id,
     scopes: auth.token.scopes,
   });
 
-  // Stateless transport — no session IDs. Default enableJsonResponse=false
-  // lets the SDK negotiate JSON vs SSE based on the client's Accept header,
-  // which some MCP clients (incl. Anthropic Routines connector probe)
-  // require.
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });
 
   await server.connect(transport);
-  return transport.handleRequest(req);
+  const response = await transport.handleRequest(req);
+  return withCors(response);
+}
+
+export async function POST(req: Request) {
+  return handle(req);
+}
+
+export async function GET(req: Request) {
+  return handle(req);
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
 }

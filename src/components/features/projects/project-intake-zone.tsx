@@ -12,8 +12,8 @@
  */
 
 import { FileText, Loader2, Sparkles, Upload, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useState, useTransition } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -52,7 +52,23 @@ async function shrinkIfNeeded(file: File): Promise<File> {
 
 export function ProjectIntakeZone({ projectId }: { projectId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
+
+  // iOS shortcut deep link: `?intake=open` auto-expands the zone on load.
+  // Intentionally runs on mount only — if the user lands with the param we
+  // respect it once; later changes shouldn't re-open the zone.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only behaviour is deliberate.
+  useEffect(() => {
+    if (searchParams.get('intake') !== 'open') return;
+    setOpen(true);
+    // Strip the query param so a refresh doesn't re-trigger and the URL
+    // stays tidy. Use replace so the navigation doesn't show up in history.
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.delete('intake');
+    const next = sp.toString();
+    router.replace(next ? `?${next}` : '?', { scroll: false });
+  }, []);
   const [staged, setStaged] = useState<StagedFile[]>([]);
   const [suggestions, setSuggestions] = useState<AugmentResult | null>(null);
   // Per-suggestion include flags so operator can trim.
