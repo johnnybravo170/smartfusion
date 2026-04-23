@@ -25,7 +25,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
-import { createProjectBucketAction, createSubQuoteAction } from '@/server/actions/sub-quotes';
+import {
+  createProjectBucketAction,
+  createSubQuoteAction,
+  updateSubQuoteAction,
+} from '@/server/actions/sub-quotes';
 
 type Bucket = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
 
@@ -82,12 +86,15 @@ export function SubQuoteForm({
   projectId,
   buckets: initialBuckets,
   initialValues,
+  editingQuoteId,
   onDone,
 }: {
   projectId: string;
   buckets: Bucket[];
   /** AI-parsed suggestions, pre-filled on mount. Undefined = blank form. */
   initialValues?: SubQuoteInitialValues;
+  /** When set, the form updates this quote instead of creating a new one. */
+  editingQuoteId?: string;
   onDone: () => void;
 }) {
   const [buckets, setBuckets] = useState<Bucket[]>(initialBuckets);
@@ -170,7 +177,37 @@ export function SubQuoteForm({
     // Drop empty rows; server validates the rest.
     const cleaned = rows.filter((r) => r.bucket_id && toCents(r.amount_raw) > 0);
 
+    const allocationPayload = cleaned.map((r) => ({
+      bucket_id: r.bucket_id,
+      allocated_cents: toCents(r.amount_raw),
+      notes: r.notes || null,
+    }));
+
     startTransition(async () => {
+      if (editingQuoteId) {
+        const result = await updateSubQuoteAction({
+          id: editingQuoteId,
+          project_id: projectId,
+          vendor_name: vendor,
+          vendor_email: email,
+          vendor_phone: phone,
+          total_cents: totalCents,
+          scope_description: scope,
+          notes,
+          quote_date: quoteDate,
+          valid_until: validUntil,
+          allocations: allocationPayload,
+        });
+        if (!result.ok) {
+          setError(result.error);
+          toast.error(result.error);
+          return;
+        }
+        toast.success('Sub quote updated.');
+        onDone();
+        return;
+      }
+
       const fd = new FormData();
       fd.set('project_id', projectId);
       fd.set('vendor_name', vendor);
@@ -181,16 +218,7 @@ export function SubQuoteForm({
       fd.set('notes', notes);
       fd.set('quote_date', quoteDate);
       fd.set('valid_until', validUntil);
-      fd.set(
-        'allocations',
-        JSON.stringify(
-          cleaned.map((r) => ({
-            bucket_id: r.bucket_id,
-            allocated_cents: toCents(r.amount_raw),
-            notes: r.notes || null,
-          })),
-        ),
-      );
+      fd.set('allocations', JSON.stringify(allocationPayload));
       if (attachment) fd.set('attachment', attachment);
 
       const result = await createSubQuoteAction(fd);
@@ -371,43 +399,45 @@ export function SubQuoteForm({
           />
         </div>
 
-        {/* Attachment */}
-        <div>
-          <p className="mb-1 text-xs font-medium">Attachment</p>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground hover:bg-muted/30"
-            onClick={() => fileRef.current?.click()}
-            disabled={pending}
-          >
-            <Paperclip className="size-4 shrink-0" />
-            {attachment ? (
-              <span className="truncate text-foreground">{attachment.name}</span>
-            ) : (
-              <span>Attach the quote PDF or a photo (up to 10MB)</span>
-            )}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*,application/pdf"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) setAttachment(f);
-              e.target.value = '';
-            }}
-          />
-          {attachment ? (
+        {/* Attachment — create only; editing the attachment isn't supported yet. */}
+        {!editingQuoteId ? (
+          <div>
+            <p className="mb-1 text-xs font-medium">Attachment</p>
             <button
               type="button"
-              className="mt-1 text-xs text-muted-foreground underline"
-              onClick={() => setAttachment(null)}
+              className="flex w-full items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground hover:bg-muted/30"
+              onClick={() => fileRef.current?.click()}
+              disabled={pending}
             >
-              Remove
+              <Paperclip className="size-4 shrink-0" />
+              {attachment ? (
+                <span className="truncate text-foreground">{attachment.name}</span>
+              ) : (
+                <span>Attach the quote PDF or a photo (up to 10MB)</span>
+              )}
             </button>
-          ) : null}
-        </div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) setAttachment(f);
+                e.target.value = '';
+              }}
+            />
+            {attachment ? (
+              <button
+                type="button"
+                className="mt-1 text-xs text-muted-foreground underline"
+                onClick={() => setAttachment(null)}
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {error ? (
           <p className="text-sm text-destructive" role="alert">
@@ -417,7 +447,7 @@ export function SubQuoteForm({
 
         <div className="flex gap-2">
           <Button type="submit" disabled={pending}>
-            {pending ? 'Saving…' : 'Save sub quote'}
+            {pending ? 'Saving…' : editingQuoteId ? 'Save changes' : 'Save sub quote'}
           </Button>
           <Button type="button" variant="ghost" onClick={onDone} disabled={pending}>
             Cancel

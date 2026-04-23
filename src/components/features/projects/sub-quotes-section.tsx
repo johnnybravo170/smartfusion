@@ -11,7 +11,7 @@
  * a gentle "create a bucket first" hint rather than erroring later.
  */
 
-import { CheckCircle2, ChevronDown, ChevronRight, FileStack, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, FileStack, Pencil, XCircle } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -122,7 +122,7 @@ export function SubQuotesSection({
       ) : (
         <div className="space-y-2">
           {subQuotes.map((q) => (
-            <SubQuoteRowView key={q.id} quote={q} projectId={projectId} />
+            <SubQuoteRowView key={q.id} quote={q} projectId={projectId} buckets={buckets} />
           ))}
         </div>
       )}
@@ -130,8 +130,17 @@ export function SubQuotesSection({
   );
 }
 
-function SubQuoteRowView({ quote, projectId }: { quote: SubQuoteRow; projectId: string }) {
+function SubQuoteRowView({
+  quote,
+  projectId,
+  buckets,
+}: {
+  quote: SubQuoteRow;
+  projectId: string;
+  buckets: Bucket[];
+}) {
   const [expanded, setExpanded] = useState(quote.status === 'pending_review');
+  const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const allocatedSum = quote.allocations.reduce((s, a) => s + a.allocated_cents, 0);
@@ -210,7 +219,33 @@ function SubQuoteRowView({ quote, projectId }: { quote: SubQuoteRow; projectId: 
         </div>
       </button>
 
-      {expanded ? (
+      {expanded && editing ? (
+        <div className="border-t px-3 py-3">
+          <SubQuoteForm
+            projectId={projectId}
+            buckets={buckets}
+            editingQuoteId={quote.id}
+            initialValues={{
+              vendor_name: quote.vendor_name,
+              vendor_email: quote.vendor_email ?? '',
+              vendor_phone: quote.vendor_phone ?? '',
+              total_cents: quote.total_cents,
+              scope_description: quote.scope_description ?? '',
+              notes: quote.notes ?? '',
+              quote_date: quote.quote_date ?? '',
+              valid_until: quote.valid_until ?? '',
+              allocations: quote.allocations.map((a) => ({
+                bucket_id: a.bucket_id,
+                allocated_cents: a.allocated_cents,
+                notes: a.notes ?? undefined,
+              })),
+            }}
+            onDone={() => setEditing(false)}
+          />
+        </div>
+      ) : null}
+
+      {expanded && !editing ? (
         <div className="border-t px-3 py-3 text-sm">
           {/* Allocations */}
           {quote.allocations.length === 0 ? (
@@ -263,6 +298,10 @@ function SubQuoteRowView({ quote, projectId }: { quote: SubQuoteRow; projectId: 
                 </Button>
               </>
             ) : null}
+            <Button size="xs" variant="ghost" onClick={() => setEditing(true)} disabled={pending}>
+              <Pencil className="mr-1 size-3" />
+              Edit
+            </Button>
             <Button
               size="xs"
               variant="ghost"

@@ -193,6 +193,81 @@ async function insertQuote(args: {
 // Update / status transitions
 // ---------------------------------------------------------------------------
 
+const subQuoteUpdateSchema = subQuoteCreateSchema.extend({
+  id: z.string().uuid(),
+});
+
+/**
+ * Edit an existing sub quote's fields + allocations. Status is preserved
+ * (edit is allowed on any status so operators can rebucket an already-
+ * accepted quote). Allocations are wipe+reinsert, same as
+ * setSubQuoteAllocationsAction. Balance invariant is only enforced on
+ * accept — an edit can leave an accepted quote unbalanced.
+ */
+export async function updateSubQuoteAction(input: {
+  id: string;
+  project_id: string;
+  vendor_name: string;
+  vendor_email?: string;
+  vendor_phone?: string;
+  total_cents: number;
+  scope_description?: string;
+  notes?: string;
+  quote_date?: string;
+  valid_until?: string;
+  allocations: Array<{ bucket_id: string; allocated_cents: number; notes?: string | null }>;
+}): Promise<SubQuoteResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const parsed = subQuoteUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Please fix the errors below.',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const supabase = await createClient();
+
+  const { error: updErr } = await supabase
+    .from('project_sub_quotes')
+    .update({
+      vendor_name: parsed.data.vendor_name.trim(),
+      vendor_email: parsed.data.vendor_email?.trim() || null,
+      vendor_phone: parsed.data.vendor_phone?.trim() || null,
+      total_cents: parsed.data.total_cents,
+      scope_description: parsed.data.scope_description?.trim() || null,
+      notes: parsed.data.notes?.trim() || null,
+      quote_date: parsed.data.quote_date || null,
+      valid_until: parsed.data.valid_until || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', parsed.data.id);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  const { error: delErr } = await supabase
+    .from('project_sub_quote_allocations')
+    .delete()
+    .eq('sub_quote_id', parsed.data.id);
+  if (delErr) return { ok: false, error: delErr.message };
+
+  if (parsed.data.allocations.length > 0) {
+    const rows = parsed.data.allocations.map((a) => ({
+      sub_quote_id: parsed.data.id,
+      bucket_id: a.bucket_id,
+      allocated_cents: a.allocated_cents,
+      notes: a.notes?.trim() || null,
+    }));
+    const { error: insErr } = await supabase.from('project_sub_quote_allocations').insert(rows);
+    if (insErr) return { ok: false, error: insErr.message };
+  }
+
+  revalidatePath(`/projects/${parsed.data.project_id}`);
+  return { ok: true, id: parsed.data.id };
+}
+
 /**
  * Replace a sub quote's allocation set. Used when the operator edits
  * allocations in the editor. Takes the full new set; we wipe+reinsert
