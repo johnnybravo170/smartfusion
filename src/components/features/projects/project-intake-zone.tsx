@@ -31,6 +31,7 @@ import {
   applyProjectAugmentAction,
   parseProjectAugmentAction,
 } from '@/server/actions/intake-augment';
+import { fetchSharedFileAction } from '@/server/actions/share-intake';
 import { SubQuoteForm } from './sub-quote-form';
 
 type StagedFile = { file: File; previewUrl: string; key: string };
@@ -67,21 +68,59 @@ export function ProjectIntakeZone({
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
 
+  const [staged, setStaged] = useState<StagedFile[]>([]);
+
   // iOS shortcut deep link: `?intake=open` auto-expands the zone on load.
-  // Intentionally runs on mount only — if the user lands with the param we
-  // respect it once; later changes shouldn't re-open the zone.
+  // Web Share Target: `?share=<token>` means a file was posted to
+  // /share/receive, stashed in storage, and this tab should pull it in
+  // as a staged file (exactly as if the operator had dropped it on the
+  // drop area).
+  // Mount-only: if the user lands with either param we respect them once;
+  // later changes shouldn't re-trigger.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only behaviour is deliberate.
   useEffect(() => {
-    if (searchParams.get('intake') !== 'open') return;
-    setOpen(true);
-    // Strip the query param so a refresh doesn't re-trigger and the URL
-    // stays tidy. Use replace so the navigation doesn't show up in history.
+    const shouldOpen = searchParams.get('intake') === 'open';
+    const shareToken = searchParams.get('share');
+    const shareName = searchParams.get('share_name') ?? undefined;
+    if (!shouldOpen && !shareToken) return;
+    if (shouldOpen) setOpen(true);
+
+    // Pull the shared file (if any) into staged.
+    if (shareToken) {
+      (async () => {
+        const result = await fetchSharedFileAction({ token: shareToken, filename: shareName });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
+        // Convert base64 back to a File the drop-area pipeline already
+        // knows how to handle.
+        const bytes = Uint8Array.from(atob(result.data), (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes as unknown as BlobPart], { type: result.contentType });
+        const file = new File([blob], result.filename, { type: result.contentType });
+        setStaged((s) => [
+          ...s,
+          {
+            file,
+            previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
+            key: `${Date.now()}-shared-${Math.random().toString(36).slice(2, 8)}`,
+          },
+        ]);
+        setOpen(true);
+      })();
+    }
+
+    // Strip the share-related params so a refresh doesn't re-fetch the
+    // (now-deleted) file.
     const sp = new URLSearchParams(searchParams.toString());
     sp.delete('intake');
+    sp.delete('share');
+    sp.delete('share_name');
+    sp.delete('share_text');
+    sp.delete('share_url');
     const next = sp.toString();
     router.replace(next ? `?${next}` : '?', { scroll: false });
   }, []);
-  const [staged, setStaged] = useState<StagedFile[]>([]);
   const [suggestions, setSuggestions] = useState<AugmentResult | null>(null);
   // Per-suggestion include flags so operator can trim.
   const [existingBuckets, setExistingBuckets] = useState<string[]>([]);
