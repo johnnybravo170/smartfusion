@@ -1,3 +1,4 @@
+import { EstimateCelebrationCard } from '@/components/features/dashboard/estimate-celebration-card';
 import { KeyMetrics } from '@/components/features/dashboard/key-metrics';
 import { NeedsAttention } from '@/components/features/dashboard/needs-attention';
 import { PipelineSummary } from '@/components/features/dashboard/pipeline-summary';
@@ -15,6 +16,7 @@ import {
   getRevenueYtd,
   getTodaysJobs,
 } from '@/lib/db/queries/dashboard';
+import { getPendingEstimateCelebration } from '@/lib/db/queries/estimate-celebrations';
 import { getBusinessProfile, getOperatorProfile } from '@/lib/db/queries/profile';
 
 function getGreeting(hour: number): string {
@@ -40,6 +42,7 @@ export default async function DashboardPage() {
     metrics,
     pipelineMetrics,
     awaitingApproval,
+    celebration,
     attentionItems,
     recentActivity,
     revenueYtdCents,
@@ -50,6 +53,7 @@ export default async function DashboardPage() {
     getKeyMetrics(tz),
     getPipelineMetrics(),
     getProjectsAwaitingApproval(),
+    getPendingEstimateCelebration(),
     getAttentionItems(tz),
     getRecentActivity(),
     getRevenueYtd(tz),
@@ -78,6 +82,8 @@ export default async function DashboardPage() {
           </p>
         </div>
       </div>
+
+      {celebration ? <EstimateCelebrationCard celebration={celebration} /> : null}
 
       {showTodaysJobs ? <TodaysJobs jobs={todaysJobs} timezone={tz} /> : null}
 
