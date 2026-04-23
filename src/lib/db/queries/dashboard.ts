@@ -232,6 +232,57 @@ export async function getKeyMetrics(timezone: string): Promise<KeyMetrics> {
   };
 }
 
+export type PipelineMetrics = {
+  draftQuoteCount: number;
+  draftQuoteValueCents: number;
+  sentQuoteCount: number;
+  sentQuoteValueCents: number;
+  activeProjectCount: number;
+};
+
+/**
+ * Pipeline snapshot for the dashboard: counts + totals for the quote
+ * stages the operator is actively working, plus active project count.
+ *
+ * Values are `total_cents` from quotes (including tax). Active project
+ * value is intentionally omitted — it requires a per-bucket aggregate
+ * that isn't worth the extra query complexity for V1 of this card.
+ */
+export async function getPipelineMetrics(): Promise<PipelineMetrics> {
+  const supabase = await createClient();
+
+  const [draftQuotes, sentQuotes, activeProjects] = await Promise.all([
+    supabase.from('quotes').select('total_cents').eq('status', 'draft').is('deleted_at', null),
+    supabase.from('quotes').select('total_cents').eq('status', 'sent').is('deleted_at', null),
+    supabase
+      .from('projects')
+      .select('id', { count: 'exact', head: true })
+      .in('status', ['planning', 'in_progress'])
+      .is('deleted_at', null),
+  ]);
+
+  if (draftQuotes.error) throw new Error(`Pipeline: ${draftQuotes.error.message}`);
+  if (sentQuotes.error) throw new Error(`Pipeline: ${sentQuotes.error.message}`);
+  if (activeProjects.error) throw new Error(`Pipeline: ${activeProjects.error.message}`);
+
+  const draftValueCents = (draftQuotes.data ?? []).reduce(
+    (sum, q) => sum + (q.total_cents as number),
+    0,
+  );
+  const sentValueCents = (sentQuotes.data ?? []).reduce(
+    (sum, q) => sum + (q.total_cents as number),
+    0,
+  );
+
+  return {
+    draftQuoteCount: draftQuotes.data?.length ?? 0,
+    draftQuoteValueCents: draftValueCents,
+    sentQuoteCount: sentQuotes.data?.length ?? 0,
+    sentQuoteValueCents: sentValueCents,
+    activeProjectCount: activeProjects.count ?? 0,
+  };
+}
+
 export async function getAttentionItems(timezone: string): Promise<AttentionItem[]> {
   const supabase = await createClient();
   const now = new Date();

@@ -1,5 +1,6 @@
 import { KeyMetrics } from '@/components/features/dashboard/key-metrics';
 import { NeedsAttention } from '@/components/features/dashboard/needs-attention';
+import { PipelineSummary } from '@/components/features/dashboard/pipeline-summary';
 import { RecentActivity } from '@/components/features/dashboard/recent-activity';
 import { TodaysJobs } from '@/components/features/dashboard/todays-jobs';
 import { getCurrentUser, requireTenant } from '@/lib/auth/helpers';
@@ -7,6 +8,7 @@ import {
   getAttentionItems,
   getHourInTimezone,
   getKeyMetrics,
+  getPipelineMetrics,
   getRecentActivity,
   getRevenueYtd,
   getTodaysJobs,
@@ -26,16 +28,25 @@ export default async function DashboardPage() {
   const hour = getHourInTimezone(tz);
   const greeting = getGreeting(hour);
 
-  const [todaysJobs, metrics, attentionItems, recentActivity, revenueYtdCents, profile, operator] =
-    await Promise.all([
-      getTodaysJobs(tz),
-      getKeyMetrics(tz),
-      getAttentionItems(tz),
-      getRecentActivity(),
-      getRevenueYtd(tz),
-      getBusinessProfile(tenant.id),
-      user ? getOperatorProfile(tenant.id, user.id) : Promise.resolve(null),
-    ]);
+  const [
+    todaysJobs,
+    metrics,
+    pipelineMetrics,
+    attentionItems,
+    recentActivity,
+    revenueYtdCents,
+    profile,
+    operator,
+  ] = await Promise.all([
+    getTodaysJobs(tz),
+    getKeyMetrics(tz),
+    getPipelineMetrics(),
+    getAttentionItems(tz),
+    getRecentActivity(),
+    getRevenueYtd(tz),
+    getBusinessProfile(tenant.id),
+    user ? getOperatorProfile(tenant.id, user.id) : Promise.resolve(null),
+  ]);
 
   const firstName = operator?.firstName?.trim() || null;
 
@@ -60,6 +71,8 @@ export default async function DashboardPage() {
       </div>
 
       <TodaysJobs jobs={todaysJobs} timezone={tz} />
+
+      <PipelineSummary metrics={pipelineMetrics} />
 
       <KeyMetrics metrics={metrics} revenueYtdCents={revenueYtdCents} />
 

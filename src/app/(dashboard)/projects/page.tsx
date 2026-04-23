@@ -1,7 +1,9 @@
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { ProjectNameEditor } from '@/components/features/projects/project-name-editor';
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
+import { ProjectTabs } from '@/components/features/projects/project-tabs';
 import { Button } from '@/components/ui/button';
 import { countProjectsByStatus, listProjects } from '@/lib/db/queries/projects';
 import type { ProjectStatus } from '@/lib/validators/project';
@@ -10,13 +12,36 @@ export const metadata = {
   title: 'Projects — HeyHenry',
 };
 
-export default async function ProjectsPage() {
+type RawSearchParams = Record<string, string | string[] | undefined>;
+
+function parseView(value: string | string[] | undefined): 'active' | 'complete' | 'all' {
+  if (value === 'active' || value === 'complete') return value;
+  return 'all';
+}
+
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
+  const resolved = await searchParams;
+  const view = parseView(resolved.view);
+
   const [projects, counts] = await Promise.all([
     listProjects({ limit: 200 }),
     countProjectsByStatus(),
   ]);
   const total = counts.planning + counts.in_progress + counts.complete + counts.cancelled;
   const active = counts.planning + counts.in_progress;
+
+  const filtered =
+    view === 'active'
+      ? projects.filter((p) => p.status === 'planning' || p.status === 'in_progress')
+      : view === 'complete'
+        ? projects.filter((p) => p.status === 'complete')
+        : projects;
+
+  const tabCounts = { all: total, active, complete: counts.complete };
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
@@ -35,7 +60,13 @@ export default async function ProjectsPage() {
         </Button>
       </header>
 
-      {projects.length === 0 ? (
+      {total > 0 && (
+        <Suspense fallback={null}>
+          <ProjectTabs counts={tabCounts} />
+        </Suspense>
+      )}
+
+      {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <p className="text-muted-foreground">
             Create your first renovation project to get started.
@@ -60,7 +91,7 @@ export default async function ProjectsPage() {
               </tr>
             </thead>
             <tbody>
-              {projects.map((p) => (
+              {filtered.map((p) => (
                 <tr key={p.id} className="group border-b last:border-0 hover:bg-muted/30">
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-1">
