@@ -1,11 +1,24 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import type { CostBucketSummary } from '@/lib/db/queries/projects';
 import { formatCurrency } from '@/lib/pricing/calculator';
-import { deleteExpenseAction, logExpenseWithReceiptAction } from '@/server/actions/expenses';
+import {
+  deleteExpenseAction,
+  logExpenseWithReceiptAction,
+  updateExpenseAction,
+} from '@/server/actions/expenses';
 import { deleteTimeEntryAction, logTimeAction } from '@/server/actions/time-entries';
 
 type TimeEntry = {
@@ -22,6 +35,7 @@ type Expense = {
   amount_cents: number;
   vendor: string | null;
   description: string | null;
+  bucket_id: string | null;
   worker_profile_id: string | null;
   worker_name: string | null;
   receipt_url: string | null;
@@ -256,6 +270,139 @@ function ExpenseForm({
   );
 }
 
+function EditExpenseDialog({
+  expense,
+  buckets,
+  onClose,
+}: {
+  expense: Expense;
+  buckets: CostBucketSummary[];
+  onClose: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [amountRaw, setAmountRaw] = useState(() => (expense.amount_cents / 100).toFixed(2));
+  const [date, setDate] = useState(expense.expense_date);
+  const [vendor, setVendor] = useState(expense.vendor ?? '');
+  const [description, setDescription] = useState(expense.description ?? '');
+  const [bucketId, setBucketId] = useState(expense.bucket_id ?? '');
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const parsed = parseFloat(amountRaw);
+    if (!Number.isFinite(parsed) || parsed === 0) {
+      setError('Amount must be non-zero.');
+      return;
+    }
+    startTransition(async () => {
+      const res = await updateExpenseAction({
+        id: expense.id,
+        expense_date: date,
+        amount_cents: Math.round(parsed * 100),
+        vendor: vendor || null,
+        description: description || null,
+        bucket_id: bucketId || null,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        toast.error(res.error);
+        return;
+      }
+      toast.success('Expense updated.');
+      onClose();
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit expense</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="edit-exp-date">Date</Label>
+              <Input
+                id="edit-exp-date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+                disabled={pending}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-exp-amt">Amount ($)</Label>
+              <Input
+                id="edit-exp-amt"
+                type="number"
+                step="0.01"
+                value={amountRaw}
+                onChange={(e) => setAmountRaw(e.target.value)}
+                required
+                disabled={pending}
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">Negative = credit/return.</p>
+            </div>
+          </div>
+          {buckets.length > 0 ? (
+            <div>
+              <Label htmlFor="edit-exp-bucket">Bucket</Label>
+              <select
+                id="edit-exp-bucket"
+                value={bucketId}
+                onChange={(e) => setBucketId(e.target.value)}
+                disabled={pending}
+                className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
+              >
+                <option value="">— None —</option>
+                {buckets.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          <div>
+            <Label htmlFor="edit-exp-vendor">Vendor</Label>
+            <Input
+              id="edit-exp-vendor"
+              value={vendor}
+              onChange={(e) => setVendor(e.target.value)}
+              disabled={pending}
+            />
+          </div>
+          <div>
+            <Label htmlFor="edit-exp-desc">Description</Label>
+            <Input
+              id="edit-exp-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={pending}
+            />
+          </div>
+          {error ? (
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? 'Saving…' : 'Save changes'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function TimeExpenseTab({
   projectId,
   buckets,
@@ -271,6 +418,7 @@ export function TimeExpenseTab({
 }) {
   const [showTimeForm, setShowTimeForm] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [workerFilter, setWorkerFilter] = useState<string>('all');
   const [, startTransition] = useTransition();
 
@@ -453,6 +601,9 @@ export function TimeExpenseTab({
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
+                      <Button size="xs" variant="ghost" onClick={() => setEditingExpense(exp)}>
+                        Edit
+                      </Button>
                       <Button
                         size="xs"
                         variant="ghost"
@@ -469,6 +620,16 @@ export function TimeExpenseTab({
           </div>
         )}
       </section>
+
+      {editingExpense ? (
+        <EditExpenseDialog
+          // key forces remount per expense so form state re-seeds correctly.
+          key={editingExpense.id}
+          expense={editingExpense}
+          buckets={buckets}
+          onClose={() => setEditingExpense(null)}
+        />
+      ) : null}
     </div>
   );
 }

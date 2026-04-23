@@ -178,6 +178,70 @@ export async function logExpenseWithReceiptAction(
   return { ok: true, id: data.id };
 }
 
+const updateExpenseSchema = z.object({
+  id: z.string().uuid(),
+  // All fields are individually optional — the caller supplies only the ones
+  // they want to change. Undefined = leave as-is.
+  expense_date: z.string().min(1).optional(),
+  amount_cents: z.coerce
+    .number()
+    .int()
+    .refine((n) => n !== 0, { message: 'Amount must not be zero.' })
+    .optional(),
+  vendor: z.string().trim().max(200).nullable().optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
+  bucket_id: z.string().uuid().nullable().optional(),
+});
+
+export async function updateExpenseAction(input: {
+  id: string;
+  expense_date?: string;
+  amount_cents?: number;
+  vendor?: string | null;
+  description?: string | null;
+  bucket_id?: string | null;
+}): Promise<ExpenseActionResult> {
+  const parsed = updateExpenseSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Please fix the errors below.',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+  const { id, ...rest } = parsed.data;
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  // Build the update object with only the fields that were provided.
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (rest.expense_date !== undefined) patch.expense_date = rest.expense_date;
+  if (rest.amount_cents !== undefined) patch.amount_cents = rest.amount_cents;
+  if (rest.vendor !== undefined) patch.vendor = rest.vendor?.trim() || null;
+  if (rest.description !== undefined) patch.description = rest.description?.trim() || null;
+  if (rest.bucket_id !== undefined) patch.bucket_id = rest.bucket_id || null;
+
+  const supabase = await createClient();
+  // RLS scopes this to the caller's tenant; no manual tenant_id filter needed
+  // but we add one anyway as a belt-and-suspenders guard.
+  const { data, error } = await supabase
+    .from('expenses')
+    .update(patch)
+    .eq('id', id)
+    .eq('tenant_id', tenant.id)
+    .select('id, project_id, job_id')
+    .single();
+
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? 'Failed to update expense.' };
+  }
+
+  if (data.project_id) revalidatePath(`/projects/${data.project_id}`);
+  if (data.job_id) revalidatePath(`/jobs/${data.job_id}`);
+  return { ok: true, id: data.id };
+}
+
 export async function deleteExpenseAction(id: string): Promise<ExpenseActionResult> {
   if (!id) return { ok: false, error: 'Missing expense id.' };
 

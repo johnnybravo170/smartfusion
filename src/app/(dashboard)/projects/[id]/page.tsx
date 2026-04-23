@@ -657,6 +657,7 @@ export default async function ProjectDetailPage({
                 amount_cents: e.amount_cents,
                 vendor: e.vendor ?? null,
                 description: e.description ?? null,
+                bucket_id: (e as { bucket_id: string | null }).bucket_id ?? null,
                 worker_profile_id: e.worker_profile_id ?? null,
                 worker_name: wp?.display_name ?? null,
                 receipt_url: expenseReceiptUrls.get(e.id) ?? null,
