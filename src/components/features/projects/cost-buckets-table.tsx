@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import type { BudgetLine } from '@/lib/db/queries/project-buckets';
-import { formatCurrency } from '@/lib/pricing/calculator';
+import { formatCurrency, formatCurrencyCompact } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 import {
   addBucketAction,
@@ -378,34 +378,36 @@ function BucketRow(props: BucketRowProps) {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-muted-foreground">
-                      <th className="py-1 text-left font-medium">Label</th>
-                      <th className="py-1 text-right font-medium">Qty</th>
-                      <th className="py-1 text-left font-medium">Unit</th>
-                      <th className="py-1 text-right font-medium">Cost</th>
-                      <th className="py-1 text-right font-medium">Price</th>
-                      <th className="py-1 text-right font-medium">Total</th>
-                      <th />
+                      <th className="px-2 py-1 text-left font-medium">Label</th>
+                      <th className="px-2 py-1 text-right font-medium">Qty</th>
+                      <th className="px-2 py-1 text-left font-medium">Unit</th>
+                      <th className="px-2 py-1 text-right font-medium">Cost</th>
+                      <th className="px-2 py-1 text-right font-medium">Price</th>
+                      <th className="px-2 py-1 text-right font-medium">Total</th>
+                      <th className="px-2 py-1" />
                     </tr>
                   </thead>
                   <tbody>
                     {bucketLines.map((cl) => (
                       <tr key={cl.id} className="border-t">
-                        <td className="py-1">
+                        <td className="px-2 py-1">
                           {cl.label}
                           {cl.notes && (
                             <span className="ml-1 text-muted-foreground">— {cl.notes}</span>
                           )}
                         </td>
-                        <td className="py-1 text-right">{Number(cl.qty)}</td>
-                        <td className="py-1 text-muted-foreground">{cl.unit}</td>
-                        <td className="py-1 text-right text-muted-foreground">
-                          {formatCurrency(cl.unit_cost_cents)}
+                        <td className="px-2 py-1 text-right tabular-nums">{Number(cl.qty)}</td>
+                        <td className="px-2 py-1 text-muted-foreground">{cl.unit}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-muted-foreground">
+                          {formatCurrencyCompact(cl.unit_cost_cents)}
                         </td>
-                        <td className="py-1 text-right">{formatCurrency(cl.unit_price_cents)}</td>
-                        <td className="py-1 text-right font-medium">
-                          {formatCurrency(cl.line_price_cents)}
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {formatCurrencyCompact(cl.unit_price_cents)}
                         </td>
-                        <td className="py-1 text-right">
+                        <td className="px-2 py-1 text-right font-medium tabular-nums">
+                          {formatCurrencyCompact(cl.line_price_cents)}
+                        </td>
+                        <td className="px-2 py-1 text-right">
                           <Button
                             size="xs"
                             variant="ghost"

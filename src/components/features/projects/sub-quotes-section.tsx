@@ -11,7 +11,7 @@
  * a gentle "create a bucket first" hint rather than erroring later.
  */
 
-import { CheckCircle2, ChevronDown, ChevronRight, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, FileStack, XCircle } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -94,7 +94,31 @@ export function SubQuotesSection({
       ) : null}
 
       {subQuotes.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No sub quotes logged yet.</p>
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-muted/20 px-6 py-10 text-center">
+          <div className="flex size-12 items-center justify-center rounded-full bg-muted">
+            <FileStack className="size-6 text-muted-foreground" />
+          </div>
+          <div className="max-w-md space-y-1">
+            <p className="font-medium">No sub quotes yet.</p>
+            <p className="text-sm text-muted-foreground">
+              Sub quotes are quotes you&apos;ve received from trades or suppliers for parts of this
+              project. Logging them gives you a live view of what you&apos;ve committed so your cost
+              control stays accurate.
+            </p>
+          </div>
+          {buckets.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Create at least one cost bucket above, then come back here.
+            </p>
+          ) : (
+            <div className="flex flex-wrap justify-center gap-2 pt-1">
+              <SubQuoteUploadButton projectId={projectId} buckets={buckets} />
+              <Button size="sm" variant="outline" onClick={() => setShowForm(true)}>
+                + Add manually
+              </Button>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="space-y-2">
           {subQuotes.map((q) => (

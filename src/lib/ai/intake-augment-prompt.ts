@@ -15,15 +15,15 @@ You are given:
 
 Your job: return a list of additions and updates the operator can review.
 
-CRITICAL DISTINCTION — quotes vs invoices/bills:
-- A QUOTE / ESTIMATE / PROPOSAL: the sub-trade is proposing a future price ("we propose", "quotation", "estimate for", future tense). → Use new_lines to add to the project estimate.
+CRITICAL DISTINCTION — sub quotes vs invoices/bills vs receipts:
+- A SUB QUOTE / ESTIMATE / PROPOSAL from a subcontractor or supplier (future tense, "we propose", "quotation", "estimate for"): → Use new_sub_quotes. Do NOT create new_buckets or new_lines from it; sub quotes are a separate first-class concept that get allocated across the project's EXISTING cost buckets.
 - An INVOICE / BILL: the sub-trade is requesting payment for work already done ("invoice #", "amount owing", "payment due", "please remit", past tense, has an invoice number and due date). → Use new_bills. Do NOT add to the estimate.
 - A RECEIPT: already paid (store receipt, "paid", zero balance). → Use new_expenses.
 
 Rules:
 1. Reuse existing bucket names whenever the artifact's content fits one. Only propose a NEW bucket when nothing existing fits.
 2. When proposing a new line, name the target bucket EXACTLY as it appears in the existing project, or use a new bucket name you also propose.
-3. For a PDF QUOTE/PROPOSAL from a sub-trade: create a new bucket named after the company or trade name exactly as it appears on the quote (e.g. "Blackwood Plumbing" or "Electrical"), and add line items from the quote as new_lines. Capture the prices stated in the quote (unit_price_cents in integer cents).
+3. For a PDF SUB QUOTE / PROPOSAL from a sub-trade or supplier: emit a new_sub_quotes entry with vendor_name (as it appears on the quote), vendor_email + vendor_phone (if visible), total_cents (quote's grand total in integer cents), scope_description (vendor's own words summarising what's quoted), quote_date + valid_until (YYYY-MM-DD or null), line_items (label + qty + unit_price_cents + line_total_cents per line), and allocations (bucket_name must EXACTLY match an existing bucket — do NOT invent bucket names, and if you can't confidently map the scope to an existing bucket, leave allocations empty and let the operator allocate manually). The source PDF index goes in source_image_index. Do NOT create new_buckets or new_lines from a sub quote.
 4. For a PDF INVOICE/BILL (work done, money owed): emit a new_bills entry with vendor, bill_date (YYYY-MM-DD), amount_cents (pre-GST subtotal in integer cents), gst_cents (integer cents, 0 if no GST), a one-line description, and bucket_name (match to the most relevant existing bucket, or null). The source PDF index goes in source_image_index. Do NOT create cost lines for invoices.
 5. For a RECEIPT (paid invoice / store receipt — image or PDF): emit a new_expenses entry with vendor, amount in integer cents, date (YYYY-MM-DD), and a one-line description. If the receipt clearly fits an existing or proposed bucket, set bucket_name; otherwise leave null. Receipts are NOT cost-line estimates — they're real money already spent.
 6. REFERENCE PHOTOS of existing conditions (rooms, fixtures, before/after) → attach to the most relevant cost line via source_image_indexes. They show what work is being done on.
@@ -150,6 +150,62 @@ export const AUGMENT_JSON_SCHEMA = {
           ],
         },
       },
+      new_sub_quotes: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            vendor_name: { type: 'string' },
+            vendor_email: { type: ['string', 'null'] },
+            vendor_phone: { type: ['string', 'null'] },
+            total_cents: { type: 'integer' },
+            scope_description: { type: ['string', 'null'] },
+            quote_date: { type: ['string', 'null'] }, // YYYY-MM-DD
+            valid_until: { type: ['string', 'null'] }, // YYYY-MM-DD
+            line_items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  label: { type: 'string' },
+                  qty: { type: ['number', 'null'] },
+                  unit_price_cents: { type: ['integer', 'null'] },
+                  line_total_cents: { type: ['integer', 'null'] },
+                },
+                required: ['label', 'qty', 'unit_price_cents', 'line_total_cents'],
+              },
+            },
+            allocations: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  bucket_name: { type: 'string' },
+                  allocated_cents: { type: 'integer' },
+                  reasoning: { type: 'string' },
+                },
+                required: ['bucket_name', 'allocated_cents', 'reasoning'],
+              },
+            },
+            source_image_index: { type: ['integer', 'null'] },
+          },
+          required: [
+            'vendor_name',
+            'vendor_email',
+            'vendor_phone',
+            'total_cents',
+            'scope_description',
+            'quote_date',
+            'valid_until',
+            'line_items',
+            'allocations',
+            'source_image_index',
+          ],
+        },
+      },
       signals: {
         type: 'object',
         additionalProperties: false,
@@ -208,6 +264,7 @@ export const AUGMENT_JSON_SCHEMA = {
       'new_bills',
       'new_artifacts',
       'new_expenses',
+      'new_sub_quotes',
       'signals',
       'reply_draft',
       'image_roles',
@@ -249,6 +306,28 @@ export type AugmentArtifact = {
   source_image_index: number;
 };
 
+export type AugmentSubQuote = {
+  vendor_name: string;
+  vendor_email: string | null;
+  vendor_phone: string | null;
+  total_cents: number;
+  scope_description: string | null;
+  quote_date: string | null;
+  valid_until: string | null;
+  line_items: Array<{
+    label: string;
+    qty: number | null;
+    unit_price_cents: number | null;
+    line_total_cents: number | null;
+  }>;
+  allocations: Array<{
+    bucket_name: string;
+    allocated_cents: number;
+    reasoning: string;
+  }>;
+  source_image_index: number | null;
+};
+
 export type AugmentResult = {
   description_addendum: string | null;
   new_buckets: Array<{ name: string; section: string | null }>;
@@ -264,6 +343,7 @@ export type AugmentResult = {
   new_bills: AugmentBill[];
   new_artifacts: AugmentArtifact[];
   new_expenses: AugmentExpense[];
+  new_sub_quotes: AugmentSubQuote[];
   signals: AugmentSignals;
   reply_draft: string | null;
   image_roles: Array<{

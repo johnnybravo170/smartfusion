@@ -422,7 +422,7 @@ export default async function ProjectDetailPage({
       key: 'estimate',
       label: unseenFeedbackCount > 0 ? `Estimate (${unseenFeedbackCount})` : 'Estimate',
     },
-    { key: 'costs', label: 'POs & Bills' },
+    { key: 'costs', label: 'Costs' },
     { key: 'variance', label: 'Variance' },
     { key: 'invoices', label: 'Invoices' },
     { key: 'time', label: 'Time & Expenses' },

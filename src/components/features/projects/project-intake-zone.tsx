@@ -245,8 +245,12 @@ export function ProjectIntakeZone({ projectId }: { projectId: string }) {
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="gap-1.5">
-          <Sparkles className="size-3.5" />
+        {/* Primary + bolder than the surrounding small action chips on
+            purpose. This is the universal drop zone for anything related
+            to this project — photos, bills, sub quotes, sketches — and
+            it has to be impossible to miss. */}
+        <Button className="gap-2 px-4 py-2 shadow-sm">
+          <Sparkles className="size-4" />
           Add to project
         </Button>
       </DialogTrigger>

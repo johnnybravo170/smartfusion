@@ -50,3 +50,19 @@ export function formatCurrency(cents: number): string {
     currency: 'CAD',
   }).format(cents / 100);
 }
+
+/**
+ * Compact currency format: drops trailing .00 on whole-dollar amounts
+ * (e.g. $1,234.56 stays, $5,000.00 becomes $5,000). Use in dense tables
+ * where the extra three chars per cell cause collisions.
+ */
+export function formatCurrencyCompact(cents: number): string {
+  const dollars = cents / 100;
+  const isWhole = Math.abs(cents % 100) === 0;
+  return new Intl.NumberFormat('en-CA', {
+    style: 'currency',
+    currency: 'CAD',
+    minimumFractionDigits: isWhole ? 0 : 2,
+    maximumFractionDigits: isWhole ? 0 : 2,
+  }).format(dollars);
+}
