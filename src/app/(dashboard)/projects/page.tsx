@@ -2,11 +2,13 @@ import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { AwaitingApprovalList } from '@/components/features/projects/awaiting-approval-list';
+import { CloneProjectDialog } from '@/components/features/projects/clone-project-dialog';
 import { ProjectNameEditor } from '@/components/features/projects/project-name-editor';
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
 import { ProjectTabs } from '@/components/features/projects/project-tabs';
 import { Button } from '@/components/ui/button';
 import { getProjectsAwaitingApproval } from '@/lib/db/queries/awaiting-approval';
+import { listCustomers } from '@/lib/db/queries/customers';
 import { countProjectsByStatus, listProjects } from '@/lib/db/queries/projects';
 import type { ProjectStatus } from '@/lib/validators/project';
 
@@ -31,12 +33,14 @@ export default async function ProjectsPage({
   const resolved = await searchParams;
   const view = parseView(resolved.view);
 
-  const [projects, counts, awaitingApproval] = await Promise.all([
+  const [projects, counts, awaitingApproval, allCustomers] = await Promise.all([
     listProjects({ limit: 200 }),
     countProjectsByStatus(),
     // Always fetch — we need the count for the tab label even on other tabs.
     getProjectsAwaitingApproval(),
+    listCustomers({ limit: 500 }),
   ]);
+  const customerOptions = allCustomers.map((c) => ({ id: c.id, name: c.name }));
   const total = counts.planning + counts.in_progress + counts.complete + counts.cancelled;
   const active = counts.planning + counts.in_progress;
 
@@ -101,6 +105,7 @@ export default async function ProjectsPage({
                 <th className="px-4 py-3 text-left font-medium">Status</th>
                 <th className="px-4 py-3 text-left font-medium">Start</th>
                 <th className="px-4 py-3 text-right font-medium">Complete</th>
+                <th className="w-px px-2 py-3" aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
@@ -136,6 +141,14 @@ export default async function ProjectsPage({
                       : '—'}
                   </td>
                   <td className="px-4 py-3 text-right">{p.percent_complete}%</td>
+                  <td className="px-2 py-3 text-right">
+                    <CloneProjectDialog
+                      projectId={p.id}
+                      projectName={p.name}
+                      defaultCustomerId={p.customer?.id ?? null}
+                      customers={customerOptions}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -2,7 +2,6 @@ import { ImageIcon, Link2, Mic, Users } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
-import { CloneProjectDialog } from '@/components/features/projects/clone-project-dialog';
 import { DeleteProjectButton } from '@/components/features/projects/delete-project-button';
 import { PercentCompleteEditor } from '@/components/features/projects/percent-complete-editor';
 import { ProjectIntakeZone } from '@/components/features/projects/project-intake-zone';
@@ -22,7 +21,6 @@ import PortalTabServer from '@/components/features/projects/tabs/portal-tab-serv
 import { TabSkeleton } from '@/components/features/projects/tabs/tab-skeleton';
 import TimeTabServer from '@/components/features/projects/tabs/time-tab-server';
 import VarianceTabServer from '@/components/features/projects/tabs/variance-tab-server';
-import { listCustomers } from '@/lib/db/queries/customers';
 import { listBucketsForProject } from '@/lib/db/queries/project-buckets';
 import { getProject } from '@/lib/db/queries/projects';
 import type { ProjectStatus } from '@/lib/validators/project';
@@ -80,11 +78,7 @@ export default async function ProjectDetailPage({
   // Shell-only queries. getProject is React.cache-wrapped, so generateMetadata
   // + the shell + any inner tab that also calls it (e.g. OverviewTab) dedupe
   // to a single DB hit per request.
-  const [project, projectBuckets, allCustomers] = await Promise.all([
-    getProject(id),
-    listBucketsForProject(id),
-    listCustomers({ limit: 500 }),
-  ]);
+  const [project, projectBuckets] = await Promise.all([getProject(id), listBucketsForProject(id)]);
   if (!project) notFound();
 
   const tabs: { key: Tab; label: string }[] = [
@@ -164,12 +158,6 @@ export default async function ProjectDetailPage({
               name: b.name,
               section: (b.section as 'interior' | 'exterior' | 'general') ?? 'general',
             }))}
-          />
-          <CloneProjectDialog
-            projectId={project.id}
-            projectName={project.name}
-            defaultCustomerId={project.customer_id}
-            customers={allCustomers.map((c) => ({ id: c.id, name: c.name }))}
           />
           <DeleteProjectButton projectId={project.id} projectName={project.name} />
         </div>
