@@ -122,6 +122,8 @@ export type Scope =
   | 'write:docs'
   | 'read:review_queue'
   | 'write:escalate'
+  | 'read:kanban'
+  | 'write:kanban'
   | 'admin:maintenance'
   | 'admin:keys';
 

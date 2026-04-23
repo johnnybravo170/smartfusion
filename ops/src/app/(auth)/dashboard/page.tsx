@@ -11,6 +11,32 @@ export default async function DashboardPage() {
     .order('created_at', { ascending: false })
     .limit(10);
 
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [{ count: kanbanOpen }, { count: kanbanOverdue }, { count: kanbanJonathan }] =
+    await Promise.all([
+      service
+        .schema('ops')
+        .from('kanban_cards')
+        .select('*', { count: 'exact', head: true })
+        .is('archived_at', null)
+        .neq('column_key', 'done'),
+      service
+        .schema('ops')
+        .from('kanban_cards')
+        .select('*', { count: 'exact', head: true })
+        .is('archived_at', null)
+        .is('done_at', null)
+        .not('due_date', 'is', null)
+        .lt('due_date', todayIso),
+      service
+        .schema('ops')
+        .from('kanban_cards')
+        .select('*', { count: 'exact', head: true })
+        .is('archived_at', null)
+        .neq('column_key', 'done')
+        .eq('assignee', 'jonathan'),
+    ]);
+
   const { count: keyCount } = await service
     .schema('ops')
     .from('api_keys')
@@ -47,6 +73,11 @@ export default async function DashboardPage() {
           label="MCP (last 24h)"
           value={`${mcpTotal} calls · ${mcpFailed} failed · ${activeTokenCount ?? 0} tokens`}
           href="/admin/mcp"
+        />
+        <Card
+          label="Kanban"
+          value={`${kanbanOpen ?? 0} open · ${kanbanOverdue ?? 0} overdue · ${kanbanJonathan ?? 0} mine`}
+          href="/admin/kanban"
         />
       </section>
 

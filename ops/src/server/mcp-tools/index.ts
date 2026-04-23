@@ -14,6 +14,7 @@ import { registerDocsTools } from './docs';
 import { registerEscalateTools } from './escalate';
 import { registerIdeaTools } from './ideas';
 import { registerIncidentTools } from './incidents';
+import { registerKanbanTools } from './kanban';
 import { registerKnowledgeTools } from './knowledge';
 import { registerReviewQueueTools } from './review_queue';
 import { registerRoadmapTools } from './roadmap';
@@ -57,5 +58,8 @@ export function registerScopedTools(server: McpServer, ctx: McpToolCtx) {
   }
   if (any(ctx.scopes, 'write:escalate')) {
     registerEscalateTools(server, ctx);
+  }
+  if (any(ctx.scopes, 'read:kanban', 'write:kanban')) {
+    registerKanbanTools(server, ctx);
   }
 }

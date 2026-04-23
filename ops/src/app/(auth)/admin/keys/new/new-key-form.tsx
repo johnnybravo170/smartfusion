@@ -28,6 +28,8 @@ const ALL_SCOPES = [
   'write:docs',
   'read:review_queue',
   'write:escalate',
+  'read:kanban',
+  'write:kanban',
   'admin:maintenance',
 ];
 
