@@ -11,6 +11,7 @@
 import archiver from 'archiver';
 import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { guardMfaForSensitiveAction } from '@/lib/auth/mfa-enforcement';
 import { reportError } from '@/lib/error-reporting';
 import { createClient } from '@/lib/supabase/server';
 
@@ -51,6 +52,9 @@ const EXPORT_TABLES = [
 ] as const;
 
 export async function requestExportAction(): Promise<ExportActionResult> {
+  const block = await guardMfaForSensitiveAction();
+  if (block) return block;
+
   const tenant = await getCurrentTenant();
   if (!tenant) {
     return { ok: false, error: 'Not signed in or missing tenant.' };

@@ -11,6 +11,7 @@
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { guardMfaForSensitiveAction } from '@/lib/auth/mfa-enforcement';
 import { listTeamMembers, removeTeamMember } from '@/lib/db/queries/team';
 import {
   createWorkerInvite,
@@ -45,6 +46,9 @@ export async function createWorkerInviteAction(input?: {
   joinUrl?: string;
   error?: string;
 }> {
+  const block = await guardMfaForSensitiveAction();
+  if (block) return block;
+
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
 

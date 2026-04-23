@@ -38,6 +38,7 @@ export const tenants = pgTable('tenants', {
   gstNumber: text('gst_number'),
   wcbNumber: text('wcb_number'),
   autoAssignCrew: boolean('auto_assign_crew').default(false).notNull(),
+  requireMfaForAllMembers: boolean('require_mfa_for_all_members').default(false).notNull(),
   socials: jsonb('socials').default(sql`'{}'::jsonb`).notNull(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).default(sql`now()`).notNull(),

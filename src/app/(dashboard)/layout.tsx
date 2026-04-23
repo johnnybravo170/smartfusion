@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { ChatPanel } from '@/components/chat/chat-panel';
 import { ChatProvider } from '@/components/chat/chat-provider';
 import { ChatToggle } from '@/components/chat/chat-toggle';
+import { MfaEnforcementBanner } from '@/components/features/settings/mfa-enforcement-banner';
 import { Header } from '@/components/layout/header';
 import { SidebarNav } from '@/components/layout/sidebar';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
@@ -45,6 +46,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
               vertical={vertical}
               ownerRateCents={ownerRateCents}
             />
+            <MfaEnforcementBanner />
             <TenantProvider timezone={timezone}>
               <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 pb-28 md:p-6 md:pb-24">
                 {children}

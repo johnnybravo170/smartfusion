@@ -1,12 +1,26 @@
 import { ShieldCheck } from 'lucide-react';
 import { MfaCard } from '@/components/features/settings/mfa-card';
+import { RequireMfaToggle } from '@/components/features/settings/require-mfa-toggle';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { requireAuth } from '@/lib/auth/helpers';
+import { getCurrentTenant, requireAuth } from '@/lib/auth/helpers';
 import { getMfaStatus } from '@/lib/auth/mfa';
+import { createClient } from '@/lib/supabase/server';
 
 export default async function SecuritySettingsPage() {
   await requireAuth();
-  const status = await getMfaStatus();
+  const [status, tenant] = await Promise.all([getMfaStatus(), getCurrentTenant()]);
+
+  // Fetch tenant toggle state for owners only.
+  let requireAllValue = false;
+  if (tenant && tenant.member.role === 'owner') {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from('tenants')
+      .select('require_mfa_for_all_members')
+      .eq('id', tenant.id)
+      .single();
+    requireAllValue = !!data?.require_mfa_for_all_members;
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -21,6 +35,8 @@ export default async function SecuritySettingsPage() {
         enrolled={status?.enrolled ?? false}
         recoveryCodesRemaining={status?.recoveryCodesRemaining ?? 0}
       />
+
+      {tenant?.member.role === 'owner' ? <RequireMfaToggle initialValue={requireAllValue} /> : null}
 
       <Card>
         <CardHeader>

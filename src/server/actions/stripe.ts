@@ -12,6 +12,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { guardMfaForSensitiveAction } from '@/lib/auth/mfa-enforcement';
 import { getPaymentProvider } from '@/lib/providers/factory';
 import { createClient } from '@/lib/supabase/server';
 
@@ -22,6 +23,9 @@ export type StripeActionResult = { ok: true; url?: string } | { ok: false; error
  * tenant and return an Account Link URL for onboarding.
  */
 export async function createConnectOnboardingAction(): Promise<StripeActionResult> {
+  const block = await guardMfaForSensitiveAction();
+  if (block) return block;
+
   const tenant = await getCurrentTenant();
   if (!tenant) {
     return { ok: false, error: 'Not signed in or missing tenant.' };

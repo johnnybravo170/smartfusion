@@ -29,6 +29,7 @@ export const tenantMembers = pgTable(
     firstName: text('first_name'),
     lastName: text('last_name'),
     title: text('title'),
+    mfaGraceStartedAt: timestamp('mfa_grace_started_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).default(sql`now()`).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).default(sql`now()`).notNull(),
   },
