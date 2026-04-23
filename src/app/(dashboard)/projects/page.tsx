@@ -2,10 +2,8 @@ import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { AwaitingApprovalList } from '@/components/features/projects/awaiting-approval-list';
-import { CloneProjectDialog } from '@/components/features/projects/clone-project-dialog';
-import { ProjectNameEditor } from '@/components/features/projects/project-name-editor';
-import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
 import { ProjectTabs } from '@/components/features/projects/project-tabs';
+import { ProjectsTable } from '@/components/features/projects/projects-table';
 import { Button } from '@/components/ui/button';
 import { getProjectsAwaitingApproval } from '@/lib/db/queries/awaiting-approval';
 import { listCustomers } from '@/lib/db/queries/customers';
@@ -107,64 +105,17 @@ export default async function ProjectsPage({
           </Button>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">Project</th>
-                <th className="px-4 py-3 text-left font-medium">Customer</th>
-                <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-left font-medium">Start</th>
-                <th className="px-4 py-3 text-right font-medium">Complete</th>
-                <th className="w-px px-2 py-3" aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((p) => (
-                <tr key={p.id} className="group border-b last:border-0 hover:bg-muted/30">
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1">
-                      <Link href={`/projects/${p.id}`} className="font-medium hover:underline">
-                        {p.name}
-                      </Link>
-                      <ProjectNameEditor projectId={p.id} name={p.name} variant="inline" />
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {p.customer ? (
-                      <Link href={`/customers/${p.customer.id}`} className="hover:underline">
-                        {p.customer.name}
-                      </Link>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <ProjectStatusBadge stage={p.lifecycle_stage as LifecycleStage} />
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {p.start_date
-                      ? new Date(p.start_date).toLocaleDateString('en-CA', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })
-                      : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-right">{p.percent_complete}%</td>
-                  <td className="px-2 py-3 text-right">
-                    <CloneProjectDialog
-                      projectId={p.id}
-                      projectName={p.name}
-                      defaultCustomerId={p.customer?.id ?? null}
-                      customers={customerOptions}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ProjectsTable
+          projects={filtered.map((p) => ({
+            id: p.id,
+            name: p.name,
+            lifecycle_stage: p.lifecycle_stage as LifecycleStage,
+            start_date: p.start_date,
+            percent_complete: p.percent_complete,
+            customer: p.customer ? { id: p.customer.id, name: p.customer.name } : null,
+          }))}
+          customerOptions={customerOptions}
+        />
       )}
     </div>
   );
