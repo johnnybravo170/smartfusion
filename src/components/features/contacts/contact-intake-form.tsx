@@ -9,9 +9,9 @@
  * extracted fields.
  */
 
-import { Loader2 } from 'lucide-react';
+import { Contact as ContactIcon, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { LeadIntakeForm } from '@/components/features/leads/lead-intake-form';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,13 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { ParsedContact } from '@/lib/ai/contact-intake-prompt';
+import {
+  contactPickerSupported,
+  importedContactToPastedText,
+  isVCardFile,
+  parseVCardFile,
+  pickPhoneContact,
+} from '@/lib/contacts/import-helpers';
 import type { ContactMatch } from '@/lib/db/queries/contact-matches';
 import { resizeImage } from '@/lib/storage/resize-image';
 import { type ContactKind, contactKindLabels, contactKinds } from '@/lib/validators/customer';
@@ -95,9 +102,53 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
   const [matches, setMatches] = useState<ContactMatch[]>([]);
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
+  const [pickerAvailable, setPickerAvailable] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const kindLabel = useMemo(() => contactKindLabels[kind], [kind]);
+
+  // Feature-detect the Contact Picker API on mount (Chrome Android only).
+  useEffect(() => {
+    setPickerAvailable(contactPickerSupported());
+  }, []);
+
+  function mergePastedText(next: string) {
+    setPastedText((prev) => {
+      const trimmed = prev.trim();
+      return trimmed ? `${trimmed}\n${next}` : next;
+    });
+  }
+
+  async function handleImportFromPhone() {
+    const c = await pickPhoneContact();
+    if (!c) return;
+    if (c.name && !nameHint.trim()) setNameHint(c.name);
+    mergePastedText(importedContactToPastedText(c));
+    toast.success('Contact imported from phone.');
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) {
+      setFiles([]);
+      return;
+    }
+    // vCards are parsed client-side and merged into the pasted-text field
+    // rather than sent to the AI as an artifact. Works everywhere, which
+    // is the iOS-Safari fallback for the Contact Picker API.
+    const [vcards, others] = [picked.filter(isVCardFile), picked.filter((f) => !isVCardFile(f))];
+    if (vcards.length) {
+      for (const v of vcards) {
+        const c = await parseVCardFile(v);
+        if (c) {
+          if (c.name && !nameHint.trim()) setNameHint(c.name);
+          mergePastedText(importedContactToPastedText(c));
+        }
+      }
+      toast.success(`Imported ${vcards.length} vCard${vcards.length === 1 ? '' : 's'}.`);
+    }
+    setFiles(others);
+  }
 
   function handleParse(e: React.FormEvent) {
     e.preventDefault();
@@ -168,6 +219,19 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
 
   return (
     <form onSubmit={handleParse} className="space-y-4 rounded-lg border bg-card p-5">
+      {pickerAvailable ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleImportFromPhone}
+          className="w-full sm:w-auto"
+        >
+          <ContactIcon className="mr-1.5 size-3.5" />
+          Import from phone contacts
+        </Button>
+      ) : null}
+
       <div>
         <label htmlFor="intake-name-hint" className="mb-1 block text-sm font-medium">
           Name hint (optional)
@@ -199,14 +263,14 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
           id="intake-files"
           ref={fileInputRef}
           type="file"
-          accept="image/*,application/pdf"
+          accept="image/*,application/pdf,.vcf,text/vcard,text/x-vcard"
           multiple
           className="block w-full text-sm file:mr-3 file:rounded file:border file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-muted/80"
-          onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+          onChange={handleFileChange}
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          Business card photo, letterhead, email signature, invoice, or any artifact with the
-          contact&rsquo;s details.
+          Business card photo, letterhead, email signature, invoice, or a .vcf vCard exported from
+          your Contacts app.
         </p>
         {files.length > 0 ? (
           <p className="mt-1 text-xs text-muted-foreground">
