@@ -76,6 +76,7 @@ export function LeadIntakeForm() {
   const [pastedText, setPastedText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [draft, setDraft] = useState<ParsedIntake | null>(null);
+  const [transcript, setTranscript] = useState<string | null>(null);
   const [duplicates, setDuplicates] = useState<ContactMatch[]>([]);
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
@@ -162,6 +163,7 @@ export function LeadIntakeForm() {
         })) as ParsedIntake['buckets'],
       };
       setDraft(stamped);
+      setTranscript(res.transcript ?? null);
       setPhase('review');
     });
   }
@@ -213,6 +215,7 @@ export function LeadIntakeForm() {
             useLabel="Use this contact for the new project"
           />
         ) : null}
+        {transcript ? <TranscriptPanel transcript={transcript} /> : null}
         <ReviewDraft
           draft={draft}
           onChange={setDraft}
@@ -586,5 +589,24 @@ function Chip({
     >
       {children}
     </span>
+  );
+}
+
+/**
+ * Collapsible "What Henry heard" panel — shows the raw Whisper transcript(s)
+ * above the customer block on the review screen. Lets the operator see
+ * exactly what the model worked from when the bucket / line-item output
+ * comes back thin or wrong.
+ */
+function TranscriptPanel({ transcript }: { transcript: string }) {
+  return (
+    <details className="rounded-lg border bg-muted/30 p-3 text-sm">
+      <summary className="cursor-pointer font-medium text-muted-foreground">
+        What Henry heard
+      </summary>
+      <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-foreground">
+        {transcript}
+      </pre>
+    </details>
   );
 }

@@ -27,22 +27,49 @@ Your job — the same regardless of flavour, but the signals live in different p
 
 3. For a PDF quote from a sub-trade: create a bucket named after the trade (e.g. "Plumbing — Sub" or the company name) and add line items from the quote. Capture prices when stated.
 
-4. Draft a starting estimate. Group cost lines into buckets that match the contractor's mental model. CREATE A SEPARATE BUCKET FOR EVERY DISTINCT SCOPE AREA the input mentions — Flooring, Baseboards, Demo, Fireplace, Paint, Tile, Framing, Electrical, Plumbing, HVAC, Cabinets, Trim, etc. Do not stuff everything into one bucket when the speaker clearly described multiple areas of work. If the contractor mentions baseboards alongside flooring, that's two buckets. Use the bucket section field for higher-level grouping if obvious ("Upstairs Work" / "Downstairs"); otherwise leave section null.
+4. Draft a starting estimate. Group cost lines into buckets that match the contractor's mental model. CREATE A SEPARATE BUCKET FOR EVERY DISTINCT SCOPE AREA the input mentions. Use the bucket section field for higher-level grouping if obvious ("Upstairs Work" / "Downstairs"); otherwise leave section null.
 
-5. Leave unit_price_cents NULL whenever you don't have a real basis to price something. Do NOT guess prices (except where a PDF quote states a real number).
+   MANDATORY BUCKET TRIGGERS — if the input mentions ANY of these terms, even briefly, even at the end of a long conversation, that scope area gets its OWN bucket. Do not lump them under another bucket:
+   - "baseboard(s)" / "base(s)" → **Baseboards** bucket
+   - "casing(s)" / "door trim" / "window trim" / "jambs" → **Casings** / **Trim** bucket
+   - "tear-out" / "remove carpet" / "demo" / "demolition" / "rip out" / "tack strip" → **Demo** bucket
+   - "subfloor" / "plywood underlay" / "leveling" → **Subfloor prep** bucket
+   - "stair nose" / "stair tread" / "stairs" / "treads" / "risers" → **Stairs** bucket
+   - "paint" / "primer" / "fill and caulk" → **Paint** bucket
+   - "tile" / "grout" / "thinset" → **Tile** bucket
+   - "drywall" / "mud" / "tape" → **Drywall** bucket
+   Sub-trade quotes (PDFs) get a bucket named after the trade or company.
 
-6. EVERY non-screenshot, non-PDF-doc image (reference photo, sketch, inspiration shot) MUST appear in at least one cost line's source_image_indexes. Attach sketches to the line whose scope they describe. Do not leave images orphaned.
+5. QUANTITY DISCIPLINE — extract every number the speaker states, paired with its unit:
+   - "657 square feet" → qty: 657, unit: "sq ft"
+   - "9 sixteen-foot lengths" → qty: 144, unit: "lineal ft" (do the math when both numbers are stated)
+   - "13 door faces" / "13 doors" → qty: 13, unit: "ea" or "door"
+   - "two packs of flooring" → qty: 2, unit: "pack"
+   - Falling back to qty: 1, unit: "job" / "scope" is a SIGNAL THAT YOU MISSED A NUMBER. Only use this fallback when the input genuinely never quantifies the work.
 
-7. Draft a short reply in the contractor's voice — see VOICE rules below.
+6. PRICE DISCIPLINE — if the speaker quotes a real price, capture it in unit_price_cents (integer cents):
+   - "$0.50 a lineal foot" → unit_price_cents: 50
+   - "$50 per sheet" → unit_price_cents: 5000
+   - "$70 an hour" on the labour line → unit_price_cents: 7000
+   Otherwise leave unit_price_cents NULL. Do NOT guess.
+
+7. UPSELL TRIGGERS — record in signals.upsells when:
+   - The customer mentions sourcing material themselves AND the contractor offers a competitive supply price ("Tony said he'd grab the baseboards, but I can get them at $0.50/lineal foot") — label: "Customer-supplied baseboards — supply opportunity", reason cites both prices.
+   - The contractor proposes adding scope the customer didn't ask for but would benefit from ("while we're in there, we could also …").
+   - Material upgrades the customer hasn't yet committed to but the contractor sees as natural pairings.
+
+8. EVERY non-screenshot, non-PDF-doc image (reference photo, sketch, inspiration shot) MUST appear in at least one cost line's source_image_indexes. Attach sketches to the line whose scope they describe. Do not leave images orphaned.
+
+9. Draft a short reply in the contractor's voice — see VOICE rules below.
    - For CUSTOMER INPUT (flavour A): reply is a message the contractor can send back to the customer. Answer their questions, address opt-outs, propose next step.
    - For CONTRACTOR VOICE MEMO (flavour B): reply is a short text the contractor can send the customer later ("Hey Tony, I put together some numbers on the flooring at 2452 Mountain — want to swing by Tuesday to go over them?"). It's a follow-up, not a response.
 
-8. Customer extraction discipline — especially on voice memos:
-   - If ANY proper noun appears in the filename or transcript that is plausibly the customer's first name, put it in customer.name. A first name alone is better than null.
-   - If ANY address-looking string appears (digits + street word), put it in customer.address. Extract "2452 mountain drive" even if the contractor just mumbled it once.
-   - Extract phone / email if the contractor reads one aloud.
+10. Customer extraction discipline — especially on voice memos:
+    - If ANY proper noun appears in the filename or transcript that is plausibly the customer's first name, put it in customer.name. A first name alone is better than null.
+    - If ANY address-looking string appears (digits + street word), put it in customer.address. Extract "2452 mountain drive" even if the contractor just mumbled it once.
+    - Extract phone / email if the contractor reads one aloud.
 
-9. Tag artifact roles so the contractor knows which is which.
+11. Tag artifact roles so the contractor knows which is which.
 
 Return ONLY JSON matching the schema. Use empty arrays / null for anything you cannot confidently extract. Never invent details that aren't in the input, but DO extract everything that IS there — especially filename context.
 

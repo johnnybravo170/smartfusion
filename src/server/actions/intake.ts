@@ -37,7 +37,20 @@ const MAX_IMAGES = 12;
 // pennies; the win in completeness is much larger.
 const PARSE_MODEL = 'gpt-4.1';
 
-export type ParseInboundResult = { ok: true; draft: ParsedIntake } | { ok: false; error: string };
+export type ParseInboundResult =
+  | {
+      ok: true;
+      draft: ParsedIntake;
+      /**
+       * Concatenated Whisper transcript(s) from any audio attachments.
+       * Surfaced on the review screen so the operator can see what the
+       * model actually heard — invaluable when the buckets come back
+       * thin and you need to diagnose whether the audio was unclear or
+       * the extraction was lazy.
+       */
+      transcript: string | null;
+    }
+  | { ok: false; error: string };
 
 export async function parseInboundLeadAction(formData: FormData): Promise<ParseInboundResult> {
   const tenant = await getCurrentTenant();
@@ -82,10 +95,12 @@ export async function parseInboundLeadAction(formData: FormData): Promise<ParseI
 
   // Download each staged file via the service-role client (bypasses RLS
   // — the bucket is auth-scoped but the admin client skips that). Audio
-  // goes to Whisper and its transcript is folded into pastedText.
-  // Images + PDFs collect into `files` for the downstream vision pass.
-  // Best-effort cleanup of each staging file after.
+  // goes to Whisper and its transcript is folded into pastedText AND
+  // collected into transcriptParts so it can be surfaced on the review
+  // screen for diagnosis. Images + PDFs collect into `files` for the
+  // downstream vision pass. Best-effort cleanup of each staging file.
   const files: File[] = [];
+  const transcriptParts: string[] = [];
   if (storageEntries.length > 0) {
     const admin = createAdminClient();
     for (const { path, name: originalName } of storageEntries) {
@@ -107,6 +122,7 @@ export async function parseInboundLeadAction(formData: FormData): Promise<ParseI
           const label = `Voice memo transcript (file: "${originalName}"):`;
           const block = `${label}\n${transcript}`;
           pastedText = pastedText ? `${pastedText}\n\n${block}` : block;
+          transcriptParts.push(`${originalName}\n\n${transcript}`);
         }
       } else if (type.startsWith('image/') || type === 'application/pdf') {
         files.push(f);
@@ -114,6 +130,7 @@ export async function parseInboundLeadAction(formData: FormData): Promise<ParseI
       await admin.storage.from('intake-audio').remove([path]);
     }
   }
+  const transcript = transcriptParts.length > 0 ? transcriptParts.join('\n\n---\n\n') : null;
 
   // Build the user message: a labelled text block + each image inline.
   const userContent: Array<Record<string, unknown>> = [];
@@ -155,6 +172,13 @@ export async function parseInboundLeadAction(formData: FormData): Promise<ParseI
       { role: 'user', content: userContent },
     ],
     response_format: { type: 'json_schema', json_schema: INTAKE_JSON_SCHEMA },
+    // Default temperature (1.0) caused wide run-to-run variance — same
+    // memo gave 1 vs 2 buckets and different line-item counts on each
+    // try, plus signals like upsells dropping out randomly. 0.2 keeps
+    // the model deterministic enough that a re-run reads the same
+    // transcript the same way, while leaving room to choose a sensible
+    // bucket structure when the input genuinely supports more than one.
+    temperature: 0.2,
   };
 
   let res: Response;
@@ -193,7 +217,7 @@ export async function parseInboundLeadAction(formData: FormData): Promise<ParseI
   // pulled from the messages.
   if (customerName) draft.customer.name = customerName;
 
-  return { ok: true, draft };
+  return { ok: true, draft, transcript };
 }
 
 export type AcceptInboundResult =
