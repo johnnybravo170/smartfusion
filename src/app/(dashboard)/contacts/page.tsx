@@ -6,9 +6,19 @@ import { CustomerSearchBar } from '@/components/features/customers/customer-sear
 import { CustomerTable } from '@/components/features/customers/customer-table';
 import { Button } from '@/components/ui/button';
 import { countCustomers, listCustomers } from '@/lib/db/queries/customers';
-import { type CustomerType, customerTypes } from '@/lib/validators/customer';
+import {
+  type ContactKind,
+  type CustomerType,
+  contactKinds,
+  customerTypes,
+} from '@/lib/validators/customer';
 
 type RawSearchParams = Record<string, string | string[] | undefined>;
+
+function parseKind(value: string | string[] | undefined): ContactKind | null {
+  if (typeof value !== 'string') return null;
+  return (contactKinds as readonly string[]).includes(value) ? (value as ContactKind) : null;
+}
 
 function parseType(value: string | string[] | undefined): CustomerType | null {
   if (typeof value !== 'string') return null;
@@ -31,11 +41,17 @@ export default async function ContactsPage({
 }) {
   const resolvedSearchParams = await searchParams;
   const query = parseQuery(resolvedSearchParams.q);
+  const kind = parseKind(resolvedSearchParams.kind);
   const type = parseType(resolvedSearchParams.type);
-  const hasFilters = Boolean(query || type);
+  const hasFilters = Boolean(query || kind || type);
 
   const [customers, totalCount] = await Promise.all([
-    listCustomers({ search: query || undefined, type: type ?? undefined, limit: 200 }),
+    listCustomers({
+      search: query || undefined,
+      kind: kind ?? undefined,
+      type: type ?? undefined,
+      limit: 200,
+    }),
     hasFilters ? countCustomers() : Promise.resolve(-1),
   ]);
 

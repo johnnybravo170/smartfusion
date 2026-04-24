@@ -41,8 +41,11 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { useHenryForm } from '@/hooks/use-henry-form';
 import {
+  type ContactKind,
   type CustomerCreateInput,
   type CustomerType,
+  contactKindLabels,
+  contactKinds,
   customerCreateSchema,
   customerTypeLabels,
   customerTypes,
@@ -63,6 +66,7 @@ export type CustomerFormProps = {
 
 const EMPTY: CustomerCreateInput = {
   type: 'residential',
+  kind: 'customer',
   name: '',
   email: '',
   phone: '',
@@ -90,14 +94,20 @@ export function CustomerForm({
   });
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
-  const initialValues = useMemo<CustomerCreateInput>(
-    () => ({
+  const initialValues = useMemo<CustomerCreateInput>(() => {
+    const defaultType = (defaults?.type as CustomerType | undefined) ?? EMPTY.type;
+    // Infer default kind from legacy type if the caller didn't pass one:
+    // 'agent' → kind=agent; residential/commercial → kind=customer.
+    const inferredKind: ContactKind =
+      (defaults?.kind as ContactKind | undefined) ??
+      (defaultType === 'agent' ? 'agent' : 'customer');
+    return {
       ...EMPTY,
       ...defaults,
-      type: (defaults?.type as CustomerType | undefined) ?? EMPTY.type,
-    }),
-    [defaults],
-  );
+      type: defaultType,
+      kind: inferredKind,
+    };
+  }, [defaults]);
 
   // Cast the schema through `unknown` to bridge the zod-v4 / react-hook-form
   // resolver typing gap. Runtime validation is unaffected.
@@ -108,7 +118,15 @@ export function CustomerForm({
     mode: 'onBlur',
   });
 
+  const watchedKind = form.watch('kind') ?? 'customer';
   const watchedType = form.watch('type');
+
+  // The legacy form showed "Agent" as a type option; we've now promoted it to
+  // a kind. Keep both in sync so submitting a form with kind=agent writes
+  // type=agent (legacy shim) while kind=vendor/sub/etc writes a non-customer
+  // kind with subtype NULL.
+  const kindForSubtypeGate = watchedKind;
+  const showCustomerSubtype = kindForSubtypeGate === 'customer';
 
   // Watch every field we want Henry to see + be able to populate.
   const watched = form.watch();
@@ -212,9 +230,9 @@ export function CustomerForm({
       const result = await action(payload);
 
       if (result.ok) {
-        toast.success(mode === 'create' ? 'Customer added.' : 'Customer updated.');
+        toast.success(mode === 'create' ? 'Contact added.' : 'Contact updated.');
         if (mode === 'create') {
-          router.push(`/customers/${result.id}`);
+          router.push(`/contacts/${result.id}`);
           return;
         }
         router.push(`/customers/${result.id}`);
@@ -246,30 +264,58 @@ export function CustomerForm({
         <div className="grid gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
           <FormField
             control={form.control}
-            name="type"
+            name="kind"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Customer type</FormLabel>
-                <Select value={field.value} onValueChange={field.onChange}>
+                <FormLabel>Kind</FormLabel>
+                <Select
+                  value={field.value ?? 'customer'}
+                  onValueChange={(next) => {
+                    field.onChange(next);
+                    // If they flip away from customer, clear the subtype so
+                    // the DB invariant (type only when kind=customer) holds.
+                    // If they flip back to customer, default to residential.
+                    if (next === 'customer') {
+                      if (!form.getValues('type') || form.getValues('type') === 'agent') {
+                        form.setValue('type', 'residential', { shouldValidate: true });
+                      }
+                    } else if (next === 'agent') {
+                      // Legacy shim: keep the `type` field writeable as 'agent'
+                      // so the existing server path keeps working. It's
+                      // translated back to kind=agent/subtype=null on save.
+                      form.setValue('type', 'agent', { shouldValidate: true });
+                    } else {
+                      // Vendors, subs, inspectors, referrals, other — no subtype.
+                      // Use 'residential' as a harmless placeholder; server
+                      // ignores it when kind !== 'customer'.
+                      form.setValue('type', 'residential', { shouldValidate: true });
+                    }
+                  }}
+                >
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Pick a type" />
+                      <SelectValue placeholder="Pick a kind" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {customerTypes.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {customerTypeLabels[t]}
+                    {contactKinds.map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {contactKindLabels[k]}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <FormDescription>
-                  {watchedType === 'residential' && 'A homeowner or tenant at a single address.'}
-                  {watchedType === 'commercial' &&
-                    'A business, strata, or property manager. Notes capture ongoing agreements.'}
-                  {watchedType === 'agent' &&
-                    'A real-estate agent who bills to their brokerage, often for pre-listing rushes.'}
+                  {watchedKind === 'customer' &&
+                    'Someone you work for — residential or commercial.'}
+                  {watchedKind === 'vendor' &&
+                    'Supplier you buy materials from (e.g. Home Depot, local building centre).'}
+                  {watchedKind === 'sub' &&
+                    'Sub-trade you hire (electrician, plumber, drywaller, framer, etc).'}
+                  {watchedKind === 'agent' && 'Real-estate agent who bills to their brokerage.'}
+                  {watchedKind === 'inspector' && 'Municipal or private inspector.'}
+                  {watchedKind === 'referral' && 'Someone who sends you leads.'}
+                  {watchedKind === 'other' && 'Anyone else worth keeping notes on.'}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -282,22 +328,34 @@ export function CustomerForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  {watchedType === 'commercial'
+                  {watchedKind === 'customer' && watchedType === 'commercial'
                     ? 'Business name'
-                    : watchedType === 'agent'
+                    : watchedKind === 'agent'
                       ? 'Agent name'
-                      : 'Full name'}
+                      : watchedKind === 'vendor' || watchedKind === 'sub'
+                        ? 'Company name'
+                        : 'Full name'}
                 </FormLabel>
                 <FormControl>
                   <Input
                     placeholder={
-                      watchedType === 'commercial'
+                      watchedKind === 'customer' && watchedType === 'commercial'
                         ? 'Acme Supply Ltd.'
-                        : watchedType === 'agent'
+                        : watchedKind === 'agent'
                           ? 'Helen Fraser (ReMax)'
-                          : 'Sarah Chen'
+                          : watchedKind === 'vendor'
+                            ? 'Home Depot Pro'
+                            : watchedKind === 'sub'
+                              ? "Joe's Plumbing"
+                              : 'Sarah Chen'
                     }
-                    autoComplete={watchedType === 'commercial' ? 'organization' : 'name'}
+                    autoComplete={
+                      watchedKind === 'customer' && watchedType === 'commercial'
+                        ? 'organization'
+                        : watchedKind === 'vendor' || watchedKind === 'sub'
+                          ? 'organization'
+                          : 'name'
+                    }
                     {...field}
                   />
                 </FormControl>
@@ -305,6 +363,43 @@ export function CustomerForm({
               </FormItem>
             )}
           />
+
+          {showCustomerSubtype ? (
+            <FormField
+              control={form.control}
+              name="type"
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>Customer type</FormLabel>
+                  <Select
+                    value={field.value === 'agent' ? 'residential' : field.value}
+                    onValueChange={field.onChange}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pick a type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {customerTypes
+                        .filter((t) => t !== 'agent')
+                        .map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {customerTypeLabels[t]}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    {watchedType === 'residential' && 'A homeowner or tenant at a single address.'}
+                    {watchedType === 'commercial' &&
+                      'A business, strata, or property manager. Notes capture ongoing agreements.'}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : null}
         </div>
 
         <div className="grid gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
@@ -354,7 +449,13 @@ export function CustomerForm({
 
         <div className="grid gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
           <h2 className="md:col-span-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            {watchedType === 'agent' ? 'Brokerage address' : 'Service address'}
+            {watchedKind === 'agent'
+              ? 'Brokerage address'
+              : watchedKind === 'vendor' || watchedKind === 'sub'
+                ? 'Business address'
+                : watchedKind !== 'customer'
+                  ? 'Address'
+                  : 'Service address'}
           </h2>
           {isLoaded && (
             <div className="md:col-span-2 flex items-center gap-2">
@@ -505,7 +606,7 @@ export function CustomerForm({
               ? mode === 'create'
                 ? 'Saving…'
                 : 'Updating…'
-              : (submitLabel ?? (mode === 'create' ? 'Create customer' : 'Save changes'))}
+              : (submitLabel ?? (mode === 'create' ? 'Create contact' : 'Save changes'))}
           </Button>
           {cancelHref ? (
             <Button

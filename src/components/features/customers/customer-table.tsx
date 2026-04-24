@@ -54,13 +54,10 @@ export function CustomerTable({ customers }: { customers: CustomerRow[] }) {
               className="cursor-pointer transition-colors hover:bg-muted/50"
             >
               <TableCell>
-                <CustomerTypeBadge type={customer.type as CustomerType} />
+                <CustomerTypeBadge type={customer.type as CustomerType} kind={customer.kind} />
               </TableCell>
               <TableCell className="font-medium">
-                <Link
-                  href={`/customers/${customer.id}`}
-                  className="text-foreground hover:underline"
-                >
+                <Link href={`/contacts/${customer.id}`} className="text-foreground hover:underline">
                   {customer.name}
                 </Link>
               </TableCell>

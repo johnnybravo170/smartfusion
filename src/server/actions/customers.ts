@@ -28,6 +28,8 @@ export type CustomerActionResult =
 
 export type CustomerFormInput = {
   type: string;
+  /** Optional kind-first field (preferred over legacy `type` when present). */
+  kind?: string;
   name: string;
   email?: string;
   phone?: string;
@@ -37,6 +39,28 @@ export type CustomerFormInput = {
   postalCode?: string;
   notes?: string;
 };
+
+/**
+ * Resolve (kind, subtype) from whatever the form sent — either the new
+ * kind-first shape (`kind` + `type` as subtype) or the legacy three-way
+ * `type` value. Kind wins when both are present.
+ */
+function resolveKindAndSubtype(input: { type: string; kind?: string }): {
+  kind: 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
+  subtype: 'residential' | 'commercial' | null;
+} {
+  if (input.kind) {
+    if (input.kind === 'customer') {
+      const t = input.type === 'residential' || input.type === 'commercial' ? input.type : null;
+      return { kind: 'customer', subtype: t };
+    }
+    return {
+      kind: input.kind as 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other',
+      subtype: null,
+    };
+  }
+  return resolveKindAndSubtypeFromLegacyType(input.type as 'residential' | 'commercial' | 'agent');
+}
 
 export async function createCustomerAction(
   input: CustomerFormInput,
@@ -56,7 +80,7 @@ export async function createCustomerAction(
   }
 
   const supabase = await createClient();
-  const { kind, subtype } = resolveKindAndSubtypeFromLegacyType(parsed.data.type);
+  const { kind, subtype } = resolveKindAndSubtype(parsed.data);
   const { data, error } = await supabase
     .from('customers')
     .insert({
@@ -96,7 +120,7 @@ export async function updateCustomerAction(
   }
 
   const supabase = await createClient();
-  const { kind, subtype } = resolveKindAndSubtypeFromLegacyType(parsed.data.type);
+  const { kind, subtype } = resolveKindAndSubtype(parsed.data);
   const { error } = await supabase
     .from('customers')
     .update({

@@ -16,6 +16,14 @@ import { createClient } from '@/lib/supabase/server';
 export type CustomerRow = {
   id: string;
   tenant_id: string;
+  /** New kind column (Slice A). Present on every row. */
+  kind: 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
+  /**
+   * Legacy subtype field. For backwards-compat the query layer synthesizes
+   * 'agent' here when `kind='agent'`, and for other non-customer kinds
+   * falls back to 'residential'. Callers that care about the real model
+   * should branch on `kind` first.
+   */
   type: 'residential' | 'commercial' | 'agent';
   name: string;
   email: string | null;
@@ -55,7 +63,13 @@ export type RelatedInvoice = {
 
 export type CustomerListFilters = {
   search?: string;
+  /**
+   * Legacy subtype filter (residential/commercial/agent). Treated as a kind
+   * filter when set to 'agent'; otherwise as a customer-subtype filter.
+   */
   type?: 'residential' | 'commercial' | 'agent';
+  /** New kind-first filter. Takes precedence over `type` when both are set. */
+  kind?: 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
   limit?: number;
   offset?: number;
 };
@@ -104,13 +118,22 @@ function applyListFilters<
   },
 >(query: T, filters: CustomerListFilters): T {
   let q = query.is('deleted_at', null);
-  if (filters.type === 'agent') {
-    // Agent rows now live under `kind='agent'` (type is NULL).
+  if (filters.kind) {
+    // Kind-first filter (Slice C). May be combined with a customer subtype
+    // via `type` when `kind === 'customer'`.
+    q = q.eq('kind', filters.kind);
+    if (
+      filters.kind === 'customer' &&
+      (filters.type === 'residential' || filters.type === 'commercial')
+    ) {
+      q = q.eq('type', filters.type);
+    }
+  } else if (filters.type === 'agent') {
+    // Legacy filter: agent rows now live under `kind='agent'` (type is NULL).
     q = q.eq('kind', 'agent');
   } else if (filters.type) {
-    // Residential / commercial filter on the subtype column as before,
-    // but also constrain to kind='customer' so vendor/sub/etc. don't leak
-    // in once Slice C starts creating non-customer rows.
+    // Legacy residential / commercial filter — constrain to kind='customer'
+    // so vendor/sub/etc. don't leak in.
     q = q.eq('kind', 'customer').eq('type', filters.type);
   }
 

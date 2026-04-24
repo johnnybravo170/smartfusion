@@ -90,7 +90,14 @@ const optionalText = (max: number, label = 'value') =>
     .or(z.literal(''));
 
 export const customerCreateSchema = z.object({
-  type: z.enum(customerTypes, { message: 'Choose a customer type.' }),
+  /**
+   * Legacy three-way form value. Kept for existing callers; new kind-aware
+   * callers should pass `kind` + optional `subtype` instead. If `kind` is
+   * provided, `type` is derived by the server and ignored here.
+   */
+  type: z.enum(customerTypes, { message: 'Choose a type.' }),
+  /** New kind-first field (optional during the transition). */
+  kind: z.enum(contactKinds).optional(),
   name: z
     .string()
     .trim()
