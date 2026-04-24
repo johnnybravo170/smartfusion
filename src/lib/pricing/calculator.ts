@@ -41,13 +41,23 @@ export function calculateQuoteTotal(
   return { subtotal_cents, tax_cents, total_cents: subtotal_cents + tax_cents };
 }
 
+export type Currency = 'CAD' | 'USD';
+
+/** Intl locale paired with each currency. */
+function localeFor(currency: Currency): string {
+  return currency === 'USD' ? 'en-US' : 'en-CA';
+}
+
 /**
- * Format cents as a CAD currency string (e.g. $1,234.56).
+ * Format cents as a currency string. Currency defaults to CAD because
+ * every existing call site is Canadian — migrate to pass tenant currency
+ * when the surface is USD-capable (invoices, estimates, expenses, etc.
+ * for US tenants).
  */
-export function formatCurrency(cents: number): string {
-  return new Intl.NumberFormat('en-CA', {
+export function formatCurrency(cents: number, currency: Currency = 'CAD'): string {
+  return new Intl.NumberFormat(localeFor(currency), {
     style: 'currency',
-    currency: 'CAD',
+    currency,
   }).format(cents / 100);
 }
 
@@ -56,12 +66,12 @@ export function formatCurrency(cents: number): string {
  * (e.g. $1,234.56 stays, $5,000.00 becomes $5,000). Use in dense tables
  * where the extra three chars per cell cause collisions.
  */
-export function formatCurrencyCompact(cents: number): string {
+export function formatCurrencyCompact(cents: number, currency: Currency = 'CAD'): string {
   const dollars = cents / 100;
   const isWhole = Math.abs(cents % 100) === 0;
-  return new Intl.NumberFormat('en-CA', {
+  return new Intl.NumberFormat(localeFor(currency), {
     style: 'currency',
-    currency: 'CAD',
+    currency,
     minimumFractionDigits: isWhole ? 0 : 2,
     maximumFractionDigits: isWhole ? 0 : 2,
   }).format(dollars);

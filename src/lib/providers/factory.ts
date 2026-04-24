@@ -11,45 +11,49 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { StripeConnectPaymentProvider } from './payments/stripe-connect';
-import { CanadianTaxProvider } from './tax/canadian';
+import { type CountryCode, getTaxProviderForCountry } from './tax/factory';
 import type { PaymentProvider, TaxProvider } from './types';
 
 const paymentProviders = new Map<string, PaymentProvider>();
-const taxProviders = new Map<string, TaxProvider>();
 
-async function resolveRegion(tenantId: string): Promise<string> {
+async function resolveTenant(tenantId: string): Promise<{ region: string; country: CountryCode }> {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('tenants')
-    .select('region')
+    .select('region, country')
     .eq('id', tenantId)
     .single();
   if (error || !data) {
-    throw new Error(`Failed to resolve region for tenant ${tenantId}`);
+    throw new Error(`Failed to resolve tenant ${tenantId}`);
   }
-  return data.region as string;
+  return {
+    region: data.region as string,
+    country: ((data.country as string) ?? 'CA') as CountryCode,
+  };
 }
 
 export async function getPaymentProvider(tenantId: string): Promise<PaymentProvider> {
-  const region = await resolveRegion(tenantId);
+  const { region } = await resolveTenant(tenantId);
   return getPaymentProviderForRegion(region);
 }
 
 export function getPaymentProviderForRegion(region: string): PaymentProvider {
   const existing = paymentProviders.get(region);
   if (existing) return existing;
-  // Single provider per region today. When Helcim lands, dispatch on region
-  // (or a per-tenant override column) here.
+  // Single provider per region today. When the US Stripe platform account
+  // lands (kanban card ce0f355d), dispatch on region here — CA region uses
+  // the Canadian platform keys, US region uses the US platform keys.
   const provider = new StripeConnectPaymentProvider(region);
   paymentProviders.set(region, provider);
   return provider;
 }
 
+/**
+ * Country-aware tax provider. CA tenants get the Canadian impl;
+ * US tenants get the stub that throws "not yet supported" until the
+ * Stripe Tax card (45f3c3d8) ships.
+ */
 export async function getTaxProvider(tenantId: string): Promise<TaxProvider> {
-  const region = await resolveRegion(tenantId);
-  const existing = taxProviders.get(region);
-  if (existing) return existing;
-  const provider = new CanadianTaxProvider();
-  taxProviders.set(region, provider);
-  return provider;
+  const { country } = await resolveTenant(tenantId);
+  return getTaxProviderForCountry(country);
 }
