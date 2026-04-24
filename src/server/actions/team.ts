@@ -17,6 +17,7 @@ import {
   createWorkerInvite,
   deleteInvite,
   type InvitePrefs,
+  type InviteRole,
   listInvitesByTenantId,
   revokeInvite,
 } from '@/lib/db/queries/worker-invites';
@@ -37,6 +38,7 @@ function assertOwnerOrAdmin(role: string) {
 }
 
 export async function createWorkerInviteAction(input?: {
+  role?: InviteRole;
   invited_name?: string;
   invited_email?: string;
   invite_prefs?: InvitePrefs;
@@ -60,6 +62,7 @@ export async function createWorkerInviteAction(input?: {
 
   try {
     const invite = await createWorkerInvite(tenant.id, tenant.member.id, {
+      role: input?.role ?? 'worker',
       invited_name: input?.invited_name || undefined,
       invited_email: input?.invited_email || undefined,
       invite_prefs: input?.invite_prefs,

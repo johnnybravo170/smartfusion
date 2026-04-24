@@ -33,6 +33,8 @@ type InviteInfo = {
   valid: boolean;
   tenantName?: string;
   logoUrl?: string | null;
+  /** 'worker' (→ /w), 'bookkeeper' (→ /bk), or 'member' (→ /dashboard). */
+  role?: 'worker' | 'bookkeeper' | 'member';
   invitedName?: string | null;
   invitedEmail?: string | null;
 };
@@ -50,6 +52,15 @@ export default function JoinPage() {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
   const code = params.code;
+
+  // Post-join destination varies by role: workers land on /w, bookkeepers
+  // on /bk, full team members on the regular dashboard.
+  function destinationForRole(): string {
+    const role = inviteInfo?.role;
+    if (role === 'bookkeeper') return '/bk';
+    if (role === 'member') return '/dashboard';
+    return '/w';
+  }
 
   useEffect(() => {
     async function init() {
@@ -75,6 +86,7 @@ export default function JoinPage() {
             valid: true,
             tenantName: data.tenantName,
             logoUrl: data.logoUrl ?? null,
+            role: (data.role as 'worker' | 'bookkeeper' | 'member') ?? 'worker',
             invitedName: data.invitedName ?? null,
             invitedEmail: data.invitedEmail ?? null,
           });
@@ -100,7 +112,7 @@ export default function JoinPage() {
         toast.error(result.error);
         return;
       }
-      router.push('/w');
+      router.push(destinationForRole());
     });
   }
 
@@ -118,7 +130,7 @@ export default function JoinPage() {
         toast.error(result.error);
         return;
       }
-      router.push('/w');
+      router.push(destinationForRole());
     });
   }
 
@@ -137,7 +149,7 @@ export default function JoinPage() {
         toast.error(result.error);
         return;
       }
-      router.push('/w');
+      router.push(destinationForRole());
     });
   }
 

@@ -6,6 +6,7 @@
 
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import { InviteBookkeeperCard } from '@/components/features/team/invite-bookkeeper-card';
 import { InviteWorkerCard } from '@/components/features/team/invite-worker-card';
 import { InvitesTable } from '@/components/features/team/invites-table';
 import { TeamMembersTable } from '@/components/features/team/team-members-table';
@@ -64,6 +65,7 @@ export default async function TeamPage() {
       <div className="space-y-3">
         <h2 className="text-lg font-medium">Invites</h2>
         <InviteWorkerCard />
+        <InviteBookkeeperCard />
         <InvitesTable invites={invites} />
       </div>
     </div>

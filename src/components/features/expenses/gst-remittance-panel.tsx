@@ -30,9 +30,23 @@ type Props = {
   activeFrom: string;
   activeTo: string;
   taxLabel: string;
+  /** Route to push to when the user changes the period. Defaults to
+   * the operator GST page; the bookkeeper portal passes /bk/gst. */
+  basePath?: string;
+  /** Link back to the expense list. Operator = /expenses, bookkeeper
+   * = /bk/expenses. Pass null to hide the link entirely. */
+  backHref?: string | null;
 };
 
-export function GstRemittancePanel({ report, presets, activeFrom, activeTo, taxLabel }: Props) {
+export function GstRemittancePanel({
+  report,
+  presets,
+  activeFrom,
+  activeTo,
+  taxLabel,
+  basePath = '/expenses/gst',
+  backHref = '/expenses',
+}: Props) {
   const router = useRouter();
   const [customFrom, setCustomFrom] = useState(activeFrom);
   const [customTo, setCustomTo] = useState(activeTo);
@@ -41,7 +55,7 @@ export function GstRemittancePanel({ report, presets, activeFrom, activeTo, taxL
     const params = new URLSearchParams();
     params.set('from', from);
     params.set('to', to);
-    router.push(`/expenses/gst?${params.toString()}`);
+    router.push(`${basePath}?${params.toString()}`);
   }
 
   const activePreset = presets.find(
@@ -187,10 +201,14 @@ export function GstRemittancePanel({ report, presets, activeFrom, activeTo, taxL
       </section>
 
       <p className="text-xs text-muted-foreground">
-        <Link href="/expenses" className="hover:underline">
-          ← Back to expenses
-        </Link>
-        {' · '}
+        {backHref ? (
+          <>
+            <Link href={backHref} className="hover:underline">
+              ← Back to expenses
+            </Link>
+            {' · '}
+          </>
+        ) : null}
         Tax figures come from what&apos;s stored on each record, not re-computed from rates. If an
         expense is missing its tax amount, it won&apos;t show up as an ITC here.
       </p>

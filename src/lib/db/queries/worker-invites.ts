@@ -44,11 +44,14 @@ export type WorkerInviteWithTenant = WorkerInviteRow & {
   tenant_name: string;
 };
 
+export type InviteRole = 'worker' | 'bookkeeper' | 'member';
+
 /** Create a new invite code with 7-day expiry. */
 export async function createWorkerInvite(
   tenantId: string,
   createdBy: string,
   opts?: {
+    role?: InviteRole;
     invited_name?: string;
     invited_email?: string;
     invite_prefs?: InvitePrefs;
@@ -63,6 +66,7 @@ export async function createWorkerInvite(
     .insert({
       tenant_id: tenantId,
       code,
+      role: opts?.role ?? 'worker',
       created_by: createdBy,
       expires_at: expiresAt,
       invited_name: opts?.invited_name ?? null,

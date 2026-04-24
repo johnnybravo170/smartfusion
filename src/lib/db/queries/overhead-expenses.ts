@@ -15,6 +15,8 @@ export type OverheadExpenseRow = {
   tax_cents: number;
   vendor: string | null;
   description: string | null;
+  /** Null for overhead; populated when includeProjectExpenses is true. */
+  project_id: string | null;
   receipt_storage_path: string | null;
   /** Signed URL for the receipt (1hr TTL), or null if no receipt attached. */
   receipt_signed_url: string | null;
@@ -29,16 +31,26 @@ export async function listOverheadExpenses(opts?: {
   from?: string;
   to?: string;
   categoryId?: string;
+  /** Include project-linked expenses too (bookkeeper view). */
+  includeProjectExpenses?: boolean;
+  /** Filter to only uncategorized rows (bookkeeper triage view). */
+  uncategorizedOnly?: boolean;
 }): Promise<OverheadExpenseRow[]> {
   const supabase = await createClient();
 
   let query = supabase
     .from('expenses')
     .select(
-      'id, expense_date, amount_cents, tax_cents, vendor, description, receipt_storage_path, category_id, categories:category_id (name, parent:parent_id (name))',
+      'id, expense_date, amount_cents, tax_cents, vendor, description, receipt_storage_path, project_id, category_id, categories:category_id (name, parent:parent_id (name))',
     )
-    .is('project_id', null)
     .order('expense_date', { ascending: false });
+
+  if (!opts?.includeProjectExpenses) {
+    query = query.is('project_id', null);
+  }
+  if (opts?.uncategorizedOnly) {
+    query = query.is('category_id', null);
+  }
 
   if (opts?.from) query = query.gte('expense_date', opts.from);
   if (opts?.to) query = query.lte('expense_date', opts.to);
@@ -84,6 +96,7 @@ export async function listOverheadExpenses(opts?: {
       tax_cents: (row.tax_cents as number) ?? 0,
       vendor: (row.vendor as string | null) ?? null,
       description: (row.description as string | null) ?? null,
+      project_id: (row.project_id as string | null) ?? null,
       receipt_storage_path: receiptPath,
       receipt_signed_url: receiptPath ? (urlByPath.get(receiptPath) ?? null) : null,
       receipt_mime_hint: receiptPath ? (isPdf ? 'pdf' : 'image') : null,

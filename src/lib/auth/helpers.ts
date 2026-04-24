@@ -117,6 +117,24 @@ export async function requireWorker() {
   return { user, tenant };
 }
 
+/**
+ * Guard for the /bk bookkeeper surface. Bookkeepers see a scoped view
+ * into the tenant's financial surfaces — expenses, bills, invoices,
+ * GST remittance, T4A roll-ups, year-end exports. They do NOT see
+ * customer PII, project details, or operational content.
+ *
+ * Owners/admins also pass the guard (useful for testing + so Jonathan
+ * can demo the bookkeeper experience without logging out). Pure
+ * workers bounce to /w.
+ */
+export async function requireBookkeeper() {
+  const { user, tenant } = await requireTenant();
+  const role = tenant.member.role;
+  if (role === 'worker') redirect('/w');
+  // Anyone else gets through. The /bk UI is safe to show an owner.
+  return { user, tenant };
+}
+
 // ---------------------------------------------------------------------------
 // Platform admin helpers
 // ---------------------------------------------------------------------------

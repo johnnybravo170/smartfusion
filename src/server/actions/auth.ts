@@ -219,7 +219,36 @@ export async function loginAction(input: {
     redirect('/login/mfa');
   }
 
-  redirect('/dashboard');
+  // Role-aware destination: workers → /w, bookkeepers → /bk, else /dashboard.
+  // Uses admin client because the session cookie isn't attached to the
+  // server client yet after signInWithPassword.
+  redirect(await destinationForCurrentUser());
+}
+
+/**
+ * Resolve the post-login destination based on the signed-in user's
+ * tenant_members.role. Looks at the most recent tenant membership
+ * (a user could in theory belong to multiple tenants, but that's not
+ * a real case today — any match is fine).
+ */
+async function destinationForCurrentUser(): Promise<string> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return '/dashboard';
+  const admin = createAdminClient();
+  const { data: member } = await admin
+    .from('tenant_members')
+    .select('role')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const role = (member?.role as string | null) ?? null;
+  if (role === 'worker') return '/w';
+  if (role === 'bookkeeper') return '/bk';
+  return '/dashboard';
 }
 
 export async function requestMagicLinkAction(input: {
