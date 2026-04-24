@@ -55,8 +55,13 @@ Your job — the same regardless of flavour, but the signals live in different p
    - "657 square feet" → qty: 657, unit: "sq ft"
    - "9 sixteen-foot lengths" → qty: 144, unit: "lineal ft" (do the math when both numbers are stated)
    - "13 door faces" / "13 doors" → qty: 13, unit: "ea" or "door"
-   - "two packs of flooring" → qty: 2, unit: "pack"
-   - Falling back to qty: 1, unit: "job" / "scope" is a SIGNAL THAT YOU MISSED A NUMBER. Only use this fallback when the input genuinely never quantifies the work.
+   - "two packs of flooring" → qty: 2, unit: "pack" (this goes on the SUPPLY line — do NOT bury "2 packs" inside a notes/description string)
+   - "12 by 14 room" / "12x14 bedroom" → qty: 168, unit: "sq ft"
+   - "60 feet of baseboard" → qty: 60, unit: "lineal ft"
+   - Room dimensions, board counts, sheet counts, hours, trips, fixtures — all of it gets pulled out and put on the qty/unit fields, NOT just mentioned in description prose.
+   - Falling back to qty: 1, unit: "job" / "scope" / "lot" is a SIGNAL THAT YOU MISSED A NUMBER. Only use this fallback when the input genuinely never quantifies the work.
+
+5b. SELF-CHECK before finalizing buckets: scan your line items. If MORE THAN ONE line is qty:1 unit:"scope"/"job"/"lot", re-read the transcript looking for numbers, dimensions, counts you skipped. Most contractor memos contain multiple measurements; a draft full of qty:1/scope means you under-extracted, not that the contractor was vague.
 
 6. PRICE DISCIPLINE — if the speaker quotes a real price, capture it in unit_price_cents (integer cents):
    - "$0.50 a lineal foot" → unit_price_cents: 50

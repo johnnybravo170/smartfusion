@@ -1,0 +1,215 @@
+diff --git a/src/app/(auth)/signup/page.tsx b/src/app/(auth)/signup/page.tsx
+index f050de4..f8b9ccd 100644
+--- a/src/app/(auth)/signup/page.tsx
++++ b/src/app/(auth)/signup/page.tsx
+@@ -48,9 +48,10 @@ function SignupForm() {
+     const email = String(form.get('email') ?? '');
+     const password = String(form.get('password') ?? '');
+     const businessName = String(form.get('businessName') ?? '');
++    const phone = String(form.get('phone') ?? '');
+ 
+     startTransition(async () => {
+-      const result = await signupAction({ email, password, businessName, referralCode });
++      const result = await signupAction({ email, password, businessName, phone, referralCode });
+       if (result && 'error' in result) {
+         setError(result.error);
+         toast.error(result.error);
+@@ -95,6 +96,21 @@ function SignupForm() {
+               disabled={pending}
+             />
+           </div>
++          <div className="space-y-2">
++            <Label htmlFor="phone">Mobile phone</Label>
++            <Input
++              id="phone"
++              name="phone"
++              type="tel"
++              autoComplete="tel"
++              placeholder="+1 604 555 1234"
++              required
++              disabled={pending}
++            />
++            <p className="text-xs text-muted-foreground">
++              We text a 6-digit code to verify it.
++            </p>
++          </div>
+           <div className="space-y-2">
+             <Label htmlFor="password">Password</Label>
+             <Input
+diff --git a/src/server/actions/auth.ts b/src/server/actions/auth.ts
+index 67110a6..524abc4 100644
+--- a/src/server/actions/auth.ts
++++ b/src/server/actions/auth.ts
+@@ -14,10 +14,12 @@
+ 
+ import { headers } from 'next/headers';
+ import { redirect } from 'next/navigation';
++import { sendEmail } from '@/lib/email/send';
+ import { updateReferralOnSignup } from '@/lib/db/queries/referrals';
+ import { generateReferralCode } from '@/lib/referral/code-generator';
+ import { createAdminClient } from '@/lib/supabase/admin';
+ import { createClient } from '@/lib/supabase/server';
++import { normalizePhone } from '@/lib/twilio/client';
+ import { loginSchema, magicLinkSchema, signupSchema } from '@/lib/validators/auth';
+ 
+ export type ActionError = { error: string; fieldErrors?: Record<string, string[]> };
+@@ -35,6 +37,7 @@ export async function signupAction(input: {
+   email: string;
+   password: string;
+   businessName: string;
++  phone: string;
+   referralCode?: string;
+ }): Promise<ActionError | never> {
+   const parsed = signupSchema.safeParse(input);
+@@ -44,15 +47,23 @@ export async function signupAction(input: {
+       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+     };
+   }
+-  const { email, password, businessName } = parsed.data;
++  const { email, password, businessName, phone } = parsed.data;
++
++  const normalizedPhone = normalizePhone(phone);
++  if (!normalizedPhone) {
++    return {
++      error: 'Could not parse phone number — please enter it with country code (e.g. +1 604 555 1234).',
++    };
++  }
+ 
+   const admin = createAdminClient();
+ 
+-  // 1. Create the auth user.
++  // 1. Create the auth user (email NOT auto-confirmed; we'll send a
++  // verification email after the tenant rows are in place).
+   const { data: created, error: createErr } = await admin.auth.admin.createUser({
+     email,
+     password,
+-    email_confirm: true,
++    email_confirm: false,
+   });
+   if (createErr || !created?.user) {
+     const msg = createErr?.message ?? 'Could not create user.';
+@@ -87,7 +98,12 @@ export async function signupAction(input: {
+ 
+     const { error: memberErr } = await admin
+       .from('tenant_members')
+-      .insert({ tenant_id: tenant.id, user_id: userId, role: 'owner' });
++      .insert({
++        tenant_id: tenant.id,
++        user_id: userId,
++        role: 'owner',
++        phone: normalizedPhone,
++      });
+     if (memberErr) {
+       // Tenant row exists but membership failed — delete the tenant too so
+       // we don't leak a dangling row. `deleted_at` soft-delete is fine but
+@@ -131,7 +147,49 @@ export async function signupAction(input: {
+     return { error: `Account created but sign-in failed: ${signInErr.message}` };
+   }
+ 
+-  redirect('/dashboard');
++  // 5. Send the email-verification link via Resend (non-fatal — the user can
++  //    request a re-send from /onboarding/verify if delivery fails).
++  await sendVerificationEmail({ email, businessName }).catch((err) => {
++    console.warn('Failed to send verification email on signup:', err);
++  });
++
++  redirect('/onboarding/verify');
++}
++
++async function sendVerificationEmail(input: {
++  email: string;
++  businessName: string;
++}): Promise<void> {
++  const admin = createAdminClient();
++  const origin = await originFromHeaders();
++  const { data, error } = await admin.auth.admin.generateLink({
++    type: 'signup',
++    email: input.email,
++    options: { redirectTo: `${origin}/callback?next=/onboarding/verify` },
++  });
++  if (error || !data?.properties?.action_link) {
++    throw new Error(error?.message ?? 'Could not generate verification link.');
++  }
++  const link = data.properties.action_link;
++  await sendEmail({
++    to: input.email,
++    subject: 'Confirm your HeyHenry email',
++    html: `
++      <p>Hi,</p>
++      <p>Confirm your email to finish setting up <strong>${escapeHtml(input.businessName)}</strong> on HeyHenry:</p>
++      <p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#0a0a0a;color:#fff;text-decoration:none;border-radius:6px;">Confirm email</a></p>
++      <p>Or open this link: <br/><a href="${link}">${link}</a></p>
++      <p>This link expires in 24 hours.</p>
++    `,
++  });
++}
++
++function escapeHtml(s: string): string {
++  return s
++    .replace(/&/g, '&amp;')
++    .replace(/</g, '&lt;')
++    .replace(/>/g, '&gt;')
++    .replace(/"/g, '&quot;');
+ }
+ 
+ export async function loginAction(input: {
+diff --git a/src/app/(dashboard)/layout.tsx b/src/app/(dashboard)/layout.tsx
+index 8d44aaa..1c916f6 100644
+--- a/src/app/(dashboard)/layout.tsx
++++ b/src/app/(dashboard)/layout.tsx
+@@ -28,6 +28,19 @@ export default async function DashboardLayout({ children }: { children: ReactNod
+   }
+ 
+   const [tenant, currentUser] = await Promise.all([getCurrentTenant(), getCurrentUser()]);
++
++  // Verification gate: email + phone must both be confirmed before the
++  // dashboard renders. Existing users were grandfathered in the migration
++  // (phone_verified_at backfilled to created_at), so only fresh signups
++  // hit this redirect.
++  if (currentUser && tenant) {
++    const emailConfirmed = !!currentUser.email_confirmed_at;
++    const phoneConfirmed = !!tenant.member.phone_verified_at;
++    if (!emailConfirmed || !phoneConfirmed) {
++      redirect('/onboarding/verify');
++    }
++  }
++
+   const businessName = tenant?.name;
+   const timezone = tenant?.timezone || 'America/Vancouver';
+   const vertical = tenant?.vertical || 'pressure_washing';
+diff --git a/src/lib/auth/helpers.ts b/src/lib/auth/helpers.ts
+index f07b156..0dcb8b5 100644
+--- a/src/lib/auth/helpers.ts
++++ b/src/lib/auth/helpers.ts
+@@ -28,6 +28,8 @@ export type CurrentTenant = {
+   member: {
+     id: string;
+     role: string;
++    phone: string | null;
++    phone_verified_at: string | null;
+   };
+ };
+ 
+@@ -45,7 +47,7 @@ export async function getCurrentTenant(): Promise<CurrentTenant | null> {
+ 
+   const { data: member } = await supabase
+     .from('tenant_members')
+-    .select('id, role, tenants(id, name, slug, timezone, vertical)')
++    .select('id, role, phone, phone_verified_at, tenants(id, name, slug, timezone, vertical)')
+     .eq('user_id', user.id)
+     .maybeSingle();
+ 
+@@ -63,7 +65,12 @@ export async function getCurrentTenant(): Promise<CurrentTenant | null> {
+     slug: tenant.slug,
+     timezone: tenant.timezone ?? 'America/Vancouver',
+     vertical: tenant.vertical ?? 'pressure_washing',
+-    member: { id: member.id, role: member.role },
++    member: {
++      id: member.id,
++      role: member.role,
++      phone: (member.phone as string | null) ?? null,
++      phone_verified_at: (member.phone_verified_at as string | null) ?? null,
++    },
+   };
+ }
+ 
