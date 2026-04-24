@@ -1,13 +1,6 @@
 'use server';
 
 /**
- * Extend the function budget — Whisper transcription of a 10+ MB voice
- * memo can easily push past the default 15 s Vercel serverless timeout.
- * 60 s gives comfortable headroom while still ending pathological hangs.
- */
-export const maxDuration = 60;
-
-/**
  * Inbound lead intake — V1.
  *
  * `parseInboundLeadAction` runs vision over uploaded screenshots /
