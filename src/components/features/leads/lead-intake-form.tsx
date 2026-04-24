@@ -10,7 +10,7 @@
 
 import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { ExistingMatchesBanner } from '@/components/features/contacts/existing-matches-banner';
 import { IntakeDropzone } from '@/components/features/contacts/intake-dropzone';
@@ -49,6 +49,21 @@ export function LeadIntakeForm() {
   const [duplicates, setDuplicates] = useState<ContactMatch[]>([]);
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
+
+  // Auto-fire the parse 1.5s after the operator stops typing / pasting.
+  // File drops fire synchronously from handleFilesAdded; the "Read intake"
+  // button is the manual backup. runParse is intentionally not a dep — it
+  // reads current state via closure and adding it would reset the debounce
+  // timer on every render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
+  useEffect(() => {
+    if (phase !== 'upload') return;
+    if (isParsing) return;
+    if (files.length > 0) return;
+    if (!customerName.trim() && !pastedText.trim()) return;
+    const id = setTimeout(() => runParse(), 1500);
+    return () => clearTimeout(id);
+  }, [customerName, pastedText, phase, isParsing, files.length]);
 
   function runParse(overrides?: { files?: File[]; customerName?: string; pastedText?: string }) {
     const useFiles = overrides?.files ?? files;

@@ -127,6 +127,21 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
     setPickerAvailable(contactPickerSupported());
   }, []);
 
+  // Auto-fire the parse 1.5s after the operator stops typing / pasting.
+  // File drops and phone-picker imports still fire synchronously (they're
+  // deliberate signals). The "Read intake" button is the manual backup.
+  // runParse is intentionally not a dep — it reads current state via closure
+  // and adding it would reset the debounce timer on every render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
+  useEffect(() => {
+    if (phase !== 'upload') return;
+    if (isParsing) return;
+    if (files.length > 0) return;
+    if (!nameHint.trim() && !pastedText.trim()) return;
+    const id = setTimeout(() => runParse(), 1500);
+    return () => clearTimeout(id);
+  }, [nameHint, pastedText, phase, isParsing, files.length]);
+
   async function handleImportFromPhone() {
     const c = await pickPhoneContact();
     if (!c) return;
