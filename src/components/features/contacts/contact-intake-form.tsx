@@ -11,9 +11,10 @@
 
 import { Contact as ContactIcon, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { ExistingMatchesBanner } from '@/components/features/contacts/existing-matches-banner';
+import { IntakeDropzone } from '@/components/features/contacts/intake-dropzone';
 import { LeadIntakeForm } from '@/components/features/leads/lead-intake-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -104,7 +105,6 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
   const [pickerAvailable, setPickerAvailable] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const kindLabel = useMemo(() => contactKindLabels[kind], [kind]);
 
@@ -128,12 +128,8 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
     toast.success('Contact imported from phone.');
   }
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const picked = Array.from(e.target.files ?? []);
-    if (picked.length === 0) {
-      setFiles([]);
-      return;
-    }
+  async function handleFilesAdded(picked: File[]) {
+    if (picked.length === 0) return;
     // vCards are parsed client-side and merged into the pasted-text field
     // rather than sent to the AI as an artifact. Works everywhere, which
     // is the iOS-Safari fallback for the Contact Picker API.
@@ -148,7 +144,13 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
       }
       toast.success(`Imported ${vcards.length} vCard${vcards.length === 1 ? '' : 's'}.`);
     }
-    setFiles(others);
+    if (others.length) {
+      setFiles((prev) => [...prev, ...others]);
+    }
+  }
+
+  function removeFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
   function handleParse(e: React.FormEvent) {
@@ -257,27 +259,17 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
       </div>
 
       <div>
-        <label htmlFor="intake-files" className="mb-1 block text-sm font-medium">
-          Drop files
-        </label>
-        <input
-          id="intake-files"
-          ref={fileInputRef}
-          type="file"
+        <p className="mb-1 block text-sm font-medium">Drop files</p>
+        <IntakeDropzone
+          files={files}
+          onFilesAdded={handleFilesAdded}
+          onRemove={removeFile}
           accept="image/*,application/pdf,.vcf,text/vcard,text/x-vcard"
           multiple
-          className="block w-full text-sm file:mr-3 file:rounded file:border file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-muted/80"
-          onChange={handleFileChange}
+          disabled={isParsing}
+          inputId="intake-files"
+          hint="Drag in a business card photo, letterhead, invoice, or .vcf vCard — or click to choose."
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          Business card photo, letterhead, email signature, invoice, or a .vcf vCard exported from
-          your Contacts app.
-        </p>
-        {files.length > 0 ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {files.length} file{files.length === 1 ? '' : 's'} ready.
-          </p>
-        ) : null}
       </div>
 
       <div>

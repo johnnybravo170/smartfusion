@@ -10,9 +10,10 @@
 
 import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useRef, useState, useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { ExistingMatchesBanner } from '@/components/features/contacts/existing-matches-banner';
+import { IntakeDropzone } from '@/components/features/contacts/intake-dropzone';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -48,7 +49,6 @@ export function LeadIntakeForm() {
   const [duplicates, setDuplicates] = useState<ContactMatch[]>([]);
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleParse(e: React.FormEvent) {
     e.preventDefault();
@@ -147,23 +147,17 @@ export function LeadIntakeForm() {
       </div>
 
       <div>
-        <label htmlFor="images" className="mb-1 block text-sm font-medium">
-          Screenshots, photos, sketches, PDFs
-        </label>
-        <input
-          id="images"
-          ref={fileInputRef}
-          type="file"
+        <p className="mb-1 block text-sm font-medium">Screenshots, photos, sketches, PDFs</p>
+        <IntakeDropzone
+          files={files}
+          onFilesAdded={(picked) => setFiles((prev) => [...prev, ...picked])}
+          onRemove={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
           accept="image/*,application/pdf"
           multiple
-          className="block w-full text-sm file:mr-3 file:rounded file:border file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-muted/80"
-          onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+          disabled={isParsing}
+          inputId="images"
+          hint="Drag in a text-thread screenshot, site photo, sketch, sub-trade quote PDF — or click to choose."
         />
-        {files.length > 0 ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {files.length} file{files.length === 1 ? '' : 's'} ready.
-          </p>
-        ) : null}
       </div>
 
       <div>
