@@ -49,6 +49,39 @@ export type OverheadExpenseResult =
     };
 
 /**
+ * Block the mutation if the tenant has closed books through a date on
+ * or after the expense_date. Returns an error result ready to return
+ * from the action, or null to proceed. `mutationDate` is the date the
+ * operator is trying to touch — for updates we check the OLD date
+ * (the one already committed to the books) AND the new date (so you
+ * can't backdate a newly-entered expense into a closed period).
+ */
+async function blockIfBooksClosed(
+  admin: ReturnType<typeof createAdminClient>,
+  tenantId: string,
+  mutationDate: string,
+  alsoCheckDate?: string | null,
+): Promise<OverheadExpenseResult | null> {
+  const { data: t } = await admin
+    .from('tenants')
+    .select('books_closed_through')
+    .eq('id', tenantId)
+    .single();
+  const closedThrough = (t?.books_closed_through as string | null) ?? null;
+  if (!closedThrough) return null;
+  const conflicts: string[] = [];
+  if (mutationDate <= closedThrough) conflicts.push(mutationDate);
+  if (alsoCheckDate && alsoCheckDate !== mutationDate && alsoCheckDate <= closedThrough) {
+    conflicts.push(alsoCheckDate);
+  }
+  if (conflicts.length === 0) return null;
+  return {
+    ok: false,
+    error: `Books are closed through ${closedThrough}. This date (${conflicts[0]}) is locked — unlock books in the bookkeeper settings to edit.`,
+  };
+}
+
+/**
  * Look for a probable duplicate overhead expense. Matches on tenant +
  * vendor (case-insensitive, trimmed) + exact amount_cents + expense_date
  * within ±3 days. Returns the oldest existing match or null.
@@ -132,6 +165,11 @@ export async function logOverheadExpenseAction(formData: FormData): Promise<Over
   }
 
   const admin = createAdminClient();
+
+  // Books-closed guard runs first — no other validation matters if the
+  // operator isn't allowed to touch this period.
+  const closedBlock = await blockIfBooksClosed(admin, tenant.id, parsed.data.expense_date);
+  if (closedBlock) return closedBlock;
 
   // Guard: block logging to a parent category that has (un-archived) children.
   const { data: cat } = await admin
@@ -497,7 +535,7 @@ export async function updateOverheadExpenseAction(
   // action — that has its own update path and preserves project context).
   const { data: existing, error: existingErr } = await admin
     .from('expenses')
-    .select('id, tenant_id, project_id, receipt_storage_path')
+    .select('id, tenant_id, project_id, receipt_storage_path, expense_date')
     .eq('id', id)
     .single();
   if (existingErr || !existing) return { ok: false, error: 'Expense not found.' };
@@ -505,6 +543,17 @@ export async function updateOverheadExpenseAction(
   if (existing.project_id !== null) {
     return { ok: false, error: 'This is a project expense — edit it from the project page.' };
   }
+
+  // Books-closed guard: both the old date and the new date must be out
+  // of the locked period. Otherwise the operator can backdate a current
+  // expense into a closed quarter, or modify an already-filed expense.
+  const closedBlock = await blockIfBooksClosed(
+    admin,
+    tenant.id,
+    parsed.data.expense_date,
+    existing.expense_date as string,
+  );
+  if (closedBlock) return closedBlock;
 
   // Guard: block logging to a parent with children (same rule as create).
   const { data: cat } = await admin
@@ -615,13 +664,19 @@ export async function deleteOverheadExpenseAction(
   if (!tenant) return { ok: false, error: 'Not signed in.' };
 
   const admin = createAdminClient();
-  // Fetch receipt path so we can clean storage on delete.
+  // Fetch receipt path + date so we can clean storage and enforce books-close.
   const { data } = await admin
     .from('expenses')
-    .select('receipt_storage_path, tenant_id')
+    .select('receipt_storage_path, tenant_id, expense_date')
     .eq('id', id)
     .single();
   if (!data || data.tenant_id !== tenant.id) return { ok: false, error: 'Not found.' };
+
+  const closedBlock = await blockIfBooksClosed(admin, tenant.id, data.expense_date as string);
+  if (closedBlock) {
+    const msg = 'error' in closedBlock ? closedBlock.error : 'Books are closed for this period.';
+    return { ok: false, error: msg };
+  }
 
   const { error } = await admin.from('expenses').delete().eq('id', id);
   if (error) return { ok: false, error: error.message };
