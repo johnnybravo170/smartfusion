@@ -26,7 +26,7 @@ import { type ContactMatch, findContactMatches } from '@/lib/db/queries/contact-
 import { createClient } from '@/lib/supabase/server';
 import type { ContactKind } from '@/lib/validators/customer';
 
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGES = 8;
 const PARSE_MODEL = 'gpt-4o-mini';
 
@@ -57,7 +57,7 @@ export async function parseInboundContactAction(formData: FormData): Promise<Par
   }
   for (const f of files) {
     if (f.size > MAX_BYTES) {
-      return { ok: false, error: `${f.name} is larger than 10MB.` };
+      return { ok: false, error: `${f.name} is larger than 25MB.` };
     }
     const isImage = f.type.startsWith('image/');
     const isPdf = f.type === 'application/pdf';

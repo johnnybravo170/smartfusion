@@ -182,7 +182,7 @@ export function LeadIntakeForm() {
           files={files}
           onFilesAdded={handleFilesAdded}
           onRemove={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
-          accept="image/*,application/pdf"
+          accept="image/*,application/pdf,audio/*"
           multiple
           disabled={isParsing}
           inputId="images"

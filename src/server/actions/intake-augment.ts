@@ -28,7 +28,7 @@ function extFromContentType(contentType: string): string {
   return 'jpg';
 }
 
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGES = 12;
 const PARSE_MODEL = 'gpt-4o-mini';
 
@@ -78,7 +78,7 @@ export async function parseProjectAugmentAction(formData: FormData): Promise<Par
   }
   for (const f of files) {
     if (f.size > MAX_BYTES) {
-      return { ok: false, error: `${f.name} is larger than 10MB.` };
+      return { ok: false, error: `${f.name} is larger than 25MB.` };
     }
     const isImage = f.type.startsWith('image/');
     const isPdf = f.type === 'application/pdf';
@@ -395,7 +395,7 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
       if (idx != null && files[idx]) {
         const f = files[idx];
         if (f.size > MAX_BYTES) {
-          return { ok: false, error: `Receipt ${f.name} larger than 10MB.` };
+          return { ok: false, error: `Receipt ${f.name} larger than 25MB.` };
         }
         const ext = extFromContentType(f.type || 'image/jpeg');
         const path = `${tenant.id}/${user.id}/${randomUUID()}.${ext}`;
@@ -444,7 +444,7 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
       if (idx != null && files[idx]) {
         const f = files[idx];
         if (f.size > MAX_BYTES) {
-          return { ok: false, error: `Bill attachment ${f.name} larger than 10MB.` };
+          return { ok: false, error: `Bill attachment ${f.name} larger than 25MB.` };
         }
         const ext = extFromContentType(f.type || 'application/pdf');
         const path = `${tenant.id}/${user.id}/${randomUUID()}.${ext}`;

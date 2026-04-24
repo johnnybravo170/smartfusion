@@ -24,7 +24,7 @@ import { getCurrentTenant } from '@/lib/auth/helpers';
 import { type ContactMatch, findContactMatches } from '@/lib/db/queries/contact-matches';
 import { createClient } from '@/lib/supabase/server';
 
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGES = 12;
 const PARSE_MODEL = 'gpt-4o-mini';
 
@@ -38,23 +38,38 @@ export async function parseInboundLeadAction(formData: FormData): Promise<ParseI
   if (!apiKey) return { ok: false, error: 'Server missing OPENAI_API_KEY' };
 
   const customerName = String(formData.get('customerName') ?? '').trim();
-  const pastedText = String(formData.get('pastedText') ?? '').trim();
+  let pastedText = String(formData.get('pastedText') ?? '').trim();
   if (!customerName && !pastedText && !formData.getAll('images').length) {
     return { ok: false, error: 'Need at least an image, pasted text, or a customer name.' };
   }
 
-  const files = formData.getAll('images').filter((f): f is File => f instanceof File && f.size > 0);
-  if (files.length > MAX_IMAGES) {
+  const allFiles = formData
+    .getAll('images')
+    .filter((f): f is File => f instanceof File && f.size > 0);
+  if (allFiles.length > MAX_IMAGES) {
     return { ok: false, error: `Too many files (max ${MAX_IMAGES}).` };
   }
-  for (const f of files) {
+  for (const f of allFiles) {
     if (f.size > MAX_BYTES) {
-      return { ok: false, error: `${f.name} is larger than 10MB.` };
+      return { ok: false, error: `${f.name} is larger than 25MB.` };
     }
     const isImage = f.type.startsWith('image/');
     const isPdf = f.type === 'application/pdf';
-    if (!isImage && !isPdf) {
-      return { ok: false, error: `${f.name} is not an image or PDF (${f.type}).` };
+    const isAudio = f.type.startsWith('audio/');
+    if (!isImage && !isPdf && !isAudio) {
+      return { ok: false, error: `${f.name} is not an image, PDF, or audio file (${f.type}).` };
+    }
+  }
+
+  // Audio drops get transcribed via Whisper and folded into pastedText.
+  // The downstream vision pass only sees images + PDFs; voice memos are
+  // treated as typed input from the operator's point of view.
+  const audioFiles = allFiles.filter((f) => f.type.startsWith('audio/'));
+  const files = allFiles.filter((f) => !f.type.startsWith('audio/'));
+  for (const audio of audioFiles) {
+    const transcript = await transcribeAudio(apiKey, audio);
+    if (transcript) {
+      pastedText = pastedText ? `${pastedText}\n\n${transcript}` : transcript;
     }
   }
 
@@ -283,4 +298,30 @@ export async function acceptInboundLeadAction(
 
   revalidatePath('/projects');
   return { ok: true, projectId: proj.id };
+}
+
+/**
+ * Whisper transcription for a single audio file. Returns the transcript
+ * text on success, null on any failure (network, API error, empty text).
+ * The caller decides how to fold the transcript back into the intake —
+ * for now we just append to pastedText so the existing vision pipeline
+ * processes it as typed input.
+ */
+async function transcribeAudio(apiKey: string, file: File): Promise<string | null> {
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('model', 'whisper-1');
+    fd.append('response_format', 'text');
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: fd,
+    });
+    if (!res.ok) return null;
+    const text = (await res.text()).trim();
+    return text || null;
+  } catch {
+    return null;
+  }
 }
