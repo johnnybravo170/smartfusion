@@ -62,6 +62,7 @@ export type VanitySummary = {
   commitsThisWeek: number;
   commitsAllTime: number;
   locNetThisWeek: number;
+  locNetAllTime: number;
   activeDaysThisMonth: number;
   hasData: boolean;
 };
@@ -74,6 +75,7 @@ export async function getVanitySummary(): Promise<VanitySummary> {
       commitsThisWeek: 0,
       commitsAllTime: 0,
       locNetThisWeek: 0,
+      locNetAllTime: 0,
       activeDaysThisMonth: 0,
       hasData: false,
     };
@@ -85,9 +87,11 @@ export async function getVanitySummary(): Promise<VanitySummary> {
   let commitsThisWeek = 0;
   let commitsAllTime = 0;
   let locNetThisWeek = 0;
+  let locNetAllTime = 0;
   let activeDaysThisMonth = 0;
   for (const r of all) {
     commitsAllTime += r.commit_count;
+    locNetAllTime += r.loc_added - r.loc_deleted;
     if (r.day === today) commitsToday = r.commit_count;
     if (r.day >= weekStart) {
       commitsThisWeek += r.commit_count;
@@ -100,6 +104,7 @@ export async function getVanitySummary(): Promise<VanitySummary> {
     commitsThisWeek,
     commitsAllTime,
     locNetThisWeek,
+    locNetAllTime,
     activeDaysThisMonth,
     hasData: true,
   };

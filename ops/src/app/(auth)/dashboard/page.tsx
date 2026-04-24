@@ -98,33 +98,36 @@ export default async function DashboardPage() {
         </div>
       </Link>
 
-      <Link
-        href="/admin/stats"
-        className="block rounded-md border border-[var(--border)] p-4 hover:border-[var(--foreground)]"
-      >
-        <div className="flex items-baseline justify-between">
-          <div className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
-            Git activity
+      {gitSummary.hasData ? (
+        <Link
+          href="/admin/stats"
+          className="block rounded-md border border-[var(--border)] p-5 hover:border-[var(--foreground)]"
+        >
+          <div className="flex items-baseline justify-between">
+            <div className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+              Lines of code shipped
+            </div>
+            <div className="text-xs text-[var(--muted-foreground)]">stats →</div>
           </div>
-          <div className="text-xs text-[var(--muted-foreground)]">stats →</div>
-        </div>
-        {gitSummary.hasData ? (
-          <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <Stat label="today" value={gitSummary.commitsToday} />
-            <Stat label="this week" value={gitSummary.commitsThisWeek} />
-            <Stat label="all time" value={gitSummary.commitsAllTime} />
+          <div className="mt-1 text-4xl font-semibold tabular-nums sm:text-5xl">
+            {gitSummary.locNetAllTime.toLocaleString()}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+            <Stat label="commits today" value={gitSummary.commitsToday} />
+            <Stat label="commits 7d" value={gitSummary.commitsThisWeek} />
+            <Stat label="commits all time" value={gitSummary.commitsAllTime} />
             <Stat
               label="LOC net 7d"
-              value={`${gitSummary.locNetThisWeek >= 0 ? '+' : ''}${gitSummary.locNetThisWeek}`}
+              value={`${gitSummary.locNetThisWeek >= 0 ? '+' : ''}${gitSummary.locNetThisWeek.toLocaleString()}`}
             />
             <Stat label="active days / 30d" value={gitSummary.activeDaysThisMonth} />
           </div>
-        ) : (
-          <div className="mt-2 text-sm text-[var(--muted-foreground)]">
-            No git stats yet. Seed with <code>scripts/git-stats-seed.mjs</code>.
-          </div>
-        )}
-      </Link>
+        </Link>
+      ) : (
+        <div className="rounded-md border border-[var(--border)] p-4 text-sm text-[var(--muted-foreground)]">
+          No git stats yet. Seed with <code>scripts/git-stats-seed.mjs</code>.
+        </div>
+      )}
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card label="Active API keys" value={keyCount ?? 0} href="/admin/keys" />
