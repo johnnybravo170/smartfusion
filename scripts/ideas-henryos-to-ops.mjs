@@ -90,7 +90,7 @@ async function main() {
 
     await sql`
       INSERT INTO ops.ideas (title, body, tags, actor_type, actor_name, created_at)
-      VALUES (${title}, ${body}, ${tags}, 'system', 'henryos-migration', ${createdAt})
+      VALUES (${title}, ${body}, ${tags}, 'agent', 'henryos-migration', ${createdAt})
     `;
     inserted++;
   }
