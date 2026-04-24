@@ -50,17 +50,19 @@ export function LeadIntakeForm() {
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
 
-  function handleParse(e: React.FormEvent) {
-    e.preventDefault();
-    if (!customerName.trim() && files.length === 0 && !pastedText.trim()) {
+  function runParse(overrides?: { files?: File[]; customerName?: string; pastedText?: string }) {
+    const useFiles = overrides?.files ?? files;
+    const useName = overrides?.customerName ?? customerName;
+    const useText = overrides?.pastedText ?? pastedText;
+    if (!useName.trim() && useFiles.length === 0 && !useText.trim()) {
       toast.error('Add a customer name, image, or pasted text first.');
       return;
     }
     startParsing(async () => {
       const fd = new FormData();
-      fd.set('customerName', customerName);
-      fd.set('pastedText', pastedText);
-      for (const f of files) {
+      fd.set('customerName', useName);
+      fd.set('pastedText', useText);
+      for (const f of useFiles) {
         const shrunk = await shrinkIfNeeded(f);
         fd.append('images', shrunk);
       }
@@ -82,6 +84,19 @@ export function LeadIntakeForm() {
       setDraft(stamped);
       setPhase('review');
     });
+  }
+
+  function handleParse(e: React.FormEvent) {
+    e.preventDefault();
+    runParse();
+  }
+
+  function handleFilesAdded(picked: File[]) {
+    if (picked.length === 0) return;
+    const nextFiles = [...files, ...picked];
+    setFiles(nextFiles);
+    // Auto-fire parse the moment anything is dropped — no second click.
+    runParse({ files: nextFiles });
   }
 
   function handleAccept(options?: { useExistingContactId?: string; confirmCreate?: boolean }) {
@@ -150,7 +165,7 @@ export function LeadIntakeForm() {
         <p className="mb-1 block text-sm font-medium">Screenshots, photos, sketches, PDFs</p>
         <IntakeDropzone
           files={files}
-          onFilesAdded={(picked) => setFiles((prev) => [...prev, ...picked])}
+          onFilesAdded={handleFilesAdded}
           onRemove={(i) => setFiles((prev) => prev.filter((_, j) => j !== i))}
           accept="image/*,application/pdf"
           multiple

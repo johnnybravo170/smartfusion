@@ -16,6 +16,7 @@ import { z } from 'zod';
  * detail extraction the AI intake uses.
  */
 export const contactKinds = [
+  'lead',
   'customer',
   'vendor',
   'sub',
@@ -27,6 +28,7 @@ export const contactKinds = [
 export type ContactKind = (typeof contactKinds)[number];
 
 export const contactKindLabels: Record<ContactKind, string> = {
+  lead: 'Lead',
   customer: 'Customer',
   vendor: 'Vendor',
   sub: 'Sub-trade',

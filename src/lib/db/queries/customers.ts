@@ -17,7 +17,7 @@ export type CustomerRow = {
   id: string;
   tenant_id: string;
   /** New kind column (Slice A). Present on every row. */
-  kind: 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
+  kind: 'lead' | 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
   /**
    * Legacy subtype field. For backwards-compat the query layer synthesizes
    * 'agent' here when `kind='agent'`, and for other non-customer kinds
@@ -69,7 +69,7 @@ export type CustomerListFilters = {
    */
   type?: 'residential' | 'commercial' | 'agent';
   /** New kind-first filter. Takes precedence over `type` when both are set. */
-  kind?: 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
+  kind?: 'lead' | 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
   limit?: number;
   offset?: number;
 };

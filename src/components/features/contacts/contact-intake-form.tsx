@@ -62,7 +62,17 @@ async function shrinkIfNeeded(file: File): Promise<File> {
 }
 
 export function ContactIntakeForm({ initialKind }: { initialKind?: ContactKind }) {
-  const [kind, setKind] = useState<ContactKind>(initialKind ?? 'customer');
+  // Default to 'lead' — a fresh inbound contact is almost always someone we
+  // don't have an active project with yet. The moment an estimate is
+  // started for them, the DB trigger promotes kind='lead' → 'customer'.
+  const [kind, setKind] = useState<ContactKind>(initialKind ?? 'lead');
+
+  // Only 'customer' — someone you've already decided to start a project for —
+  // goes through the estimate-scaffolding path. Everyone else (lead, vendor,
+  // sub, agent, inspector, referral, other) gets the contact-only flow. When
+  // a lead later has a project started for them, the DB trigger promotes
+  // lead → customer automatically.
+  const useLeadEstimatePath = kind === 'customer';
 
   return (
     <div className="flex flex-col gap-4">
@@ -83,13 +93,17 @@ export function ContactIntakeForm({ initialKind }: { initialKind?: ContactKind }
           </SelectContent>
         </Select>
         <p className="mt-2 text-xs text-muted-foreground">
-          {kind === 'customer'
-            ? 'Drop screenshots, photos, or PDFs. Henry builds a starting estimate you can accept as a new project — or skip the estimate and just save the customer.'
+          {useLeadEstimatePath
+            ? 'Drop screenshots, photos, or PDFs. Henry builds a starting estimate you can accept as a new project.'
             : 'Drop a business card, email signature, letterhead, or paste contact info. Henry extracts the contact details only — no estimate scaffolding.'}
         </p>
       </div>
 
-      {kind === 'customer' ? <LeadIntakeForm /> : <NonCustomerIntake kind={kind} />}
+      {useLeadEstimatePath ? (
+        <LeadIntakeForm />
+      ) : (
+        <NonCustomerIntake kind={kind as NonCustomerKind} />
+      )}
     </div>
   );
 }
@@ -113,19 +127,16 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
     setPickerAvailable(contactPickerSupported());
   }, []);
 
-  function mergePastedText(next: string) {
-    setPastedText((prev) => {
-      const trimmed = prev.trim();
-      return trimmed ? `${trimmed}\n${next}` : next;
-    });
-  }
-
   async function handleImportFromPhone() {
     const c = await pickPhoneContact();
     if (!c) return;
-    if (c.name && !nameHint.trim()) setNameHint(c.name);
-    mergePastedText(importedContactToPastedText(c));
+    const nextName = c.name && !nameHint.trim() ? c.name : nameHint;
+    if (nextName !== nameHint) setNameHint(nextName);
+    const line = importedContactToPastedText(c);
+    const nextText = pastedText.trim() ? `${pastedText.trim()}\n${line}` : line;
+    setPastedText(nextText);
     toast.success('Contact imported from phone.');
+    runParse({ nameHint: nextName, pastedText: nextText });
   }
 
   async function handleFilesAdded(picked: File[]) {
@@ -134,18 +145,32 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
     // rather than sent to the AI as an artifact. Works everywhere, which
     // is the iOS-Safari fallback for the Contact Picker API.
     const [vcards, others] = [picked.filter(isVCardFile), picked.filter((f) => !isVCardFile(f))];
+    let mergedPastedText = pastedText;
+    let nextNameHint = nameHint;
     if (vcards.length) {
       for (const v of vcards) {
         const c = await parseVCardFile(v);
         if (c) {
-          if (c.name && !nameHint.trim()) setNameHint(c.name);
-          mergePastedText(importedContactToPastedText(c));
+          if (c.name && !nextNameHint.trim()) {
+            nextNameHint = c.name;
+            setNameHint(c.name);
+          }
+          const line = importedContactToPastedText(c);
+          mergedPastedText = mergedPastedText.trim() ? `${mergedPastedText.trim()}\n${line}` : line;
         }
       }
+      setPastedText(mergedPastedText);
       toast.success(`Imported ${vcards.length} vCard${vcards.length === 1 ? '' : 's'}.`);
     }
+    let nextFiles = files;
     if (others.length) {
-      setFiles((prev) => [...prev, ...others]);
+      nextFiles = [...files, ...others];
+      setFiles(nextFiles);
+    }
+    // Auto-fire the parse as soon as there's something worth reading.
+    // Dropping a business card shouldn't require a second button press.
+    if (nextNameHint.trim() || mergedPastedText.trim() || nextFiles.length > 0) {
+      runParse({ files: nextFiles, nameHint: nextNameHint, pastedText: mergedPastedText });
     }
   }
 
@@ -153,18 +178,20 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function handleParse(e: React.FormEvent) {
-    e.preventDefault();
-    if (!nameHint.trim() && !pastedText.trim() && files.length === 0) {
+  function runParse(overrides?: { files?: File[]; nameHint?: string; pastedText?: string }) {
+    const useFiles = overrides?.files ?? files;
+    const useName = overrides?.nameHint ?? nameHint;
+    const useText = overrides?.pastedText ?? pastedText;
+    if (!useName.trim() && !useText.trim() && useFiles.length === 0) {
       toast.error('Drop a file, paste text, or type a name first.');
       return;
     }
     startParsing(async () => {
       const fd = new FormData();
       fd.set('kind', kind);
-      fd.set('name', nameHint);
-      fd.set('pastedText', pastedText);
-      for (const f of files) {
+      fd.set('name', useName);
+      fd.set('pastedText', useText);
+      for (const f of useFiles) {
         const shrunk = await shrinkIfNeeded(f);
         fd.append('files', shrunk);
       }
@@ -177,6 +204,11 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
       setMatches(res.matches);
       setPhase('review');
     });
+  }
+
+  function handleParse(e: React.FormEvent) {
+    e.preventDefault();
+    runParse();
   }
 
   function handleAccept() {

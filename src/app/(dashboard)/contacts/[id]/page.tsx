@@ -188,6 +188,10 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
 function KindPlaceholderSection({ kind }: { kind: CustomerRow['kind'] }) {
   const copy: Record<CustomerRow['kind'], { title: string; body: string } | null> = {
     customer: null,
+    lead: {
+      title: 'Not a customer yet',
+      body: "This contact is a lead — nothing's committed. Start a project to begin drafting an estimate (they'll auto-promote to a customer once you do).",
+    },
     vendor: {
       title: 'Bills from this vendor',
       body: "Vendor bill history will aggregate here once we start linking bills to contact records. For now, bills you've entered live under their projects.",

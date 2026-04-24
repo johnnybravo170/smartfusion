@@ -9,7 +9,7 @@ export type ContactMatchStrength = 'strong' | 'weak';
 export type ContactMatch = {
   id: string;
   name: string;
-  kind: 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
+  kind: 'lead' | 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
   email: string | null;
   phone: string | null;
   matchedOn: 'phone' | 'email' | 'name' | 'similar_name';

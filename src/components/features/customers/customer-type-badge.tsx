@@ -22,6 +22,9 @@ const CUSTOMER_SUBTYPE_STYLES: Record<CustomerType, string> = {
 };
 
 const KIND_STYLES: Record<ContactKind, string> = {
+  // Leads get amber to read as "warm but not closed yet" — visually
+  // distinct from customer (blue) so the list scans at a glance.
+  lead: 'bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300',
   customer: 'bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-300',
   vendor:
     'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300',

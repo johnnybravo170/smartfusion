@@ -64,13 +64,15 @@ export type CustomerFormInput = {
  * `type` value. Kind wins when both are present.
  */
 function resolveKindAndSubtype(input: { type: string; kind?: string }): {
-  kind: 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
+  kind: 'lead' | 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
   subtype: 'residential' | 'commercial' | null;
 } {
   if (input.kind) {
-    if (input.kind === 'customer') {
+    if (input.kind === 'customer' || input.kind === 'lead') {
+      // Leads can also carry a residential / commercial subtype; the DB
+      // check constraint (customers_type_requires_customer_kind) allows it.
       const t = input.type === 'residential' || input.type === 'commercial' ? input.type : null;
-      return { kind: 'customer', subtype: t };
+      return { kind: input.kind, subtype: t };
     }
     return {
       kind: input.kind as 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other',
