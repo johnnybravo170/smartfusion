@@ -13,6 +13,7 @@ import { Contact as ContactIcon, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { ExistingMatchesBanner } from '@/components/features/contacts/existing-matches-banner';
 import { LeadIntakeForm } from '@/components/features/leads/lead-intake-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -333,7 +334,13 @@ function ReviewContactDraft({
 
   return (
     <div className="space-y-5">
-      {matches.length > 0 ? <ExistingMatchesBanner matches={matches} onAttach={onAttach} /> : null}
+      {matches.length > 0 ? (
+        <ExistingMatchesBanner
+          matches={matches}
+          onUseExisting={onAttach}
+          useLabel="Attach to this"
+        />
+      ) : null}
 
       <div className="rounded-lg border bg-card p-4">
         <h2 className="mb-3 text-sm font-semibold">{kindLabel} — review</h2>
@@ -440,50 +447,6 @@ function Field({
     <div className={className}>
       <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
       {children}
-    </div>
-  );
-}
-
-function ExistingMatchesBanner({
-  matches,
-  onAttach,
-}: {
-  matches: ContactMatch[];
-  onAttach: (contactId: string) => void;
-}) {
-  const matchedOnLabel: Record<ContactMatch['matchedOn'], string> = {
-    phone: 'Same phone',
-    email: 'Same email',
-    name: 'Same name',
-  };
-  return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
-      <p className="text-sm font-medium">
-        Looks like {matches.length === 1 ? 'this contact' : 'these contacts'} might already exist.
-      </p>
-      <ul className="mt-2 space-y-2">
-        {matches.map((m) => (
-          <li
-            key={m.id}
-            className="flex items-center justify-between gap-3 rounded-md bg-white/60 px-3 py-2 text-sm dark:bg-black/20"
-          >
-            <div className="flex flex-col">
-              <span className="font-medium">{m.name}</span>
-              <span className="text-xs text-amber-800 dark:text-amber-200">
-                {m.kind} · {matchedOnLabel[m.matchedOn]}
-                {m.phone ? ` · ${m.phone}` : ''}
-                {m.email ? ` · ${m.email}` : ''}
-              </span>
-            </div>
-            <Button type="button" size="xs" variant="outline" onClick={() => onAttach(m.id)}>
-              Attach to this
-            </Button>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
-        Or keep going below to create a brand-new contact.
-      </p>
     </div>
   );
 }

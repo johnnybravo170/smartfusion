@@ -14,6 +14,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { type ContactMatch, findContactMatches } from '@/lib/db/queries/contact-matches';
 import { createClient } from '@/lib/supabase/server';
 import {
   customerCreateSchema,
@@ -24,7 +25,19 @@ import {
 
 export type CustomerActionResult =
   | { ok: true; id: string }
-  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: Record<string, string[]>;
+      /**
+       * When set, the caller tried to create/update a contact whose name,
+       * phone, or email matches one or more existing contacts. The form
+       * should surface the matches and give the operator a choice between
+       * "Use this existing" and "Create anyway" (resubmit with
+       * `confirmCreate: true`).
+       */
+      duplicates?: ContactMatch[];
+    };
 
 export type CustomerFormInput = {
   type: string;
@@ -38,6 +51,11 @@ export type CustomerFormInput = {
   province?: string;
   postalCode?: string;
   notes?: string;
+  /**
+   * When true, skip the duplicate check. Callers set this after the operator
+   * has seen the duplicates banner and explicitly chosen "Create anyway".
+   */
+  confirmCreate?: boolean;
 };
 
 /**
@@ -81,6 +99,26 @@ export async function createCustomerAction(
 
   const supabase = await createClient();
   const { kind, subtype } = resolveKindAndSubtype(parsed.data);
+
+  // Duplicate check — skip when the form resubmitted with confirmCreate.
+  if (!input.confirmCreate) {
+    const duplicates = await findContactMatches({
+      name: parsed.data.name,
+      phone: parsed.data.phone,
+      email: parsed.data.email,
+    });
+    if (duplicates.length > 0) {
+      return {
+        ok: false,
+        error:
+          duplicates.length === 1
+            ? 'A contact like this already exists.'
+            : 'Contacts like this already exist.',
+        duplicates,
+      };
+    }
+  }
+
   const { data, error } = await supabase
     .from('customers')
     .insert({
@@ -121,6 +159,29 @@ export async function updateCustomerAction(
 
   const supabase = await createClient();
   const { kind, subtype } = resolveKindAndSubtype(parsed.data);
+
+  // Duplicate check — only flag when the edit would now collide with a
+  // DIFFERENT contact. Exclude the row being edited. Skip when the form
+  // already confirmed.
+  if (!input.confirmCreate) {
+    const duplicates = await findContactMatches({
+      name: parsed.data.name,
+      phone: parsed.data.phone,
+      email: parsed.data.email,
+      excludeId: parsed.data.id,
+    });
+    if (duplicates.length > 0) {
+      return {
+        ok: false,
+        error:
+          duplicates.length === 1
+            ? 'Another contact already has this phone / email / name.'
+            : 'Other contacts already match on this phone / email / name.',
+        duplicates,
+      };
+    }
+  }
+
   const { error } = await supabase
     .from('customers')
     .update({

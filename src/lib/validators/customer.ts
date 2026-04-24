@@ -110,6 +110,11 @@ export const customerCreateSchema = z.object({
   province: optionalText(40, 'Province'),
   postalCode: optionalText(20, 'Postal code'),
   notes: optionalText(2000, 'Notes'),
+  /**
+   * Set by the form after the operator sees the duplicates banner and
+   * clicks "Create anyway". Server skips the dedup check when true.
+   */
+  confirmCreate: z.boolean().optional(),
 });
 
 export const customerUpdateSchema = customerCreateSchema.extend({

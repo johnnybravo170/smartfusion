@@ -21,6 +21,7 @@ import {
   type ParsedIntake,
 } from '@/lib/ai/intake-prompt';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { type ContactMatch, findContactMatches } from '@/lib/db/queries/contact-matches';
 import { createClient } from '@/lib/supabase/server';
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -138,9 +139,19 @@ export async function parseInboundLeadAction(formData: FormData): Promise<ParseI
   return { ok: true, draft };
 }
 
-export type AcceptInboundResult = { ok: true; projectId: string } | { ok: false; error: string };
+export type AcceptInboundResult =
+  | { ok: true; projectId: string }
+  | { ok: false; error: string; duplicates?: ContactMatch[] };
 
-export async function acceptInboundLeadAction(draft: ParsedIntake): Promise<AcceptInboundResult> {
+export async function acceptInboundLeadAction(
+  draft: ParsedIntake,
+  options?: {
+    /** Use this existing customer id instead of creating a new one. */
+    useExistingContactId?: string;
+    /** Skip the dedup check. Set after operator clicks "Create anyway". */
+    confirmCreate?: boolean;
+  },
+): Promise<AcceptInboundResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
 
@@ -149,22 +160,49 @@ export async function acceptInboundLeadAction(draft: ParsedIntake): Promise<Acce
   const customerName = draft.customer.name?.trim();
   if (!customerName) return { ok: false, error: 'Customer name is required.' };
 
-  // 1. Customer
-  const { data: cust, error: custErr } = await supabase
-    .from('customers')
-    .insert({
-      tenant_id: tenant.id,
-      type: 'residential',
-      name: customerName,
-      email: draft.customer.email?.trim() || null,
-      phone: draft.customer.phone?.trim() || null,
-      address_line1: draft.customer.address?.trim() || null,
-    })
-    .select('id')
-    .single();
-  if (custErr || !cust) {
-    return { ok: false, error: custErr?.message ?? 'Failed to create customer.' };
+  // 1. Customer — resolve to an existing row, or check for duplicates before
+  //    creating a new one.
+  let customerId: string;
+  if (options?.useExistingContactId) {
+    customerId = options.useExistingContactId;
+  } else {
+    if (!options?.confirmCreate) {
+      const duplicates = await findContactMatches({
+        name: customerName,
+        phone: draft.customer.phone,
+        email: draft.customer.email,
+      });
+      if (duplicates.length > 0) {
+        return {
+          ok: false,
+          error:
+            duplicates.length === 1
+              ? 'A contact like this already exists. Attach the project to them or create a new contact.'
+              : 'Contacts like this already exist. Attach the project to one of them or create new.',
+          duplicates,
+        };
+      }
+    }
+
+    const { data: cust, error: custErr } = await supabase
+      .from('customers')
+      .insert({
+        tenant_id: tenant.id,
+        kind: 'customer',
+        type: 'residential',
+        name: customerName,
+        email: draft.customer.email?.trim() || null,
+        phone: draft.customer.phone?.trim() || null,
+        address_line1: draft.customer.address?.trim() || null,
+      })
+      .select('id')
+      .single();
+    if (custErr || !cust) {
+      return { ok: false, error: custErr?.message ?? 'Failed to create customer.' };
+    }
+    customerId = cust.id;
   }
+  const cust = { id: customerId };
 
   // 2. Project
   const projectName = draft.project.name?.trim() || `${customerName} project`;

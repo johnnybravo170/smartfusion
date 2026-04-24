@@ -20,6 +20,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useRef, useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
+import { ExistingMatchesBanner } from '@/components/features/contacts/existing-matches-banner';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -40,6 +41,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useHenryForm } from '@/hooks/use-henry-form';
+import type { ContactMatch } from '@/lib/db/queries/contact-matches';
 import {
   type ContactKind,
   type CustomerCreateInput,
@@ -87,6 +89,7 @@ export function CustomerForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
+  const [duplicates, setDuplicates] = useState<ContactMatch[]>([]);
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
@@ -220,17 +223,20 @@ export function CustomerForm({
     form.setValue('postalCode', postalCode, { shouldValidate: true });
   }, [form]);
 
-  function onSubmit(values: CustomerCreateInput) {
+  function submit(values: CustomerCreateInput, confirmCreate = false) {
     setFormError(null);
+    if (!confirmCreate) setDuplicates([]);
     startTransition(async () => {
-      const payload: CustomerCreateInput & { id?: string } = {
+      const payload: CustomerCreateInput & { id?: string; confirmCreate?: boolean } = {
         ...values,
         ...(defaults?.id ? { id: defaults.id } : {}),
+        ...(confirmCreate ? { confirmCreate: true } : {}),
       };
       const result = await action(payload);
 
       if (result.ok) {
         toast.success(mode === 'create' ? 'Contact added.' : 'Contact updated.');
+        setDuplicates([]);
         if (mode === 'create') {
           router.push(`/contacts/${result.id}`);
           return;
@@ -241,6 +247,15 @@ export function CustomerForm({
       }
 
       setFormError(result.error);
+
+      // Duplicate banner — operator can pick an existing contact to use, or
+      // hit "Create anyway" which re-submits with confirmCreate=true.
+      if (result.duplicates && result.duplicates.length > 0) {
+        setDuplicates(result.duplicates);
+        // Don't toast in this case — the banner is the signal.
+        return;
+      }
+
       toast.error(result.error);
 
       if (result.fieldErrors) {
@@ -254,6 +269,10 @@ export function CustomerForm({
     });
   }
 
+  function onSubmit(values: CustomerCreateInput) {
+    submit(values, false);
+  }
+
   return (
     <Form {...form}>
       <form
@@ -261,6 +280,17 @@ export function CustomerForm({
         className="flex flex-col gap-6"
         aria-busy={pending || undefined}
       >
+        {duplicates.length > 0 ? (
+          <ExistingMatchesBanner
+            matches={duplicates}
+            onUseExisting={(id) => {
+              setDuplicates([]);
+              router.push(`/contacts/${id}`);
+            }}
+            onCreateAnyway={() => submit(form.getValues(), true)}
+          />
+        ) : null}
+
         <div className="grid gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
           <FormField
             control={form.control}

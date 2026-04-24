@@ -12,10 +12,12 @@ import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { ExistingMatchesBanner } from '@/components/features/contacts/existing-matches-banner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type { ParsedIntake } from '@/lib/ai/intake-prompt';
+import type { ContactMatch } from '@/lib/db/queries/contact-matches';
 import { resizeImage } from '@/lib/storage/resize-image';
 import { acceptInboundLeadAction, parseInboundLeadAction } from '@/server/actions/intake';
 
@@ -43,6 +45,7 @@ export function LeadIntakeForm() {
   const [pastedText, setPastedText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [draft, setDraft] = useState<ParsedIntake | null>(null);
+  const [duplicates, setDuplicates] = useState<ContactMatch[]>([]);
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,11 +84,15 @@ export function LeadIntakeForm() {
     });
   }
 
-  function handleAccept() {
+  function handleAccept(options?: { useExistingContactId?: string; confirmCreate?: boolean }) {
     if (!draft) return;
     startAccepting(async () => {
-      const res = await acceptInboundLeadAction(draft);
+      const res = await acceptInboundLeadAction(draft, options);
       if (!res.ok) {
+        if (res.duplicates && res.duplicates.length > 0) {
+          setDuplicates(res.duplicates);
+          return;
+        }
         toast.error(res.error);
         return;
       }
@@ -96,13 +103,29 @@ export function LeadIntakeForm() {
 
   if (phase === 'review' && draft) {
     return (
-      <ReviewDraft
-        draft={draft}
-        onChange={setDraft}
-        onBack={() => setPhase('upload')}
-        onAccept={handleAccept}
-        isAccepting={isAccepting}
-      />
+      <div className="space-y-5">
+        {duplicates.length > 0 ? (
+          <ExistingMatchesBanner
+            matches={duplicates}
+            onUseExisting={(id) => {
+              setDuplicates([]);
+              handleAccept({ useExistingContactId: id });
+            }}
+            onCreateAnyway={() => {
+              setDuplicates([]);
+              handleAccept({ confirmCreate: true });
+            }}
+            useLabel="Use this contact for the new project"
+          />
+        ) : null}
+        <ReviewDraft
+          draft={draft}
+          onChange={setDraft}
+          onBack={() => setPhase('upload')}
+          onAccept={() => handleAccept()}
+          isAccepting={isAccepting}
+        />
+      </div>
     );
   }
 
