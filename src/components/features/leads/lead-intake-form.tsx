@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { ParsedIntake } from '@/lib/ai/intake-prompt';
 import type { ContactMatch } from '@/lib/db/queries/contact-matches-types';
 import { resizeImage } from '@/lib/storage/resize-image';
+import { createClient as createBrowserSupabase } from '@/lib/supabase/client';
 import { acceptInboundLeadAction, parseInboundLeadAction } from '@/server/actions/intake';
 
 type Phase = 'upload' | 'review';
@@ -77,7 +78,37 @@ export function LeadIntakeForm() {
       const fd = new FormData();
       fd.set('customerName', useName);
       fd.set('pastedText', useText);
-      for (const f of useFiles) {
+
+      // Audio files route around Vercel's 4.5 MB body cap by uploading
+      // directly to Supabase Storage from the browser; the server action
+      // downloads them, runs Whisper, and deletes. Images + PDFs still go
+      // inline because they're small after client-side resize.
+      const audioFiles = useFiles.filter((f) => f.type.startsWith('audio/'));
+      const otherFiles = useFiles.filter((f) => !f.type.startsWith('audio/'));
+      if (audioFiles.length > 0) {
+        const supabase = createBrowserSupabase();
+        const { data: auth } = await supabase.auth.getUser();
+        const userId = auth.user?.id;
+        if (!userId) {
+          toast.error('Please sign in again before dropping audio.');
+          return;
+        }
+        for (const audio of audioFiles) {
+          const ext = audio.name.split('.').pop()?.toLowerCase() || 'm4a';
+          // The upload RLS policy requires the SECOND path segment to
+          // equal auth.uid(). Match that layout here: <tenant>/<user>/<id>
+          const path = `tenant/${userId}/${crypto.randomUUID()}.${ext}`;
+          const { error: upErr } = await supabase.storage
+            .from('intake-audio')
+            .upload(path, audio, { contentType: audio.type || 'audio/mp4' });
+          if (upErr) {
+            toast.error(`Audio upload failed: ${upErr.message}`);
+            return;
+          }
+          fd.append('audioStoragePaths', path);
+        }
+      }
+      for (const f of otherFiles) {
         const shrunk = await shrinkIfNeeded(f);
         fd.append('images', shrunk);
       }

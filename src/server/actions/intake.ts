@@ -22,6 +22,7 @@ import {
 } from '@/lib/ai/intake-prompt';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { type ContactMatch, findContactMatches } from '@/lib/db/queries/contact-matches';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -62,14 +63,37 @@ export async function parseInboundLeadAction(formData: FormData): Promise<ParseI
   }
 
   // Audio drops get transcribed via Whisper and folded into pastedText.
-  // The downstream vision pass only sees images + PDFs; voice memos are
-  // treated as typed input from the operator's point of view.
+  // Small audio files inlined in FormData go first; large ones (voice
+  // memos often exceed Vercel's ~4.5 MB server-action body cap) are
+  // routed via Supabase Storage — the client uploads to the
+  // `intake-audio` bucket and passes storage paths in FormData instead
+  // of the files themselves.
   const audioFiles = allFiles.filter((f) => f.type.startsWith('audio/'));
   const files = allFiles.filter((f) => !f.type.startsWith('audio/'));
   for (const audio of audioFiles) {
     const transcript = await transcribeAudio(apiKey, audio);
     if (transcript) {
       pastedText = pastedText ? `${pastedText}\n\n${transcript}` : transcript;
+    }
+  }
+  const audioStoragePaths = formData
+    .getAll('audioStoragePaths')
+    .filter((p): p is string => typeof p === 'string' && p.length > 0);
+  if (audioStoragePaths.length > 0) {
+    const admin = createAdminClient();
+    for (const path of audioStoragePaths) {
+      const { data: blob, error: dlErr } = await admin.storage.from('intake-audio').download(path);
+      if (dlErr || !blob) continue;
+      const audioFile = new File([blob], path.split('/').pop() ?? 'voice-memo.m4a', {
+        type: blob.type || 'audio/mp4',
+      });
+      const transcript = await transcribeAudio(apiKey, audioFile);
+      if (transcript) {
+        pastedText = pastedText ? `${pastedText}\n\n${transcript}` : transcript;
+      }
+      // Best-effort cleanup of the staging file. Don't block the whole
+      // intake on a delete failure.
+      await admin.storage.from('intake-audio').remove([path]);
     }
   }
 
