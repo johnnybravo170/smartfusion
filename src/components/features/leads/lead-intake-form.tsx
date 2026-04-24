@@ -251,7 +251,7 @@ export function LeadIntakeForm() {
           multiple
           disabled={isParsing}
           inputId="images"
-          hint="Drag in a text-thread screenshot, site photo, sketch, sub-trade quote PDF — or click to choose."
+          hint="Drag in a text-thread screenshot, site photo, sketch, sub-trade quote PDF, or a voice memo (m4a / mp3 / wav) — or click to choose."
         />
       </div>
 
@@ -463,7 +463,7 @@ function ReviewDraft({
                           className="mt-1 text-xs"
                         />
                       </div>
-                      <div className="col-span-3 sm:col-span-1">
+                      <div className="col-span-3 sm:col-span-2">
                         <Input
                           type="number"
                           step="0.01"
@@ -479,7 +479,7 @@ function ReviewDraft({
                           className="h-8 text-sm"
                         />
                       </div>
-                      <div className="col-span-4 sm:col-span-3">
+                      <div className="col-span-4 sm:col-span-2">
                         <Input
                           type="number"
                           step="0.01"
