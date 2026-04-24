@@ -83,8 +83,14 @@ export async function extractReceiptFieldsAction(
     messages: [
       {
         role: 'system',
-        content:
-          'You extract structured fields from receipt photos or PDFs. Return ONLY JSON matching the schema. Use null for anything you cannot read with confidence. Dates must be YYYY-MM-DD. Amounts must be the receipt total in cents (integer). Vendor is the merchant name as shown. Description is a 1-line summary of what was purchased (e.g., "lumber and fasteners" or "lunch for crew"); omit if not clear.',
+        content: `You extract structured fields from receipt photos or PDFs for a Canadian contractor. Return ONLY JSON matching the schema. Use null for anything you cannot read with confidence.
+
+- expense_date: YYYY-MM-DD. Transaction date, not print time.
+- amount_cents: INTEGER cents. The receipt grand total (tax included).
+- vendor: merchant name as shown.
+- description: 1-line summary of what was purchased (e.g. "lumber and fasteners", "lunch for crew"). Null if unclear.
+
+Note: Canadian receipts commonly show GST/HST as "GST 5%", "HST 13%", "GST incl.", "GST INCLUDED", or "GST/HST". The amount_cents field is always the receipt total with tax in it.`,
       },
       { role: 'user', content: userContent },
     ],

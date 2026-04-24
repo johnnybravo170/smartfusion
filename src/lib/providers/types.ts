@@ -64,9 +64,38 @@ export interface TaxComputation {
   breakdown: Array<{ label: string; rate: number; amountCents: number }>;
 }
 
+/**
+ * Inverse of `computeTax`. Given a total that already includes tax
+ * (the shape of a receipt or a supplier bill), split it into subtotal
+ * and tax portion using the tenant's rate.
+ */
+export interface TaxExtraction {
+  totalCents: number;
+  subtotalCents: number;
+  taxCents: number;
+  breakdown: Array<{ label: string; rate: number; amountCents: number }>;
+}
+
+export interface TenantTaxContext {
+  gstRate: number;
+  pstRate: number;
+  totalRate: number;
+  /** Display breakdown for invoices/quotes. One entry for HST, two for GST+PST. */
+  breakdown: Array<{ label: string; rate: number }>;
+  /** Province code, or null if we fell back to the tenant row values. */
+  provinceCode: string | null;
+  /** Human label for summary ("HST 13%", "GST 5% + PST 7%"). */
+  summaryLabel: string;
+}
+
 export interface TaxProvider {
   readonly name: string;
+  /** Exclusive — add tax on top of a subtotal (quotes, invoices). */
   computeTax(input: { subtotalCents: number; tenantId: string }): Promise<TaxComputation>;
+  /** Inclusive — split a receipt total into subtotal + tax. */
+  extractTax(input: { totalCents: number; tenantId: string }): Promise<TaxExtraction>;
+  /** Read the active rates + display context for a tenant. */
+  getContext(tenantId: string): Promise<TenantTaxContext>;
 }
 
 export interface PayrollProvider {

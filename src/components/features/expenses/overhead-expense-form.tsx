@@ -26,6 +26,10 @@ import {
 
 type Props = {
   categories: CategoryPickerOption[];
+  /** Active GST/HST rate for the tenant (0-1). 0 disables auto-calc. */
+  gstRate: number;
+  /** Display label for the rate ("GST 5%", "HST 13%"). */
+  gstLabel: string;
 };
 
 function todayIso(): string {
@@ -42,7 +46,54 @@ function centsToDollars(c: number): string {
   return (c / 100).toFixed(2);
 }
 
-export function OverheadExpenseForm({ categories }: Props) {
+/**
+ * Shows "{label} = $X.XX" with click-to-apply when the user has entered
+ * a total but left tax blank / wrong. Silent when everything lines up.
+ */
+function TaxHint({
+  amount,
+  tax,
+  gstRate,
+  gstLabel,
+  onApply,
+}: {
+  amount: string;
+  tax: string;
+  gstRate: number;
+  gstLabel: string;
+  onApply: (v: string) => void;
+}) {
+  if (gstRate <= 0) return null;
+  const amountCents = dollarsToCents(amount);
+  if (amountCents <= 0) return null;
+  const computed = Math.round(amountCents - amountCents / (1 + gstRate));
+  if (computed <= 0) return null;
+  const computedStr = centsToDollars(computed);
+  const current = dollarsToCents(tax);
+  // Match within 1 cent of the computed value — rounding noise on
+  // borderline amounts.
+  if (Math.abs(current - computed) <= 1 && current > 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Matches {gstLabel} of total ${computedStr}.
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs text-muted-foreground">
+      {gstLabel} of total = ${computedStr}.{' '}
+      <button
+        type="button"
+        onClick={() => onApply(computedStr)}
+        className="font-medium text-foreground underline-offset-2 hover:underline"
+      >
+        Use this
+      </button>
+    </p>
+  );
+}
+
+export function OverheadExpenseForm({ categories, gstRate, gstLabel }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [parsing, setParsing] = useState(false);
@@ -202,13 +253,20 @@ export function OverheadExpenseForm({ categories }: Props) {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="tax">GST/HST (included in total)</Label>
+          <Label htmlFor="tax">{gstLabel} (included in total)</Label>
           <Input
             id="tax"
             inputMode="decimal"
             value={tax}
             onChange={(e) => setTax(e.target.value)}
             placeholder="0.00"
+          />
+          <TaxHint
+            amount={amount}
+            tax={tax}
+            gstRate={gstRate}
+            gstLabel={gstLabel}
+            onApply={(v) => setTax(v)}
           />
         </div>
 

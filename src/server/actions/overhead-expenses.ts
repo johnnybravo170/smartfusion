@@ -224,10 +224,18 @@ export async function extractOverheadReceiptAction(
   const buf = Buffer.from(await file.arrayBuffer());
   const b64 = buf.toString('base64');
 
+  // Pull tenant rate context to give the model a sanity-check hint and
+  // to compute tax ourselves if the model returns null for it.
+  const { canadianTax } = await import('@/lib/providers/tax/canadian');
+  const taxCtx = await canadianTax.getContext(tenant.id).catch(() => null);
+  const rateHint = taxCtx
+    ? `Tenant province: ${taxCtx.provinceCode ?? 'unset'}. Expected tax: ${taxCtx.summaryLabel} (combined ${(taxCtx.totalRate * 100).toFixed(3)}%).`
+    : 'Tax rates unknown.';
+
   const userContent: Array<Record<string, unknown>> = [
     {
       type: 'text',
-      text: `Extract the fields from this receipt.\n\nAvailable categories (pick the most appropriate id, or null if nothing fits):\n${catLines}`,
+      text: `Extract the fields from this Canadian contractor receipt.\n\n${rateHint}\n\nAvailable categories (pick the most appropriate id, or null if nothing fits):\n${catLines}`,
     },
   ];
   if (isPdf) {
@@ -250,8 +258,22 @@ export async function extractOverheadReceiptAction(
     messages: [
       {
         role: 'system',
-        content:
-          'You extract structured fields from receipts for a Canadian contractor. Return ONLY JSON matching the schema. Use null when unsure. Dates: YYYY-MM-DD. Amounts: total in cents (integer). Tax: the GST/HST/PST portion in cents (0 if not shown). Vendor: merchant name as printed. Description: one-line summary of what was bought. Suggest a category id from the list — only pick selectable (non-parent) ids, or null.',
+        content: `You extract structured fields from receipts for a Canadian contractor. Return ONLY JSON matching the schema. Use null when you cannot read with confidence.
+
+Field rules:
+- expense_date: YYYY-MM-DD. The transaction date, not the print time.
+- amount_cents: INTEGER cents. The receipt grand total (what was charged), tax included.
+- tax_cents: INTEGER cents. The GST/HST portion of the total. READ CAREFULLY — Canadian receipts show this many ways:
+    * "GST 5% $1.23" or "HST 13% $4.56" — take the dollar amount.
+    * "GST included $1.23" / "GST INCL $1.23" / "GST incl." — take the dollar amount even though the word "included" is present.
+    * "GST/HST $2.34" — take the dollar amount.
+    * If only a rate is shown without a dollar figure (e.g. "GST 5% included in price"), compute: tax_cents = round(total - total / (1 + rate)). Use the tenant's expected rate above.
+    * If a separate PST/QST line exists, DO NOT include it in tax_cents — we track GST/HST separately for Input Tax Credits. (PST is not recoverable.)
+    * If no tax line is shown at all, return null (not 0). Null tells the app to leave it blank; 0 means "definitely no tax".
+- Sanity check: tax_cents should be roughly 4-15% of amount_cents for a valid Canadian receipt. If the number you compute is way outside that range, return null.
+- vendor: merchant name as printed at the top.
+- description: one-line summary of what was bought ("regular gas", "2x4s and drywall screws", "coffee").
+- suggested_category_id: pick a selectable (non-parent) id from the list, or null if nothing fits well.`,
       },
       { role: 'user', content: userContent },
     ],
@@ -324,11 +346,34 @@ export async function extractOverheadReceiptAction(
       ? parsed.suggested_category_id
       : null;
 
+  // Safety-net tax computation: if the model returned null tax but we
+  // have a total and a known tenant rate, compute it from the rate.
+  // This handles fuel/food receipts where GST is shown as "GST incl."
+  // without a dollar amount — the model sometimes gives up on those.
+  // Flagged downstream as an estimate, not a read value.
+  let taxCents = parsed.tax_cents;
+  if (
+    (taxCents === null || taxCents === 0) &&
+    parsed.amount_cents != null &&
+    parsed.amount_cents > 0 &&
+    taxCtx &&
+    taxCtx.gstRate > 0
+  ) {
+    // Only use the GST component (not PST/QST) — matches our tax_cents
+    // semantics everywhere else in the app.
+    const gstOnly = taxCtx.gstRate;
+    const computed = Math.round(parsed.amount_cents - parsed.amount_cents / (1 + gstOnly));
+    // Sanity bound: 2%-20% of total.
+    if (computed > 0 && computed < parsed.amount_cents * 0.2) {
+      taxCents = computed;
+    }
+  }
+
   return {
     ok: true,
     fields: {
       amountCents: parsed.amount_cents,
-      taxCents: parsed.tax_cents,
+      taxCents,
       vendor: parsed.vendor?.trim() || null,
       expenseDate: parsed.expense_date,
       description: parsed.description?.trim() || null,

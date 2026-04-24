@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { BusinessProfile } from '@/lib/db/queries/profile';
+import { PROVINCE_OPTIONS } from '@/lib/tax/provinces';
 import { updateBusinessProfileAction } from '@/server/actions/profile';
 
 export function BusinessProfileForm({ profile }: { profile: BusinessProfile }) {
@@ -92,7 +93,19 @@ export function BusinessProfileForm({ profile }: { profile: BusinessProfile }) {
           <Input id="bp-city" value={city} onChange={(e) => setCity(e.target.value)} />
         </Field>
         <Field label="Province" id="bp-prov">
-          <Input id="bp-prov" value={province} onChange={(e) => setProvince(e.target.value)} />
+          <select
+            id="bp-prov"
+            value={province}
+            onChange={(e) => setProvince(e.target.value)}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <option value="">— Pick —</option>
+            {PROVINCE_OPTIONS.map((p) => (
+              <option key={p.code} value={p.code}>
+                {p.code} — {p.name}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field label="Postal code" id="bp-post">
           <Input id="bp-post" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />

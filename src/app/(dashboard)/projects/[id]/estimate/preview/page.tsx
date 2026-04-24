@@ -5,6 +5,7 @@ import {
   type EstimateRenderLine,
 } from '@/components/features/projects/estimate-render';
 import { formatCurrency } from '@/lib/pricing/calculator';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -24,9 +25,9 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
       `id, name, description, management_fee_rate, estimate_sent_at,
        estimate_status, estimate_approved_at, estimate_approved_by_name,
        estimate_declined_reason,
-       customer_id,
-       customers:customer_id (name, email, address_line1),
-       tenants:tenant_id (name, logo_storage_path, gst_rate, gst_number, wcb_number)`,
+       customer_id, tenant_id,
+       customers:customer_id (name, email, address_line1, tax_exempt),
+       tenants:tenant_id (name, logo_storage_path, gst_number, wcb_number)`,
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -38,7 +39,10 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
   const tenantRaw = p.tenants as Record<string, unknown> | null;
   const customerRaw = p.customers as Record<string, unknown> | null;
   const managementFeeRate = Number(p.management_fee_rate) || 0;
-  const gstRate = Number(tenantRaw?.gst_rate) || 0;
+  const taxExempt = Boolean(customerRaw?.tax_exempt);
+  const taxCtx = await canadianTax.getContext(p.tenant_id as string);
+  const gstRate = taxExempt ? 0 : taxCtx.totalRate;
+  const taxLabel = taxExempt ? 'Tax exempt' : taxCtx.breakdown.map((b) => b.label).join(' + ');
 
   // Sign the tenant logo (storage RLS would silently fail here under the
   // authed client, same reason cost-line thumbs use the admin client).
@@ -143,6 +147,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
           description={(p.description as string | null) ?? null}
           managementFeeRate={managementFeeRate}
           gstRate={gstRate}
+          taxLabel={taxLabel}
           quoteDate={(p.estimate_sent_at as string | null) ?? null}
           lines={costLines}
           status={status}

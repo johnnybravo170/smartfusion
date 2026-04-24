@@ -2,6 +2,7 @@ import {
   EstimateRender,
   type EstimateRenderLine,
 } from '@/components/features/projects/estimate-render';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { EstimateApprovalForm } from './approval-form';
 import { ViewLogger } from './view-logger';
@@ -19,11 +20,11 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
   const { data: project } = await admin
     .from('projects')
     .select(
-      `id, name, description, management_fee_rate, estimate_sent_at,
+      `id, name, description, management_fee_rate, estimate_sent_at, tenant_id,
        estimate_status, estimate_approved_at, estimate_approved_by_name,
        estimate_declined_reason,
-       customers:customer_id (name, address_line1),
-       tenants:tenant_id (name, logo_storage_path, gst_rate, gst_number, wcb_number)`,
+       customers:customer_id (name, address_line1, tax_exempt),
+       tenants:tenant_id (name, logo_storage_path, gst_number, wcb_number)`,
     )
     .eq('estimate_approval_code', code)
     .maybeSingle();
@@ -112,6 +113,10 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
 
   const status = p.estimate_status as 'draft' | 'pending_approval' | 'approved' | 'declined';
 
+  const taxExempt = Boolean(customerRaw?.tax_exempt);
+  const taxCtx = await canadianTax.getContext(p.tenant_id as string);
+  const effectiveGstRate = taxExempt ? 0 : taxCtx.totalRate;
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
       <ViewLogger code={code} />
@@ -123,7 +128,8 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
         projectName={p.name as string}
         description={(p.description as string | null) ?? null}
         managementFeeRate={Number(p.management_fee_rate) || 0}
-        gstRate={Number(tenantRaw?.gst_rate) || 0}
+        gstRate={effectiveGstRate}
+        taxLabel={taxExempt ? 'Tax exempt' : taxCtx.breakdown.map((b) => b.label).join(' + ')}
         quoteDate={(p.estimate_sent_at as string | null) ?? null}
         lines={renderLines}
         status={status}

@@ -41,6 +41,12 @@ export type EstimateRenderProps = {
   managementFeeRate: number;
   /** GST decimal (e.g. 0.05 for 5%). Set to 0 to hide the GST row. */
   gstRate: number;
+  /**
+   * Optional label override for the tax row (e.g. "HST 13%", "GST 5% + PST 7%").
+   * If set, replaces the auto-computed "GST (X%)" label — use when the
+   * tenant's province has HST or a non-standard breakdown.
+   */
+  taxLabel?: string;
   /** Optional quote date to show in the header. ISO string. */
   quoteDate?: string | null;
   lines: EstimateRenderLine[];
@@ -192,6 +198,7 @@ export function EstimateRender({
   description,
   managementFeeRate,
   gstRate,
+  taxLabel,
   quoteDate,
   lines,
   status,
@@ -295,7 +302,7 @@ export function EstimateRender({
         {gst > 0 ? (
           <div className="flex justify-between">
             <span className="text-muted-foreground">
-              GST ({(gstRate * 100).toFixed(gstRate * 100 < 1 ? 2 : 0)}%)
+              {taxLabel ?? `GST (${(gstRate * 100).toFixed(gstRate * 100 < 1 ? 2 : 0)}%)`}
             </span>
             <span>{formatCurrency(gst)}</span>
           </div>

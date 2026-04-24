@@ -88,9 +88,17 @@ export async function createInvoiceAction(input: { jobId: string }): Promise<Inv
     };
   }
 
-  // 5% GST.
+  // Province-aware tax via the provider, honoring customer tax-exempt flag.
+  const { canadianTax } = await import('@/lib/providers/tax/canadian');
+  const { data: cust } = await supabase
+    .from('customers')
+    .select('tax_exempt')
+    .eq('id', job.customer_id)
+    .maybeSingle();
+  const taxExempt = Boolean(cust?.tax_exempt);
   const amountCents = quoteTotalCents;
-  const taxCents = Math.round(amountCents * 0.05);
+  const taxCtx = await canadianTax.getContext(tenant.id);
+  const taxCents = taxExempt ? 0 : Math.round(amountCents * taxCtx.totalRate);
 
   // Validate.
   const parsed = invoiceCreateSchema.safeParse({

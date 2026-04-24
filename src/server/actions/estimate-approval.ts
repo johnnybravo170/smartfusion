@@ -10,6 +10,7 @@ import {
   estimateViewedEmailHtml,
   looksLikeBot,
 } from '@/lib/email/templates/estimate-viewed-notification';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { sendSms } from '@/lib/twilio/client';
@@ -53,7 +54,7 @@ export async function sendEstimateForApprovalAction(input: {
   const { data: project, error: projErr } = await supabase
     .from('projects')
     .select(
-      'id, name, estimate_status, estimate_approval_code, management_fee_rate, customers:customer_id (name, email), tenants:tenant_id (gst_rate)',
+      'id, name, estimate_status, estimate_approval_code, management_fee_rate, customers:customer_id (name, email, tax_exempt)',
     )
     .eq('id', input.projectId)
     .single();
@@ -62,9 +63,9 @@ export async function sendEstimateForApprovalAction(input: {
 
   const p = project as Record<string, unknown>;
   const customerRaw = p.customers as Record<string, unknown> | null;
-  const tenantRaw = p.tenants as Record<string, unknown> | null;
   const customerEmail = customerRaw?.email as string | null;
   const customerName = (customerRaw?.name as string) ?? 'Customer';
+  const taxExempt = Boolean(customerRaw?.tax_exempt);
 
   if (!customerEmail) {
     return { ok: false, error: 'Customer has no email address on file.' };
@@ -82,10 +83,12 @@ export async function sendEstimateForApprovalAction(input: {
     0,
   );
   const mgmtRate = Number(p.management_fee_rate) || 0;
-  const gstRate = Number(tenantRaw?.gst_rate) || 0;
   const mgmtFee = Math.round(lineSubtotal * mgmtRate);
   const beforeTax = lineSubtotal + mgmtFee;
-  const gst = Math.round(beforeTax * gstRate);
+  // Tax via the provider (province-aware). Tax-exempt customers zero it out.
+  const taxCtx = await canadianTax.getContext(tenant.id);
+  const effectiveRate = taxExempt ? 0 : taxCtx.totalRate;
+  const gst = Math.round(beforeTax * effectiveRate);
   const total = beforeTax + gst;
 
   if (total <= 0) {

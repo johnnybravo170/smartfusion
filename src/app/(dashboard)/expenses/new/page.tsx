@@ -8,6 +8,7 @@ import {
   buildPickerOptions,
   listExpenseCategories,
 } from '@/lib/db/queries/expense-categories';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 
 export const metadata = {
   title: 'Log overhead expense — HeyHenry',
@@ -17,7 +18,10 @@ export default async function NewOverheadExpensePage() {
   const { tenant } = await requireTenant();
   if (tenant.member.role === 'worker') redirect('/w');
 
-  const rows = await listExpenseCategories();
+  const [rows, taxCtx] = await Promise.all([
+    listExpenseCategories(),
+    canadianTax.getContext(tenant.id).catch(() => null),
+  ]);
   const pickerOptions = buildPickerOptions(buildCategoryTree(rows));
 
   return (
@@ -36,7 +40,14 @@ export default async function NewOverheadExpensePage() {
         </p>
       </header>
 
-      <OverheadExpenseForm categories={pickerOptions} />
+      <OverheadExpenseForm
+        categories={pickerOptions}
+        gstRate={taxCtx?.gstRate ?? 0}
+        gstLabel={
+          taxCtx?.breakdown.find((b) => b.label.startsWith('GST') || b.label.startsWith('HST'))
+            ?.label ?? 'GST'
+        }
+      />
     </div>
   );
 }

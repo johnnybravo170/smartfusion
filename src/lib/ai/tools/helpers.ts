@@ -1,12 +1,16 @@
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createClient } from '@/lib/supabase/server';
 
 /**
  * Reads the effective tax rate for a tenant.
  *
  * Priority:
- *  1. tenant_prefs.invoicing.tax_rate (explicit override)
- *  2. tenants.gst_rate + tenants.pst_rate (combined from tenant row)
- *  3. 0.05 (platform default)
+ *  1. `tenant_prefs.invoicing.tax_rate` (explicit AI-tool override — kept
+ *     for backwards-compat with quote/invoice AI tools that support a
+ *     per-tenant override).
+ *  2. `CanadianTaxProvider.getContext()` — province-aware, falls back to
+ *     the tenant's gst_rate/pst_rate row if province isn't set.
+ *  3. 0.05 (safety default if everything fails).
  */
 export async function getTaxRate(tenantId: string): Promise<number> {
   try {
@@ -23,19 +27,9 @@ export async function getTaxRate(tenantId: string): Promise<number> {
       return (pref.data as Record<string, unknown>).tax_rate as number;
     }
 
-    const { data: tenant } = await supabase
-      .from('tenants')
-      .select('gst_rate, pst_rate')
-      .eq('id', tenantId)
-      .maybeSingle();
-
-    if (tenant) {
-      const gst = parseFloat(String(tenant.gst_rate ?? '0.05'));
-      const pst = parseFloat(String(tenant.pst_rate ?? '0'));
-      return gst + pst;
-    }
+    const ctx = await canadianTax.getContext(tenantId);
+    return ctx.totalRate;
   } catch {
-    // fall through to default
+    return 0.05;
   }
-  return 0.05;
 }
