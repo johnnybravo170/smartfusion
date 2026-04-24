@@ -21,7 +21,7 @@ export function InlineScheduler({
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
 
-  const handleChange = useCallback(
+  const _handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const value = e.target.value;
       if (!value) return;
@@ -98,7 +98,9 @@ export function InlineScheduler({
           <span className="text-xs uppercase tracking-wide text-muted-foreground">Schedule</span>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex flex-col gap-0.5">
-              <label className="text-xs text-muted-foreground" htmlFor="sched-start">Start</label>
+              <label className="text-xs text-muted-foreground" htmlFor="sched-start">
+                Start
+              </label>
               <input
                 id="sched-start"
                 type="datetime-local"
@@ -107,11 +109,15 @@ export function InlineScheduler({
                 className="rounded border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 // biome-ignore lint: autofocus intentional
                 autoFocus
-                ref={(el) => { if (el && !inputValue) el.focus(); }}
+                ref={(el) => {
+                  if (el && !inputValue) el.focus();
+                }}
               />
             </div>
             <div className="flex flex-col gap-0.5">
-              <label className="text-xs text-muted-foreground" htmlFor="sched-end">End</label>
+              <label className="text-xs text-muted-foreground" htmlFor="sched-end">
+                End
+              </label>
               <input
                 id="sched-end"
                 type="datetime-local"

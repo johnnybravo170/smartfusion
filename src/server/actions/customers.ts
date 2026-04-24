@@ -124,7 +124,7 @@ export async function patchCustomerEmailAction(
   email: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const trimmed = email.trim();
-  if (!trimmed || !trimmed.includes('@')) {
+  if (!trimmed?.includes('@')) {
     return { ok: false, error: 'Please enter a valid email address.' };
   }
 

@@ -1,7 +1,7 @@
-import { getCurrentTenant } from '@/lib/auth/helpers';
 import { checkWindow, defaultWindow } from '@/lib/ar/policy';
-import { sendSms } from '@/lib/twilio/client';
+import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
+import { sendSms } from '@/lib/twilio/client';
 import type { AiTool } from '../types';
 
 export const smsTools: AiTool[] = [

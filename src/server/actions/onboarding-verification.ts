@@ -29,7 +29,7 @@ async function originFromHeaders(): Promise<string> {
 
 export async function resendEmailVerificationAction(): Promise<VerificationResult> {
   const user = await getCurrentUser();
-  if (!user || !user.email) return { ok: false, error: 'Not signed in.' };
+  if (!user?.email) return { ok: false, error: 'Not signed in.' };
   if (user.email_confirmed_at) return { ok: true };
 
   const admin = createAdminClient();

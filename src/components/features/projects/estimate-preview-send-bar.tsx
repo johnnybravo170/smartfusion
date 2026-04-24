@@ -82,7 +82,7 @@ export function EstimatePreviewSendBar({
   async function handleSaveEmailAndSend() {
     setEmailError(null);
     const trimmed = email.trim();
-    if (!trimmed || !trimmed.includes('@')) {
+    if (!trimmed?.includes('@')) {
       setEmailError('Please enter a valid email address.');
       emailInputRef.current?.focus();
       return;

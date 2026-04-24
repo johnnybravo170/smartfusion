@@ -255,7 +255,11 @@ function EditRow({
             const update: Record<string, string> = { label };
             // Auto-populate the key from the label (only for new entries)
             if (!editing.id) {
-              update.surface_type = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+              update.surface_type = label
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_|_$/g, '');
             }
             setEditing({ ...editing, ...update });
           }}

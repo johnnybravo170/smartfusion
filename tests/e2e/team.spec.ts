@@ -63,7 +63,7 @@ test.describe('worker invite flow', () => {
     await page.waitForURL('**/dashboard', { timeout: 15_000 });
 
     // Grab tenant ID from the admin client for cleanup.
-    const admin = createSupabaseClient(url!, serviceRoleKey!, {
+    const admin = createSupabaseClient(url ?? '', serviceRoleKey ?? '', {
       auth: { autoRefreshToken: false, persistSession: false },
     });
     const { data: ownerUser } = await admin.auth.admin.listUsers();
@@ -92,10 +92,11 @@ test.describe('worker invite flow', () => {
 
     // 4. Worker opens the invite link in a new context (simulates incognito).
     const workerContext = await context.browser()?.newContext();
+    if (!workerContext) throw new Error('Could not create worker browser context');
     const workerPage = await workerContext.newPage();
 
     // Extract the path from the invite link.
-    const joinPath = new URL(inviteLink!).pathname;
+    const joinPath = new URL(inviteLink ?? '').pathname;
     await workerPage.goto(joinPath);
     await workerPage.waitForSelector(`text=${businessName}`, { timeout: 10_000 });
 

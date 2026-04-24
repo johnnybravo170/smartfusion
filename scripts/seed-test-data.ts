@@ -351,7 +351,7 @@ async function main() {
     const customer_id =
       j.quote_idx !== undefined
         ? customerIds[quoteSeeds[j.quote_idx].customer_idx]
-        : customerIds[j.customer_idx!];
+        : customerIds[j.customer_idx ?? 0];
     const quote_id = j.quote_idx !== undefined ? quoteIds[j.quote_idx] : null;
     const scheduled_at =
       'scheduled_days_ago' in j && j.scheduled_days_ago !== undefined

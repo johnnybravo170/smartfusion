@@ -52,7 +52,7 @@ export function WorkerExpenseList({ entries }: Props) {
         {entries.map((entry) => (
           <div key={entry.id} className="flex items-start gap-3 p-3">
             {entry.receiptUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
+              // biome-ignore lint/performance/noImgElement: dynamic receipt URL
               <img
                 src={entry.receiptUrl}
                 alt="Receipt"

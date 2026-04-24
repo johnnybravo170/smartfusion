@@ -61,8 +61,6 @@ export function EstimatePhotoLightbox({ urls }: { urls: string[] }) {
 
       {activeIndex != null ? (
         // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handled at window level above
-        // biome-ignore lint/a11y/noStaticElementInteractions: backdrop close, not a control
-        // biome-ignore lint/a11y/useSemanticElements: lightbox backdrop
         <div
           role="dialog"
           aria-modal="true"

@@ -7,10 +7,10 @@
  *   pnpm add -D sharp
  */
 
-import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { fileURLToPath } from 'url';
 
 const __dirname =
   typeof import.meta.dirname === 'string'

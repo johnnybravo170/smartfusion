@@ -389,7 +389,7 @@ export const quoteTools: AiTool[] = [
           const sentAt = q.sent_at ? new Date(q.sent_at) : null;
           const daysSince = sentAt ? Math.floor((now - sentAt.getTime()) / 86400000) : null;
           output += `${i + 1}. ${(customer as { name?: string })?.name ?? 'No customer'}\n`;
-          output += `   Sent: ${sentAt ? formatDate(q.sent_at!) : 'unknown'}`;
+          output += `   Sent: ${sentAt ? formatDate(sentAt.toISOString()) : 'unknown'}`;
           if (daysSince !== null) output += ` (${daysSince} days ago)`;
           output += `\n   Total: ${formatCad(q.total_cents as number)}\n`;
           output += `   ID: ${(q.id as string).slice(0, 8)}\n\n`;
@@ -464,7 +464,10 @@ export const quoteTools: AiTool[] = [
           pricedSurfaces.push({
             surface_type: s.surface_type,
             sqft: s.sqft,
-            price_cents: calculateSurfacePrice({ surface_type: s.surface_type, sqft: s.sqft }, entry),
+            price_cents: calculateSurfacePrice(
+              { surface_type: s.surface_type, sqft: s.sqft },
+              entry,
+            ),
           });
         }
 

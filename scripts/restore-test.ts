@@ -58,7 +58,7 @@ try {
 
   const expectedTables = ['tenants', 'customers', 'projects', 'jobs'];
   for (const t of expectedTables) {
-    const exists = await sql`SELECT to_regclass(${'public.' + t}) AS r`;
+    const exists = await sql`SELECT to_regclass(${`public.${t}`}) AS r`;
     if (!exists[0].r) throw new Error(`Table ${t} missing after restore`);
     const countRows = await sql.unsafe(`SELECT count(*)::int AS c FROM public.${t}`);
     const count: number = countRows[0].c;

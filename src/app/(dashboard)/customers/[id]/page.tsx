@@ -196,10 +196,7 @@ function SectionCard({
           <span className="text-xs text-muted-foreground">{count}</span>
         </div>
         {actionHref && (
-          <Link
-            href={actionHref}
-            className="text-xs font-medium text-primary hover:underline"
-          >
+          <Link href={actionHref} className="text-xs font-medium text-primary hover:underline">
             + {actionLabel || 'New'}
           </Link>
         )}
@@ -209,9 +206,23 @@ function SectionCard({
   );
 }
 
-function RelatedQuotesCard({ quotes, timezone, customerId }: { quotes: RelatedQuote[]; timezone: string; customerId: string }) {
+function RelatedQuotesCard({
+  quotes,
+  timezone,
+  customerId,
+}: {
+  quotes: RelatedQuote[];
+  timezone: string;
+  customerId: string;
+}) {
   return (
-    <SectionCard title="Recent quotes" icon={FileText} count={quotes.length} actionHref={`/quotes/new?customer_id=${customerId}`} actionLabel="New quote">
+    <SectionCard
+      title="Recent quotes"
+      icon={FileText}
+      count={quotes.length}
+      actionHref={`/quotes/new?customer_id=${customerId}`}
+      actionLabel="New quote"
+    >
       {quotes.length === 0 ? (
         <p className="text-sm text-muted-foreground">No quotes yet.</p>
       ) : (
@@ -241,9 +252,23 @@ function RelatedQuotesCard({ quotes, timezone, customerId }: { quotes: RelatedQu
   );
 }
 
-function RelatedJobsCard({ jobs, timezone, customerId }: { jobs: RelatedJob[]; timezone: string; customerId: string }) {
+function RelatedJobsCard({
+  jobs,
+  timezone,
+  customerId,
+}: {
+  jobs: RelatedJob[];
+  timezone: string;
+  customerId: string;
+}) {
   return (
-    <SectionCard title="Recent jobs" icon={Calendar} count={jobs.length} actionHref={`/jobs/new?customer_id=${customerId}`} actionLabel="New job">
+    <SectionCard
+      title="Recent jobs"
+      icon={Calendar}
+      count={jobs.length}
+      actionHref={`/jobs/new?customer_id=${customerId}`}
+      actionLabel="New job"
+    >
       {jobs.length === 0 ? (
         <p className="text-sm text-muted-foreground">No jobs yet.</p>
       ) : (

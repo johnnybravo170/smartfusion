@@ -264,7 +264,7 @@ export const invoiceTools: AiTool[] = [
           .eq('id', tenant.id)
           .maybeSingle();
 
-        const hasStripe = !!tenantData?.stripe_account_id;
+        const _hasStripe = !!tenantData?.stripe_account_id;
         // Proceed without Stripe — invoice can still be sent via email
 
         // Stripe Checkout session and email sending are not yet implemented.
@@ -303,8 +303,7 @@ export const invoiceTools: AiTool[] = [
   {
     definition: {
       name: 'mark_invoice_paid',
-      description:
-        'Mark an invoice as paid (for cash/e-transfer payments received outside Stripe)',
+      description: 'Mark an invoice as paid (for cash/e-transfer payments received outside Stripe)',
       input_schema: {
         type: 'object',
         properties: {

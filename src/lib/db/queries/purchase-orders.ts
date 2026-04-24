@@ -60,7 +60,7 @@ export async function listPurchaseOrders(projectId: string): Promise<PurchaseOrd
   for (const item of items ?? []) {
     const poId = item.po_id as string;
     if (!itemsByPo.has(poId)) itemsByPo.set(poId, []);
-    itemsByPo.get(poId)!.push(item as PurchaseOrderItemRow);
+    itemsByPo.get(poId)?.push(item as PurchaseOrderItemRow);
   }
 
   return pos.map((po) => ({

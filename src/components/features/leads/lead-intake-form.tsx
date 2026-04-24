@@ -72,7 +72,6 @@ export function LeadIntakeForm() {
         ...res.draft,
         buckets: res.draft.buckets.map((b) => ({
           ...b,
-          // biome-ignore lint/suspicious/noExplicitAny: runtime tag, not in DB schema
           _k: crypto.randomUUID(),
           lines: b.lines.map((l) => ({ ...l, _k: crypto.randomUUID() })),
         })) as ParsedIntake['buckets'],

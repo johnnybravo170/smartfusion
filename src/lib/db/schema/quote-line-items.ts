@@ -4,7 +4,9 @@ import { quotes } from './quotes';
 
 export const quoteLineItems = pgTable('quote_line_items', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  quoteId: uuid('quote_id').notNull().references(() => quotes.id, { onDelete: 'cascade' }),
+  quoteId: uuid('quote_id')
+    .notNull()
+    .references(() => quotes.id, { onDelete: 'cascade' }),
   label: text('label').notNull(),
   qty: numeric('qty', { precision: 12, scale: 2 }).notNull().default('1'),
   unit: text('unit').notNull().default('item'),

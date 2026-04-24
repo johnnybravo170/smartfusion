@@ -25,6 +25,7 @@ export function useVoice(
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [voiceState, setVoiceState] = useState<VoiceState>('off');
   const wakeDetectorRef = useRef<WakeWordDetector | null>(null);
+  // biome-ignore lint/suspicious/noExplicitAny: vendor-prefixed browser SpeechRecognition API
   const pttRecognitionRef = useRef<any>(null);
   // Track the response we already spoke so we don't repeat it.
   const spokenResponseRef = useRef<string | null>(null);
@@ -125,7 +126,10 @@ export function useVoice(
     stopSpeaking();
 
     const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      // biome-ignore lint/suspicious/noExplicitAny: vendor-prefixed browser SpeechRecognition API
+      (window as any).SpeechRecognition ||
+      // biome-ignore lint/suspicious/noExplicitAny: vendor-prefixed browser SpeechRecognition API
+      (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
     const recognition = new SpeechRecognition();
@@ -144,6 +148,7 @@ export function useVoice(
     if (!recognition) return;
 
     // Collect final results on end.
+    // biome-ignore lint/suspicious/noExplicitAny: SpeechRecognitionEvent not typed in all browsers
     recognition.onresult = (event: any) => {
       let transcript = '';
       for (let i = 0; i < event.results.length; i++) {

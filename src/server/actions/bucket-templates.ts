@@ -5,9 +5,7 @@ import { z } from 'zod';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
 
-export type BucketTemplateResult =
-  | { ok: true; id: string }
-  | { ok: false; error: string };
+export type BucketTemplateResult = { ok: true; id: string } | { ok: false; error: string };
 
 const templateSchema = z.object({
   id: z.string().uuid().optional(),

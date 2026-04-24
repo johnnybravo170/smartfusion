@@ -14,7 +14,10 @@ export type WakeWordDetector = {
 export function createWakeWordDetector(onWake: WakeWordCallback): WakeWordDetector {
   const SpeechRecognition =
     typeof window !== 'undefined'
-      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      ? // biome-ignore lint/suspicious/noExplicitAny: vendor-prefixed browser SpeechRecognition API
+        (window as any).SpeechRecognition ||
+        // biome-ignore lint/suspicious/noExplicitAny: vendor-prefixed browser SpeechRecognition API
+        (window as any).webkitSpeechRecognition
       : null;
 
   if (!SpeechRecognition) {
@@ -28,6 +31,7 @@ export function createWakeWordDetector(onWake: WakeWordCallback): WakeWordDetect
 
   let stopped = false;
 
+  // biome-ignore lint/suspicious/noExplicitAny: SpeechRecognitionEvent not typed in all browsers
   recognition.onresult = (event: any) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const transcript = event.results[i][0].transcript.toLowerCase().trim();

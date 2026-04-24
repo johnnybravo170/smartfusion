@@ -105,13 +105,16 @@ For hashtags: 5-8 max. Mix of local (#abbotsford #fraservalley) and trade (#pres
 // ---------------------------------------------------------------------------
 
 function findBeforeAfterPair(photos: PhotoWithUrl[]): {
-  before: PhotoWithUrl;
-  after: PhotoWithUrl;
+  before: PhotoWithUrl & { url: string };
+  after: PhotoWithUrl & { url: string };
 } | null {
   const before = photos.find((p) => p.tag === 'before' && p.url);
   const after = photos.find((p) => p.tag === 'after' && p.url);
-  if (!before || !after) return null;
-  return { before, after };
+  if (!before?.url || !after?.url) return null;
+  return {
+    before: before as PhotoWithUrl & { url: string },
+    after: after as PhotoWithUrl & { url: string },
+  };
 }
 
 function parseCaptionResponse(text: string): { caption: string; hashtags: string[] } {
@@ -225,8 +228,8 @@ export async function POST(request: Request) {
   let imageContent: Anthropic.Messages.ImageBlockParam[] = [];
   try {
     const [beforeRes, afterRes] = await Promise.all([
-      fetch(pair.before.url!),
-      fetch(pair.after.url!),
+      fetch(pair.before.url),
+      fetch(pair.after.url),
     ]);
     if (beforeRes.ok && afterRes.ok) {
       const [beforeBuf, afterBuf] = await Promise.all([

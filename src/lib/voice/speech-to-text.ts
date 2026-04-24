@@ -7,7 +7,10 @@ export function transcribeOnce(): Promise<string> {
   return new Promise((resolve, reject) => {
     const SpeechRecognition =
       typeof window !== 'undefined'
-        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        ? // biome-ignore lint/suspicious/noExplicitAny: vendor-prefixed browser SpeechRecognition API
+          (window as any).SpeechRecognition ||
+          // biome-ignore lint/suspicious/noExplicitAny: vendor-prefixed browser SpeechRecognition API
+          (window as any).webkitSpeechRecognition
         : null;
 
     if (!SpeechRecognition) {
@@ -22,6 +25,7 @@ export function transcribeOnce(): Promise<string> {
 
     let resolved = false;
 
+    // biome-ignore lint/suspicious/noExplicitAny: SpeechRecognitionEvent not typed in all browsers
     recognition.onresult = (event: any) => {
       if (resolved) return;
       resolved = true;
@@ -29,6 +33,7 @@ export function transcribeOnce(): Promise<string> {
       resolve(transcript);
     };
 
+    // biome-ignore lint/suspicious/noExplicitAny: SpeechRecognitionEvent not typed in all browsers
     recognition.onerror = (event: any) => {
       if (resolved) return;
       resolved = true;

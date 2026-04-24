@@ -12,7 +12,7 @@ import { getMfaEnforcement } from '@/lib/auth/mfa-enforcement';
 
 export async function MfaEnforcementBanner() {
   const snap = await getMfaEnforcement();
-  if (!snap || !snap.required || snap.enrolled) return null;
+  if (!snap?.required || snap.enrolled) return null;
 
   if (snap.blocked) {
     return (

@@ -71,7 +71,7 @@ test.describe
         const { data: members } = await admin
           .from('tenant_members')
           .select('tenant_id')
-          .eq('user_id', createdUserId!)
+          .eq('user_id', createdUserId ?? '')
           .single();
         if (members) createdTenantId = members.tenant_id as string;
 
@@ -137,7 +137,7 @@ test.describe
             timeline_impact_days: 3,
             status: 'pending_approval',
             approval_code: code,
-            created_by: createdUserId!,
+            created_by: createdUserId ?? '',
           })
           .select('id, approval_code')
           .single();

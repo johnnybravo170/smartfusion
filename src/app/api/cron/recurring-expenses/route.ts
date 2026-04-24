@@ -22,7 +22,7 @@ export const maxDuration = 60;
 function addOneMonth(isoDate: string): string {
   const [y, m, d] = isoDate.split('-').map(Number);
   // day_of_month is capped at 28 in the schema, so no month-length edge case.
-  const next = new Date(Date.UTC(y!, m! - 1, d!));
+  const next = new Date(Date.UTC(y ?? 0, (m ?? 1) - 1, d ?? 1));
   next.setUTCMonth(next.getUTCMonth() + 1);
   return next.toISOString().slice(0, 10);
 }

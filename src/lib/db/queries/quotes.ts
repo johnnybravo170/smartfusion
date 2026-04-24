@@ -160,7 +160,9 @@ export async function getQuote(id: string): Promise<QuoteWithRelations | null> {
 
   const { data: lineItemData, error: liErr } = await supabase
     .from('quote_line_items')
-    .select('id, quote_id, label, qty, unit, unit_price_cents, line_total_cents, sort_order, created_at')
+    .select(
+      'id, quote_id, label, qty, unit, unit_price_cents, line_total_cents, sort_order, created_at',
+    )
     .eq('quote_id', id)
     .order('sort_order', { ascending: true });
 

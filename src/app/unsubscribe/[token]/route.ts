@@ -25,7 +25,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   return htmlResponse(pageConfirm(token));
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function POST(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const payload = verifyUnsubToken(token);
   if (!payload) {

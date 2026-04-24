@@ -139,7 +139,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             <p className="text-sm font-medium text-emerald-900">
               🎉 {quote.customer?.name?.split(' ')[0] ?? 'Customer'} accepted this estimate!
             </p>
-            <p className="text-xs text-emerald-700">Convert to a job (pressure washing) or a project (renovation/GC).</p>
+            <p className="text-xs text-emerald-700">
+              Convert to a job (pressure washing) or a project (renovation/GC).
+            </p>
           </div>
           <div className="flex gap-2">
             <ConvertToJobButton quoteId={quote.id} />

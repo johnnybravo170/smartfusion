@@ -36,7 +36,7 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
   const coData = co as Record<string, unknown>;
   const project = coData.projects as Record<string, unknown> | null;
   const tenant = coData.tenants as Record<string, unknown> | null;
-  const customerRaw = project?.customers as Record<string, unknown> | null;
+  const _customerRaw = project?.customers as Record<string, unknown> | null;
   const projectName = (project?.name as string) ?? 'Project';
   const businessName = (tenant?.name as string) ?? 'Your Contractor';
 

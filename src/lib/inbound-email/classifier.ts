@@ -155,7 +155,8 @@ Return ONLY valid JSON matching this schema (no markdown, no prose):
     } catch (err) {
       lastErr = err;
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('503') && !msg.includes('UNAVAILABLE') && !msg.includes('overload')) throw err;
+      if (!msg.includes('503') && !msg.includes('UNAVAILABLE') && !msg.includes('overload'))
+        throw err;
       if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1) ** 2));
     }
   }

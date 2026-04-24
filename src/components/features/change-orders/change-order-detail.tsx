@@ -34,7 +34,9 @@ export function ChangeOrderDetail({
   // Live-update when the customer approves or declines remotely.
   useEffect(() => {
     const supabase = createBrowserClient(
+      // biome-ignore lint/style/noNonNullAssertion: required env vars
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      // biome-ignore lint/style/noNonNullAssertion: required env vars
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     );
 

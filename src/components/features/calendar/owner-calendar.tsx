@@ -832,7 +832,7 @@ function ProjectRow({
   days,
   bars,
   lanes,
-  cellLookup,
+  cellLookup: _cellLookup,
   drag,
   chipDrag,
   extend,
@@ -1001,7 +1001,6 @@ function ProjectRow({
                 </span>
               ) : null}
               {/* Right-edge extend handle */}
-              {/* biome-ignore lint/a11y/noStaticElementInteractions: mouse-only drag handle */}
               <span
                 data-extend-handle="1"
                 aria-hidden="true"

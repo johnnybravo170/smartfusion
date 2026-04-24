@@ -3,15 +3,15 @@
 import { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  deleteMaterialAction,
-  deleteLabourRateAction,
-  upsertMaterialAction,
-  upsertLabourRateAction,
-} from '@/server/actions/cost-catalog';
-import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import type { LabourRateRow } from '@/lib/db/queries/labour-rates';
+import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import { formatCurrency } from '@/lib/pricing/calculator';
+import {
+  deleteLabourRateAction,
+  deleteMaterialAction,
+  upsertLabourRateAction,
+  upsertMaterialAction,
+} from '@/server/actions/cost-catalog';
 
 const CATEGORIES = ['material', 'labour', 'sub', 'equipment', 'overhead'] as const;
 const UNITS = ['item', 'sqft', 'lf', 'hr', 'ea', 'lot', 'bag', 'sheet', 'lb'];
@@ -25,13 +25,7 @@ function displayToCents(val: string) {
 
 // ─── Material form ────────────────────────────────────────────────────────────
 
-function MaterialForm({
-  initial,
-  onDone,
-}: {
-  initial?: MaterialsCatalogRow;
-  onDone: () => void;
-}) {
+function MaterialForm({ initial, onDone }: { initial?: MaterialsCatalogRow; onDone: () => void }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState('');
 
@@ -85,36 +79,57 @@ function MaterialForm({
     <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border bg-muted/30 p-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-medium">Label</label>
-          <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Framing lumber 2×4" required />
+          <label htmlFor="ccm-label" className="mb-1 block text-xs font-medium">
+            Label
+          </label>
+          <Input
+            id="ccm-label"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="e.g. Framing lumber 2×4"
+            required
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Category</label>
+          <label htmlFor="ccm-category" className="mb-1 block text-xs font-medium">
+            Category
+          </label>
           <select
+            id="ccm-category"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             className="w-full rounded-md border bg-background px-3 py-2 text-sm"
           >
             {CATEGORIES.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Unit</label>
+          <label htmlFor="ccm-unit" className="mb-1 block text-xs font-medium">
+            Unit
+          </label>
           <select
+            id="ccm-unit"
             value={unit}
             onChange={(e) => setUnit(e.target.value)}
             className="w-full rounded-md border bg-background px-3 py-2 text-sm"
           >
             {UNITS.map((u) => (
-              <option key={u} value={u}>{u}</option>
+              <option key={u} value={u}>
+                {u}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Cost / unit ($)</label>
+          <label htmlFor="ccm-cost" className="mb-1 block text-xs font-medium">
+            Cost / unit ($)
+          </label>
           <Input
+            id="ccm-cost"
             type="number"
             step="0.01"
             min="0"
@@ -125,8 +140,11 @@ function MaterialForm({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Price / unit ($)</label>
+          <label htmlFor="ccm-price" className="mb-1 block text-xs font-medium">
+            Price / unit ($)
+          </label>
           <Input
+            id="ccm-price"
             type="number"
             step="0.01"
             min="0"
@@ -136,12 +154,26 @@ function MaterialForm({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Vendor</label>
-          <Input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Optional" />
+          <label htmlFor="ccm-vendor" className="mb-1 block text-xs font-medium">
+            Vendor
+          </label>
+          <Input
+            id="ccm-vendor"
+            value={vendor}
+            onChange={(e) => setVendor(e.target.value)}
+            placeholder="Optional"
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Cost code</label>
-          <Input value={costCode} onChange={(e) => setCostCode(e.target.value)} placeholder="Optional" />
+          <label htmlFor="ccm-cost-code" className="mb-1 block text-xs font-medium">
+            Cost code
+          </label>
+          <Input
+            id="ccm-cost-code"
+            value={costCode}
+            onChange={(e) => setCostCode(e.target.value)}
+            placeholder="Optional"
+          />
         </div>
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
@@ -159,19 +191,17 @@ function MaterialForm({
 
 // ─── Labour rate form ─────────────────────────────────────────────────────────
 
-function LabourRateForm({
-  initial,
-  onDone,
-}: {
-  initial?: LabourRateRow;
-  onDone: () => void;
-}) {
+function LabourRateForm({ initial, onDone }: { initial?: LabourRateRow; onDone: () => void }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState('');
   const [trade, setTrade] = useState(initial?.trade ?? '');
   const [role, setRole] = useState(initial?.role ?? 'lead');
-  const [costRaw, setCostRaw] = useState(initial ? centsToDisplay(initial.cost_per_hour_cents) : '');
-  const [billRaw, setBillRaw] = useState(initial ? centsToDisplay(initial.bill_per_hour_cents) : '');
+  const [costRaw, setCostRaw] = useState(
+    initial ? centsToDisplay(initial.cost_per_hour_cents) : '',
+  );
+  const [billRaw, setBillRaw] = useState(
+    initial ? centsToDisplay(initial.bill_per_hour_cents) : '',
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -193,20 +223,56 @@ function LabourRateForm({
     <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border bg-muted/30 p-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div>
-          <label className="mb-1 block text-xs font-medium">Trade</label>
-          <Input value={trade} onChange={(e) => setTrade(e.target.value)} placeholder="e.g. Carpenter" required />
+          <label htmlFor="lr-trade" className="mb-1 block text-xs font-medium">
+            Trade
+          </label>
+          <Input
+            id="lr-trade"
+            value={trade}
+            onChange={(e) => setTrade(e.target.value)}
+            placeholder="e.g. Carpenter"
+            required
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Role</label>
-          <Input value={role} onChange={(e) => setRole(e.target.value)} placeholder="lead" required />
+          <label htmlFor="lr-role" className="mb-1 block text-xs font-medium">
+            Role
+          </label>
+          <Input
+            id="lr-role"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            placeholder="lead"
+            required
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Cost / hr ($)</label>
-          <Input type="number" step="0.01" min="0" value={costRaw} onChange={(e) => setCostRaw(e.target.value)} placeholder="0.00" />
+          <label htmlFor="lr-cost" className="mb-1 block text-xs font-medium">
+            Cost / hr ($)
+          </label>
+          <Input
+            id="lr-cost"
+            type="number"
+            step="0.01"
+            min="0"
+            value={costRaw}
+            onChange={(e) => setCostRaw(e.target.value)}
+            placeholder="0.00"
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Bill / hr ($)</label>
-          <Input type="number" step="0.01" min="0" value={billRaw} onChange={(e) => setBillRaw(e.target.value)} placeholder="0.00" />
+          <label htmlFor="lr-bill" className="mb-1 block text-xs font-medium">
+            Bill / hr ($)
+          </label>
+          <Input
+            id="lr-bill"
+            type="number"
+            step="0.01"
+            min="0"
+            value={billRaw}
+            onChange={(e) => setBillRaw(e.target.value)}
+            placeholder="0.00"
+          />
         </div>
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
@@ -214,7 +280,9 @@ function LabourRateForm({
         <Button type="submit" size="sm" disabled={pending}>
           {pending ? 'Saving…' : initial ? 'Update' : 'Add rate'}
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
       </div>
     </form>
   );
@@ -238,12 +306,16 @@ export function CostCatalogManager({
 
   function deleteMaterial(id: string) {
     if (!confirm('Delete this item?')) return;
-    startTransition(async () => { await deleteMaterialAction(id); });
+    startTransition(async () => {
+      await deleteMaterialAction(id);
+    });
   }
 
   function deleteLabour(id: string) {
     if (!confirm('Delete this rate?')) return;
-    startTransition(async () => { await deleteLabourRateAction(id); });
+    startTransition(async () => {
+      await deleteLabourRateAction(id);
+    });
   }
 
   return (
@@ -269,17 +341,24 @@ export function CostCatalogManager({
       {/* Materials tab */}
       {activeTab === 'materials' && (
         <div className="space-y-3">
-          {(showMaterialForm || editingMaterial) ? (
+          {showMaterialForm || editingMaterial ? (
             <MaterialForm
               initial={editingMaterial ?? undefined}
-              onDone={() => { setShowMaterialForm(false); setEditingMaterial(null); }}
+              onDone={() => {
+                setShowMaterialForm(false);
+                setEditingMaterial(null);
+              }}
             />
           ) : (
-            <Button size="sm" onClick={() => setShowMaterialForm(true)}>+ Add item</Button>
+            <Button size="sm" onClick={() => setShowMaterialForm(true)}>
+              + Add item
+            </Button>
           )}
 
           {materials.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No items yet. Add your first cost item above.</p>
+            <p className="text-sm text-muted-foreground">
+              No items yet. Add your first cost item above.
+            </p>
           ) : (
             <div className="overflow-x-auto rounded-md border">
               <table className="w-full text-sm">
@@ -296,7 +375,10 @@ export function CostCatalogManager({
                 </thead>
                 <tbody>
                   {materials.map((m) => (
-                    <tr key={m.id} className={`border-b last:border-0 ${!m.is_active ? 'opacity-50' : ''}`}>
+                    <tr
+                      key={m.id}
+                      className={`border-b last:border-0 ${!m.is_active ? 'opacity-50' : ''}`}
+                    >
                       <td className="px-3 py-2">
                         <p className="font-medium">{m.label}</p>
                         {m.vendor && <p className="text-xs text-muted-foreground">{m.vendor}</p>}
@@ -313,7 +395,10 @@ export function CostCatalogManager({
                           <Button
                             size="xs"
                             variant="ghost"
-                            onClick={() => { setEditingMaterial(m); setShowMaterialForm(false); }}
+                            onClick={() => {
+                              setEditingMaterial(m);
+                              setShowMaterialForm(false);
+                            }}
                           >
                             Edit
                           </Button>
@@ -339,17 +424,24 @@ export function CostCatalogManager({
       {/* Labour rates tab */}
       {activeTab === 'labour' && (
         <div className="space-y-3">
-          {(showLabourForm || editingLabour) ? (
+          {showLabourForm || editingLabour ? (
             <LabourRateForm
               initial={editingLabour ?? undefined}
-              onDone={() => { setShowLabourForm(false); setEditingLabour(null); }}
+              onDone={() => {
+                setShowLabourForm(false);
+                setEditingLabour(null);
+              }}
             />
           ) : (
-            <Button size="sm" onClick={() => setShowLabourForm(true)}>+ Add rate</Button>
+            <Button size="sm" onClick={() => setShowLabourForm(true)}>
+              + Add rate
+            </Button>
           )}
 
           {labourRates.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No rates yet. Add your trade rates above.</p>
+            <p className="text-sm text-muted-foreground">
+              No rates yet. Add your trade rates above.
+            </p>
           ) : (
             <div className="overflow-x-auto rounded-md border">
               <table className="w-full text-sm">
@@ -374,18 +466,28 @@ export function CostCatalogManager({
                           )
                         : 0;
                     return (
-                      <tr key={r.id} className={`border-b last:border-0 ${!r.is_active ? 'opacity-50' : ''}`}>
+                      <tr
+                        key={r.id}
+                        className={`border-b last:border-0 ${!r.is_active ? 'opacity-50' : ''}`}
+                      >
                         <td className="px-3 py-2 font-medium">{r.trade}</td>
                         <td className="px-3 py-2 text-muted-foreground">{r.role}</td>
-                        <td className="px-3 py-2 text-right">{formatCurrency(r.cost_per_hour_cents)}</td>
-                        <td className="px-3 py-2 text-right">{formatCurrency(r.bill_per_hour_cents)}</td>
+                        <td className="px-3 py-2 text-right">
+                          {formatCurrency(r.cost_per_hour_cents)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {formatCurrency(r.bill_per_hour_cents)}
+                        </td>
                         <td className="px-3 py-2 text-right text-muted-foreground">{marginPct}%</td>
                         <td className="px-3 py-2">
                           <div className="flex justify-end gap-1">
                             <Button
                               size="xs"
                               variant="ghost"
-                              onClick={() => { setEditingLabour(r); setShowLabourForm(false); }}
+                              onClick={() => {
+                                setEditingLabour(r);
+                                setShowLabourForm(false);
+                              }}
                             >
                               Edit
                             </Button>

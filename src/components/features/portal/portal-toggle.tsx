@@ -13,7 +13,7 @@ export function PortalToggle({
   portalSlug: string | null;
 }) {
   const [enabled, setEnabled] = useState(portalEnabled);
-  const [slug, setSlug] = useState(portalSlug);
+  const [slug, _setSlug] = useState(portalSlug);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState<string | null>(null);

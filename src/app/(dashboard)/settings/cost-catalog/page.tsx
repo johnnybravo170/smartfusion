@@ -24,7 +24,8 @@ export default async function CostCatalogPage() {
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Cost Catalog</h1>
         <p className="text-sm text-muted-foreground">
-          Materials, labour rates, and markup rules for GC projects. Pull items directly into project estimates.
+          Materials, labour rates, and markup rules for GC projects. Pull items directly into
+          project estimates.
         </p>
       </header>
 

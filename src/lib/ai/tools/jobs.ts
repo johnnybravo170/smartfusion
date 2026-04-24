@@ -1,7 +1,7 @@
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getJob, listJobs, listWorklogForJob } from '@/lib/db/queries/jobs';
-import { sendSms } from '@/lib/twilio/client';
 import { createClient } from '@/lib/supabase/server';
+import { sendSms } from '@/lib/twilio/client';
 import {
   formatCad,
   formatDate,
@@ -433,7 +433,8 @@ export const jobTools: AiTool[] = [
           const quote = Array.isArray(quoteRaw) ? quoteRaw[0] : quoteRaw;
           output += `${i + 1}. ${(customer as { name?: string })?.name ?? 'No customer'}\n`;
           if (j.completed_at) output += `   Completed: ${formatDate(j.completed_at)}\n`;
-          if (quote) output += `   Quote total: ${formatCad((quote as { total_cents: number }).total_cents)}\n`;
+          if (quote)
+            output += `   Quote total: ${formatCad((quote as { total_cents: number }).total_cents)}\n`;
           if (j.notes) output += `   Notes: ${j.notes}\n`;
           output += `   ID: ${j.id.slice(0, 8)}\n\n`;
         }
@@ -467,7 +468,9 @@ export const jobTools: AiTool[] = [
         type JobRow = {
           id: string;
           status: string;
-          customers: { name: string; phone: string | null } | { name: string; phone: string | null }[];
+          customers:
+            | { name: string; phone: string | null }
+            | { name: string; phone: string | null }[];
         };
 
         const result = await resolveByShortId<JobRow>(

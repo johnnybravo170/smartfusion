@@ -283,10 +283,12 @@ export function QuoteMap({
             autocompleteRef.current = auto;
             // Bias results to the operator's area (500km radius from map center)
             const loc = map?.getCenter() ?? new google.maps.LatLng(center.lat, center.lng);
-            auto.setBounds(new google.maps.LatLngBounds(
-              new google.maps.LatLng(loc.lat() - 4.5, loc.lng() - 4.5),
-              new google.maps.LatLng(loc.lat() + 4.5, loc.lng() + 4.5),
-            ));
+            auto.setBounds(
+              new google.maps.LatLngBounds(
+                new google.maps.LatLng(loc.lat() - 4.5, loc.lng() - 4.5),
+                new google.maps.LatLng(loc.lat() + 4.5, loc.lng() + 4.5),
+              ),
+            );
           }}
           onPlaceChanged={onAutocompletePlaceChanged}
           options={{

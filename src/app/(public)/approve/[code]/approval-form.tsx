@@ -48,6 +48,7 @@ export function ApprovalForm({ approvalCode }: { approvalCode: string }) {
       <div className="rounded-md bg-muted/50 p-6 text-center">
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
           <svg
+            aria-hidden="true"
             className="h-6 w-6 text-emerald-600"
             fill="none"
             stroke="currentColor"

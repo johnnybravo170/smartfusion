@@ -72,7 +72,9 @@ export default function JoinPage() {
         ]);
 
         const supabase = createBrowserClient(
+          // biome-ignore lint/style/noNonNullAssertion: required env vars
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          // biome-ignore lint/style/noNonNullAssertion: required env vars
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         );
         const {
@@ -185,7 +187,7 @@ export default function JoinPage() {
     <Card>
       <CardHeader>
         {logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+          // biome-ignore lint/performance/noImgElement: external tenant logo URL
           <img
             src={logoUrl}
             alt={`${tenantName} logo`}
