@@ -34,6 +34,37 @@ export type ChangeOrderRow = {
 const CO_COLUMNS =
   'id, project_id, job_id, tenant_id, title, description, reason, cost_impact_cents, timeline_impact_days, affected_buckets, status, approval_code, approved_by_name, approved_at, declined_at, declined_reason, approval_method, approved_by_member_id, approval_proof_paths, approval_notes, created_by, created_at, updated_at';
 
+/**
+ * Tenant-wide pending-approval change orders for the owner dashboard.
+ * Joins through the job to surface the customer name in the listing.
+ */
+export async function listPendingChangeOrdersForDashboard(): Promise<
+  Array<{ id: string; job_id: string | null; total_cents: number; customer_name: string | null }>
+> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('change_orders')
+    .select('id, job_id, cost_impact_cents, status, jobs:job_id (id, customers:customer_id (name))')
+    .eq('status', 'pending_approval')
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  return (data ?? []).map((row) => {
+    const jobObj = Array.isArray(row.jobs) ? row.jobs[0] : row.jobs;
+    const customerObj = jobObj
+      ? Array.isArray(jobObj.customers)
+        ? jobObj.customers[0]
+        : jobObj.customers
+      : null;
+    return {
+      id: row.id as string,
+      job_id: (row.job_id as string | null) ?? null,
+      total_cents: (row.cost_impact_cents as number) ?? 0,
+      customer_name: (customerObj?.name as string | undefined) ?? null,
+    };
+  });
+}
+
 export async function listChangeOrders(
   scope: { projectId: string } | { jobId: string },
 ): Promise<ChangeOrderRow[]> {

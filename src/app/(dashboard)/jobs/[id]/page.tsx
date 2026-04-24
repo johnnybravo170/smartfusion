@@ -21,6 +21,7 @@ import { PhotoGallery } from '@/components/features/photos/photo-gallery';
 import { PhotoUpload } from '@/components/features/photos/photo-upload';
 import { QuoteStatusBadge } from '@/components/features/quotes/quote-status-badge';
 import { SocialPostSection } from '@/components/features/social/social-post-section';
+import { JobTabs } from '@/components/features/tasks/job-tabs';
 import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime, formatRelativeTime } from '@/lib/date/format';
@@ -100,6 +101,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </div>
       </header>
+
+      <JobTabs jobId={job.id} current="overview" />
 
       <section className="grid gap-4 rounded-xl border bg-card p-5 md:grid-cols-3">
         <InlineScheduler

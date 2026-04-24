@@ -8,6 +8,7 @@ import { jobTools } from './jobs';
 import { projectTools } from './projects';
 import { quoteTools } from './quotes';
 import { smsTools } from './sms';
+import { taskTools } from './tasks';
 import { timeExpenseTools } from './time-expenses';
 import { todoTools } from './todos';
 import { worklogTools } from './worklog';
@@ -20,6 +21,7 @@ const coreTools: AiTool[] = [
   ...jobTools,
   ...invoiceTools,
   ...todoTools,
+  ...taskTools,
   ...worklogTools,
   ...catalogTools,
   ...smsTools,

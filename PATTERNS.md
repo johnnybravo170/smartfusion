@@ -107,3 +107,23 @@ URL-param driven (`?tab=estimate`); `router.replace()` to avoid history pollutio
 - `src/components/features/inbox/inbox-tabs.tsx`
 - `src/components/features/projects/project-tab-select.tsx` (mobile select)
 - The project detail page renders a row of `<Link>` tabs above `lg`, the select below it.
+- `src/components/features/tasks/job-tabs.tsx` — distinct-route variant on the job detail page (`/jobs/[id]` vs `/jobs/[id]/tasks`). Used when each tab needs its own server component shell rather than re-rendering off a query param.
+
+---
+
+## 10. Task module (status palette + inline edit + filters)
+
+The Tasks module ships its own status palette (8 values, including orange/purple/teal that don't appear elsewhere). When you add a new status value or render a task chip outside the badge component, update **both** sides:
+
+- `src/lib/ui/status-tokens.ts` — `taskStatusClass` map (per-status Tailwind classes; not a StatusTone — task chips use a richer palette)
+- `src/lib/validators/task.ts` — `taskStatuses` enum + `taskStatusLabels` map + matching server-side check constraint in `supabase/migrations/0118_tasks.sql`
+- `src/components/features/tasks/task-status-badge.tsx` — read-only badge
+- `src/components/features/tasks/task-status-pill.tsx` — interactive Select-as-pill (used for inline status changes)
+
+Sibling instances to keep aligned when the task list UX changes:
+
+- `src/components/features/tasks/project-task-list.tsx` — phase-grouped, filter chips
+- `src/app/(dashboard)/todos/page.tsx` — flat personal list, checkbox-style toggle
+- `src/components/features/dashboard/command-center.tsx` — read-only Today/Blocked/Needs You buckets
+
+Inline-edit follows §4's keyboard contract (Enter saves, Escape cancels, blur saves).

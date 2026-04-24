@@ -20,6 +20,7 @@ export * from './quote-line-items';
 export * from './quote-surfaces';
 export * from './quotes';
 export * from './service-catalog';
+export * from './tasks';
 export * from './tenant-members';
 export * from './tenant-prefs';
 export * from './tenants';

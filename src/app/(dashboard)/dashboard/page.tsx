@@ -1,3 +1,4 @@
+import { CommandCenter, PersonalTasksCard } from '@/components/features/dashboard/command-center';
 import { EstimateCelebrationCard } from '@/components/features/dashboard/estimate-celebration-card';
 import { KeyMetrics } from '@/components/features/dashboard/key-metrics';
 import { NeedsAttention } from '@/components/features/dashboard/needs-attention';
@@ -8,6 +9,7 @@ import { TodaysJobs } from '@/components/features/dashboard/todays-jobs';
 import { AwaitingApprovalList } from '@/components/features/projects/awaiting-approval-list';
 import { getCurrentUser, requireTenant } from '@/lib/auth/helpers';
 import { getProjectsAwaitingApproval } from '@/lib/db/queries/awaiting-approval';
+import { listPendingChangeOrdersForDashboard } from '@/lib/db/queries/change-orders';
 import {
   getAttentionItems,
   getHourInTimezone,
@@ -20,6 +22,7 @@ import {
 } from '@/lib/db/queries/dashboard';
 import { getPendingEstimateCelebration } from '@/lib/db/queries/estimate-celebrations';
 import { getBusinessProfile, getOperatorProfile } from '@/lib/db/queries/profile';
+import { getDashboardTaskBuckets, getJobTaskHealth } from '@/lib/db/queries/tasks';
 
 function getGreeting(hour: number): string {
   if (hour < 12) return 'Good morning';
@@ -52,6 +55,9 @@ export default async function DashboardPage() {
     revenueYtdCents,
     profile,
     operator,
+    taskBuckets,
+    jobTaskHealth,
+    pendingChangeOrders,
   ] = await Promise.all([
     showTodaysJobs ? getTodaysJobs(tz) : Promise.resolve([]),
     getKeyMetrics(tz),
@@ -64,6 +70,19 @@ export default async function DashboardPage() {
     getRevenueYtd(tz),
     getBusinessProfile(tenant.id),
     user ? getOperatorProfile(tenant.id, user.id) : Promise.resolve(null),
+    user
+      ? getDashboardTaskBuckets(user.id)
+      : Promise.resolve({
+          dueToday: [],
+          overdue: [],
+          blockedClient: [],
+          blockedMaterial: [],
+          blockedSub: [],
+          blockedOther: [],
+          personalTop: [],
+        }),
+    getJobTaskHealth(),
+    listPendingChangeOrdersForDashboard(),
   ]);
 
   const firstName = operator?.firstName?.trim() || null;
@@ -89,6 +108,14 @@ export default async function DashboardPage() {
       </div>
 
       {celebration ? <EstimateCelebrationCard celebration={celebration} /> : null}
+
+      <CommandCenter
+        buckets={taskBuckets}
+        jobHealth={jobTaskHealth}
+        changeOrdersPending={pendingChangeOrders}
+      />
+
+      <PersonalTasksCard tasks={taskBuckets.personalTop} />
 
       {showTodaysJobs ? <TodaysJobs jobs={todaysJobs} timezone={tz} /> : null}
 
