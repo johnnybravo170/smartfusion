@@ -657,6 +657,144 @@ export async function updateOverheadExpenseAction(
   return { ok: true, id };
 }
 
+/**
+ * Bulk recategorize a set of overhead expenses. Any id that doesn't
+ * belong to the caller's tenant or is inside a books-closed period
+ * is silently skipped — returns the actual updated count.
+ */
+export async function bulkRecategorizeExpensesAction(input: {
+  ids: string[];
+  category_id: string;
+}): Promise<{ ok: true; updated: number } | { ok: false; error: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  if (!Array.isArray(input.ids) || input.ids.length === 0) {
+    return { ok: false, error: 'Nothing selected.' };
+  }
+  if (typeof input.category_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(input.category_id)) {
+    return { ok: false, error: 'Invalid category.' };
+  }
+
+  const admin = createAdminClient();
+
+  // Validate the target category belongs to the tenant and isn't a
+  // parent with children (same rule as single-row updates).
+  const { data: cat } = await admin
+    .from('expense_categories')
+    .select('id, parent_id')
+    .eq('id', input.category_id)
+    .eq('tenant_id', tenant.id)
+    .single();
+  if (!cat) return { ok: false, error: 'Category not found.' };
+  if (cat.parent_id === null) {
+    const { count } = await admin
+      .from('expense_categories')
+      .select('id', { count: 'exact', head: true })
+      .eq('parent_id', cat.id)
+      .is('archived_at', null);
+    if ((count ?? 0) > 0) {
+      return {
+        ok: false,
+        error: 'That category has sub-accounts. Pick a sub-account instead.',
+      };
+    }
+  }
+
+  const { data: rows } = await admin
+    .from('expenses')
+    .select('id, expense_date')
+    .in('id', input.ids)
+    .eq('tenant_id', tenant.id);
+
+  const { data: t } = await admin
+    .from('tenants')
+    .select('books_closed_through')
+    .eq('id', tenant.id)
+    .single();
+  const closedThrough = (t?.books_closed_through as string | null) ?? null;
+
+  const allowedIds = (rows ?? [])
+    .filter((r) => !closedThrough || (r.expense_date as string) > closedThrough)
+    .map((r) => r.id as string);
+
+  if (allowedIds.length === 0) {
+    return {
+      ok: false,
+      error: closedThrough
+        ? `All selected rows are in a locked period (books closed through ${closedThrough}).`
+        : 'No eligible rows found.',
+    };
+  }
+
+  const { error } = await admin
+    .from('expenses')
+    .update({ category_id: input.category_id, updated_at: new Date().toISOString() })
+    .in('id', allowedIds);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/expenses');
+  revalidatePath('/bk/expenses');
+  return { ok: true, updated: allowedIds.length };
+}
+
+/**
+ * Bulk delete overhead expenses. Project-linked expenses are silently
+ * excluded (they have their own edit flow). Books-closed rows skip too.
+ * Receipt files are removed best-effort.
+ */
+export async function bulkDeleteExpensesAction(input: {
+  ids: string[];
+}): Promise<{ ok: true; deleted: number } | { ok: false; error: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  if (!Array.isArray(input.ids) || input.ids.length === 0) {
+    return { ok: false, error: 'Nothing selected.' };
+  }
+
+  const admin = createAdminClient();
+  const { data: rows } = await admin
+    .from('expenses')
+    .select('id, project_id, expense_date, receipt_storage_path')
+    .in('id', input.ids)
+    .eq('tenant_id', tenant.id);
+
+  const { data: t } = await admin
+    .from('tenants')
+    .select('books_closed_through')
+    .eq('id', tenant.id)
+    .single();
+  const closedThrough = (t?.books_closed_through as string | null) ?? null;
+
+  const eligible = (rows ?? []).filter((r) => {
+    if (r.project_id) return false;
+    if (closedThrough && (r.expense_date as string) <= closedThrough) return false;
+    return true;
+  });
+
+  if (eligible.length === 0) {
+    return { ok: false, error: 'No eligible rows (project rows + locked periods skip).' };
+  }
+
+  const idsToDelete = eligible.map((r) => r.id as string);
+  const receiptPaths = eligible
+    .map((r) => r.receipt_storage_path as string | null)
+    .filter((p): p is string => !!p);
+
+  const { error } = await admin.from('expenses').delete().in('id', idsToDelete);
+  if (error) return { ok: false, error: error.message };
+
+  if (receiptPaths.length > 0) {
+    await admin.storage
+      .from(RECEIPTS_BUCKET)
+      .remove(receiptPaths)
+      .catch(() => {});
+  }
+
+  revalidatePath('/expenses');
+  revalidatePath('/bk/expenses');
+  return { ok: true, deleted: idsToDelete.length };
+}
+
 export async function deleteOverheadExpenseAction(
   id: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {

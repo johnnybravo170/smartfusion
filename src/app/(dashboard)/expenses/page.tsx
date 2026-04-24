@@ -1,10 +1,16 @@
 import { Plus, Receipt, Tag } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { DeleteExpenseButton } from '@/components/features/expenses/delete-expense-button';
-import { ReceiptPreviewButton } from '@/components/features/expenses/receipt-preview-button';
+import { ExpensesTable } from '@/components/features/expenses/expenses-table';
+import { RecurringRulesCard } from '@/components/features/expenses/recurring-rules-card';
 import { Button } from '@/components/ui/button';
 import { requireTenant } from '@/lib/auth/helpers';
+import {
+  buildCategoryTree,
+  buildPickerOptions,
+  listExpenseCategories,
+} from '@/lib/db/queries/expense-categories';
+import { listActiveRecurringRules } from '@/lib/db/queries/expense-recurring';
 import { listOverheadExpenses } from '@/lib/db/queries/overhead-expenses';
 import { formatCurrency } from '@/lib/pricing/calculator';
 
@@ -16,7 +22,12 @@ export default async function OverheadExpensesPage() {
   const { tenant } = await requireTenant();
   if (tenant.member.role === 'worker') redirect('/w');
 
-  const expenses = await listOverheadExpenses({});
+  const [expenses, recurringRules, categoryRows] = await Promise.all([
+    listOverheadExpenses({}),
+    listActiveRecurringRules(),
+    listExpenseCategories(),
+  ]);
+  const pickerOptions = buildPickerOptions(buildCategoryTree(categoryRows));
   const total = expenses.reduce((s, e) => s + e.amount_cents, 0);
   const totalTax = expenses.reduce((s, e) => s + e.tax_cents, 0);
 
@@ -80,74 +91,10 @@ export default async function OverheadExpensesPage() {
           </Button>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">Date</th>
-                <th className="px-4 py-3 text-left font-medium">Category</th>
-                <th className="px-4 py-3 text-left font-medium">Vendor</th>
-                <th className="px-4 py-3 text-left font-medium">Description</th>
-                <th className="px-4 py-3 text-right font-medium">Tax</th>
-                <th className="px-4 py-3 text-right font-medium">Amount</th>
-                <th className="w-px px-2 py-3" aria-label="Receipt" />
-                <th className="w-px px-2 py-3" aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {expenses.map((e) => (
-                <tr key={e.id} className="border-b last:border-0 hover:bg-muted/30">
-                  <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                    <Link href={`/expenses/${e.id}/edit`} className="hover:underline">
-                      {new Date(e.expense_date).toLocaleDateString('en-CA', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Link href={`/expenses/${e.id}/edit`} className="hover:underline">
-                      {e.parent_category_name
-                        ? `${e.parent_category_name} › ${e.category_name}`
-                        : (e.category_name ?? '—')}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    <Link href={`/expenses/${e.id}/edit`} className="hover:underline">
-                      {e.vendor ?? '—'}
-                    </Link>
-                  </td>
-                  <td className="max-w-md truncate px-4 py-3 text-muted-foreground">
-                    <Link href={`/expenses/${e.id}/edit`} className="hover:underline">
-                      {e.description ?? '—'}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                    {e.tax_cents > 0 ? formatCurrency(e.tax_cents) : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums font-medium">
-                    {formatCurrency(e.amount_cents)}
-                  </td>
-                  <td className="px-2 py-3 text-right">
-                    <ReceiptPreviewButton
-                      url={e.receipt_signed_url}
-                      mimeHint={e.receipt_mime_hint}
-                      vendor={e.vendor}
-                    />
-                  </td>
-                  <td className="px-2 py-3 text-right">
-                    <DeleteExpenseButton
-                      id={e.id}
-                      label={e.vendor ?? e.description ?? 'this expense'}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ExpensesTable expenses={expenses} categories={pickerOptions} />
       )}
+
+      <RecurringRulesCard rules={recurringRules} />
     </div>
   );
 }

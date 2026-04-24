@@ -1,7 +1,11 @@
 import Link from 'next/link';
-import { DeleteExpenseButton } from '@/components/features/expenses/delete-expense-button';
-import { ReceiptPreviewButton } from '@/components/features/expenses/receipt-preview-button';
+import { ExpensesTable } from '@/components/features/expenses/expenses-table';
 import { requireBookkeeper } from '@/lib/auth/helpers';
+import {
+  buildCategoryTree,
+  buildPickerOptions,
+  listExpenseCategories,
+} from '@/lib/db/queries/expense-categories';
 import { listOverheadExpenses } from '@/lib/db/queries/overhead-expenses';
 import { formatCurrency } from '@/lib/pricing/calculator';
 
@@ -24,10 +28,11 @@ export default async function BookkeeperExpensesPage({
   // Overhead appears with a "—" in the project column; project-linked
   // shows a link back to the project so the bookkeeper can verify
   // context if needed.
-  const expenses = await listOverheadExpenses({
-    includeProjectExpenses: true,
-    uncategorizedOnly,
-  });
+  const [expenses, categoryRows] = await Promise.all([
+    listOverheadExpenses({ includeProjectExpenses: true, uncategorizedOnly }),
+    listExpenseCategories(),
+  ]);
+  const pickerOptions = buildPickerOptions(buildCategoryTree(categoryRows));
   const total = expenses.reduce((s, e) => s + e.amount_cents, 0);
   const totalTax = expenses.reduce((s, e) => s + e.tax_cents, 0);
 
@@ -92,95 +97,7 @@ export default async function BookkeeperExpensesPage({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium">Date</th>
-                <th className="px-4 py-3 text-left font-medium">Category</th>
-                <th className="px-4 py-3 text-left font-medium">Vendor</th>
-                <th className="px-4 py-3 text-left font-medium">Project</th>
-                <th className="px-4 py-3 text-right font-medium">Tax</th>
-                <th className="px-4 py-3 text-right font-medium">Amount</th>
-                <th className="w-px px-2 py-3" aria-label="Receipt" />
-                <th className="w-px px-2 py-3" aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {expenses.map((e) => {
-                const editHref = e.project_id
-                  ? `/projects/${e.project_id}?tab=costs`
-                  : `/expenses/${e.id}/edit`;
-                const catLabel = e.parent_category_name
-                  ? `${e.parent_category_name} › ${e.category_name}`
-                  : (e.category_name ?? '—');
-                return (
-                  <tr key={e.id} className="border-b last:border-0 hover:bg-muted/30">
-                    <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                      <Link href={editHref} className="hover:underline">
-                        {new Date(e.expense_date).toLocaleDateString('en-CA', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        href={editHref}
-                        className={
-                          e.category_id
-                            ? 'hover:underline'
-                            : 'font-medium text-amber-700 hover:underline dark:text-amber-300'
-                        }
-                      >
-                        {e.category_id ? catLabel : 'Uncategorized'}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{e.vendor ?? '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {e.project_id ? (
-                        <Link
-                          href={`/projects/${e.project_id}`}
-                          className="text-xs hover:underline"
-                        >
-                          project →
-                        </Link>
-                      ) : (
-                        <span className="text-xs">overhead</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                      {e.tax_cents > 0 ? formatCurrency(e.tax_cents) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium">
-                      {formatCurrency(e.amount_cents)}
-                    </td>
-                    <td className="px-2 py-3 text-right">
-                      <ReceiptPreviewButton
-                        url={e.receipt_signed_url}
-                        mimeHint={e.receipt_mime_hint}
-                        vendor={e.vendor}
-                      />
-                    </td>
-                    <td className="px-2 py-3 text-right">
-                      {/* Bookkeeper can delete overhead expenses (they'd only
-                          delete duplicates flagged during review). Project-
-                          linked expenses are protected: delete lives on the
-                          project page. */}
-                      {!e.project_id ? (
-                        <DeleteExpenseButton
-                          id={e.id}
-                          label={e.vendor ?? e.description ?? 'this expense'}
-                        />
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ExpensesTable expenses={expenses} categories={pickerOptions} showProjectColumn />
       )}
     </div>
   );

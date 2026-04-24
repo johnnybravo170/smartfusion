@@ -3,6 +3,7 @@
     { "path": "/api/ar/cron", "schedule": "* * * * *" },
     { "path": "/api/photos/ai-worker", "schedule": "* * * * *" },
     { "path": "/api/projects/estimate-nudge", "schedule": "0 * * * *" },
-    { "path": "/api/workers/time-nudge", "schedule": "0 1 * * *" }
+    { "path": "/api/workers/time-nudge", "schedule": "0 1 * * *" },
+    { "path": "/api/cron/recurring-expenses", "schedule": "0 13 * * *" }
   ]
 }

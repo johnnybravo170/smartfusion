@@ -1,6 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { MakeRecurringButton } from '@/components/features/expenses/make-recurring-button';
 import { OverheadExpenseForm } from '@/components/features/expenses/overhead-expense-form';
 import { requireTenant } from '@/lib/auth/helpers';
 import {
@@ -66,11 +67,14 @@ export default async function EditOverheadExpensePage({
         <ArrowLeft className="size-3.5" />
         Expenses
       </Link>
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Edit overhead expense</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Fix the category, tweak the amount, or replace the receipt.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Edit overhead expense</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Fix the category, tweak the amount, or replace the receipt.
+          </p>
+        </div>
+        <MakeRecurringButton expenseId={expense.id as string} />
       </header>
 
       <OverheadExpenseForm
