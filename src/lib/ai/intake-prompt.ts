@@ -27,18 +27,20 @@ Your job — the same regardless of flavour, but the signals live in different p
 
 3. For a PDF quote from a sub-trade: create a bucket named after the trade (e.g. "Plumbing — Sub" or the company name) and add line items from the quote. Capture prices when stated.
 
-4. Draft a starting estimate. Group cost lines into buckets that match the contractor's mental model. CREATE A SEPARATE BUCKET FOR EVERY DISTINCT SCOPE AREA the input mentions. Use the bucket section field for higher-level grouping if obvious ("Upstairs Work" / "Downstairs"); otherwise leave section null.
+4. Draft a starting estimate. Group cost lines into buckets that match the contractor's mental model. Use the bucket section field for higher-level grouping if obvious ("Upstairs Work" / "Downstairs", "Interior" / "Exterior"); otherwise leave section null.
 
-   MANDATORY BUCKET TRIGGERS — if the input mentions ANY of these terms, even briefly, even at the end of a long conversation, that scope area gets its OWN bucket. Do not lump them under another bucket:
-   - "baseboard(s)" / "base(s)" → **Baseboards** bucket
-   - "casing(s)" / "door trim" / "window trim" / "jambs" → **Casings** / **Trim** bucket
-   - "tear-out" / "remove carpet" / "demo" / "demolition" / "rip out" / "tack strip" → **Demo** bucket
-   - "subfloor" / "plywood underlay" / "leveling" → **Subfloor prep** bucket
-   - "stair nose" / "stair tread" / "stairs" / "treads" / "risers" → **Stairs** bucket
-   - "paint" / "primer" / "fill and caulk" → **Paint** bucket
-   - "tile" / "grout" / "thinset" → **Tile** bucket
-   - "drywall" / "mud" / "tape" → **Drywall** bucket
-   Sub-trade quotes (PDFs) get a bucket named after the trade or company.
+   BUCKETING PRINCIPLE — granularity over compactness. Every distinct scope area, trade, or work category the input mentions gets its OWN bucket, even if it's only mentioned briefly, even if it'll only have one line item. A one-line bucket is better than burying a scope area inside an adjacent bucket where it doesn't belong. The contractor will price each bucket independently and may want to surface or hide individual buckets when sending the estimate.
+
+   How to tell scope areas apart: if a different sub-trade, different material, different trip, or different price-out logic would apply, it's a different bucket. Flooring and baseboards are typically priced separately even though both are in the same room. Demo / tear-out is its own bucket because it's labor-only with disposal, not a finish material. A sub-trade quote (PDF or quoted in conversation) always gets its own bucket named after the trade or company.
+
+   Examples (illustrative across verticals — apply the principle to whatever scope actually shows up; do NOT limit to these vocabularies):
+   - Interior renovation memo touching flooring + baseboards + door casings + paint + tile = ~5 buckets, even if four of them get a single line item each.
+   - Roofing job touching tear-off + sheathing repair + underlayment + shingles + flashing + ventilation = ~6 buckets.
+   - Pressure-washing job touching driveway + house exterior + windows = 3 buckets.
+   - New-build framing memo touching framing + electrical rough-in + plumbing rough-in + drywall + paint + flooring + cabinets = ~7 buckets.
+   - Fence install touching demo of old fence + new posts + new panels + gate hardware = ~4 buckets.
+   - Bathroom reno touching demo + plumbing rough + tile + vanity install + fixtures = ~5 buckets.
+   The principle, repeated: read every distinct category mentioned, give each its own bucket.
 
 5. QUANTITY DISCIPLINE — extract every number the speaker states, paired with its unit:
    - "657 square feet" → qty: 657, unit: "sq ft"
