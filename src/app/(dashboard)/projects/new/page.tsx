@@ -22,6 +22,10 @@ export default async function NewProjectPage({
 }) {
   const params = await searchParams;
   const customerParam = typeof params.customer === 'string' ? params.customer : null;
+  // ?ai=claude swaps the parse model from gpt-4.1 to claude-sonnet-4-5
+  // so the same memo can be A/B'd by URL. Anything else (or missing) =
+  // default OpenAI path.
+  const aiChoice = typeof params.ai === 'string' && params.ai === 'claude' ? 'claude' : 'openai';
   const customers = await listCustomers({ limit: 500 });
 
   // Valid ?customer=<id> means the operator already picked someone (usually
@@ -74,9 +78,14 @@ export default async function NewProjectPage({
           Drop screenshots, photos, sketches, PDFs (sub-trade quotes, drawings) — or paste the
           message. Henry will extract scope, build a starting estimate, and draft a reply.
         </p>
+        {aiChoice === 'claude' ? (
+          <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+            Parse model: Claude Sonnet (A/B mode)
+          </p>
+        ) : null}
       </div>
 
-      <LeadIntakeForm />
+      <LeadIntakeForm parseModel={aiChoice === 'claude' ? 'claude-sonnet' : 'gpt-4.1'} />
 
       <details className="mt-8 rounded-lg border bg-card p-4">
         <summary className="cursor-pointer text-sm font-medium">

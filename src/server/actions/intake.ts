@@ -14,6 +14,7 @@
  * existing photo strip UI.
  */
 
+import Anthropic from '@anthropic-ai/sdk';
 import { revalidatePath } from 'next/cache';
 import {
   INTAKE_JSON_SCHEMA,
@@ -36,6 +37,9 @@ const MAX_IMAGES = 12;
 // across context-heavy inputs. Cost difference per intake call is
 // pennies; the win in completeness is much larger.
 const PARSE_MODEL = 'gpt-4.1';
+const CLAUDE_PARSE_MODEL = 'claude-sonnet-4-5';
+
+export type ParseModelChoice = 'gpt-4.1' | 'claude-sonnet';
 
 export type ParseInboundResult =
   | {
@@ -52,7 +56,11 @@ export type ParseInboundResult =
     }
   | { ok: false; error: string };
 
-export async function parseInboundLeadAction(formData: FormData): Promise<ParseInboundResult> {
+export async function parseInboundLeadAction(
+  formData: FormData,
+  options?: { model?: ParseModelChoice },
+): Promise<ParseInboundResult> {
+  const modelChoice: ParseModelChoice = options?.model ?? 'gpt-4.1';
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
 
@@ -165,52 +173,19 @@ export async function parseInboundLeadAction(formData: FormData): Promise<ParseI
     }
   }
 
-  const body = {
-    model: PARSE_MODEL,
-    messages: [
-      { role: 'system', content: INTAKE_SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
-    ],
-    response_format: { type: 'json_schema', json_schema: INTAKE_JSON_SCHEMA },
-    // Default temperature (1.0) caused wide run-to-run variance — same
-    // memo gave 1 vs 2 buckets and different line-item counts on each
-    // try, plus signals like upsells dropping out randomly. 0.2 keeps
-    // the model deterministic enough that a re-run reads the same
-    // transcript the same way, while leaving room to choose a sensible
-    // bucket structure when the input genuinely supports more than one.
-    temperature: 0.2,
-  };
-
-  let res: Response;
-  try {
-    res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (e) {
-    return { ok: false, error: `Network error: ${e instanceof Error ? e.message : String(e)}` };
-  }
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    return { ok: false, error: `OpenAI ${res.status}: ${txt || res.statusText}` };
-  }
-
-  const payload = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) return { ok: false, error: 'OpenAI returned no content.' };
-
+  // Dispatch to either OpenAI gpt-4.1 (default) or Anthropic
+  // claude-sonnet-4-5 depending on the operator's choice. Same prompt,
+  // same JSON schema, different model — lets us A/B parse quality on
+  // the same memo without redeploying.
   let draft: ParsedIntake;
-  try {
-    draft = JSON.parse(content) as ParsedIntake;
-  } catch {
-    return { ok: false, error: 'OpenAI returned non-JSON.' };
+  if (modelChoice === 'claude-sonnet') {
+    const claudeResult = await runClaudeParse(userContent);
+    if (!claudeResult.ok) return { ok: false, error: claudeResult.error };
+    draft = claudeResult.draft;
+  } else {
+    const openaiResult = await runOpenAIParse(apiKey, userContent);
+    if (!openaiResult.ok) return { ok: false, error: openaiResult.error };
+    draft = openaiResult.draft;
   }
 
   // If operator typed a customer name, prefer it over whatever the model
@@ -402,4 +377,131 @@ async function transcribeAudio(apiKey: string, file: File): Promise<string | nul
   } catch {
     return null;
   }
+}
+
+type ParseModelResult = { ok: true; draft: ParsedIntake } | { ok: false; error: string };
+
+async function runOpenAIParse(
+  apiKey: string,
+  userContent: Array<Record<string, unknown>>,
+): Promise<ParseModelResult> {
+  const body = {
+    model: PARSE_MODEL,
+    messages: [
+      { role: 'system', content: INTAKE_SYSTEM_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+    response_format: { type: 'json_schema', json_schema: INTAKE_JSON_SCHEMA },
+    temperature: 0.2,
+  };
+  let res: Response;
+  try {
+    res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return { ok: false, error: `Network error: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    return { ok: false, error: `OpenAI ${res.status}: ${txt || res.statusText}` };
+  }
+  const payload = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const content = payload.choices?.[0]?.message?.content;
+  if (!content) return { ok: false, error: 'OpenAI returned no content.' };
+  try {
+    return { ok: true, draft: JSON.parse(content) as ParsedIntake };
+  } catch {
+    return { ok: false, error: 'OpenAI returned non-JSON.' };
+  }
+}
+
+let _anthropicClient: Anthropic | null = null;
+function getAnthropicClient(): Anthropic {
+  if (!_anthropicClient) _anthropicClient = new Anthropic();
+  return _anthropicClient;
+}
+
+/**
+ * Anthropic Claude Sonnet alternate parse path. Same system prompt, same
+ * JSON schema, but the schema is bound through tool_use so the model is
+ * forced to call `submit_intake` with input that satisfies the schema.
+ *
+ * For multimodal: image and PDF blocks come through as
+ * `{type: 'image' | 'document', source: {type: 'base64', media_type, data}}`.
+ * The OpenAI-shaped userContent we build above uses `image_url` /
+ * `file` blocks that Anthropic doesn't understand, so we transform on
+ * the way in.
+ */
+async function runClaudeParse(
+  userContent: Array<Record<string, unknown>>,
+): Promise<ParseModelResult> {
+  const client = getAnthropicClient();
+
+  // Transform the OpenAI-shaped userContent into Anthropic content blocks.
+  type AnthropicBlock =
+    | { type: 'text'; text: string }
+    | {
+        type: 'image';
+        source: { type: 'base64'; media_type: string; data: string };
+      }
+    | {
+        type: 'document';
+        source: { type: 'base64'; media_type: 'application/pdf'; data: string };
+      };
+  const blocks: AnthropicBlock[] = [];
+  for (const piece of userContent) {
+    if (piece.type === 'text' && typeof piece.text === 'string') {
+      blocks.push({ type: 'text', text: piece.text });
+    } else if (piece.type === 'image_url' && typeof piece.image_url === 'object') {
+      const url = (piece.image_url as { url?: string }).url ?? '';
+      const m = url.match(/^data:([^;]+);base64,(.+)$/);
+      if (m) {
+        blocks.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } });
+      }
+    } else if (piece.type === 'file' && typeof piece.file === 'object') {
+      const data = (piece.file as { file_data?: string }).file_data ?? '';
+      const m = data.match(/^data:application\/pdf;base64,(.+)$/);
+      if (m) {
+        blocks.push({
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: m[1] },
+        });
+      }
+    }
+  }
+
+  let response: Awaited<ReturnType<typeof client.messages.create>>;
+  try {
+    response = await client.messages.create({
+      model: CLAUDE_PARSE_MODEL,
+      max_tokens: 8000,
+      temperature: 0.2,
+      system: INTAKE_SYSTEM_PROMPT,
+      tools: [
+        {
+          name: 'submit_intake',
+          description: 'Submit the parsed intake structure for the operator to review.',
+          input_schema:
+            INTAKE_JSON_SCHEMA.schema as unknown as Anthropic.Messages.Tool['input_schema'],
+        },
+      ],
+      tool_choice: { type: 'tool', name: 'submit_intake' },
+      messages: [
+        { role: 'user', content: blocks as unknown as Anthropic.Messages.ContentBlockParam[] },
+      ],
+    });
+  } catch (e) {
+    return { ok: false, error: `Anthropic error: ${e instanceof Error ? e.message : String(e)}` };
+  }
+
+  // Find the tool_use block — the model is required to call submit_intake
+  // because of tool_choice, so this should always exist on a 200.
+  const toolBlock = response.content.find(
+    (b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use',
+  );
+  if (!toolBlock) return { ok: false, error: 'Claude returned no tool_use block.' };
+  return { ok: true, draft: toolBlock.input as ParsedIntake };
 }

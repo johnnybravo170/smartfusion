@@ -21,7 +21,11 @@ import type { ParsedIntake } from '@/lib/ai/intake-prompt';
 import type { ContactMatch } from '@/lib/db/queries/contact-matches-types';
 import { resizeImage } from '@/lib/storage/resize-image';
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client';
-import { acceptInboundLeadAction, parseInboundLeadAction } from '@/server/actions/intake';
+import {
+  acceptInboundLeadAction,
+  type ParseModelChoice,
+  parseInboundLeadAction,
+} from '@/server/actions/intake';
 
 type Phase = 'upload' | 'review';
 
@@ -68,7 +72,7 @@ function usePreventDefaultWindowDrop() {
   }, []);
 }
 
-export function LeadIntakeForm() {
+export function LeadIntakeForm({ parseModel = 'gpt-4.1' }: { parseModel?: ParseModelChoice } = {}) {
   usePreventDefaultWindowDrop();
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>('upload');
@@ -147,7 +151,7 @@ export function LeadIntakeForm() {
           );
         }
       }
-      const res = await parseInboundLeadAction(fd);
+      const res = await parseInboundLeadAction(fd, { model: parseModel });
       if (!res.ok) {
         toast.error(res.error);
         return;
