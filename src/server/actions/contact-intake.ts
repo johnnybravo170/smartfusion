@@ -22,6 +22,7 @@ import {
   type ParsedContact,
 } from '@/lib/ai/contact-intake-prompt';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { type ContactMatch, findContactMatches } from '@/lib/db/queries/contact-matches';
 import { createClient } from '@/lib/supabase/server';
 import type { ContactKind } from '@/lib/validators/customer';
 
@@ -32,7 +33,9 @@ const PARSE_MODEL = 'gpt-4o-mini';
 /** Non-customer kinds only — customer kind uses the lead-intake pipeline. */
 export type NonCustomerKind = Exclude<ContactKind, 'customer'>;
 
-export type ParseContactResult = { ok: true; draft: ParsedContact } | { ok: false; error: string };
+export type ParseContactResult =
+  | { ok: true; draft: ParsedContact; matches: ContactMatch[] }
+  | { ok: false; error: string };
 
 export async function parseInboundContactAction(formData: FormData): Promise<ParseContactResult> {
   const tenant = await getCurrentTenant();
@@ -138,7 +141,15 @@ export async function parseInboundContactAction(formData: FormData): Promise<Par
   // Operator-supplied name hint wins over whatever the model pulled.
   if (seedName) draft.name = seedName;
 
-  return { ok: true, draft };
+  // Surface any existing contacts that might be the same person so the
+  // operator can choose "attach to existing" instead of creating a dupe.
+  const matches = await findContactMatches({
+    name: draft.name,
+    phone: draft.phone,
+    email: draft.email,
+  });
+
+  return { ok: true, draft, matches };
 }
 
 export type AcceptContactResult = { ok: true; contactId: string } | { ok: false; error: string };
@@ -196,4 +207,74 @@ export async function acceptInboundContactAction(input: {
   revalidatePath('/contacts');
   revalidatePath(`/contacts/${contact.id}`);
   return { ok: true, contactId: contact.id };
+}
+
+/**
+ * "Attach to existing" path from the intake review screen. Instead of
+ * creating a new contact we merge the parsed draft into the existing
+ * record: fill in any blank columns, then drop the captured notes/trade/
+ * website into the notes feed as a new entry. Never overwrite operator-
+ * entered data.
+ */
+export async function attachIntakeToContactAction(input: {
+  contactId: string;
+  draft: ParsedContact;
+}): Promise<AcceptContactResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+
+  const { data: existing, error: loadErr } = await supabase
+    .from('customers')
+    .select('id, email, phone, address_line1, city, province, postal_code')
+    .eq('id', input.contactId)
+    .is('deleted_at', null)
+    .single();
+  if (loadErr || !existing) {
+    return { ok: false, error: loadErr?.message ?? 'Contact not found.' };
+  }
+
+  const draft = input.draft;
+
+  // Only fill in fields that are currently blank — never overwrite.
+  const patch: Record<string, string> = {};
+  if (!existing.email && draft.email?.trim()) patch.email = draft.email.trim();
+  if (!existing.phone && draft.phone?.trim()) patch.phone = draft.phone.trim();
+  if (!existing.address_line1 && draft.address?.trim()) {
+    patch.address_line1 = draft.address.trim();
+  }
+  if (!existing.city && draft.city?.trim()) patch.city = draft.city.trim();
+  if (!existing.province && draft.province?.trim()) patch.province = draft.province.trim();
+  if (!existing.postal_code && draft.postal_code?.trim()) {
+    patch.postal_code = draft.postal_code.trim();
+  }
+  if (Object.keys(patch).length > 0) {
+    patch.updated_at = new Date().toISOString();
+    const { error: patchErr } = await supabase
+      .from('customers')
+      .update(patch)
+      .eq('id', input.contactId);
+    if (patchErr) {
+      return { ok: false, error: `Failed to update contact: ${patchErr.message}` };
+    }
+  }
+
+  const noteLines: string[] = [];
+  if (draft.trade) noteLines.push(`Trade: ${draft.trade}`);
+  if (draft.website) noteLines.push(`Website: ${draft.website}`);
+  if (draft.notes?.trim()) noteLines.push(draft.notes.trim());
+  const body = noteLines.join('\n\n').trim();
+  if (body) {
+    await supabase.from('contact_notes').insert({
+      tenant_id: tenant.id,
+      contact_id: input.contactId,
+      author_type: 'henry',
+      body,
+      metadata: { source: 'contact_intake_attach' },
+    });
+  }
+
+  revalidatePath(`/contacts/${input.contactId}`);
+  return { ok: true, contactId: input.contactId };
 }

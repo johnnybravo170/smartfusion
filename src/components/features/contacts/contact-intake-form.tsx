@@ -25,10 +25,12 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { ParsedContact } from '@/lib/ai/contact-intake-prompt';
+import type { ContactMatch } from '@/lib/db/queries/contact-matches';
 import { resizeImage } from '@/lib/storage/resize-image';
 import { type ContactKind, contactKindLabels, contactKinds } from '@/lib/validators/customer';
 import {
   acceptInboundContactAction,
+  attachIntakeToContactAction,
   type NonCustomerKind,
   parseInboundContactAction,
 } from '@/server/actions/contact-intake';
@@ -90,6 +92,7 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
   const [pastedText, setPastedText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [draft, setDraft] = useState<ParsedContact | null>(null);
+  const [matches, setMatches] = useState<ContactMatch[]>([]);
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -117,6 +120,7 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
         return;
       }
       setDraft(res.draft);
+      setMatches(res.matches);
       setPhase('review');
     });
   }
@@ -134,13 +138,28 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
     });
   }
 
+  function handleAttach(contactId: string) {
+    if (!draft) return;
+    startAccepting(async () => {
+      const res = await attachIntakeToContactAction({ contactId, draft });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success('Attached to existing contact.');
+      router.push(`/contacts/${res.contactId}`);
+    });
+  }
+
   if (phase === 'review' && draft) {
     return (
       <ReviewContactDraft
         draft={draft}
         onChange={setDraft}
+        matches={matches}
         onBack={() => setPhase('upload')}
         onAccept={handleAccept}
+        onAttach={handleAttach}
         isAccepting={isAccepting}
         kindLabel={kindLabel}
       />
@@ -228,15 +247,19 @@ function NonCustomerIntake({ kind }: { kind: NonCustomerKind }) {
 function ReviewContactDraft({
   draft,
   onChange,
+  matches,
   onBack,
   onAccept,
+  onAttach,
   isAccepting,
   kindLabel,
 }: {
   draft: ParsedContact;
   onChange: (d: ParsedContact) => void;
+  matches: ContactMatch[];
   onBack: () => void;
   onAccept: () => void;
+  onAttach: (contactId: string) => void;
   isAccepting: boolean;
   kindLabel: string;
 }) {
@@ -246,6 +269,8 @@ function ReviewContactDraft({
 
   return (
     <div className="space-y-5">
+      {matches.length > 0 ? <ExistingMatchesBanner matches={matches} onAttach={onAttach} /> : null}
+
       <div className="rounded-lg border bg-card p-4">
         <h2 className="mb-3 text-sm font-semibold">{kindLabel} — review</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -351,6 +376,50 @@ function Field({
     <div className={className}>
       <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
       {children}
+    </div>
+  );
+}
+
+function ExistingMatchesBanner({
+  matches,
+  onAttach,
+}: {
+  matches: ContactMatch[];
+  onAttach: (contactId: string) => void;
+}) {
+  const matchedOnLabel: Record<ContactMatch['matchedOn'], string> = {
+    phone: 'Same phone',
+    email: 'Same email',
+    name: 'Same name',
+  };
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+      <p className="text-sm font-medium">
+        Looks like {matches.length === 1 ? 'this contact' : 'these contacts'} might already exist.
+      </p>
+      <ul className="mt-2 space-y-2">
+        {matches.map((m) => (
+          <li
+            key={m.id}
+            className="flex items-center justify-between gap-3 rounded-md bg-white/60 px-3 py-2 text-sm dark:bg-black/20"
+          >
+            <div className="flex flex-col">
+              <span className="font-medium">{m.name}</span>
+              <span className="text-xs text-amber-800 dark:text-amber-200">
+                {m.kind} · {matchedOnLabel[m.matchedOn]}
+                {m.phone ? ` · ${m.phone}` : ''}
+                {m.email ? ` · ${m.email}` : ''}
+              </span>
+            </div>
+            <Button type="button" size="xs" variant="outline" onClick={() => onAttach(m.id)}>
+              Attach to this
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
+        Or keep going below to create a brand-new contact.
+      </p>
     </div>
   );
 }
