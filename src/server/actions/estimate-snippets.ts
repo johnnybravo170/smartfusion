@@ -113,3 +113,29 @@ export async function patchProjectTermsTextAction(
   revalidatePath(`/projects/${projectId}`);
   return { ok: true };
 }
+
+/**
+ * Flip the project's customer-facing document between 'estimate' (default,
+ * ballpark, non-binding) and 'quote' (fixed-price, binding). Only affects
+ * the heading on the customer-facing page — cost breakdown and everything
+ * else is identical.
+ */
+export async function patchProjectDocumentTypeAction(
+  projectId: string,
+  documentType: 'estimate' | 'quote',
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!projectId) return { ok: false, error: 'Missing project id.' };
+  if (documentType !== 'estimate' && documentType !== 'quote') {
+    return { ok: false, error: 'Invalid document type.' };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('projects')
+    .update({ document_type: documentType, updated_at: new Date().toISOString() })
+    .eq('id', projectId)
+    .is('deleted_at', null);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true };
+}

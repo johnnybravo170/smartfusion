@@ -58,6 +58,11 @@ export type EstimateRenderProps = {
   wcbNumber?: string | null;
   /** Free-form terms / notes. Rendered below the total, above the tax/WCB footer. */
   termsText?: string | null;
+  /**
+   * Document framing: 'estimate' (default, ballpark) or 'quote' (fixed-price,
+   * binding). Only affects the heading / status copy on the customer-facing page.
+   */
+  documentType?: 'estimate' | 'quote';
 };
 
 function formatDate(iso: string | null | undefined): string | null {
@@ -210,7 +215,9 @@ export function EstimateRender({
   gstNumber,
   wcbNumber,
   termsText,
+  documentType = 'estimate',
 }: EstimateRenderProps) {
+  const docLabel = documentType === 'quote' ? 'Quote' : 'Estimate';
   const subtotal = lines.reduce((s, l) => s + l.line_price_cents, 0);
   const mgmtFee = Math.round(subtotal * managementFeeRate);
   const beforeTax = subtotal + mgmtFee;
@@ -237,7 +244,7 @@ export function EstimateRender({
         </div>
         <div className="text-right">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Estimate
+            {docLabel}
           </p>
           {dateLabel ? <p className="mt-0.5 text-sm text-muted-foreground">{dateLabel}</p> : null}
         </div>
@@ -271,13 +278,13 @@ export function EstimateRender({
       ) : null}
       {status === 'declined' ? (
         <div className="mb-6 rounded-md bg-red-50 px-4 py-3 text-sm text-red-800">
-          This estimate was declined.
+          This {docLabel.toLowerCase()} was declined.
           {declinedReason ? ` Reason: ${declinedReason}` : ''}
         </div>
       ) : null}
       {status === 'draft' ? (
         <div className="mb-6 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          This estimate is not yet published.
+          This {docLabel.toLowerCase()} is not yet published.
         </div>
       ) : null}
 

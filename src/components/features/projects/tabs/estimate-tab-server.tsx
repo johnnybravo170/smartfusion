@@ -1,5 +1,6 @@
 import { EstimateTab } from '@/components/features/projects/estimate-tab';
 import { EstimateTermsEditor } from '@/components/features/projects/estimate-terms-editor';
+import { ProjectDocumentTypeToggle } from '@/components/features/projects/project-document-type-toggle';
 import { listCostLines } from '@/lib/db/queries/cost-lines';
 import { listEstimateSnippets } from '@/lib/db/queries/estimate-snippets';
 import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
@@ -75,6 +76,9 @@ export default async function EstimateTabServer({ projectId }: { projectId: stri
 
   return (
     <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-end gap-3 rounded-xl border bg-card px-4 py-2">
+        <ProjectDocumentTypeToggle projectId={projectId} initialValue={project.document_type} />
+      </div>
       <EstimateTab
         projectId={projectId}
         costLines={costLines}
