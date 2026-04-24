@@ -1,8 +1,12 @@
 import Link from 'next/link';
 import { createServiceClient } from '@/lib/supabase';
+import { getEta, getLaunchRollup, getVelocity } from '@/server/ops-services/launch';
 
 export default async function DashboardPage() {
   const service = createServiceClient();
+  const [launchRollup, launchVelocity] = await Promise.all([getLaunchRollup(), getVelocity(28)]);
+  const launchRemaining = Math.max(0, launchRollup.totalPoints - launchRollup.donePoints);
+  const launchEta = getEta(launchRemaining, launchVelocity.weeklyRate);
   const { data: recent } = await service
     .schema('ops')
     .from('worklog_entries')
@@ -64,6 +68,30 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+
+      <Link
+        href="/admin/launch"
+        className="block rounded-md border border-[var(--border)] p-6 hover:border-[var(--foreground)]"
+      >
+        <div className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+          HeyHenry V1 launch
+        </div>
+        <div className="mt-1 flex items-baseline gap-3">
+          <span className="text-5xl font-bold tabular-nums">{launchRollup.percentDone}%</span>
+          <span className="text-sm text-[var(--muted-foreground)]">
+            {launchEta
+              ? `ETA ~${launchEta.weeks}w · ${launchEta.date}`
+              : launchVelocity.completedPoints === 0
+                ? 'no velocity (last 28d)'
+                : 'complete'}
+          </span>
+        </div>
+        <div className="mt-1 text-xs text-[var(--muted-foreground)]">
+          {launchRollup.donePoints}/{launchRollup.totalPoints} pts · {launchRollup.blockerCardCount}{' '}
+          launch-blocker cards
+          {launchRollup.unsizedCards > 0 ? ` · ${launchRollup.unsizedCards} unsized` : ''}
+        </div>
+      </Link>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card label="Active API keys" value={keyCount ?? 0} href="/admin/keys" />

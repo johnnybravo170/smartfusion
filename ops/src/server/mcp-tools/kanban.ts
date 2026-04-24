@@ -17,6 +17,15 @@ import {
   unblockCard,
   updateCard,
 } from '@/server/ops-services/kanban';
+import {
+  FIBONACCI_SIZES,
+  getEta,
+  getLaunchRollup,
+  getNextForAssignee,
+  getVelocity,
+  type SizePoints,
+  setCardSize,
+} from '@/server/ops-services/launch';
 import { jsonResult, type McpToolCtx, withAudit } from './context';
 
 const COLUMN_ENUM = z.enum(KANBAN_COLUMNS);
@@ -220,6 +229,64 @@ export function registerKanbanTools(server: McpServer, ctx: McpToolCtx) {
     withAudit(ctx, 'kanban_card_unblock', 'write:kanban', async ({ id, blocked_by_id }) => {
       const res = await unblockCard(actor(ctx), id, blocked_by_id);
       return jsonResult(res);
+    }),
+  );
+
+  server.tool(
+    'kanban_card_size',
+    'Set a card\u2019s size_points estimate. Must be a Fibonacci value: 1, 2, 3, 5, 8, 13, or 21. Pass null to clear. Sizing unsized cards directly improves launch-progress forecasting.',
+    {
+      id: z.string().uuid(),
+      size_points: z.union([
+        z.literal(1),
+        z.literal(2),
+        z.literal(3),
+        z.literal(5),
+        z.literal(8),
+        z.literal(13),
+        z.literal(21),
+        z.null(),
+      ]),
+    },
+    withAudit(ctx, 'kanban_card_size', 'write:kanban', async ({ id, size_points }) => {
+      if (size_points !== null && !FIBONACCI_SIZES.includes(size_points as SizePoints)) {
+        throw new Error('size_points must be Fibonacci: 1,2,3,5,8,13,21');
+      }
+      const res = await setCardSize(id, size_points as SizePoints | null);
+      return jsonResult(res);
+    }),
+  );
+
+  server.tool(
+    'kanban_launch_rollup',
+    'HeyHenry V1 launch readiness summary: percent complete, velocity, and ETA. Returns a one-paragraph human summary plus structured numbers. Read-only.',
+    {},
+    withAudit(ctx, 'kanban_launch_rollup', 'read:kanban', async () => {
+      const rollup = await getLaunchRollup();
+      const velocity = await getVelocity(28);
+      const remaining = Math.max(0, rollup.totalPoints - rollup.donePoints);
+      const eta = getEta(remaining, velocity.weeklyRate);
+      const unsizedNote =
+        rollup.unsizedCards > 0
+          ? ` ${rollup.unsizedCards} cards are unsized, so % is an under-count.`
+          : '';
+      const etaText = eta
+        ? `At ${velocity.weeklyRate.toFixed(1)} pts/week, ETA ~${eta.weeks} weeks (around ${eta.date}).`
+        : velocity.completedPoints === 0
+          ? 'No cards completed in last 28 days \u2014 velocity is zero, ETA unknown.'
+          : 'Remaining work is zero.';
+      const summary = `HeyHenry V1: ${rollup.percentDone}% ready (${rollup.donePoints}/${rollup.totalPoints} pts across ${rollup.blockerCardCount} launch-blocker cards).${unsizedNote} ${etaText}`;
+      return jsonResult({ summary, rollup, velocity, eta });
+    }),
+  );
+
+  server.tool(
+    'kanban_next_for_me',
+    "Returns Jonathan\u2019s highest-priority unblocked card (todo or backlog). Use when asked 'what should I do next?'. Read-only.",
+    {},
+    withAudit(ctx, 'kanban_next_for_me', 'read:kanban', async () => {
+      const card = await getNextForAssignee('jonathan');
+      return jsonResult({ card });
     }),
   );
 

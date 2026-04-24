@@ -8,6 +8,7 @@ const NAV = [
   { href: '/ideas', label: 'Ideas' },
   { href: '/roadmap', label: 'Roadmap' },
   { href: '/admin/kanban', label: 'Kanban' },
+  { href: '/admin/launch', label: 'Launch' },
   { href: '/decisions', label: 'Decisions' },
   { href: '/knowledge', label: 'Knowledge' },
   { href: '/admin/keys', label: 'API Keys' },
