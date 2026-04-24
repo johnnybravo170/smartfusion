@@ -1,12 +1,14 @@
 import { ArrowLeft, Calendar, FileText, Mail, MapPin, Pencil, Phone, Receipt } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ContactNotesFeed } from '@/components/features/contacts/contact-notes-feed';
 import { CustomerTypeBadge } from '@/components/features/customers/customer-type-badge';
 import { DeleteCustomerButton } from '@/components/features/customers/delete-customer-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDate as formatDateUtil } from '@/lib/date/format';
+import { listContactNotes } from '@/lib/db/queries/contact-notes';
 import {
   type CustomerRow,
   getCustomer,
@@ -104,7 +106,23 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
   const tz = tenant?.timezone || 'America/Vancouver';
   const formatDate = (iso: string | null | undefined) => formatDateUtil(iso, { timezone: tz });
 
-  const related = await getCustomerRelated(id);
+  // Only customer-kind contacts have quotes/jobs/invoices — skip the join for
+  // every other kind so we don't make three empty round-trips per page load.
+  const isCustomerKind = customer.kind === 'customer';
+  const [related, notesRows] = await Promise.all([
+    isCustomerKind
+      ? getCustomerRelated(id)
+      : Promise.resolve({ quotes: [], jobs: [], invoices: [] }),
+    listContactNotes(id),
+  ]);
+  const notes = notesRows.map((n) => ({
+    id: n.id,
+    body: n.body,
+    authorType: n.author_type,
+    metadata: n.metadata ?? {},
+    createdAt: n.created_at,
+    updatedAt: n.updated_at,
+  }));
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
@@ -152,23 +170,53 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
         ) : null}
       </section>
 
-      {customer.notes ? (
-        <section className="rounded-xl border bg-card p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Notes
-          </h2>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-            {customer.notes}
-          </p>
-        </section>
-      ) : null}
+      <ContactNotesFeed contactId={customer.id} notes={notes} timezone={tz} />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <RelatedQuotesCard quotes={related.quotes} timezone={tz} customerId={customer.id} />
-        <RelatedJobsCard jobs={related.jobs} timezone={tz} customerId={customer.id} />
-        <RelatedInvoicesCard invoices={related.invoices} timezone={tz} />
-      </div>
+      {isCustomerKind ? (
+        <div className="grid gap-4 md:grid-cols-3">
+          <RelatedQuotesCard quotes={related.quotes} timezone={tz} customerId={customer.id} />
+          <RelatedJobsCard jobs={related.jobs} timezone={tz} customerId={customer.id} />
+          <RelatedInvoicesCard invoices={related.invoices} timezone={tz} />
+        </div>
+      ) : (
+        <KindPlaceholderSection kind={customer.kind} />
+      )}
     </div>
+  );
+}
+
+function KindPlaceholderSection({ kind }: { kind: CustomerRow['kind'] }) {
+  const copy: Record<CustomerRow['kind'], { title: string; body: string } | null> = {
+    customer: null,
+    vendor: {
+      title: 'Bills from this vendor',
+      body: "Vendor bill history will aggregate here once we start linking bills to contact records. For now, bills you've entered live under their projects.",
+    },
+    sub: {
+      title: 'Sub-quotes and jobs',
+      body: "Sub-trade quote history and linked projects will show here once we start linking sub-quotes to contact records. For now, they're scoped to individual projects.",
+    },
+    agent: {
+      title: 'Referrals',
+      body: 'Deals brought in by this agent will aggregate here in a future slice.',
+    },
+    inspector: {
+      title: 'Inspections',
+      body: 'Inspection history per project will aggregate here in a future slice.',
+    },
+    referral: {
+      title: 'Leads sent',
+      body: 'Leads this partner has sent will aggregate here in a future slice.',
+    },
+    other: null,
+  };
+  const entry = copy[kind];
+  if (!entry) return null;
+  return (
+    <section className="rounded-xl border border-dashed bg-card/60 p-5">
+      <h2 className="text-sm font-semibold text-muted-foreground">{entry.title}</h2>
+      <p className="mt-2 text-sm text-muted-foreground">{entry.body}</p>
+    </section>
   );
 }
 
