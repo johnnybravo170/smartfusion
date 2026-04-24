@@ -15,7 +15,7 @@ import { ExistingMatchesBanner } from '@/components/features/contacts/existing-m
 import { CustomerPicker } from '@/components/features/customers/customer-picker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { ContactMatch } from '@/lib/db/queries/contact-matches';
+import type { ContactMatch } from '@/lib/db/queries/contact-matches-types';
 import { createCustomerAction } from '@/server/actions/customers';
 
 export type CustomerOption = { id: string; name: string };

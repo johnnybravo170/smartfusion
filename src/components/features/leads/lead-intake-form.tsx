@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type { ParsedIntake } from '@/lib/ai/intake-prompt';
-import type { ContactMatch } from '@/lib/db/queries/contact-matches';
+import type { ContactMatch } from '@/lib/db/queries/contact-matches-types';
 import { resizeImage } from '@/lib/storage/resize-image';
 import { acceptInboundLeadAction, parseInboundLeadAction } from '@/server/actions/intake';
 

@@ -34,7 +34,7 @@ import {
   parseVCardFile,
   pickPhoneContact,
 } from '@/lib/contacts/import-helpers';
-import type { ContactMatch } from '@/lib/db/queries/contact-matches';
+import type { ContactMatch } from '@/lib/db/queries/contact-matches-types';
 import { resizeImage } from '@/lib/storage/resize-image';
 import { type ContactKind, contactKindLabels, contactKinds } from '@/lib/validators/customer';
 import {

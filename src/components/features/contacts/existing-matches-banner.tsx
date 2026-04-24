@@ -14,7 +14,7 @@
  */
 
 import { Button } from '@/components/ui/button';
-import { type ContactMatch, hasStrongMatch } from '@/lib/db/queries/contact-matches';
+import type { ContactMatch } from '@/lib/db/queries/contact-matches-types';
 import { cn } from '@/lib/utils';
 
 const MATCHED_ON_LABEL: Record<ContactMatch['matchedOn'], string> = {
@@ -38,7 +38,7 @@ export function ExistingMatchesBanner({
   createLabel?: string;
 }) {
   if (matches.length === 0) return null;
-  const strong = hasStrongMatch(matches);
+  const strong = matches.some((m) => m.strength === 'strong');
 
   const headline = strong
     ? `Looks like ${matches.length === 1 ? 'this contact' : 'these contacts'} already ${matches.length === 1 ? 'exists' : 'exist'}.`

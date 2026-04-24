@@ -41,7 +41,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useHenryForm } from '@/hooks/use-henry-form';
-import type { ContactMatch } from '@/lib/db/queries/contact-matches';
+import type { ContactMatch } from '@/lib/db/queries/contact-matches-types';
 import {
   type ContactKind,
   type CustomerCreateInput,

@@ -13,23 +13,12 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import type { ContactMatch } from './contact-matches-types';
+
+export type { ContactMatch, ContactMatchStrength } from './contact-matches-types';
 
 /** Minimum trigram similarity before we'll flag a name as a weak match. */
 const FUZZY_NAME_THRESHOLD = 0.4;
-
-export type ContactMatchStrength = 'strong' | 'weak';
-
-export type ContactMatch = {
-  id: string;
-  name: string;
-  kind: 'customer' | 'vendor' | 'sub' | 'agent' | 'inspector' | 'referral' | 'other';
-  email: string | null;
-  phone: string | null;
-  matchedOn: 'phone' | 'email' | 'name' | 'similar_name';
-  strength: ContactMatchStrength;
-  /** Trigram similarity (0.0–1.0). Only set for `similar_name` matches. */
-  similarity?: number;
-};
 
 /** Phone → digits only, trimmed. Handles +1/604-/spaces. */
 export function normalizePhone(raw: string | null | undefined): string | null {
