@@ -65,7 +65,7 @@ const LOOKUP_CONFIG: Record<
     titleField: 'title',
     bodyField: 'body',
     statusField: 'category',
-    urlFor: (r) => `${ADMIN_BASE}/worklog#${String(r.id ?? '')}`,
+    urlFor: (r) => `${ADMIN_BASE}/worklog/${String(r.id ?? '')}`,
   },
   idea: {
     scope: 'read:ideas',
@@ -92,7 +92,7 @@ const LOOKUP_CONFIG: Record<
     titleField: 'title',
     bodyField: 'body',
     statusField: null,
-    urlFor: (r) => `${ADMIN_BASE}/knowledge#${String(r.id ?? '')}`,
+    urlFor: (r) => `${ADMIN_BASE}/knowledge/${String(r.id ?? '')}`,
   },
   incident: {
     scope: 'read:incidents',

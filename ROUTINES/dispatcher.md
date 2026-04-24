@@ -66,7 +66,7 @@ Call `worklog_add` with:
 - Cards overdue.
 ```
 
-For every kanban card you mention, add a cross-link by calling `worklog_add` with `tags` that include the card id (e.g. `kanban:<card_id>`). If the worklog schema gains a `related_type`/`related_id` field later, switch to that.
+For every kanban card you mention, add a `kanban:<card_id>` tag on this worklog entry so it's discoverable from the card's history. (The worklog has `related_type`/`related_id` columns, but those are single-target — use them only when a single entry points at one thing, e.g. "agent run for card X." The weekly digest references many cards, so tags are the right mechanism here.)
 
 ## Step 4 — Write the knowledge summary
 

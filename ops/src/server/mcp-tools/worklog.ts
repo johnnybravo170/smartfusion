@@ -44,6 +44,32 @@ export function registerWorklogTools(server: McpServer, ctx: McpToolCtx) {
       category: z.string().max(50).optional().nullable(),
       site: z.string().max(50).optional().nullable(),
       tags: z.array(z.string().min(1).max(50)).max(20).optional(),
+      related_type: z
+        .enum([
+          'kanban_card',
+          'idea',
+          'decision',
+          'knowledge',
+          'incident',
+          'competitor',
+          'doc',
+          'commit',
+          'url',
+        ])
+        .optional()
+        .nullable()
+        .describe(
+          'Cross-link this entry to another ops object. One of: kanban_card | idea | decision | knowledge | incident | competitor | doc | commit | url.',
+        ),
+      related_id: z
+        .string()
+        .min(1)
+        .max(500)
+        .optional()
+        .nullable()
+        .describe(
+          "The target's id (uuid for db-backed types; freeform for commit sha / url / external refs).",
+        ),
     },
     withAudit(ctx, 'worklog_add', 'write:worklog', async (input) => {
       const service = createServiceClient();
@@ -59,6 +85,8 @@ export function registerWorklogTools(server: McpServer, ctx: McpToolCtx) {
           category: input.category ?? null,
           site: input.site ?? null,
           tags: input.tags ?? [],
+          related_type: input.related_type ?? null,
+          related_id: input.related_id ?? null,
         })
         .select('id, created_at')
         .single();
