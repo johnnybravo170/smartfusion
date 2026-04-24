@@ -30,7 +30,7 @@ export default async function OverheadExpensesPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" size="sm">
-            <Link href="/settings/categories">
+            <Link href="/settings/categories?from=expenses">
               <Tag className="size-3.5" />
               Categories
             </Link>

@@ -11,9 +11,34 @@ export const metadata = {
   title: 'Expense categories — HeyHenry',
 };
 
-export default async function ExpenseCategoriesSettingsPage() {
+type RawSearchParams = Record<string, string | string[] | undefined>;
+
+/**
+ * Resolve the "back" target for the header link. Callers that link here
+ * from outside /settings append `?from=<key>` so the back link returns
+ * them to where they came from. Extend the map as new entry points get
+ * added — keep the back-link honest.
+ */
+function resolveBack(from: string | string[] | undefined): { href: string; label: string } {
+  const key = typeof from === 'string' ? from : null;
+  switch (key) {
+    case 'expenses':
+      return { href: '/expenses', label: 'Expenses' };
+    default:
+      return { href: '/settings', label: 'Settings' };
+  }
+}
+
+export default async function ExpenseCategoriesSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
   const tenant = await getCurrentTenant();
   if (!tenant) redirect('/login?next=/settings/categories');
+
+  const resolved = await searchParams;
+  const back = resolveBack(resolved.from);
 
   const supabase = await createClient();
   const [rows, tenantRow] = await Promise.all([
@@ -26,11 +51,11 @@ export default async function ExpenseCategoriesSettingsPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <Link
-        href="/settings"
+        href={back.href}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-3.5" />
-        Settings
+        {back.label}
       </Link>
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Expense categories</h1>

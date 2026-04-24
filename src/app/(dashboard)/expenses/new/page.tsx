@@ -41,7 +41,7 @@ export default async function NewOverheadExpensePage() {
           </p>
         </div>
         <Link
-          href="/settings/categories"
+          href="/settings/categories?from=expenses"
           className="text-xs text-muted-foreground hover:text-foreground"
         >
           Manage categories →
