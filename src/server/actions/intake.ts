@@ -335,18 +335,30 @@ export async function acceptInboundLeadAction(
 }
 
 /**
- * Whisper transcription for a single audio file. Returns the transcript
- * text on success, null on any failure (network, API error, empty text).
- * The caller decides how to fold the transcript back into the intake —
- * for now we just append to pastedText so the existing vision pipeline
- * processes it as typed input.
+ * Audio transcription. We use OpenAI's `gpt-4o-transcribe` (same price as
+ * the older `whisper-1` but materially better on proper nouns, addresses,
+ * and noisy jobsite recordings — a lot of these memos are recorded with
+ * compressors and saws running).
+ *
+ * The `prompt` parameter biases the model toward the vocabulary a GC is
+ * likely to use, which improves recognition of construction terms +
+ * proper-noun-like scope items.
+ *
+ * Returns the transcript text on success, null on any failure. The caller
+ * folds the transcript into pastedText so the downstream vision/text
+ * prompt sees it as if the operator had typed it.
  */
+const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
+const TRANSCRIBE_PROMPT =
+  "General contractor scoping a residential renovation. The speaker is the contractor, not the customer; they mention the customer's first name, the job address (street number + street name), budget hints, and scope items such as flooring, baseboards, trim, demo, paint, drywall, tile, framing, plumbing, electrical, HVAC, insulation, cabinets, countertops, plywood, subfloor, transitions, stair nose, carpet removal, fixtures, finishes, kitchen, bathroom, basement, deck, fence, roof, siding, exterior.";
+
 async function transcribeAudio(apiKey: string, file: File): Promise<string | null> {
   try {
     const fd = new FormData();
     fd.append('file', file);
-    fd.append('model', 'whisper-1');
+    fd.append('model', TRANSCRIBE_MODEL);
     fd.append('response_format', 'text');
+    fd.append('prompt', TRANSCRIBE_PROMPT);
     const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}` },
