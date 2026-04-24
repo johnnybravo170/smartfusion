@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { createServiceClient } from '@/lib/supabase';
 import { CommentForm } from './comment-form';
 import { IdeaActions } from './idea-actions';
+import { PromoteToKanbanForm } from './promote-to-kanban-form';
 
 export default async function IdeaDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -75,6 +76,11 @@ export default async function IdeaDetailPage({ params }: { params: Promise<{ id:
         rating={(idea.rating as number | null) ?? null}
         assignee={(idea.assignee as string | null) ?? ''}
       />
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold">Promote to Kanban</h2>
+        <PromoteToKanbanForm ideaId={id} />
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold">Followups</h2>

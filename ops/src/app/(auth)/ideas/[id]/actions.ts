@@ -3,8 +3,93 @@
 import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/ops-gate';
 import { createServiceClient } from '@/lib/supabase';
+import { createCard } from '@/server/ops-services/kanban';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
+export type PromoteResult = { ok: true; cardId: string } | { ok: false; error: string };
+
+const PROMOTE_BOARDS = ['dev', 'marketing', 'research', 'ops'] as const;
+const PROMOTE_SIZES = [1, 2, 3, 5, 8, 13, 21];
+
+export async function promoteIdeaToKanbanAction(
+  ideaId: string,
+  input: { boardSlug: string; sizePoints: number; priority: number },
+): Promise<PromoteResult> {
+  const admin = await requireAdmin();
+  if (!PROMOTE_BOARDS.includes(input.boardSlug as (typeof PROMOTE_BOARDS)[number])) {
+    return { ok: false, error: 'Invalid board.' };
+  }
+  if (!PROMOTE_SIZES.includes(input.sizePoints)) {
+    return { ok: false, error: 'Invalid size.' };
+  }
+  if (input.priority < 1 || input.priority > 5) {
+    return { ok: false, error: 'Priority must be 1–5.' };
+  }
+
+  const service = createServiceClient();
+  const { data: idea, error: ideaErr } = await service
+    .schema('ops')
+    .from('ideas')
+    .select('id, title, body, tags')
+    .eq('id', ideaId)
+    .maybeSingle();
+  if (ideaErr) return { ok: false, error: ideaErr.message };
+  if (!idea) return { ok: false, error: 'Idea not found.' };
+
+  const ideaTags = (idea.tags as string[] | null) ?? [];
+  const epicTags = ideaTags.filter((t) => t.startsWith('epic:'));
+  const cardTags = Array.from(new Set(['from:idea', ...epicTags]));
+
+  try {
+    const res = await createCard(
+      {
+        actorType: 'human',
+        actorName: admin.email,
+        keyId: null,
+        adminUserId: admin.userId,
+      },
+      {
+        boardSlug: input.boardSlug,
+        title: idea.title as string,
+        body: (idea.body as string | null) ?? null,
+        tags: cardTags,
+        priority: input.priority,
+        size_points: input.sizePoints,
+        related_type: 'idea',
+        related_id: ideaId,
+      },
+    );
+
+    const nextTags = Array.from(new Set([...ideaTags, `promoted:${res.id}`]));
+    await service
+      .schema('ops')
+      .from('ideas')
+      .update({
+        status: 'in_progress',
+        tags: nextTags,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', ideaId);
+
+    await service
+      .schema('ops')
+      .from('idea_comments')
+      .insert({
+        idea_id: ideaId,
+        actor_type: 'system',
+        actor_name: 'ops',
+        admin_user_id: admin.userId,
+        body: `Promoted to kanban (${input.boardSlug}). Card: /admin/kanban/${input.boardSlug}/${res.id}`,
+      });
+
+    revalidatePath(`/ideas/${ideaId}`);
+    revalidatePath('/ideas');
+    revalidatePath(`/admin/kanban/${input.boardSlug}`);
+    return { ok: true, cardId: res.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Promote failed.' };
+  }
+}
 
 const VALID_STATUS = ['new', 'reviewed', 'in_progress', 'done', 'rejected'];
 
