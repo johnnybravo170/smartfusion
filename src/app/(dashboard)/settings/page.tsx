@@ -1,6 +1,7 @@
 import {
   Building2,
   ChevronRight,
+  FileText,
   HardHat,
   Layers,
   Mic,
@@ -262,6 +263,26 @@ export default function SettingsPage() {
                   <CardTitle>Bucket Templates</CardTitle>
                   <CardDescription>
                     Reusable cost bucket sets applied when creating renovation projects.
+                  </CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Card>
+      </Link>
+
+      <Link href="/settings/estimate-snippets" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="size-5" />
+                <div>
+                  <CardTitle>Estimate Snippets</CardTitle>
+                  <CardDescription>
+                    Reusable boilerplate paragraphs (exclusions, change rates, acceptance terms)
+                    that show up as one-click chips on the estimate editor.
                   </CardDescription>
                 </div>
               </div>

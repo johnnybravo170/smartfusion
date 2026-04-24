@@ -40,6 +40,8 @@ export type ProjectRow = {
   estimate_approved_by_member_id: string | null;
   estimate_approval_proof_paths: string[];
   estimate_approval_notes: string | null;
+  /** Free-form terms / notes rendered at the bottom of the customer-facing estimate. */
+  terms_text: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -72,7 +74,7 @@ export type ProjectListFilters = {
 export type LifecycleStageCounts = Record<LifecycleStage, number>;
 
 const PROJECT_COLUMNS =
-  'id, tenant_id, customer_id, name, description, lifecycle_stage, resumed_from_stage, management_fee_rate, start_date, target_end_date, percent_complete, estimate_status, estimate_approval_code, estimate_sent_at, estimate_approved_at, estimate_approved_by_name, estimate_declined_at, estimate_declined_reason, estimate_approval_method, estimate_approved_by_member_id, estimate_approval_proof_paths, estimate_approval_notes, deleted_at, created_at, updated_at';
+  'id, tenant_id, customer_id, name, description, lifecycle_stage, resumed_from_stage, management_fee_rate, start_date, target_end_date, percent_complete, estimate_status, estimate_approval_code, estimate_sent_at, estimate_approved_at, estimate_approved_by_name, estimate_declined_at, estimate_declined_reason, estimate_approval_method, estimate_approved_by_member_id, estimate_approval_proof_paths, estimate_approval_notes, terms_text, deleted_at, created_at, updated_at';
 
 const PROJECT_WITH_CUSTOMER_SELECT = `${PROJECT_COLUMNS}, customers:customer_id (id, name, type)`;
 

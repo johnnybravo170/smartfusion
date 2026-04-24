@@ -24,7 +24,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
     .select(
       `id, name, description, management_fee_rate, estimate_sent_at,
        estimate_status, estimate_approved_at, estimate_approved_by_name,
-       estimate_declined_reason,
+       estimate_declined_reason, terms_text,
        customer_id, tenant_id,
        customers:customer_id (name, email, address_line1, tax_exempt),
        tenants:tenant_id (name, logo_storage_path, gst_number, wcb_number)`,
@@ -156,6 +156,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
           declinedReason={p.estimate_declined_reason as string | null}
           gstNumber={(tenantRaw?.gst_number as string | null) ?? null}
           wcbNumber={(tenantRaw?.wcb_number as string | null) ?? null}
+          termsText={(p.terms_text as string | null) ?? null}
         />
       </div>
     </div>

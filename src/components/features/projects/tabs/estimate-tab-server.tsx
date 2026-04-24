@@ -1,5 +1,7 @@
 import { EstimateTab } from '@/components/features/projects/estimate-tab';
+import { EstimateTermsEditor } from '@/components/features/projects/estimate-terms-editor';
 import { listCostLines } from '@/lib/db/queries/cost-lines';
+import { listEstimateSnippets } from '@/lib/db/queries/estimate-snippets';
 import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
 import { listBucketsForProject } from '@/lib/db/queries/project-buckets';
 import { getEstimateViewStats } from '@/lib/db/queries/project-events';
@@ -8,13 +10,15 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function EstimateTabServer({ projectId }: { projectId: string }) {
-  const [project, costLines, catalog, projectBuckets, estimateViewStats] = await Promise.all([
-    getProject(projectId),
-    listCostLines(projectId),
-    listMaterialsCatalog(),
-    listBucketsForProject(projectId),
-    getEstimateViewStats(projectId),
-  ]);
+  const [project, costLines, catalog, projectBuckets, estimateViewStats, snippets] =
+    await Promise.all([
+      getProject(projectId),
+      listCostLines(projectId),
+      listMaterialsCatalog(),
+      listBucketsForProject(projectId),
+      getEstimateViewStats(projectId),
+      listEstimateSnippets(),
+    ]);
   if (!project) return null;
 
   // Sign any manual-override proof files so the tab can link to them.
@@ -70,29 +74,36 @@ export default async function EstimateTabServer({ projectId }: { projectId: stri
   }
 
   return (
-    <EstimateTab
-      projectId={projectId}
-      costLines={costLines}
-      catalog={catalog}
-      costLinePhotoUrls={costLinePhotoUrls}
-      managementFeeRate={project.management_fee_rate}
-      feedback={feedbackRows}
-      bucketsById={bucketsById}
-      approval={{
-        status: project.estimate_status,
-        approval_code: project.estimate_approval_code,
-        sent_at: project.estimate_sent_at,
-        approved_at: project.estimate_approved_at,
-        approved_by_name: project.estimate_approved_by_name,
-        declined_at: project.estimate_declined_at,
-        declined_reason: project.estimate_declined_reason,
-        view_count: estimateViewStats.total,
-        last_viewed_at: estimateViewStats.last_viewed_at,
-        approval_method: project.estimate_approval_method ?? null,
-        approval_notes: project.estimate_approval_notes ?? null,
-        approval_proof_paths: project.estimate_approval_proof_paths ?? [],
-        approval_proof_signed_urls: proofSignedUrls,
-      }}
-    />
+    <div className="flex flex-col gap-6">
+      <EstimateTab
+        projectId={projectId}
+        costLines={costLines}
+        catalog={catalog}
+        costLinePhotoUrls={costLinePhotoUrls}
+        managementFeeRate={project.management_fee_rate}
+        feedback={feedbackRows}
+        bucketsById={bucketsById}
+        approval={{
+          status: project.estimate_status,
+          approval_code: project.estimate_approval_code,
+          sent_at: project.estimate_sent_at,
+          approved_at: project.estimate_approved_at,
+          approved_by_name: project.estimate_approved_by_name,
+          declined_at: project.estimate_declined_at,
+          declined_reason: project.estimate_declined_reason,
+          view_count: estimateViewStats.total,
+          last_viewed_at: estimateViewStats.last_viewed_at,
+          approval_method: project.estimate_approval_method ?? null,
+          approval_notes: project.estimate_approval_notes ?? null,
+          approval_proof_paths: project.estimate_approval_proof_paths ?? [],
+          approval_proof_signed_urls: proofSignedUrls,
+        }}
+      />
+      <EstimateTermsEditor
+        projectId={projectId}
+        initialTermsText={project.terms_text}
+        snippets={snippets}
+      />
+    </div>
   );
 }

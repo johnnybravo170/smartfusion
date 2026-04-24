@@ -56,6 +56,8 @@ export type EstimateRenderProps = {
   declinedReason?: string | null;
   gstNumber?: string | null;
   wcbNumber?: string | null;
+  /** Free-form terms / notes. Rendered below the total, above the tax/WCB footer. */
+  termsText?: string | null;
 };
 
 function formatDate(iso: string | null | undefined): string | null {
@@ -207,6 +209,7 @@ export function EstimateRender({
   declinedReason,
   gstNumber,
   wcbNumber,
+  termsText,
 }: EstimateRenderProps) {
   const subtotal = lines.reduce((s, l) => s + l.line_price_cents, 0);
   const mgmtFee = Math.round(subtotal * managementFeeRate);
@@ -312,6 +315,17 @@ export function EstimateRender({
           <span>{formatCurrency(total)}</span>
         </div>
       </div>
+
+      {termsText?.trim() ? (
+        <section className="mt-6 border-t pt-4">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Terms &amp; notes
+          </h3>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+            {termsText.trim()}
+          </p>
+        </section>
+      ) : null}
 
       {gstNumber || wcbNumber ? (
         <p className="mt-4 text-xs text-muted-foreground">

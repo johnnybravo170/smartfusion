@@ -8,6 +8,7 @@ export * from './audit-log';
 export * from './contact-notes';
 export * from './customers';
 export * from './data-exports';
+export * from './estimate-snippets';
 export * from './invoices';
 export * from './jobs';
 export * from './photo-albums';
