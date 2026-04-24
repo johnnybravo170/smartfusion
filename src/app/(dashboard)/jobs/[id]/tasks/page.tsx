@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { JobTabs } from '@/components/features/tasks/job-tabs';
 import { ProjectTaskList } from '@/components/features/tasks/project-task-list';
 import { TaskAddRow } from '@/components/features/tasks/task-add-row';
-import { getCurrentUser } from '@/lib/auth/helpers';
+import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { listTasksForJob } from '@/lib/db/queries/tasks';
 import { createClient } from '@/lib/supabase/server';
 
@@ -21,7 +21,12 @@ export default async function JobTasksPage({ params }: { params: Promise<{ id: s
 
   if (!job) notFound();
 
-  const [tasks, user] = await Promise.all([listTasksForJob(id), getCurrentUser()]);
+  const [tasks, user, tenant] = await Promise.all([
+    listTasksForJob(id),
+    getCurrentUser(),
+    getCurrentTenant(),
+  ]);
+  const isOwner = tenant?.member.role === 'owner' || tenant?.member.role === 'admin';
 
   const customerRaw = (job as { customers: unknown }).customers;
   const customerObj = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
@@ -61,7 +66,12 @@ export default async function JobTasksPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
       ) : (
-        <ProjectTaskList jobId={id} tasks={tasks} currentUserId={user?.id ?? null} />
+        <ProjectTaskList
+          jobId={id}
+          tasks={tasks}
+          currentUserId={user?.id ?? null}
+          isOwner={isOwner}
+        />
       )}
     </div>
   );

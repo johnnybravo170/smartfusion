@@ -3,7 +3,7 @@
  * grow this into list/update/blocker-detection/etc.
  */
 
-import { createTaskAction } from '@/server/actions/tasks';
+import { assignTaskAction, createTaskAction } from '@/server/actions/tasks';
 import type { AiTool } from '../types';
 
 export const taskTools: AiTool[] = [
@@ -37,6 +37,32 @@ export const taskTools: AiTool[] = [
       });
       if (!result.ok) return `Failed to create task: ${result.error}`;
       return `Task created. ID: ${result.id.slice(0, 8)}`;
+    },
+  },
+  {
+    definition: {
+      name: 'assign_task',
+      description:
+        'Assign (or reassign) an existing task to a worker by their auth user id. Pass assignee_id=null to clear the assignment. Only owners and admins can assign; RLS rejects other callers.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          task_id: { type: 'string', description: 'Task UUID' },
+          assignee_id: {
+            type: ['string', 'null'],
+            description: 'Worker auth user UUID, or null to unassign.',
+          },
+        },
+        required: ['task_id'],
+      },
+    },
+    handler: async (input) => {
+      const result = await assignTaskAction({
+        id: input.task_id as string,
+        assignee_id: (input.assignee_id as string | null) ?? null,
+      });
+      if (!result.ok) return `Failed to assign task: ${result.error}`;
+      return input.assignee_id ? 'Task assigned.' : 'Task unassigned.';
     },
   },
 ];

@@ -8,6 +8,7 @@
 import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardList, Hourglass } from 'lucide-react';
 import Link from 'next/link';
 import { TaskStatusBadge } from '@/components/features/tasks/task-status-badge';
+import { VerifyTaskButtons } from '@/components/features/tasks/verify-task-buttons';
 import type { DashboardTaskBuckets, JobTaskHealth, TaskRow } from '@/lib/db/queries/tasks';
 import { cn } from '@/lib/utils';
 
@@ -70,10 +71,12 @@ export function CommandCenter({
   buckets,
   jobHealth,
   changeOrdersPending,
+  tasksToVerify = [],
 }: {
   buckets: DashboardTaskBuckets;
   jobHealth: JobTaskHealth[];
   changeOrdersPending: ChangeOrderRow[];
+  tasksToVerify?: TaskRow[];
 }) {
   const today = buckets.dueToday;
   const overdue = buckets.overdue;
@@ -130,22 +133,51 @@ export function CommandCenter({
       <Card
         title="Needs You"
         icon={AlertTriangle}
-        count={changeOrdersPending.length}
-        empty="No change orders pending approval."
+        count={changeOrdersPending.length + tasksToVerify.length}
+        empty="Nothing waiting on you."
       >
-        <ul className="divide-y">
-          {changeOrdersPending.slice(0, 6).map((co) => (
-            <li key={co.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
-              <Link
-                href={co.job_id ? `/jobs/${co.job_id}` : '#'}
-                className="flex-1 truncate hover:underline"
-              >
-                {co.customer_name ?? 'Change order'} ·{' '}
-                <span className="text-muted-foreground">${(co.total_cents / 100).toFixed(2)}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        {tasksToVerify.length > 0 ? (
+          <div className="mb-3">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              To verify · {tasksToVerify.length}
+            </p>
+            <ul className="divide-y">
+              {tasksToVerify.slice(0, 6).map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                  <Link
+                    href={t.job_id ? `/jobs/${t.job_id}/tasks` : '/todos'}
+                    className="flex-1 truncate hover:underline"
+                  >
+                    {t.title}
+                  </Link>
+                  <VerifyTaskButtons taskId={t.id} compact />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {changeOrdersPending.length > 0 ? (
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Change orders · {changeOrdersPending.length}
+            </p>
+            <ul className="divide-y">
+              {changeOrdersPending.slice(0, 6).map((co) => (
+                <li key={co.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                  <Link
+                    href={co.job_id ? `/jobs/${co.job_id}` : '#'}
+                    className="flex-1 truncate hover:underline"
+                  >
+                    {co.customer_name ?? 'Change order'} ·{' '}
+                    <span className="text-muted-foreground">
+                      ${(co.total_cents / 100).toFixed(2)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <p className="mt-3 text-xs text-muted-foreground italic">
           Invoice milestones, client decisions, and Henry suggestions coming soon.
         </p>

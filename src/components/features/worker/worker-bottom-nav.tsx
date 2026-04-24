@@ -1,12 +1,27 @@
 'use client';
 
-import { CalendarDays, Clock, FileText, FolderKanban, Home, Receipt, User } from 'lucide-react';
+import {
+  CalendarDays,
+  CheckSquare,
+  Clock,
+  FileText,
+  FolderKanban,
+  Home,
+  Receipt,
+  User,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 const BASE_ITEMS = [
   { href: '/w', label: 'Today', icon: Home, match: (p: string) => p === '/w' },
+  {
+    href: '/w/tasks',
+    label: 'Tasks',
+    icon: CheckSquare,
+    match: (p: string) => p.startsWith('/w/tasks'),
+  },
   {
     href: '/w/calendar',
     label: 'Calendar',

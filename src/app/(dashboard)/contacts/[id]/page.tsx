@@ -7,6 +7,7 @@ import { DeleteCustomerButton } from '@/components/features/customers/delete-cus
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
 import { JobStatusBadge } from '@/components/features/jobs/job-status-badge';
 import { QuoteStatusBadge } from '@/components/features/quotes/quote-status-badge';
+import { LeadTasksSection } from '@/components/features/tasks/lead-tasks-section';
 import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDate as formatDateUtil } from '@/lib/date/format';
@@ -19,6 +20,7 @@ import {
   type RelatedJob,
   type RelatedQuote,
 } from '@/lib/db/queries/customers';
+import { listTasksForLead } from '@/lib/db/queries/tasks';
 import type { CustomerType } from '@/lib/validators/customer';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 import type { JobStatus } from '@/lib/validators/job';
@@ -77,12 +79,15 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
   // Only customer-kind contacts have quotes/jobs/invoices — skip the join for
   // every other kind so we don't make three empty round-trips per page load.
   const isCustomerKind = customer.kind === 'customer';
-  const [related, notesRows] = await Promise.all([
+  const isLeadKind = customer.kind === 'lead';
+  const [related, notesRows, leadTasks] = await Promise.all([
     isCustomerKind
       ? getCustomerRelated(id)
       : Promise.resolve({ quotes: [], jobs: [], invoices: [] }),
     listContactNotes(id),
+    isLeadKind ? listTasksForLead(id) : Promise.resolve([]),
   ]);
+  const isOwner = tenant?.member.role === 'owner' || tenant?.member.role === 'admin';
   const notes = notesRows.map((n) => ({
     id: n.id,
     body: n.body,
@@ -139,6 +144,10 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
       </section>
 
       <ContactNotesFeed contactId={customer.id} notes={notes} timezone={tz} />
+
+      {isLeadKind ? (
+        <LeadTasksSection leadId={customer.id} tasks={leadTasks} isOwner={isOwner} />
+      ) : null}
 
       {isCustomerKind ? (
         <div className="grid gap-4 md:grid-cols-3">

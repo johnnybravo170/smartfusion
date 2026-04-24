@@ -122,8 +122,10 @@ The Tasks module ships its own status palette (8 values, including orange/purple
 
 Sibling instances to keep aligned when the task list UX changes:
 
-- `src/components/features/tasks/project-task-list.tsx` — phase-grouped, filter chips
+- `src/components/features/tasks/project-task-list.tsx` — phase-grouped, filter chips, owner-only Verify button next to `done` rows
+- `src/components/features/tasks/lead-tasks-section.tsx` — lead-scope variant (no phases, no job); rows auto-migrate to project scope when a job is created for the lead (see `createJobAction`)
+- `src/components/features/worker/worker-task-list.tsx` — mobile worker list; big-tap Done / Blocked / Need Help / Add Photo buttons; `blocked` requires a reason
 - `src/app/(dashboard)/todos/page.tsx` — flat personal list, checkbox-style toggle
-- `src/components/features/dashboard/command-center.tsx` — read-only Today/Blocked/Needs You buckets
+- `src/components/features/dashboard/command-center.tsx` — read-only Today/Blocked/Needs You buckets; Needs You includes a "To Verify" subsection (owner-only inline Verify / Reject per row)
 
 Inline-edit follows §4's keyboard contract (Enter saves, Escape cancels, blur saves).

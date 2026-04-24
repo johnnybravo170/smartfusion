@@ -92,6 +92,48 @@ export async function createJobAction(input: JobFormInput): Promise<JobActionRes
     return { ok: false, error: error?.message ?? 'Failed to create job.' };
   }
 
+  // Phase 3 Card C — auto-migrate any lead-scope tasks attached to this
+  // customer onto the new job. Tasks live at job-scope once there's a
+  // job to attach them to; lead-stage planning flips into project work
+  // the moment the quote converts. Phase is preserved when already set;
+  // otherwise we default to Pre-Construction so the row lands in the
+  // right group in the project task list.
+  const { data: leadTasks } = await supabase
+    .from('tasks')
+    .select('id, phase')
+    .eq('tenant_id', tenant.id)
+    .eq('lead_id', parsed.data.customer_id)
+    .eq('scope', 'lead')
+    .not('status', 'in', '(done,verified)');
+
+  const migratedCount = leadTasks?.length ?? 0;
+  if (leadTasks && migratedCount > 0) {
+    const now = new Date().toISOString();
+    await Promise.all(
+      leadTasks.map((t) =>
+        supabase
+          .from('tasks')
+          .update({
+            scope: 'project',
+            job_id: data.id,
+            lead_id: null,
+            phase: t.phase ?? 'Pre-Construction',
+            updated_at: now,
+          })
+          .eq('id', t.id as string),
+      ),
+    );
+
+    await supabase.from('worklog_entries').insert({
+      tenant_id: tenant.id,
+      entry_type: 'system',
+      title: 'Lead tasks moved to project',
+      body: `${migratedCount} task${migratedCount === 1 ? '' : 's'} from the quote stage moved to the new project.`,
+      related_type: 'job',
+      related_id: data.id,
+    });
+  }
+
   // Send .ics calendar invite if the customer has an email and the job is scheduled.
   const scheduledAt = parseScheduledAt(parsed.data.scheduled_at);
   if (scheduledAt) {

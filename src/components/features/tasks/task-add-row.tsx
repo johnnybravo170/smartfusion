@@ -17,12 +17,14 @@ import { createTaskAction } from '@/server/actions/tasks';
 export function TaskAddRow({
   scope,
   jobId,
+  leadId,
   phase,
   showDueDate = true,
   placeholder = 'Add task…',
 }: {
   scope: TaskScope;
   jobId?: string;
+  leadId?: string;
   phase?: string;
   showDueDate?: boolean;
   placeholder?: string;
@@ -39,6 +41,7 @@ export function TaskAddRow({
         title: trimmed,
         scope,
         job_id: jobId,
+        lead_id: leadId,
         phase,
         due_date: due || undefined,
       });

@@ -11,6 +11,7 @@ export * from './data-exports';
 export * from './estimate-snippets';
 export * from './invoices';
 export * from './jobs';
+export * from './notifications';
 export * from './photo-albums';
 export * from './photo-pairs';
 export * from './photo-share-links';

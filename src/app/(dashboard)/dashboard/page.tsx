@@ -22,7 +22,11 @@ import {
 } from '@/lib/db/queries/dashboard';
 import { getPendingEstimateCelebration } from '@/lib/db/queries/estimate-celebrations';
 import { getBusinessProfile, getOperatorProfile } from '@/lib/db/queries/profile';
-import { getDashboardTaskBuckets, getJobTaskHealth } from '@/lib/db/queries/tasks';
+import {
+  getDashboardTaskBuckets,
+  getJobTaskHealth,
+  listTasksAwaitingVerification,
+} from '@/lib/db/queries/tasks';
 
 function getGreeting(hour: number): string {
   if (hour < 12) return 'Good morning';
@@ -85,6 +89,8 @@ export default async function DashboardPage() {
     listPendingChangeOrdersForDashboard(),
   ]);
 
+  const tasksToVerify = await listTasksAwaitingVerification();
+
   const firstName = operator?.firstName?.trim() || null;
 
   return (
@@ -113,6 +119,7 @@ export default async function DashboardPage() {
         buckets={taskBuckets}
         jobHealth={jobTaskHealth}
         changeOrdersPending={pendingChangeOrders}
+        tasksToVerify={tasksToVerify}
       />
 
       <PersonalTasksCard tasks={taskBuckets.personalTop} />

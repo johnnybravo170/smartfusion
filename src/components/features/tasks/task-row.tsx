@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import type { TaskStatus } from '@/lib/validators/task';
 import { deleteTaskAction, updateTaskAction } from '@/server/actions/tasks';
 import { TaskStatusPill } from './task-status-pill';
+import { VerifyTaskButtons } from './verify-task-buttons';
 
 function formatDue(due: string | null): string | null {
   if (!due) return null;
@@ -29,9 +30,11 @@ function formatDue(due: string | null): string | null {
 export function TaskRow({
   task,
   showCheckbox = false,
+  isOwner = false,
 }: {
   task: TaskRowData;
   showCheckbox?: boolean;
+  isOwner?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(task.title);
@@ -127,6 +130,8 @@ export function TaskRow({
       </div>
 
       {!showCheckbox ? <TaskStatusPill taskId={task.id} currentStatus={task.status} /> : null}
+
+      {isOwner && task.status === 'done' ? <VerifyTaskButtons taskId={task.id} compact /> : null}
 
       {due ? (
         <span

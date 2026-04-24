@@ -29,10 +29,12 @@ export function ProjectTaskList({
   jobId,
   tasks,
   currentUserId,
+  isOwner = false,
 }: {
   jobId: string;
   tasks: TaskRowData[];
   currentUserId: string | null;
+  isOwner?: boolean;
 }) {
   const [filter, setFilter] = useState<TaskFilter>('all');
 
@@ -83,7 +85,7 @@ export function ProjectTaskList({
             ) : (
               <div className="flex flex-col gap-1.5">
                 {items.map((t) => (
-                  <TaskRow key={t.id} task={t} />
+                  <TaskRow key={t.id} task={t} isOwner={isOwner} />
                 ))}
               </div>
             )}
