@@ -32,6 +32,7 @@ const ALL_SCOPES = [
   'write:escalate',
   'read:kanban',
   'write:kanban',
+  'write:email',
 ] as const;
 
 export const SUPPORTED_SCOPES: readonly string[] = ALL_SCOPES;

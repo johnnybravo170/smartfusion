@@ -124,6 +124,7 @@ export type Scope =
   | 'write:escalate'
   | 'read:kanban'
   | 'write:kanban'
+  | 'write:email'
   | 'admin:maintenance'
   | 'admin:keys';
 

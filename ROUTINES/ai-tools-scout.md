@@ -111,31 +111,26 @@ For each surviving finding (2–4 max):
    tag `heyhenry-ai-tools`. Short, citation-worthy summary only — the
    full finding lives in the idea.
 
-## Step 3 — Send the digest email (HTML, via Resend)
+## Step 3 — Send the digest email (HTML, via `ops_email_send`)
 
-After all ideas are written, call the Resend API directly.
+After all ideas are written, call the `ops_email_send` MCP tool on the
+HeyHenry Ops connector. The connector must have the `write:email` scope
+granted — no Routine-level env vars are required.
 
-**Env vars** (set on the Routine):
-
-- `RESEND_API_KEY`
-- `EMAIL_FROM` — e.g. `"Hey Henry <scout@heyhenry.io>"`
-- `EMAIL_TO` — e.g. `"jonathan@smartfusion.ca"`
-
-**Request**:
+**Tool call**:
 
 ```
-POST https://api.resend.com/emails
-Authorization: Bearer $RESEND_API_KEY
-Content-Type: application/json
-
-{
-  "from": "$EMAIL_FROM",
-  "to": ["$EMAIL_TO"],
-  "subject": "HeyHenry AI Tools — <YYYY-MM-DD>",
-  "html": "<see template below>",
-  "text": "<plain-text fallback>"
-}
+ops_email_send({
+  to: "jonathan@smartfusion.ca",
+  subject: "HeyHenry AI Tools — <YYYY-MM-DD>",
+  html: "<see template below>",
+  text: "<plain-text fallback>"
+})
 ```
+
+The `from` address is picked up from `OPS_EMAIL_DEFAULT_FROM` on the ops
+app (currently `"Hey Henry <ops@heyhenry.io>"`). Pass an explicit `from`
+only if you need to override it for a specific digest.
 
 ### Requirements
 

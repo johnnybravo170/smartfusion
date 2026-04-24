@@ -11,6 +11,7 @@ import { registerCompetitorTools } from './competitors';
 import type { McpToolCtx } from './context';
 import { registerDecisionTools } from './decisions';
 import { registerDocsTools } from './docs';
+import { registerEmailTools } from './email';
 import { registerEscalateTools } from './escalate';
 import { registerIdeaTools } from './ideas';
 import { registerIncidentTools } from './incidents';
@@ -62,6 +63,9 @@ export function registerScopedTools(server: McpServer, ctx: McpToolCtx) {
   }
   if (any(ctx.scopes, 'read:kanban', 'write:kanban')) {
     registerKanbanTools(server, ctx);
+  }
+  if (any(ctx.scopes, 'write:email')) {
+    registerEmailTools(server, ctx);
   }
 
   // Meta tools (memory guide + cross-surface lookup + activity digest).
