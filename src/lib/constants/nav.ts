@@ -11,6 +11,7 @@ import {
   Settings,
   UserCog,
   Users,
+  Wallet,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -43,6 +44,12 @@ const CALENDAR_ITEM: NavItem = {
   icon: CalendarDays,
 };
 
+const EXPENSES_ITEM: NavItem = {
+  href: '/expenses',
+  label: 'Expenses',
+  icon: Wallet,
+};
+
 /**
  * Returns the navigation items for the given vertical.
  *
@@ -57,6 +64,10 @@ export function getNavItems(vertical: string): NavItem[] {
     const items = CORE_ITEMS.filter((item) => item.href !== '/quotes');
     // Insert Projects + Calendar after Customers (index 1 = Customers).
     items.splice(2, 0, PROJECTS_ITEM, CALENDAR_ITEM);
+    // Expenses sits after Invoices (money-related surfaces live together).
+    const invoicesIdx = items.findIndex((i) => i.href === '/invoices');
+    if (invoicesIdx >= 0) items.splice(invoicesIdx + 1, 0, EXPENSES_ITEM);
+    else items.push(EXPENSES_ITEM);
     return items;
   }
   return CORE_ITEMS;

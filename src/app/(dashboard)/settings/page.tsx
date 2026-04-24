@@ -6,6 +6,7 @@ import {
   Mic,
   Ruler,
   ShieldCheck,
+  Tag,
   Users,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -222,6 +223,26 @@ export default function SettingsPage() {
                   <CardTitle>Cost Catalog</CardTitle>
                   <CardDescription>
                     Materials, labour rates, and markup rules for GC projects.
+                  </CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Card>
+      </Link>
+
+      <Link href="/settings/categories" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Tag className="size-5" />
+                <div>
+                  <CardTitle>Expense categories</CardTitle>
+                  <CardDescription>
+                    Categories for overhead and project expenses. Optional account codes for your
+                    bookkeeper.
                   </CardDescription>
                 </div>
               </div>
