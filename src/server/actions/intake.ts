@@ -27,7 +27,15 @@ import { createClient } from '@/lib/supabase/server';
 
 const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_IMAGES = 12;
-const PARSE_MODEL = 'gpt-4o-mini';
+// Was gpt-4o-mini. Swapped up to gpt-4.1 because mini consistently
+// undershoots on long conversational transcripts — it would lump
+// flooring + baseboards + casings + demo into a single "Flooring"
+// bucket with three line items even when the audio explicitly broke
+// them out with quantities and unit prices. gpt-4.1 is materially
+// better at multi-bucket decomposition and quantity disambiguation
+// across context-heavy inputs. Cost difference per intake call is
+// pennies; the win in completeness is much larger.
+const PARSE_MODEL = 'gpt-4.1';
 
 export type ParseInboundResult = { ok: true; draft: ParsedIntake } | { ok: false; error: string };
 
