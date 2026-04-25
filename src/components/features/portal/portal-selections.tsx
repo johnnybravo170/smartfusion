@@ -63,6 +63,21 @@ export function PortalSelections({
                       </a>
                     ) : null}
                   </div>
+                  {sel.allowance_cents != null || sel.actual_cost_cents != null ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {sel.actual_cost_cents != null && sel.allowance_cents != null
+                        ? sel.actual_cost_cents > sel.allowance_cents
+                          ? `+$${((sel.actual_cost_cents - sel.allowance_cents) / 100).toFixed(2)} over allowance`
+                          : sel.actual_cost_cents < sel.allowance_cents
+                            ? `$${((sel.allowance_cents - sel.actual_cost_cents) / 100).toFixed(2)} under allowance`
+                            : 'On allowance'
+                        : sel.allowance_cents != null
+                          ? `Allowance $${(sel.allowance_cents / 100).toFixed(2)}`
+                          : sel.actual_cost_cents != null
+                            ? `Cost $${(sel.actual_cost_cents / 100).toFixed(2)}`
+                            : null}
+                    </p>
+                  ) : null}
                   {sel.notes ? (
                     <p className="mt-1 text-xs text-muted-foreground">{sel.notes}</p>
                   ) : null}

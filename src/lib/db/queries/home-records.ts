@@ -57,6 +57,8 @@ export type HomeRecordSnapshotV1 = {
     sku: string | null;
     warranty_url: string | null;
     notes: string | null;
+    allowance_cents: number | null;
+    actual_cost_cents: number | null;
   }>;
   photos: Array<{
     id: string;

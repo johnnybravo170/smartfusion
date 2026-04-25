@@ -19,6 +19,24 @@ import { deleteSelectionAction } from '@/server/actions/project-selections';
 import { SelectionFormDialog } from './selection-form-dialog';
 import { type GalleryPickerPhoto, SelectionPhotoPicker } from './selection-photo-picker';
 
+const cad = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' });
+
+function computeVariance(
+  allowance: number | null,
+  actual: number | null,
+): { tone: 'over' | 'under' | 'flat'; label: string } | null {
+  if (allowance == null && actual == null) return null;
+  if (allowance == null && actual != null)
+    return { tone: 'flat', label: `Cost ${cad.format(actual / 100)}` };
+  if (allowance != null && actual == null)
+    return { tone: 'flat', label: `Allowance ${cad.format(allowance / 100)}` };
+  const a = allowance as number;
+  const c = actual as number;
+  if (c > a) return { tone: 'over', label: `+${cad.format((c - a) / 100)} over allowance` };
+  if (c < a) return { tone: 'under', label: `${cad.format((a - c) / 100)} under` };
+  return { tone: 'flat', label: 'On allowance' };
+}
+
 export function SelectionList({
   groups,
   projectId,
@@ -95,6 +113,7 @@ function SelectionRow({
 
   const headline = [selection.brand, selection.name].filter(Boolean).join(' ');
   const detail = [selection.code, selection.finish].filter(Boolean).join(' • ');
+  const variance = computeVariance(selection.allowance_cents, selection.actual_cost_cents);
 
   return (
     <li className="flex items-start gap-3 px-4 py-3">
@@ -110,6 +129,19 @@ function SelectionRow({
           {selection.supplier ? <span>{selection.supplier}</span> : null}
           {selection.sku ? <span>SKU {selection.sku}</span> : null}
         </div>
+        {variance ? (
+          <p
+            className={
+              variance.tone === 'over'
+                ? 'mt-1 text-xs font-medium text-rose-700'
+                : variance.tone === 'under'
+                  ? 'mt-1 text-xs font-medium text-emerald-700'
+                  : 'mt-1 text-xs text-muted-foreground'
+            }
+          >
+            {variance.label}
+          </p>
+        ) : null}
         {selection.notes ? (
           <p className="mt-1 text-xs text-muted-foreground">{selection.notes}</p>
         ) : null}

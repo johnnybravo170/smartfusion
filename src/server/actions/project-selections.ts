@@ -25,7 +25,17 @@ export type SelectionInput = {
   sku?: string | null;
   warranty_url?: string | null;
   notes?: string | null;
+  /** Budget in integer cents. Null clears any existing value. */
+  allowance_cents?: number | null;
+  /** Actual cost in integer cents. */
+  actual_cost_cents?: number | null;
 };
+
+function normalizeCents(v: number | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  if (!Number.isFinite(v)) return null;
+  return Math.max(0, Math.round(v));
+}
 
 function normalize(input: SelectionInput): SelectionInput | { error: string } {
   const room = input.room.trim();
@@ -44,6 +54,8 @@ function normalize(input: SelectionInput): SelectionInput | { error: string } {
     sku: input.sku?.trim() || null,
     warranty_url: input.warranty_url?.trim() || null,
     notes: input.notes?.trim() || null,
+    allowance_cents: normalizeCents(input.allowance_cents),
+    actual_cost_cents: normalizeCents(input.actual_cost_cents),
   };
 }
 

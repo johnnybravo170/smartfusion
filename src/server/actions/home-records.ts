@@ -70,7 +70,9 @@ export async function generateHomeRecordAction(projectId: string): Promise<HomeR
   // Selections.
   const { data: selectionRows } = await supabase
     .from('project_selections')
-    .select('room, category, brand, name, code, finish, supplier, sku, warranty_url, notes')
+    .select(
+      'room, category, brand, name, code, finish, supplier, sku, warranty_url, notes, allowance_cents, actual_cost_cents',
+    )
     .eq('project_id', projectId)
     .order('room', { ascending: true })
     .order('display_order', { ascending: true });
@@ -154,6 +156,8 @@ export async function generateHomeRecordAction(projectId: string): Promise<HomeR
         sku: (r.sku as string | null) ?? null,
         warranty_url: (r.warranty_url as string | null) ?? null,
         notes: (r.notes as string | null) ?? null,
+        allowance_cents: (r.allowance_cents as number | null) ?? null,
+        actual_cost_cents: (r.actual_cost_cents as number | null) ?? null,
       };
     }),
     photos: (photoRows ?? []).map((row) => {

@@ -55,6 +55,12 @@ export function SelectionFormDialog({ projectId, defaultRoom, selection, trigger
   const [sku, setSku] = useState(selection?.sku ?? '');
   const [warrantyUrl, setWarrantyUrl] = useState(selection?.warranty_url ?? '');
   const [notes, setNotes] = useState(selection?.notes ?? '');
+  const [allowance, setAllowance] = useState(
+    selection?.allowance_cents != null ? (selection.allowance_cents / 100).toFixed(2) : '',
+  );
+  const [actualCost, setActualCost] = useState(
+    selection?.actual_cost_cents != null ? (selection.actual_cost_cents / 100).toFixed(2) : '',
+  );
   const [pending, startTransition] = useTransition();
 
   function reset() {
@@ -69,6 +75,16 @@ export function SelectionFormDialog({ projectId, defaultRoom, selection, trigger
     setSku('');
     setWarrantyUrl('');
     setNotes('');
+    setAllowance('');
+    setActualCost('');
+  }
+
+  function dollarsToCents(input: string): number | null {
+    const trimmed = input.trim();
+    if (trimmed === '') return null;
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) return null;
+    return Math.round(n * 100);
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -85,6 +101,8 @@ export function SelectionFormDialog({ projectId, defaultRoom, selection, trigger
         sku,
         warranty_url: warrantyUrl,
         notes,
+        allowance_cents: dollarsToCents(allowance),
+        actual_cost_cents: dollarsToCents(actualCost),
       };
       const res = editing
         ? await updateSelectionAction(selection!.id, projectId, payload)
@@ -209,6 +227,36 @@ export function SelectionFormDialog({ projectId, defaultRoom, selection, trigger
               onChange={(e) => setWarrantyUrl(e.target.value)}
               placeholder="https://"
             />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="sel-allowance">Allowance (optional)</Label>
+              <Input
+                id="sel-allowance"
+                type="number"
+                step="0.01"
+                min="0"
+                value={allowance}
+                onChange={(e) => setAllowance(e.target.value)}
+                placeholder="0.00"
+              />
+              <p className="mt-1 text-[10px] text-muted-foreground">Budget for this pick</p>
+            </div>
+            <div>
+              <Label htmlFor="sel-actual">Actual cost (optional)</Label>
+              <Input
+                id="sel-actual"
+                type="number"
+                step="0.01"
+                min="0"
+                value={actualCost}
+                onChange={(e) => setActualCost(e.target.value)}
+                placeholder="0.00"
+              />
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Real cost — variance shown if over
+              </p>
+            </div>
           </div>
           <div>
             <Label htmlFor="sel-notes">Notes (optional)</Label>

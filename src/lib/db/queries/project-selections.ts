@@ -29,11 +29,15 @@ export type ProjectSelection = {
   warranty_url: string | null;
   notes: string | null;
   photo_refs: ProjectSelectionPhotoRef[];
+  /** Budget for this line, integer cents. Null = no allowance set. */
+  allowance_cents: number | null;
+  /** Actual cost incurred, integer cents. Null = not yet known. */
+  actual_cost_cents: number | null;
   display_order: number;
 };
 
 const COLUMNS =
-  'id, project_id, room, category, brand, name, code, finish, supplier, sku, warranty_url, notes, photo_refs, display_order';
+  'id, project_id, room, category, brand, name, code, finish, supplier, sku, warranty_url, notes, photo_refs, allowance_cents, actual_cost_cents, display_order';
 
 export const listSelectionsForProject = cache(
   async (projectId: string): Promise<ProjectSelection[]> => {
