@@ -42,6 +42,18 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     }
   }
 
+  // Subscription gate: a tenant must complete Stripe Checkout before
+  // entering the app. /onboarding/plan resolves itself to /dashboard
+  // once a subscription is recorded, so this is a one-direction redirect.
+  if (tenant) {
+    const { data: subRow } = await supabase
+      .from('tenants')
+      .select('stripe_subscription_id')
+      .eq('id', tenant.id)
+      .single();
+    if (!subRow?.stripe_subscription_id) redirect('/onboarding/plan');
+  }
+
   const businessName = tenant?.name;
   const timezone = tenant?.timezone || 'America/Vancouver';
   const vertical = tenant?.vertical || 'pressure_washing';

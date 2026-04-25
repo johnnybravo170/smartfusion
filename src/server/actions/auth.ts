@@ -39,6 +39,8 @@ export async function signupAction(input: {
   businessName: string;
   phone: string;
   referralCode?: string;
+  plan?: string;
+  billing?: string;
 }): Promise<ActionError | never> {
   const parsed = signupSchema.safeParse(input);
   if (!parsed.success) {
@@ -152,7 +154,13 @@ export async function signupAction(input: {
     console.warn('Failed to send verification email on signup:', err);
   });
 
-  redirect('/onboarding/verify');
+  // Preserve plan/billing choice from marketing-site URL through the
+  // verify step so the plan picker can pre-select it.
+  const verifyParams = new URLSearchParams();
+  if (input.plan) verifyParams.set('plan', input.plan);
+  if (input.billing) verifyParams.set('billing', input.billing);
+  const qs = verifyParams.toString();
+  redirect(qs ? `/onboarding/verify?${qs}` : '/onboarding/verify');
 }
 
 async function sendVerificationEmail(input: {

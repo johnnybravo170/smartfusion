@@ -9,8 +9,18 @@ export const metadata = {
   title: 'Verify your account — HeyHenry',
 };
 
-export default async function VerifyOnboardingPage() {
-  const [user, tenant] = await Promise.all([getCurrentUser(), getCurrentTenant()]);
+type SearchParams = Promise<{ plan?: string; billing?: string }>;
+
+export default async function VerifyOnboardingPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const [user, tenant, params] = await Promise.all([
+    getCurrentUser(),
+    getCurrentTenant(),
+    searchParams,
+  ]);
   if (!user) redirect('/login');
   if (!tenant) redirect('/signup?error=no_tenant');
 
@@ -25,8 +35,15 @@ export default async function VerifyOnboardingPage() {
   const emailVerified = !!user.email_confirmed_at;
   const phoneVerified = !!member?.phone_verified_at;
 
-  // Already done — bounce to dashboard.
-  if (emailVerified && phoneVerified) redirect('/dashboard');
+  // Already done — forward to plan-pick (or dashboard if already subscribed,
+  // which the plan page resolves itself).
+  if (emailVerified && phoneVerified) {
+    const qs = new URLSearchParams();
+    if (params.plan) qs.set('plan', params.plan);
+    if (params.billing) qs.set('billing', params.billing);
+    const tail = qs.toString();
+    redirect(tail ? `/onboarding/plan?${tail}` : '/onboarding/plan');
+  }
 
   return (
     <VerifyOnboarding

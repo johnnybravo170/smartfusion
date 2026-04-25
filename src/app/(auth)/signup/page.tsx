@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { isBillingCycle, isPlan, PLAN_CATALOG } from '@/lib/billing/plans';
 import { signupAction } from '@/server/actions/auth';
 
 function SignupForm() {
@@ -34,6 +35,10 @@ function SignupForm() {
   const [error, setError] = useState<string | null>(null);
 
   const referralCode = params.get('ref') ?? undefined;
+  const planParam = params.get('plan');
+  const billingParam = params.get('billing');
+  const selectedPlan = isPlan(planParam) ? planParam : null;
+  const selectedBilling = isBillingCycle(billingParam) ? billingParam : null;
 
   useEffect(() => {
     if (params.get('error') === 'no_tenant') {
@@ -51,7 +56,15 @@ function SignupForm() {
     const phone = String(form.get('phone') ?? '');
 
     startTransition(async () => {
-      const result = await signupAction({ email, password, businessName, phone, referralCode });
+      const result = await signupAction({
+        email,
+        password,
+        businessName,
+        phone,
+        referralCode,
+        plan: selectedPlan ?? undefined,
+        billing: selectedBilling ?? undefined,
+      });
       if (result && 'error' in result) {
         setError(result.error);
         toast.error(result.error);
@@ -72,6 +85,15 @@ function SignupForm() {
           {referralCode ? (
             <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
               You were referred by a fellow contractor. Sign up to get a 14-day extended trial.
+            </div>
+          ) : null}
+          {selectedPlan ? (
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+              Selected plan: <span className="font-medium">{PLAN_CATALOG[selectedPlan].name}</span>
+              {selectedBilling ? (
+                <span className="text-muted-foreground"> · {selectedBilling}</span>
+              ) : null}
+              <span className="text-muted-foreground"> · 14-day free trial</span>
             </div>
           ) : null}
           <div className="space-y-2">
