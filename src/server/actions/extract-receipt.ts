@@ -12,7 +12,7 @@
  * make them type what the file already tells us.
  */
 
-import { requireWorker } from '@/lib/auth/helpers';
+import { requireTenant } from '@/lib/auth/helpers';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const EXTRACT_MODEL = 'gpt-4o-mini';
@@ -34,9 +34,12 @@ export type ReceiptExtractionResult =
 export async function extractReceiptFieldsAction(
   formData: FormData,
 ): Promise<ReceiptExtractionResult> {
-  // Auth: any worker (or owner) with a tenant can extract. The extraction
-  // doesn't touch the DB, so we only gate on auth, not role.
-  await requireWorker();
+  // Auth: any worker, owner, or admin with a tenant can extract. The
+  // extraction doesn't touch the DB, so we only gate on tenancy, not role.
+  // Owner-side caller is the global QuickLogExpenseButton in the dashboard
+  // header — using requireWorker() here redirected owners to /dashboard
+  // mid-action and the client surfaced "Could not read receipt".
+  await requireTenant();
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return { ok: false, error: 'Server missing OPENAI_API_KEY' };
