@@ -55,16 +55,24 @@ export default async function McpAdminPage() {
   const successes = audit.filter((r) => r.status >= 200 && r.status < 300).length;
   const failures = totalCalls - successes;
 
-  // Per-day buckets (UTC days, last 7).
+  // Per-day buckets (Pacific days, last 7). Using en-CA locale + Vancouver
+  // TZ produces YYYY-MM-DD strings aligned to PT calendar days, so a call
+  // at 8pm PT counts under that day instead of bleeding into UTC tomorrow.
+  const ptDay = (d: Date): string =>
+    d.toLocaleDateString('en-CA', {
+      timeZone: 'America/Vancouver',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
   const dayBuckets: { day: string; count: number }[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-    const key = d.toISOString().slice(0, 10);
-    dayBuckets.push({ day: key, count: 0 });
+    dayBuckets.push({ day: ptDay(d), count: 0 });
   }
   const dayIndex = new Map(dayBuckets.map((b, i) => [b.day, i]));
   for (const r of audit) {
-    const key = r.occurred_at.slice(0, 10);
+    const key = ptDay(new Date(r.occurred_at));
     const idx = dayIndex.get(key);
     if (idx !== undefined) dayBuckets[idx].count += 1;
   }
