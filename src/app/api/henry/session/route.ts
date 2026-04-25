@@ -48,7 +48,7 @@ export async function POST() {
           type: 'realtime',
           model: REALTIME_MODEL,
           instructions: systemPrompt,
-          output_modalities: ['audio', 'text'],
+          output_modalities: ['audio'],
           tools,
           tool_choice: 'auto',
           audio: {
