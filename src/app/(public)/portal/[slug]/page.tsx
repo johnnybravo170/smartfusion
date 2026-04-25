@@ -1,8 +1,13 @@
 import { notFound } from 'next/navigation';
 import { PhaseRail } from '@/components/features/portal/phase-rail';
+import {
+  type PortalGalleryPhoto,
+  PortalPhotoGallery,
+} from '@/components/features/portal/portal-photo-gallery';
 import { PublicViewLogger } from '@/components/features/public/public-view-logger';
 import type { ProjectPhase } from '@/lib/db/queries/project-phases';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { isPortalPhotoTag, type PortalPhotoTag } from '@/lib/validators/portal-photo';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -100,6 +105,50 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
   );
 
   const totalBudget = originalEstimate + approvedCOTotal;
+
+  // Slice 2 — homeowner photo gallery from operator-tagged photos. Pulls
+  // from the photos table where the operator has set portal_tags AND
+  // left client_visible=true. Separate from `project_portal_updates`
+  // photos which are inline updates rather than gallery entries.
+  const { data: galleryRows } = await admin
+    .from('photos')
+    .select('id, storage_path, caption, portal_tags')
+    .eq('project_id', projectId)
+    .eq('client_visible', true)
+    .is('deleted_at', null)
+    .not('portal_tags', 'eq', '{}')
+    .order('taken_at', { ascending: false, nullsFirst: false })
+    .order('uploaded_at', { ascending: false })
+    .limit(200);
+
+  const galleryPaths = (galleryRows ?? [])
+    .map((r) => (r as Record<string, unknown>).storage_path as string)
+    .filter(Boolean);
+  const gallerySignedMap = new Map<string, string>();
+  if (galleryPaths.length > 0) {
+    const { data: signed } = await admin.storage
+      .from('photos')
+      .createSignedUrls(galleryPaths, 3600);
+    for (const row of signed ?? []) {
+      if (row.path && row.signedUrl) gallerySignedMap.set(row.path, row.signedUrl);
+    }
+  }
+  const galleryPhotos: PortalGalleryPhoto[] = (galleryRows ?? [])
+    .map((r) => {
+      const row = r as Record<string, unknown>;
+      const url = gallerySignedMap.get(row.storage_path as string);
+      if (!url) return null;
+      const tags = (row.portal_tags as string[] | null) ?? [];
+      const validTags = tags.filter(isPortalPhotoTag) as PortalPhotoTag[];
+      if (validTags.length === 0) return null;
+      return {
+        id: row.id as string,
+        url,
+        caption: (row.caption as string | null) ?? null,
+        tags: validTags,
+      };
+    })
+    .filter((p): p is PortalGalleryPhoto => p !== null);
 
   // Sign portal update photo storage paths (private photos bucket).
   const photoPaths = (updates ?? [])
@@ -249,6 +298,14 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
           </p>
         </div>
       </div>
+
+      {/* Photo gallery — operator-tagged photos grouped by category.
+          Behind-the-wall section is collapsed by default. */}
+      {galleryPhotos.length > 0 ? (
+        <div className="mb-8">
+          <PortalPhotoGallery photos={galleryPhotos} />
+        </div>
+      ) : null}
 
       {/* Updates feed */}
       <div>

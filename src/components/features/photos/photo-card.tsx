@@ -32,6 +32,7 @@ import type { PhotoQualityFlags, PhotoWithUrl } from '@/lib/db/queries/photos';
 import { cn } from '@/lib/utils';
 import { type PhotoTag, photoTagLabels } from '@/lib/validators/photo';
 import { acceptAiTagAction } from '@/server/actions/photos';
+import { PhotoPortalButton } from '../portal/photo-portal-button';
 import { DeletePhotoButton } from './delete-photo-button';
 import { PhotoFavoriteButton } from './photo-favorite-button';
 
@@ -188,6 +189,14 @@ export function PhotoCard({
         ) : null}
       </div>
       <div className="absolute right-2 top-2 flex items-center gap-1 opacity-80 transition-opacity group-hover:opacity-100">
+        {photo.project_id ? (
+          <PhotoPortalButton
+            photoId={photo.id}
+            projectId={photo.project_id}
+            initialTags={photo.portal_tags ?? []}
+            initialClientVisible={photo.client_visible ?? true}
+          />
+        ) : null}
         <PhotoFavoriteButton
           photoId={photo.id}
           isFavorite={photo.is_favorite}
