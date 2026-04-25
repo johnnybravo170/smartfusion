@@ -513,11 +513,7 @@ export function useHenry(): UseHenryReturn {
     // token via the `openai-insecure-api-key` subprotocol. "Insecure" flags
     // that the key is client-visible — safe here because client_secrets
     // expire in ~1 minute.
-    const ws = new WebSocket(url, [
-      'realtime',
-      `openai-insecure-api-key.${cfg.clientSecret}`,
-      'openai-beta.realtime-v1',
-    ]);
+    const ws = new WebSocket(url, ['realtime', `openai-insecure-api-key.${cfg.clientSecret}`]);
 
     ws.onopen = () => {
       console.log('[Henry] Realtime WS open, subprotocol=', ws.protocol);
