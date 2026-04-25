@@ -68,7 +68,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             {tenant ? <PastDueBanner status={tenant.subscriptionStatus} /> : null}
             <MfaEnforcementBanner />
             <TenantProvider timezone={timezone}>
-              <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 pb-28 md:p-6 md:pb-24">
+              <main className="flex-1 overflow-x-hidden p-4 pb-8 md:overflow-y-auto md:p-6 md:pb-24">
                 {children}
               </main>
             </TenantProvider>

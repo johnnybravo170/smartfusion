@@ -23,7 +23,7 @@ export default async function WorkerLayout({ children }: { children: ReactNode }
       <header className="border-b px-4 py-3">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">{tenant.name}</p>
       </header>
-      <main className="flex-1 overflow-y-auto px-4 pb-24 pt-4">{children}</main>
+      <main className="flex-1 px-4 pb-24 pt-4">{children}</main>
       <WorkerBottomNav canInvoice={canInvoice} canLogExpenses={canLogExpenses} />
     </div>
   );
