@@ -40,7 +40,11 @@ export default async function DocumentsTabServer({ projectId }: { projectId: str
               </p>
             ) : null}
           </div>
-          <HomeRecordButton projectId={projectId} existingSlug={homeRecord?.slug ?? null} />
+          <HomeRecordButton
+            projectId={projectId}
+            existingSlug={homeRecord?.slug ?? null}
+            hasPdf={Boolean(homeRecord?.pdf_path)}
+          />
         </div>
       </div>
 

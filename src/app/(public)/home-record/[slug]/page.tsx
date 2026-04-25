@@ -55,12 +55,13 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
 
   const { data: record } = await admin
     .from('home_records')
-    .select('snapshot, generated_at, project_id')
+    .select('snapshot, generated_at, project_id, pdf_path')
     .eq('slug', slug)
     .single();
   if (!record) notFound();
 
   const snapshot = (record as Record<string, unknown>).snapshot as HomeRecordSnapshotV1;
+  const hasPdf = Boolean((record as Record<string, unknown>).pdf_path);
 
   // Re-sign all storage paths in one batch (separate buckets, so two
   // calls — photos + project-docs).
@@ -130,6 +131,14 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
         <p className="mt-3 text-xs text-muted-foreground">
           Prepared by {snapshot.contractor.name} • Generated {formatDate(snapshot.generated_at)}
         </p>
+        {hasPdf ? (
+          <a
+            href={`/home-record/${slug}/download`}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-1.5 text-sm font-medium hover:bg-muted"
+          >
+            Download PDF
+          </a>
+        ) : null}
       </header>
 
       {/* Project summary */}

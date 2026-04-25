@@ -16,6 +16,12 @@ import { randomBytes } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import type { HomeRecordSnapshotV1 } from '@/lib/db/queries/home-records';
+import {
+  type EmbeddableDoc,
+  type EmbeddablePhoto,
+  generateHomeRecordPdf,
+} from '@/lib/pdf/home-record-pdf';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import type { PortalPhotoTag } from '@/lib/validators/portal-photo';
 import type { DocumentType } from '@/lib/validators/project-document';
@@ -224,4 +230,123 @@ export async function generateHomeRecordAction(projectId: string): Promise<HomeR
 
   revalidatePath(`/projects/${projectId}`);
   return { ok: true, slug };
+}
+
+/**
+ * Generate the branded PDF version of a home record. Reads the existing
+ * snapshot from `home_records`, embeds photos as JPEG/PNG bytes,
+ * builds the PDF via jsPDF, uploads to the `home-record-pdfs` bucket,
+ * and writes back to `home_records.pdf_path`.
+ *
+ * Photos are fetched via signed URLs from the admin client and converted
+ * to base64. Embedding makes the PDF permanent — even if the operator
+ * later deletes a source photo, the PDF still has it.
+ *
+ * Document links in the PDF are clickable signed URLs. Those will
+ * eventually expire (~1 week max), so the PDF should be regenerated
+ * if you want to re-share with fresh links. Slice 6c (ZIP) durably
+ * solves this by including actual file copies.
+ */
+export type HomeRecordPdfActionResult =
+  | { ok: true; signedUrl: string }
+  | { ok: false; error: string };
+
+export async function generateHomeRecordPdfAction(
+  projectId: string,
+): Promise<HomeRecordPdfActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+  const { data: row } = await supabase
+    .from('home_records')
+    .select('id, slug, snapshot')
+    .eq('project_id', projectId)
+    .maybeSingle();
+  if (!row) {
+    return { ok: false, error: 'Generate the Home Record first.' };
+  }
+
+  const r = row as Record<string, unknown>;
+  const snapshot = r.snapshot as HomeRecordSnapshotV1;
+  const slug = r.slug as string;
+  const homeRecordId = r.id as string;
+
+  // Resolve and fetch photo bytes. Use the admin client because the
+  // photos bucket is RLS-protected and we want to bypass that for the
+  // server-side embed.
+  const admin = createAdminClient();
+
+  const photoPaths = snapshot.photos.map((p) => p.storage_path);
+  const embeddedPhotos: EmbeddablePhoto[] = [];
+  if (photoPaths.length > 0) {
+    const { data: signed } = await admin.storage.from('photos').createSignedUrls(photoPaths, 600);
+    for (const entry of signed ?? []) {
+      if (!entry.path || !entry.signedUrl) continue;
+      try {
+        const res = await fetch(entry.signedUrl);
+        if (!res.ok) continue;
+        const buf = Buffer.from(await res.arrayBuffer());
+        const mime = res.headers.get('content-type') ?? '';
+        const format: 'JPEG' | 'PNG' = mime.includes('png') ? 'PNG' : 'JPEG';
+        embeddedPhotos.push({
+          storage_path: entry.path,
+          base64: buf.toString('base64'),
+          format,
+        });
+      } catch {
+        // Skip the photo silently rather than failing the whole PDF.
+      }
+    }
+  }
+
+  // Sign document URLs for clickable links in the PDF.
+  const docPaths = snapshot.documents.map((d) => d.storage_path);
+  const embeddedDocs: EmbeddableDoc[] = [];
+  if (docPaths.length > 0) {
+    const { data: signed } = await admin.storage
+      .from('project-docs')
+      .createSignedUrls(docPaths, 7 * 24 * 3600);
+    for (const entry of signed ?? []) {
+      if (entry.path && entry.signedUrl) {
+        embeddedDocs.push({ storage_path: entry.path, url: entry.signedUrl });
+      }
+    }
+  }
+
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = generateHomeRecordPdf(snapshot, embeddedPhotos, embeddedDocs);
+  } catch (e) {
+    return {
+      ok: false,
+      error: `PDF generation failed: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+
+  // Upload to the home-record-pdfs bucket. Path: <tenant>/<project>/<slug>.pdf
+  const storagePath = `${tenant.id}/${projectId}/${slug}.pdf`;
+  const { error: upErr } = await supabase.storage
+    .from('home-record-pdfs')
+    .upload(storagePath, pdfBuffer, {
+      contentType: 'application/pdf',
+      upsert: true,
+    });
+  if (upErr) return { ok: false, error: `Upload failed: ${upErr.message}` };
+
+  // Write back the path so the operator UI knows it's ready.
+  const { error: updErr } = await supabase
+    .from('home_records')
+    .update({ pdf_path: storagePath })
+    .eq('id', homeRecordId);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  // Mint a signed URL the caller can hand back to the browser to trigger
+  // an immediate download.
+  const { data: signed } = await supabase.storage
+    .from('home-record-pdfs')
+    .createSignedUrl(storagePath, 3600);
+
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true, signedUrl: signed?.signedUrl ?? '' };
 }
