@@ -81,6 +81,7 @@ export function LeadIntakeForm({ parseModel = 'gpt-4.1' }: { parseModel?: ParseM
   const [files, setFiles] = useState<File[]>([]);
   const [draft, setDraft] = useState<ParsedIntake | null>(null);
   const [transcript, setTranscript] = useState<string | null>(null);
+  const [parsedBy, setParsedBy] = useState<string | null>(null);
   const [duplicates, setDuplicates] = useState<ContactMatch[]>([]);
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
@@ -168,6 +169,7 @@ export function LeadIntakeForm({ parseModel = 'gpt-4.1' }: { parseModel?: ParseM
       };
       setDraft(stamped);
       setTranscript(res.transcript ?? null);
+      setParsedBy(res.parsedBy ?? null);
       setPhase('review');
     });
   }
@@ -220,6 +222,7 @@ export function LeadIntakeForm({ parseModel = 'gpt-4.1' }: { parseModel?: ParseM
           />
         ) : null}
         {transcript ? <TranscriptPanel transcript={transcript} /> : null}
+        {parsedBy ? <p className="text-xs text-muted-foreground">Parsed by: {parsedBy}</p> : null}
         <ReviewDraft
           draft={draft}
           onChange={setDraft}

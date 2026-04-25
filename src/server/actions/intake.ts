@@ -60,6 +60,12 @@ export type ParseInboundResult =
        * the extraction was lazy.
        */
       transcript: string | null;
+      /**
+       * Exact model id that produced this draft. Surfaced on the review
+       * screen so any screenshot / PDF the operator captures is self-
+       * labelled — no more "wait, was that Opus or Sonnet?".
+       */
+      parsedBy: string;
     }
   | { ok: false; error: string };
 
@@ -185,21 +191,24 @@ export async function parseInboundLeadAction(
   // same JSON schema, different model — lets us A/B parse quality on
   // the same memo without redeploying.
   let draft: ParsedIntake;
+  let parsedBy: string;
   if (modelChoice === 'claude-sonnet') {
     const claudeResult = await runClaudeParse(userContent);
     if (!claudeResult.ok) return { ok: false, error: claudeResult.error };
     draft = claudeResult.draft;
+    parsedBy = CLAUDE_PARSE_MODEL;
   } else {
     const openaiResult = await runOpenAIParse(apiKey, userContent);
     if (!openaiResult.ok) return { ok: false, error: openaiResult.error };
     draft = openaiResult.draft;
+    parsedBy = PARSE_MODEL;
   }
 
   // If operator typed a customer name, prefer it over whatever the model
   // pulled from the messages.
   if (customerName) draft.customer.name = customerName;
 
-  return { ok: true, draft, transcript };
+  return { ok: true, draft, transcript, parsedBy };
 }
 
 export type AcceptInboundResult =
