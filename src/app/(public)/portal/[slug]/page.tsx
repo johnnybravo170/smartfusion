@@ -2,6 +2,10 @@ import { notFound } from 'next/navigation';
 import { DecisionPanel, type PortalDecision } from '@/components/features/portal/decision-panel';
 import { PhaseRail } from '@/components/features/portal/phase-rail';
 import {
+  type PortalDocument,
+  PortalDocuments,
+} from '@/components/features/portal/portal-documents';
+import {
   type PortalGalleryPhoto,
   PortalPhotoGallery,
 } from '@/components/features/portal/portal-photo-gallery';
@@ -151,6 +155,43 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
         photo_urls: photoUrls,
       };
     });
+
+  // Slice 5 — documents & warranties (homeowner-visible only).
+  const { data: docRows } = await admin
+    .from('project_documents')
+    .select('id, type, title, storage_path, bytes, expires_at')
+    .eq('project_id', projectId)
+    .eq('client_visible', true)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+
+  const docPaths = (docRows ?? [])
+    .map((r) => (r as Record<string, unknown>).storage_path as string)
+    .filter(Boolean);
+  const docSignedMap = new Map<string, string>();
+  if (docPaths.length > 0) {
+    const { data: signed } = await admin.storage
+      .from('project-docs')
+      .createSignedUrls(docPaths, 3600);
+    for (const row of signed ?? []) {
+      if (row.path && row.signedUrl) docSignedMap.set(row.path, row.signedUrl);
+    }
+  }
+  const portalDocuments: PortalDocument[] = (docRows ?? [])
+    .map((r) => {
+      const row = r as Record<string, unknown>;
+      const url = docSignedMap.get(row.storage_path as string);
+      if (!url) return null;
+      return {
+        id: row.id as string,
+        type: row.type as PortalDocument['type'],
+        title: row.title as string,
+        url,
+        bytes: (row.bytes as number | null) ?? null,
+        expires_at: (row.expires_at as string | null) ?? null,
+      };
+    })
+    .filter((d): d is PortalDocument => d !== null);
 
   // Slice 4 — per-room material selections. Read-only on the portal.
   const { data: selectionRows } = await admin
@@ -378,6 +419,13 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
       {selectionGroups.length > 0 ? (
         <div className="mb-8">
           <PortalSelections groups={selectionGroups} />
+        </div>
+      ) : null}
+
+      {/* Documents & warranties — permanent files. */}
+      {portalDocuments.length > 0 ? (
+        <div className="mb-8">
+          <PortalDocuments documents={portalDocuments} />
         </div>
       ) : null}
 

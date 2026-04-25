@@ -1,4 +1,4 @@
-import { ImageIcon, Link2, Mic, Palette, Users } from 'lucide-react';
+import { FileText, ImageIcon, Link2, Mic, Palette, Users } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
@@ -12,6 +12,7 @@ import BucketsTabServer from '@/components/features/projects/tabs/buckets-tab-se
 import ChangeOrdersTabServer from '@/components/features/projects/tabs/change-orders-tab-server';
 import CostsTabServer from '@/components/features/projects/tabs/costs-tab-server';
 import CrewTabServer from '@/components/features/projects/tabs/crew-tab-server';
+import DocumentsTabServer from '@/components/features/projects/tabs/documents-tab-server';
 import EstimateTabServer from '@/components/features/projects/tabs/estimate-tab-server';
 import GalleryTabServer from '@/components/features/projects/tabs/gallery-tab-server';
 import InvoicesTabServer from '@/components/features/projects/tabs/invoices-tab-server';
@@ -49,6 +50,7 @@ type Tab =
   | 'change-orders'
   | 'portal'
   | 'selections'
+  | 'documents'
   | 'crew';
 
 /**
@@ -96,11 +98,12 @@ export default async function ProjectDetailPage({
   const secondaryTabs: {
     key: Tab;
     label: string;
-    icon: 'gallery' | 'portal' | 'memos' | 'crew' | 'selections';
+    icon: 'gallery' | 'portal' | 'memos' | 'crew' | 'selections' | 'documents';
   }[] = [
     { key: 'gallery', label: 'Gallery', icon: 'gallery' },
     { key: 'portal', label: 'Portal', icon: 'portal' },
     { key: 'selections', label: 'Selections', icon: 'selections' },
+    { key: 'documents', label: 'Documents', icon: 'documents' },
     { key: 'memos', label: 'Notes', icon: 'memos' },
     { key: 'crew', label: 'Crew', icon: 'crew' },
   ];
@@ -138,9 +141,11 @@ export default async function ProjectDetailPage({
                   ? Link2
                   : s.icon === 'selections'
                     ? Palette
-                    : s.icon === 'memos'
-                      ? Mic
-                      : Users;
+                    : s.icon === 'documents'
+                      ? FileText
+                      : s.icon === 'memos'
+                        ? Mic
+                        : Users;
             return (
               <Link
                 key={s.key}
@@ -207,6 +212,7 @@ export default async function ProjectDetailPage({
         {tab === 'change-orders' ? <ChangeOrdersTabServer projectId={id} /> : null}
         {tab === 'portal' ? <PortalTabServer projectId={id} /> : null}
         {tab === 'selections' ? <SelectionsTabServer projectId={id} /> : null}
+        {tab === 'documents' ? <DocumentsTabServer projectId={id} /> : null}
         {tab === 'crew' ? <CrewTabServer projectId={id} /> : null}
       </Suspense>
     </div>
