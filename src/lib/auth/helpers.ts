@@ -33,6 +33,7 @@ export type CurrentTenant = {
   vertical: string;
   plan: Plan;
   subscriptionStatus: SubscriptionStatus;
+  trialEndsAt: string | null;
   member: {
     id: string;
     role: string;
@@ -58,7 +59,7 @@ async function getCurrentTenantUncached(): Promise<CurrentTenant | null> {
   const { data: member } = await supabase
     .from('tenant_members')
     .select(
-      'id, role, phone, phone_verified_at, tenants(id, name, slug, timezone, vertical, plan, subscription_status)',
+      'id, role, phone, phone_verified_at, tenants(id, name, slug, timezone, vertical, plan, subscription_status, trial_ends_at)',
     )
     .eq('user_id', user.id)
     .maybeSingle();
@@ -79,6 +80,7 @@ async function getCurrentTenantUncached(): Promise<CurrentTenant | null> {
     vertical: tenant.vertical ?? 'pressure_washing',
     plan: (tenant.plan ?? 'starter') as Plan,
     subscriptionStatus: (tenant.subscription_status ?? 'trialing') as SubscriptionStatus,
+    trialEndsAt: (tenant.trial_ends_at as string | null) ?? null,
     member: {
       id: member.id,
       role: member.role,

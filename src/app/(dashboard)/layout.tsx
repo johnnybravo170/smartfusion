@@ -4,6 +4,7 @@ import { ChatPanel } from '@/components/chat/chat-panel';
 import { ChatProvider } from '@/components/chat/chat-provider';
 import { ChatToggle } from '@/components/chat/chat-toggle';
 import { PastDueBanner } from '@/components/features/billing/past-due-banner';
+import { TrialBanner } from '@/components/features/billing/trial-banner';
 import { MfaEnforcementBanner } from '@/components/features/settings/mfa-enforcement-banner';
 import { FeedbackButton } from '@/components/layout/feedback-button';
 import { Header } from '@/components/layout/header';
@@ -67,6 +68,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
               ownerRateCents={ownerRateCents}
             />
             {tenant ? <PastDueBanner status={tenant.subscriptionStatus} /> : null}
+            {tenant ? (
+              <TrialBanner status={tenant.subscriptionStatus} trialEndsAt={tenant.trialEndsAt} />
+            ) : null}
             <MfaEnforcementBanner />
             <TenantProvider timezone={timezone}>
               <main className="flex-1 overflow-x-hidden p-4 pb-8 md:overflow-y-auto md:p-6 md:pb-24">
