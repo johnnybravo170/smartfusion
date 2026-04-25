@@ -17,17 +17,67 @@ export default async function StatsPage() {
 
   const maxDay = Math.max(1, ...data.last30.map((d) => d.commit_count));
   const maxLoc = Math.max(1, ...data.weeklyLoc.map((w) => Math.max(w.added, w.deleted)));
+  const last7 = data.last30.slice(-7);
+  const last7MaxNet = Math.max(1, ...last7.map((d) => Math.abs(d.loc_added - d.loc_deleted)));
+  const netAllTime = data.allTime.added - data.allTime.deleted;
 
   return (
     <div className="space-y-10">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Git activity</h1>
         <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-          All-time: {data.allTime.commits.toLocaleString()} commits · +
-          {data.allTime.added.toLocaleString()} / -{data.allTime.deleted.toLocaleString()} LOC since{' '}
-          {data.allTime.since}
+          {data.allTime.commits.toLocaleString()} commits since {data.allTime.since}
         </p>
       </div>
+
+      {/* LOC hero */}
+      <section className="rounded-md border border-[var(--border)] p-5">
+        <div className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+          Lines of code shipped
+        </div>
+        <div className="mt-1 text-4xl font-semibold tabular-nums sm:text-5xl">
+          {netAllTime.toLocaleString()}
+        </div>
+        <div className="mt-2 text-xs text-[var(--muted-foreground)] tabular-nums">
+          +{data.allTime.added.toLocaleString()} added · −{data.allTime.deleted.toLocaleString()}{' '}
+          deleted · since {data.allTime.since}
+        </div>
+      </section>
+
+      {/* LOC per day · last 7 */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold">LOC per day · last 7</h2>
+        <div className="space-y-1 rounded-md border border-[var(--border)] p-3">
+          {last7.map((d) => {
+            const net = d.loc_added - d.loc_deleted;
+            const pct = (Math.abs(net) / last7MaxNet) * 100;
+            const positive = net >= 0;
+            return (
+              <div key={d.day} className="flex items-center gap-3 text-xs">
+                <span className="w-20 shrink-0 tabular-nums text-[var(--muted-foreground)]">
+                  {d.day}
+                </span>
+                <div className="flex-1">
+                  <div
+                    className={`h-2 ${positive ? 'bg-emerald-500' : 'bg-red-500'}`}
+                    style={{ width: `${pct}%`, minWidth: net !== 0 ? '2px' : '0' }}
+                    title={`${net >= 0 ? '+' : ''}${net} net`}
+                  />
+                </div>
+                <span
+                  className={`w-20 text-right tabular-nums ${positive ? 'text-emerald-600' : 'text-red-600'}`}
+                >
+                  {net >= 0 ? '+' : ''}
+                  {net.toLocaleString()}
+                </span>
+                <span className="w-24 text-right tabular-nums text-[var(--muted-foreground)]">
+                  {d.commit_count} commit{d.commit_count === 1 ? '' : 's'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Last 30 days bar chart */}
       <section>
