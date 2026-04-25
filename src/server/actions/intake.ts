@@ -211,19 +211,11 @@ export async function parseInboundLeadAction(
     parsedBy = PARSE_MODEL;
   }
 
-  // Structural-integrity second pass — only when there's a transcript
-  // to check against. Sonnet re-reads the transcript, finds scope
-  // areas / numbers / prices that the first pass either dropped or
-  // buried in description prose, and returns a corrected draft. If
-  // the verify call fails for any reason, fall back to the first
-  // draft rather than blocking the operator's flow.
-  if (transcript && transcript.length > 0) {
-    const verified = await runVerifyPass(draft, transcript);
-    if (verified.ok) {
-      draft = verified.draft;
-      parsedBy = `${parsedBy} → ${VERIFY_MODEL} (verify)`;
-    }
-  }
+  // (Removed Sonnet verify pass — it was timing out on Vercel's 60s
+  // function budget AND the one run that did land came back thinner
+  // than first-pass alone. See `runVerifyPass` below; kept as dead
+  // code for now while we redesign as a purely-additive delta merge
+  // instead of a full draft regeneration.)
 
   // If operator typed a customer name, prefer it over whatever the model
   // pulled from the messages.
