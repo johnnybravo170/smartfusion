@@ -31,6 +31,8 @@ export type PortalDecision = {
   description: string | null;
   due_date: string | null;
   photo_urls: string[];
+  /** Multi-option vote when non-empty; otherwise binary approve/decline. */
+  options: string[];
 };
 
 export function DecisionPanel({
@@ -73,7 +75,9 @@ function DecisionCard({
   const [mode, setMode] = useState<'idle' | 'asking' | 'answered'>('idle');
   const [name, setName] = useState(defaultCustomerName);
   const [question, setQuestion] = useState('');
+  const [pickedOption, setPickedOption] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const isMultiOption = decision.options.length > 0;
 
   function approve() {
     if (!name.trim()) {
@@ -111,6 +115,30 @@ function DecisionCard({
         return;
       }
       toast.success('Declined — your contractor will follow up.');
+      setMode('answered');
+    });
+  }
+
+  function confirmOption() {
+    if (!name.trim()) {
+      toast.error('Please enter your name first.');
+      return;
+    }
+    if (!pickedOption) {
+      toast.error('Please pick an option first.');
+      return;
+    }
+    startTransition(async () => {
+      const res = await decideByCodeAction({
+        code: decision.approval_code,
+        value: pickedOption,
+        customerName: name,
+      });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(`Picked: ${pickedOption}`);
       setMode('answered');
     });
   }
@@ -185,14 +213,50 @@ function DecisionCard({
         />
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" onClick={approve} disabled={pending}>
-          {pending ? <Loader2 className="size-4 animate-spin" /> : null}
-          Approve
-        </Button>
-        <Button type="button" size="sm" variant="outline" onClick={decline} disabled={pending}>
-          Decline
-        </Button>
+      {isMultiOption ? (
+        <div className="space-y-1.5">
+          {decision.options.map((opt) => (
+            <label
+              key={opt}
+              className="flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm hover:bg-muted"
+              htmlFor={`opt-${decision.id}-${opt}`}
+            >
+              <input
+                id={`opt-${decision.id}-${opt}`}
+                type="radio"
+                name={`decision-${decision.id}`}
+                checked={pickedOption === opt}
+                onChange={() => setPickedOption(opt)}
+                disabled={pending}
+              />
+              <span>{opt}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {isMultiOption ? (
+          <Button
+            type="button"
+            size="sm"
+            onClick={confirmOption}
+            disabled={pending || !pickedOption}
+          >
+            {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+            Confirm
+          </Button>
+        ) : (
+          <>
+            <Button type="button" size="sm" onClick={approve} disabled={pending}>
+              {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+              Approve
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={decline} disabled={pending}>
+              Decline
+            </Button>
+          </>
+        )}
         <Button
           type="button"
           size="sm"

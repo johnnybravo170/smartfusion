@@ -31,22 +31,35 @@ export function DecisionForm({ projectId }: { projectId: string }) {
   const [label, setLabel] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [optionsText, setOptionsText] = useState('');
   const [pending, startTransition] = useTransition();
 
   function reset() {
     setLabel('');
     setDescription('');
     setDueDate('');
+    setOptionsText('');
   }
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Split the textarea into individual options. Newline-or-comma
+    // separated, trimmed, deduplicated, max ~10 options.
+    const optionsList = Array.from(
+      new Set(
+        optionsText
+          .split(/[\n,]/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0),
+      ),
+    ).slice(0, 10);
     startTransition(async () => {
       const res = await createDecisionAction({
         projectId,
         label,
         description: description || null,
         dueDate: dueDate || null,
+        options: optionsList.length > 0 ? optionsList : undefined,
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -104,6 +117,20 @@ export function DecisionForm({ projectId }: { projectId: string }) {
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
             />
+          </div>
+          <div>
+            <Label htmlFor="decision-options">Options (optional, one per line)</Label>
+            <Textarea
+              id="decision-options"
+              value={optionsText}
+              onChange={(e) => setOptionsText(e.target.value)}
+              placeholder={'Simply White\nChantilly Lace\nDecorator\u2019s White'}
+              rows={3}
+            />
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Leave blank for a binary Approve / Decline. Listing options shows the homeowner radio
+              buttons + a Confirm button.
+            </p>
           </div>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>

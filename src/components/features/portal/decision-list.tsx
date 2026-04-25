@@ -65,8 +65,12 @@ function DecisionRow({ decision, projectId }: { decision: ProjectDecision; proje
           ) : null}
           {decision.status === 'decided' ? (
             <span>
-              {decision.decided_value === 'approved' ? 'Approved' : 'Declined'} by{' '}
-              {decision.decided_by_customer ?? 'customer'}
+              {decision.decided_value === 'approved'
+                ? 'Approved'
+                : decision.decided_value === 'declined'
+                  ? 'Declined'
+                  : `Picked: ${decision.decided_value}`}{' '}
+              by {decision.decided_by_customer ?? 'customer'}
             </span>
           ) : null}
           {decision.status === 'dismissed' ? <span>Dismissed</span> : null}

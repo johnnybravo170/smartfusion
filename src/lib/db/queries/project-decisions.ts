@@ -31,11 +31,13 @@ export type ProjectDecision = {
   decided_by_customer: string | null;
   photo_refs: ProjectDecisionPhotoRef[];
   approval_code: string | null;
+  /** Empty = binary approve/decline. Non-empty = pick-one vote. */
+  options: string[];
   created_at: string;
 };
 
 const COLUMNS =
-  'id, project_id, label, description, due_date, status, decided_value, decided_at, decided_by_customer, photo_refs, approval_code, created_at';
+  'id, project_id, label, description, due_date, status, decided_value, decided_at, decided_by_customer, photo_refs, approval_code, options, created_at';
 
 export const listDecisionsForProject = cache(
   async (projectId: string): Promise<ProjectDecision[]> => {
@@ -48,6 +50,7 @@ export const listDecisionsForProject = cache(
     return ((data ?? []) as unknown as ProjectDecision[]).map((row) => ({
       ...row,
       photo_refs: Array.isArray(row.photo_refs) ? row.photo_refs : [],
+      options: Array.isArray(row.options) ? row.options.filter((o) => typeof o === 'string') : [],
     }));
   },
 );

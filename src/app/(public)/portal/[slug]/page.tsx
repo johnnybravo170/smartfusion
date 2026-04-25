@@ -154,7 +154,7 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
   // Slice 3 — pending homeowner decisions for the queue panel.
   const { data: decisionRows } = await admin
     .from('project_decisions')
-    .select('id, approval_code, label, description, due_date, photo_refs')
+    .select('id, approval_code, label, description, due_date, photo_refs, options')
     .eq('project_id', projectId)
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
@@ -184,6 +184,10 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
       const photoUrls = refs
         .map((ref) => (ref?.storage_path ? decisionSignedMap.get(ref.storage_path) : null))
         .filter((u): u is string => Boolean(u));
+      const optionsRaw = row.options as unknown[] | null;
+      const options = Array.isArray(optionsRaw)
+        ? optionsRaw.filter((o): o is string => typeof o === 'string')
+        : [];
       return {
         id: row.id as string,
         approval_code: row.approval_code as string,
@@ -191,6 +195,7 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
         description: (row.description as string | null) ?? null,
         due_date: (row.due_date as string | null) ?? null,
         photo_urls: photoUrls,
+        options,
       };
     });
 

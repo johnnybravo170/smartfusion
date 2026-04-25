@@ -24,7 +24,7 @@ export default async function DecidePage({ params }: { params: Promise<{ code: s
   const { data: decision } = await admin
     .from('project_decisions')
     .select(
-      `id, approval_code, label, description, due_date, status, photo_refs, decided_value,
+      `id, approval_code, label, description, due_date, status, photo_refs, options, decided_value,
        decided_by_customer, decided_at,
        projects:project_id (name, customers:customer_id (name)),
        tenants:tenant_id (name)`,
@@ -94,6 +94,11 @@ export default async function DecidePage({ params }: { params: Promise<{ code: s
     }
   }
 
+  const optionsRaw = d.options as unknown[] | null;
+  const options = Array.isArray(optionsRaw)
+    ? optionsRaw.filter((o): o is string => typeof o === 'string')
+    : [];
+
   const portalDecision: PortalDecision = {
     id: d.id as string,
     approval_code: d.approval_code as string,
@@ -103,6 +108,7 @@ export default async function DecidePage({ params }: { params: Promise<{ code: s
     photo_urls: refs
       .map((r) => (r?.storage_path ? signedMap.get(r.storage_path) : null))
       .filter((u): u is string => Boolean(u)),
+    options,
   };
 
   return (

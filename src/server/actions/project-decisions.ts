@@ -33,6 +33,12 @@ export async function createDecisionAction(input: {
   description?: string | null;
   dueDate?: string | null;
   photoRefs?: Array<{ photo_id: string; storage_path: string; caption?: string | null }>;
+  /**
+   * Optional list of choices. When provided, the homeowner sees radio
+   * buttons + a Confirm button instead of Approve / Decline. Empty or
+   * omitted = the existing binary flow.
+   */
+  options?: string[];
 }): Promise<DecisionActionResult> {
   const label = input.label.trim();
   if (!label) return { ok: false, error: 'Label is required.' };
@@ -62,6 +68,10 @@ export async function createDecisionAction(input: {
 
   const approvalCode = generateApprovalCode();
 
+  const cleanedOptions = (input.options ?? [])
+    .map((o) => (typeof o === 'string' ? o.trim() : ''))
+    .filter((o) => o.length > 0);
+
   const { error } = await supabase.from('project_decisions').insert({
     tenant_id: tenantId,
     project_id: input.projectId,
@@ -70,6 +80,7 @@ export async function createDecisionAction(input: {
     due_date: input.dueDate || null,
     status: 'pending',
     photo_refs: input.photoRefs ?? [],
+    options: cleanedOptions,
     approval_code: approvalCode,
   });
   if (error) return { ok: false, error: error.message };
@@ -122,7 +133,12 @@ export async function dismissDecisionAction(
  */
 export async function decideByCodeAction(input: {
   code: string;
-  value: 'approved' | 'declined';
+  /**
+   * For binary decisions: 'approved' | 'declined'.
+   * For multi-option decisions: the picked option text (must match one
+   * of the decision's options exactly).
+   */
+  value: string;
   customerName: string;
 }): Promise<DecisionActionResult> {
   const customerName = input.customerName.trim();
@@ -134,7 +150,7 @@ export async function decideByCodeAction(input: {
   // bypasses RLS — the approval_code lookup is the auth.
   const { data: decision, error: lookupErr } = await admin
     .from('project_decisions')
-    .select('id, project_id, status')
+    .select('id, project_id, status, options')
     .eq('approval_code', input.code)
     .single();
   if (lookupErr || !decision) {
@@ -142,6 +158,21 @@ export async function decideByCodeAction(input: {
   }
   if ((decision as Record<string, unknown>).status !== 'pending') {
     return { ok: false, error: 'This decision has already been answered.' };
+  }
+
+  // Validate value against the decision's shape:
+  //  * Multi-option: must match one of the listed options exactly.
+  //  * Binary: must be 'approved' or 'declined'.
+  const opts = ((decision as Record<string, unknown>).options ?? []) as unknown[];
+  const optionStrings = Array.isArray(opts)
+    ? opts.filter((o): o is string => typeof o === 'string')
+    : [];
+  if (optionStrings.length > 0) {
+    if (!optionStrings.includes(input.value)) {
+      return { ok: false, error: 'That option is not on the list anymore.' };
+    }
+  } else if (input.value !== 'approved' && input.value !== 'declined') {
+    return { ok: false, error: 'Invalid response.' };
   }
 
   const { error } = await admin
@@ -163,8 +194,16 @@ export async function decideByCodeAction(input: {
     tenant_id: (await admin.from('projects').select('tenant_id').eq('id', projectId).single()).data
       ?.tenant_id,
     type: 'message',
-    title: input.value === 'approved' ? 'Decision approved' : 'Decision declined',
-    body: `${customerName} ${input.value} a decision request.`,
+    title:
+      input.value === 'approved'
+        ? 'Decision approved'
+        : input.value === 'declined'
+          ? 'Decision declined'
+          : `Decision: ${input.value}`,
+    body:
+      input.value === 'approved' || input.value === 'declined'
+        ? `${customerName} ${input.value} a decision request.`
+        : `${customerName} chose: ${input.value}`,
   });
 
   revalidatePath(`/projects/${projectId}`);
