@@ -421,7 +421,7 @@ async function runOpenAIParse(
       { role: 'user', content: userContent },
     ],
     response_format: { type: 'json_schema', json_schema: INTAKE_JSON_SCHEMA },
-    temperature: 0,
+    temperature: 0.2,
   };
   let res: Response;
   try {
@@ -507,7 +507,7 @@ async function runClaudeParse(
     response = await client.messages.create({
       model: CLAUDE_PARSE_MODEL,
       max_tokens: 8000,
-      temperature: 0,
+      temperature: 0.2,
       system: INTAKE_SYSTEM_PROMPT,
       tools: [
         {
@@ -599,7 +599,7 @@ async function runVerifyPass(draft: ParsedIntake, transcript: string): Promise<P
     response = await client.messages.create({
       model: VERIFY_MODEL,
       max_tokens: 8000,
-      temperature: 0,
+      temperature: 0.2,
       system: VERIFY_SYSTEM_PROMPT,
       tools: [
         {
