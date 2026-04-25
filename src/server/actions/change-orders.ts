@@ -98,11 +98,13 @@ export async function sendChangeOrderAction(
 
   const supabase = await createClient();
 
-  // Load the change order with project OR job context
+  // Load the change order with project OR job context. Pull phone too
+  // so Slice 7 can fire SMS alongside the email — the urgency lives in
+  // the SMS, not the inbox.
   const { data: co, error: coErr } = await supabase
     .from('change_orders')
     .select(
-      '*, projects:project_id (id, name, customer_id, customers:customer_id (name, email)), jobs:job_id (id, customer_id, customers:customer_id (name, email))',
+      '*, projects:project_id (id, name, customer_id, customers:customer_id (name, email, phone)), jobs:job_id (id, customer_id, customers:customer_id (name, email, phone))',
     )
     .eq('id', changeOrderId)
     .single();
@@ -123,7 +125,9 @@ export async function sendChangeOrderAction(
   const projectId = (project?.id as string) ?? (job?.id as string) ?? '';
   const customerRaw = (project?.customers ?? job?.customers) as Record<string, unknown> | null;
   const customerEmail = customerRaw?.email as string | null;
+  const customerPhone = customerRaw?.phone as string | null;
   const customerName = (customerRaw?.name as string) ?? 'Customer';
+  const customerFirstName = customerName.split(/\s+/)[0] || 'there';
 
   // Update status
   const { error: updateErr } = await supabase
@@ -161,6 +165,31 @@ export async function sendChangeOrderAction(
       subject: `Change order for ${projectName} — ${tenant.name}`,
       html,
     });
+  }
+
+  // Slice 7 — SMS urgency. Email lands in an inbox; the SMS is what
+  // pulls a homeowner's attention so the floor crew can start Friday.
+  // Best-effort: failures here don't break the flow.
+  if (customerPhone) {
+    const approvalCode = coData.approval_code as string;
+    const approveUrl = `https://app.heyhenry.io/approve/${approvalCode}`;
+    const costCents = coData.cost_impact_cents as number;
+    const costDelta =
+      costCents >= 0 ? `+${formatCurrency(costCents)}` : `-${formatCurrency(Math.abs(costCents))}`;
+    // Plain-language, ≤ 160 chars where possible — Twilio splits longer
+    // messages into segments and they cost more.
+    const body = `Hi ${customerFirstName}, quick approval needed on ${projectName}: ${coData.title} (${costDelta}). Tap to review: ${approveUrl}`;
+    try {
+      await sendSms({
+        tenantId: tenant.id,
+        to: customerPhone,
+        body,
+        relatedType: 'job',
+        relatedId: projectId,
+      });
+    } catch (err) {
+      console.error('[change-order] sms send failed:', err);
+    }
   }
 
   // Add portal update

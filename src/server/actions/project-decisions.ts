@@ -14,6 +14,7 @@ import { randomBytes } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { sendSms } from '@/lib/twilio/client';
 
 export type DecisionActionResult = { ok: true } | { ok: false; error: string };
 
@@ -38,27 +39,58 @@ export async function createDecisionAction(input: {
 
   const supabase = await createClient();
 
-  // Need tenant_id to satisfy NOT NULL — read it off the project row.
+  // Need tenant_id + customer phone in one trip — RLS lets us join
+  // through to the customer row without a separate query.
   const { data: project, error: projErr } = await supabase
     .from('projects')
-    .select('tenant_id')
+    .select(
+      `tenant_id, name,
+       customers:customer_id (name, email, phone)`,
+    )
     .eq('id', input.projectId)
     .single();
   if (projErr || !project) {
     return { ok: false, error: projErr?.message ?? 'Project not found.' };
   }
 
+  const p = project as Record<string, unknown>;
+  const tenantId = p.tenant_id as string;
+  const projectName = (p.name as string) ?? 'your project';
+  const customer = (p.customers as Record<string, unknown> | null) ?? null;
+  const customerPhone = (customer?.phone as string | null) ?? null;
+  const customerFirst = String(customer?.name ?? '').split(/\s+/)[0] || 'there';
+
+  const approvalCode = generateApprovalCode();
+
   const { error } = await supabase.from('project_decisions').insert({
-    tenant_id: (project as Record<string, unknown>).tenant_id,
+    tenant_id: tenantId,
     project_id: input.projectId,
     label,
     description: input.description?.trim() || null,
     due_date: input.dueDate || null,
     status: 'pending',
     photo_refs: input.photoRefs ?? [],
-    approval_code: generateApprovalCode(),
+    approval_code: approvalCode,
   });
   if (error) return { ok: false, error: error.message };
+
+  // Slice 7 — SMS urgency on creation. Best-effort; a failed send
+  // doesn't roll back the decision.
+  if (customerPhone) {
+    const approveUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io'}/decide/${approvalCode}`;
+    const body = `Hi ${customerFirst}, ${projectName}: ${label}. Tap to respond — Approve, Decline, or Ask: ${approveUrl}`;
+    try {
+      await sendSms({
+        tenantId,
+        to: customerPhone,
+        body,
+        relatedType: 'job',
+        relatedId: input.projectId,
+      });
+    } catch (err) {
+      console.error('[decision] sms send failed:', err);
+    }
+  }
 
   revalidatePath(`/projects/${input.projectId}`);
   return { ok: true };
