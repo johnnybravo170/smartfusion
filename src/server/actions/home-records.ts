@@ -507,3 +507,139 @@ export async function generateHomeRecordZipAction(
   revalidatePath(`/projects/${projectId}`);
   return { ok: true, signedUrl: signed?.signedUrl ?? '' };
 }
+
+/**
+ * Email the Home Record to the homeowner. Slice 6d.
+ *
+ * Sends a single branded email containing whichever of the three
+ * delivery formats are ready: the permanent web link (always),
+ * Download PDF (if pdf_path is set), Download ZIP (if zip_path is
+ * set). Updates `home_records.emailed_at` and `emailed_to` on
+ * success. Re-running re-sends and re-stamps.
+ *
+ * The email goes "From: <Business Name> via HeyHenry <noreply@…>"
+ * with Reply-To set to the tenant's contact email — same envelope as
+ * quote/CO emails (sendEmail handles it via tenantId).
+ */
+export type HomeRecordEmailActionResult =
+  | { ok: true; emailedTo: string }
+  | { ok: false; error: string };
+
+export async function emailHomeRecordAction(
+  projectId: string,
+  options?: { overrideEmail?: string },
+): Promise<HomeRecordEmailActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+  const { data: row } = await supabase
+    .from('home_records')
+    .select('id, slug, snapshot, pdf_path, zip_path')
+    .eq('project_id', projectId)
+    .maybeSingle();
+  if (!row) return { ok: false, error: 'Generate the Home Record first.' };
+
+  const r = row as Record<string, unknown>;
+  const snapshot = r.snapshot as HomeRecordSnapshotV1;
+  const slug = r.slug as string;
+  const homeRecordId = r.id as string;
+  const hasPdf = Boolean(r.pdf_path);
+  const hasZip = Boolean(r.zip_path);
+
+  const to = (options?.overrideEmail ?? snapshot.customer.email ?? '').trim();
+  if (!to) {
+    return {
+      ok: false,
+      error:
+        'No homeowner email on file. Add one to the contact record (or pass an override) and try again.',
+    };
+  }
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io';
+  const webUrl = `${baseUrl}/home-record/${slug}`;
+  const pdfUrl = `${baseUrl}/home-record/${slug}/download`;
+  const zipUrl = `${baseUrl}/home-record/${slug}/download-zip`;
+
+  const customerFirstName = (snapshot.customer.name ?? '').split(/\s+/)[0] || 'there';
+  const projectName = snapshot.project.name;
+  const contractor = snapshot.contractor.name;
+
+  const subject = `Your Home Record for ${projectName}`;
+
+  // Plain HTML — minimal styling, deliverability-friendly. Renders
+  // cleanly in Gmail / Apple Mail / Outlook without extra dependencies.
+  const linkBlocks: string[] = [];
+  linkBlocks.push(
+    `<p><a href="${webUrl}" style="display:inline-block;padding:10px 16px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open your Home Record</a></p>`,
+  );
+  if (hasPdf) {
+    linkBlocks.push(
+      `<p style="margin:6px 0;"><a href="${pdfUrl}" style="color:#2563eb;text-decoration:underline;">Download the PDF version →</a></p>`,
+    );
+  }
+  if (hasZip) {
+    linkBlocks.push(
+      `<p style="margin:6px 0;"><a href="${zipUrl}" style="color:#2563eb;text-decoration:underline;">Download everything as a ZIP archive →</a></p>`,
+    );
+  }
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#222;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+          <tr>
+            <td style="padding:28px 28px 20px;">
+              <p style="margin:0 0 12px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#888;">Home Record</p>
+              <h1 style="margin:0 0 8px;font-size:22px;line-height:1.25;color:#111;">${escapeHtml(projectName)}</h1>
+              <p style="margin:0;color:#666;font-size:14px;">From ${escapeHtml(contractor)}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px 24px;">
+              <p style="margin:0 0 14px;font-size:15px;line-height:1.5;color:#222;">Hi ${escapeHtml(customerFirstName)},</p>
+              <p style="margin:0 0 14px;font-size:15px;line-height:1.5;color:#222;">Your Home Record is ready — a permanent record of your project. Phases, photos (including everything we photographed behind the walls), paint codes, fixtures, warranties, and the change orders we worked through together.</p>
+              <p style="margin:0 0 18px;font-size:15px;line-height:1.5;color:#222;">Save it somewhere safe — you'll want it for repairs, insurance, future renovations, or whenever you sell.</p>
+              ${linkBlocks.join('\n')}
+              <p style="margin:18px 0 0;font-size:13px;line-height:1.5;color:#888;">The web link works forever and stays current. The PDF and ZIP are dated snapshots — feel free to download them now and tuck them somewhere offline.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 28px 24px;border-top:1px solid #eee;">
+              <p style="margin:0;font-size:12px;color:#888;">Thanks again — ${escapeHtml(contractor)}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`.trim();
+
+  const { sendEmail } = await import('@/lib/email/send');
+  const result = await sendEmail({ to, subject, html, tenantId: tenant.id });
+  if (!result.ok) {
+    return { ok: false, error: result.error ?? 'Email send failed.' };
+  }
+
+  await supabase
+    .from('home_records')
+    .update({ emailed_at: new Date().toISOString(), emailed_to: to })
+    .eq('id', homeRecordId);
+
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true, emailedTo: to };
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}

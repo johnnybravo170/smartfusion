@@ -1,6 +1,7 @@
 import { DocumentList } from '@/components/features/portal/document-list';
 import { DocumentUpload } from '@/components/features/portal/document-upload';
 import { HomeRecordButton } from '@/components/features/portal/home-record-button';
+import { HomeRecordEmailButton } from '@/components/features/portal/home-record-email-button';
 import { getHomeRecordForProject } from '@/lib/db/queries/home-records';
 import { listDocumentsForProject } from '@/lib/db/queries/project-documents';
 
@@ -47,6 +48,30 @@ export default async function DocumentsTabServer({ projectId }: { projectId: str
             hasZip={Boolean(homeRecord?.zip_path)}
           />
         </div>
+
+        {homeRecord ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">
+            <span>
+              {homeRecord.emailed_at
+                ? `Emailed to ${homeRecord.emailed_to ?? 'homeowner'} on ${new Date(
+                    homeRecord.emailed_at,
+                  ).toLocaleDateString('en-CA', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}`
+                : 'Not yet emailed to the homeowner.'}
+            </span>
+            <HomeRecordEmailButton
+              projectId={projectId}
+              defaultEmail={homeRecord.snapshot.customer.email ?? null}
+              hasPdf={Boolean(homeRecord.pdf_path)}
+              hasZip={Boolean(homeRecord.zip_path)}
+              emailedAt={homeRecord.emailed_at}
+              emailedTo={homeRecord.emailed_to}
+            />
+          </div>
+        ) : null}
       </div>
 
       <DocumentUpload projectId={projectId} />

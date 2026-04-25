@@ -94,6 +94,7 @@ export type HomeRecordRow = {
   pdf_path: string | null;
   zip_path: string | null;
   emailed_at: string | null;
+  emailed_to: string | null;
 };
 
 /**
@@ -105,7 +106,9 @@ export const getHomeRecordForProject = cache(
     const supabase = await createClient();
     const { data } = await supabase
       .from('home_records')
-      .select('id, project_id, slug, snapshot, generated_at, pdf_path, zip_path, emailed_at')
+      .select(
+        'id, project_id, slug, snapshot, generated_at, pdf_path, zip_path, emailed_at, emailed_to',
+      )
       .eq('project_id', projectId)
       .maybeSingle();
     return (data as unknown as HomeRecordRow) ?? null;
