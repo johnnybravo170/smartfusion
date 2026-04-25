@@ -34,6 +34,68 @@ function generateSlug(): string {
   return randomBytes(12).toString('base64url');
 }
 
+/**
+ * AI cluster #3 — auto-curate "best photos" for the Home Record.
+ *
+ * Caps each portal_tag bucket to CURATION_LIMIT_PER_TAG by
+ * ai_showcase_score (descending, with taken_at as a stable tie-break).
+ * Photos pinned to a phase are ALWAYS kept regardless of score —
+ * those are operator-intentional documentation, not portfolio shots.
+ *
+ * Net effect: a project with 400 photos shrinks to ≤ 6 × 12 = 72
+ * portal-tagged photos plus all phase-pinned ones, which keeps the
+ * PDF and ZIP digestible without losing the operator-curated story.
+ */
+const CURATION_LIMIT_PER_TAG = 12;
+
+type PhotoCuration = HomeRecordSnapshotV1['photos'][number];
+type RawPhotoRow = Record<string, unknown>;
+
+function curatePhotos(rows: RawPhotoRow[]): PhotoCuration[] {
+  // Normalize each row to the snapshot shape first.
+  const normalized: Array<PhotoCuration & { _score: number }> = rows.map((row) => ({
+    id: row.id as string,
+    storage_path: row.storage_path as string,
+    caption: (row.caption as string | null) ?? null,
+    portal_tags: ((row.portal_tags as string[] | null) ?? []) as PortalPhotoTag[],
+    taken_at: (row.taken_at as string | null) ?? null,
+    phase_id: (row.phase_id as string | null) ?? null,
+    _score: typeof row.ai_showcase_score === 'number' ? (row.ai_showcase_score as number) : 0,
+  }));
+
+  // Always keep phase-pinned photos. We'll union them with the
+  // tag-curated set at the end.
+  const phasePinnedIds = new Set(normalized.filter((p) => p.phase_id != null).map((p) => p.id));
+
+  // Bucket + cap per tag. A photo with multiple tags can survive via
+  // any one of them; we union the IDs.
+  const survivingIds = new Set<string>(phasePinnedIds);
+  const buckets = new Map<PortalPhotoTag, typeof normalized>();
+  for (const p of normalized) {
+    for (const tag of p.portal_tags) {
+      const list = buckets.get(tag) ?? [];
+      list.push(p);
+      buckets.set(tag, list);
+    }
+  }
+  for (const [, list] of buckets.entries()) {
+    list.sort((a, b) => {
+      // Higher score first; ties broken by recent-taken-at first.
+      if (b._score !== a._score) return b._score - a._score;
+      const ta = a.taken_at ? Date.parse(a.taken_at) : 0;
+      const tb = b.taken_at ? Date.parse(b.taken_at) : 0;
+      return tb - ta;
+    });
+    for (const p of list.slice(0, CURATION_LIMIT_PER_TAG)) {
+      survivingIds.add(p.id);
+    }
+  }
+
+  // Return the surviving photos, preserving the original order
+  // (taken_at ascending) so the storyline reads chronologically.
+  return normalized.filter((p) => survivingIds.has(p.id)).map(({ _score, ...rest }) => rest);
+}
+
 export async function generateHomeRecordAction(projectId: string): Promise<HomeRecordActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
@@ -80,9 +142,14 @@ export async function generateHomeRecordAction(projectId: string): Promise<HomeR
   // Photos — homeowner-visible AND either tagged for the gallery or
   // pinned to a phase. Phase-only photos still need to ride along so
   // the Home Record timeline can render them.
+  //
+  // Auto-curate: pull ai_showcase_score so we can rank within each
+  // portal_tag bucket and cap to CURATION_LIMIT_PER_TAG below. Keeps
+  // the package digestible without losing the best shots; phase-
+  // pinned photos always pass through (they're operator-intentional).
   const { data: photoRows } = await supabase
     .from('photos')
-    .select('id, storage_path, caption, portal_tags, taken_at, phase_id')
+    .select('id, storage_path, caption, portal_tags, taken_at, phase_id, ai_showcase_score')
     .eq('project_id', projectId)
     .eq('client_visible', true)
     .is('deleted_at', null)
@@ -160,17 +227,7 @@ export async function generateHomeRecordAction(projectId: string): Promise<HomeR
         actual_cost_cents: (r.actual_cost_cents as number | null) ?? null,
       };
     }),
-    photos: (photoRows ?? []).map((row) => {
-      const r = row as Record<string, unknown>;
-      return {
-        id: r.id as string,
-        storage_path: r.storage_path as string,
-        caption: (r.caption as string | null) ?? null,
-        portal_tags: ((r.portal_tags as string[] | null) ?? []) as PortalPhotoTag[],
-        taken_at: (r.taken_at as string | null) ?? null,
-        phase_id: (r.phase_id as string | null) ?? null,
-      };
-    }),
+    photos: curatePhotos(photoRows ?? []),
     documents: (docRows ?? []).map((row) => {
       const r = row as Record<string, unknown>;
       return {
