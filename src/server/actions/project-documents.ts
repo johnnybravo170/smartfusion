@@ -45,6 +45,8 @@ export async function uploadProjectDocumentAction(
   const notes = String(formData.get('notes') ?? '').trim() || null;
   const expiresAtRaw = String(formData.get('expires_at') ?? '').trim();
   const expiresAt = expiresAtRaw && /^\d{4}-\d{2}-\d{2}$/.test(expiresAtRaw) ? expiresAtRaw : null;
+  const supplierIdRaw = String(formData.get('supplier_id') ?? '').trim();
+  const supplierId = supplierIdRaw || null;
 
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
@@ -84,6 +86,7 @@ export async function uploadProjectDocumentAction(
       bytes: file.size,
       notes,
       expires_at: expiresAt,
+      supplier_id: supplierId,
     })
     .select('id')
     .single();

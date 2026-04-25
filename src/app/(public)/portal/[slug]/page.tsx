@@ -10,7 +10,9 @@ import {
   PortalPhotoGallery,
 } from '@/components/features/portal/portal-photo-gallery';
 import { PortalSelections } from '@/components/features/portal/portal-selections';
+import { TradeContactsList } from '@/components/features/portal/trade-contacts-list';
 import { PublicViewLogger } from '@/components/features/public/public-view-logger';
+import type { ProjectSubContact } from '@/lib/db/queries/project-documents';
 import type { ProjectPhase } from '@/lib/db/queries/project-phases';
 import { groupSelectionsByRoom, type ProjectSelection } from '@/lib/db/queries/project-selections';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -191,6 +193,32 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
         photo_urls: photoUrls,
       };
     });
+
+  // Trade contacts — distinct supplier_ids on this project's docs.
+  const { data: subDocRows } = await admin
+    .from('project_documents')
+    .select('supplier_id')
+    .eq('project_id', projectId)
+    .is('deleted_at', null)
+    .not('supplier_id', 'is', null);
+  const subIds = Array.from(
+    new Set(
+      (subDocRows ?? [])
+        .map((r) => (r as Record<string, unknown>).supplier_id as string | null)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  let tradeContacts: ProjectSubContact[] = [];
+  if (subIds.length > 0) {
+    const { data: subContacts } = await admin
+      .from('customers')
+      .select('id, name, kind, email, phone')
+      .in('id', subIds)
+      .is('deleted_at', null);
+    tradeContacts = ((subContacts ?? []) as unknown as ProjectSubContact[])
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
 
   // Slice 5 — documents & warranties (homeowner-visible only).
   const { data: docRows } = await admin
@@ -462,6 +490,13 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
       {portalDocuments.length > 0 ? (
         <div className="mb-8">
           <PortalDocuments documents={portalDocuments} />
+        </div>
+      ) : null}
+
+      {/* Trade contacts — sub-trades + vendors who worked on the job */}
+      {tradeContacts.length > 0 ? (
+        <div className="mb-8">
+          <TradeContactsList contacts={tradeContacts} heading="Trade contacts" />
         </div>
       ) : null}
 

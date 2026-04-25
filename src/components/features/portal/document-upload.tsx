@@ -25,11 +25,19 @@ import { uploadProjectDocumentAction } from '@/server/actions/project-documents'
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
-export function DocumentUpload({ projectId }: { projectId: string }) {
+export function DocumentUpload({
+  projectId,
+  suppliers = [],
+}: {
+  projectId: string;
+  /** Optional sub-trade / vendor contacts available for linking. */
+  suppliers?: Array<{ id: string; name: string; kind: string }>;
+}) {
   const [type, setType] = useState<DocumentType>('warranty');
   const [title, setTitle] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [notes, setNotes] = useState('');
+  const [supplierId, setSupplierId] = useState('');
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -57,6 +65,7 @@ export function DocumentUpload({ projectId }: { projectId: string }) {
     fd.set('title', title || file.name);
     fd.set('expires_at', expiresAt);
     fd.set('notes', notes);
+    fd.set('supplier_id', supplierId);
 
     startTransition(async () => {
       const res = await uploadProjectDocumentAction(fd);
@@ -133,6 +142,31 @@ export function DocumentUpload({ projectId }: { projectId: string }) {
           />
         </div>
       </div>
+
+      {suppliers.length > 0 ? (
+        <div>
+          <Label htmlFor="doc-supplier">Sub-trade / vendor (optional)</Label>
+          <select
+            id="doc-supplier"
+            value={supplierId}
+            onChange={(e) => setSupplierId(e.target.value)}
+            disabled={pending}
+            className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+          >
+            <option value="">— none —</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+                {s.kind ? ` (${s.kind})` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Linking to a sub-trade adds them to the homeowner&rsquo;s &ldquo;Trade contacts&rdquo;
+            list on the portal.
+          </p>
+        </div>
+      ) : null}
 
       <input
         ref={fileRef}

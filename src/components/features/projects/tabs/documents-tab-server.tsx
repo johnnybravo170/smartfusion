@@ -2,13 +2,20 @@ import { DocumentList } from '@/components/features/portal/document-list';
 import { DocumentUpload } from '@/components/features/portal/document-upload';
 import { HomeRecordButton } from '@/components/features/portal/home-record-button';
 import { HomeRecordEmailButton } from '@/components/features/portal/home-record-email-button';
+import { TradeContactsList } from '@/components/features/portal/trade-contacts-list';
 import { getHomeRecordForProject } from '@/lib/db/queries/home-records';
-import { listDocumentsForProject } from '@/lib/db/queries/project-documents';
+import {
+  listDocumentsForProject,
+  listSubAndVendorContactsForTenant,
+  listSubcontractorsForProject,
+} from '@/lib/db/queries/project-documents';
 
 export default async function DocumentsTabServer({ projectId }: { projectId: string }) {
-  const [documents, homeRecord] = await Promise.all([
+  const [documents, homeRecord, suppliers, projectSubs] = await Promise.all([
     listDocumentsForProject(projectId),
     getHomeRecordForProject(projectId),
+    listSubAndVendorContactsForTenant(),
+    listSubcontractorsForProject(projectId),
   ]);
 
   return (
@@ -74,8 +81,13 @@ export default async function DocumentsTabServer({ projectId }: { projectId: str
         ) : null}
       </div>
 
-      <DocumentUpload projectId={projectId} />
+      <DocumentUpload projectId={projectId} suppliers={suppliers} />
+
       <DocumentList documents={documents} projectId={projectId} />
+
+      {projectSubs.length > 0 ? (
+        <TradeContactsList contacts={projectSubs} heading="Trade contacts on this project" />
+      ) : null}
     </div>
   );
 }
