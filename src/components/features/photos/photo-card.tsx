@@ -32,6 +32,10 @@ import type { PhotoQualityFlags, PhotoWithUrl } from '@/lib/db/queries/photos';
 import { cn } from '@/lib/utils';
 import { type PhotoTag, photoTagLabels } from '@/lib/validators/photo';
 import { acceptAiTagAction } from '@/server/actions/photos';
+import {
+  applyHenryPortalSuggestionAction,
+  enrichPhotoForPortalAction,
+} from '@/server/actions/portal-photos';
 import { PhotoPortalButton } from '../portal/photo-portal-button';
 import { DeletePhotoButton } from './delete-photo-button';
 import { PhotoFavoriteButton } from './photo-favorite-button';
@@ -97,6 +101,46 @@ export function PhotoCard({
   // the weight, so the chip would be noise.
   const showcaseHintVisible = !photo.is_favorite && (photo.ai_showcase_score ?? 0) >= 0.75;
   const showcaseReason = photo.ai_showcase_reason?.trim() ?? '';
+
+  // Henry's portal suggestion appears when:
+  //   - We have suggestions (ai_portal_tags non-empty)
+  //   - Operator hasn't tagged for the portal yet (portal_tags empty)
+  // Otherwise: a small "ask Henry" prompt when neither suggestions nor
+  // portal_tags exist, so the operator can request one with a click.
+  const aiPortalTags = photo.ai_portal_tags ?? [];
+  const portalTags = photo.portal_tags ?? [];
+  const henrySuggestionVisible =
+    photo.project_id && aiPortalTags.length > 0 && portalTags.length === 0;
+  const henryAskVisible =
+    photo.project_id && aiPortalTags.length === 0 && portalTags.length === 0 && !selectMode;
+
+  const applyHenry = () => {
+    if (!photo.project_id) return;
+    startTransition(async () => {
+      const result = await applyHenryPortalSuggestionAction(photo.id, photo.project_id as string);
+      if (result.ok) {
+        toast.success(`Applied Henry's portal tags`);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  };
+  const askHenry = () => {
+    if (!photo.project_id) return;
+    startTransition(async () => {
+      const result = await enrichPhotoForPortalAction(photo.id, photo.project_id as string);
+      if (result.ok) {
+        const count = result.portalTags.length;
+        toast.success(
+          count > 0
+            ? `Henry suggested ${count} tag${count === 1 ? '' : 's'}`
+            : 'Henry had no suggestion',
+        );
+      } else {
+        toast.error(result.error);
+      }
+    });
+  };
 
   const acceptSuggestion = () => {
     startTransition(async () => {
@@ -212,6 +256,31 @@ export function PhotoCard({
             <Sparkles className="size-3" aria-hidden />
             Henry: {photoTagLabels[photo.ai_tag as PhotoTag]}
             <span className="opacity-60">{Math.round(confidence * 100)}%</span>
+          </button>
+        ) : null}
+        {henrySuggestionVisible ? (
+          <button
+            type="button"
+            onClick={applyHenry}
+            disabled={pending}
+            className="flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 shadow-sm transition-colors hover:bg-violet-100 disabled:opacity-50 dark:border-violet-900/50 dark:bg-violet-950 dark:text-violet-300"
+            title={photo.ai_portal_caption ?? "Apply Henry's portal tags"}
+          >
+            <Sparkles className="size-3" aria-hidden />
+            Henry: {aiPortalTags.slice(0, 2).join(', ')}
+            {aiPortalTags.length > 2 ? ` +${aiPortalTags.length - 2}` : ''}
+          </button>
+        ) : null}
+        {henryAskVisible ? (
+          <button
+            type="button"
+            onClick={askHenry}
+            disabled={pending}
+            className="flex items-center gap-1 rounded-md border border-dashed border-violet-200 bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-violet-600 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-violet-50 disabled:opacity-50 dark:border-violet-900/50 dark:hover:bg-violet-950"
+            title="Ask Henry to suggest portal tags"
+          >
+            <Sparkles className="size-3" aria-hidden />
+            Ask Henry
           </button>
         ) : null}
         {showcaseHintVisible ? (

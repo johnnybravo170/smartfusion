@@ -129,3 +129,101 @@ export async function setPhotosClientVisibleBulkAction(
   revalidatePath(`/projects/${projectId}`);
   return { ok: true };
 }
+
+/**
+ * Run Henry's portal-aware enricher on a single photo. Reads the
+ * photo's bytes via signed URL (admin client to bypass RLS), calls
+ * Claude Haiku, and writes the suggestions to ai_portal_tags +
+ * ai_portal_caption. Returns the suggestions so the caller can show
+ * them inline without a refetch.
+ *
+ * Best-effort: returns ok:false with a friendly error if anything
+ * fails, but never persists half-state.
+ */
+export type EnrichPhotoResult =
+  | { ok: true; portalTags: string[]; portalCaption: string }
+  | { ok: false; error: string };
+
+export async function enrichPhotoForPortalAction(
+  photoId: string,
+  projectId: string,
+): Promise<EnrichPhotoResult> {
+  const supabase = await createClient();
+  const { data: row } = await supabase
+    .from('photos')
+    .select('id, storage_path, mime')
+    .eq('id', photoId)
+    .single();
+  if (!row) return { ok: false, error: 'Photo not found.' };
+
+  // Use admin to fetch bytes — RLS would also work via the regular
+  // client but admin keeps the path consistent with how the home
+  // record / PDF embedding pipelines fetch image bytes.
+  const { createAdminClient } = await import('@/lib/supabase/admin');
+  const admin = createAdminClient();
+  const path = (row as Record<string, unknown>).storage_path as string;
+  const { data: signed } = await admin.storage.from('photos').createSignedUrl(path, 600);
+  if (!signed?.signedUrl) return { ok: false, error: 'Could not access photo.' };
+  const res = await fetch(signed.signedUrl);
+  if (!res.ok) return { ok: false, error: 'Could not download photo.' };
+  const bytes = Buffer.from(await res.arrayBuffer());
+  const mime = ((row as Record<string, unknown>).mime as string | null) ?? 'image/jpeg';
+
+  const { enrichPhotoForPortal } = await import('@/lib/photos/ai-portal-enricher');
+  let suggestion: { portalTags: string[]; portalCaption: string };
+  try {
+    const result = await enrichPhotoForPortal({ imageBytes: bytes, mimeType: mime });
+    suggestion = { portalTags: result.portalTags, portalCaption: result.portalCaption };
+  } catch (err) {
+    return { ok: false, error: `Henry: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
+  const { error: updErr } = await supabase
+    .from('photos')
+    .update({
+      ai_portal_tags: suggestion.portalTags,
+      ai_portal_caption: suggestion.portalCaption || null,
+    })
+    .eq('id', photoId);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true, ...suggestion };
+}
+
+/**
+ * Promote Henry's suggestions into the canonical portal_tags + caption.
+ * Used by the "Apply Henry's tags" button on the photo card. Doesn't
+ * touch the existing internal `tag` (operator-controlled) or
+ * `client_visible` (defaults to true on first publish).
+ */
+export async function applyHenryPortalSuggestionAction(
+  photoId: string,
+  projectId: string,
+): Promise<PortalPhotoActionResult> {
+  const supabase = await createClient();
+  const { data: row } = await supabase
+    .from('photos')
+    .select('ai_portal_tags, ai_portal_caption, caption')
+    .eq('id', photoId)
+    .single();
+  if (!row) return { ok: false, error: 'Photo not found.' };
+  const r = row as Record<string, unknown>;
+  const aiTags = ((r.ai_portal_tags as string[] | null) ?? []) as string[];
+  const aiCaption = (r.ai_portal_caption as string | null) ?? null;
+  const existingCaption = (r.caption as string | null) ?? null;
+
+  const patch: Record<string, unknown> = {
+    portal_tags: sanitizePortalPhotoTags(aiTags),
+  };
+  // Only fill caption if there isn't one already — never overwrite the
+  // operator's words.
+  if (aiCaption && !existingCaption) {
+    patch.caption = aiCaption;
+  }
+
+  const { error } = await supabase.from('photos').update(patch).eq('id', photoId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true };
+}
