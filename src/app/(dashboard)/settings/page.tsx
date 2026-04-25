@@ -1,6 +1,7 @@
 import {
   Building2,
   ChevronRight,
+  CreditCard,
   FileText,
   HardHat,
   Layers,
@@ -144,6 +145,25 @@ export default function SettingsPage() {
                   <CardTitle>Business profile</CardTitle>
                   <CardDescription>
                     Logo, contact info, socials, and how you sign off on emails.
+                  </CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Card>
+      </Link>
+
+      <Link href="/settings/billing" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CreditCard className="size-5" />
+                <div>
+                  <CardTitle>Billing</CardTitle>
+                  <CardDescription>
+                    Plan, payment method, and self-serve cancellation.
                   </CardDescription>
                 </div>
               </div>

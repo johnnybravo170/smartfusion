@@ -113,7 +113,10 @@ export async function POST(request: Request) {
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
     case 'customer.subscription.deleted': {
-      await handleSubscriptionStateChange(event.data.object);
+      // .deleted fires at period end after a self-serve cancel
+      // (cancel_at_period_end=true). We mirror status=canceled and clear
+      // the subscription id so a fresh signup later doesn't collide.
+      await handleSubscriptionStateChange(event.data.object, event.type);
       break;
     }
 
@@ -151,9 +154,14 @@ async function handleSubscriptionCheckoutCompleted(
   await syncSubscriptionFromId(subId, tenantId);
 }
 
-async function handleSubscriptionStateChange(subscription: Stripe.Subscription): Promise<void> {
+async function handleSubscriptionStateChange(
+  subscription: Stripe.Subscription,
+  eventType?: string,
+): Promise<void> {
   const tenantId = subscription.metadata?.tenant_id ?? null;
-  await applySubscriptionToTenant(subscription, tenantId);
+  await applySubscriptionToTenant(subscription, tenantId, {
+    clearSubscriptionId: eventType === 'customer.subscription.deleted',
+  });
 }
 
 async function syncSubscriptionFromId(
@@ -169,6 +177,7 @@ async function syncSubscriptionFromId(
 async function applySubscriptionToTenant(
   subscription: Stripe.Subscription,
   tenantIdHint: string | null,
+  opts: { clearSubscriptionId?: boolean } = {},
 ): Promise<void> {
   const admin = createAdminClient();
 
@@ -200,7 +209,7 @@ async function applySubscriptionToTenant(
     : null;
 
   const update: Record<string, unknown> = {
-    stripe_subscription_id: subscription.id,
+    stripe_subscription_id: opts.clearSubscriptionId ? null : subscription.id,
     subscription_status: status,
     current_period_end: currentPeriodEnd,
     trial_ends_at: trialEnd,

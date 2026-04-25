@@ -32,7 +32,8 @@ export type EmailTemplateKey =
   | 'job_booking'
   | 'lead_notification'
   | 'referral_invite'
-  | 'pulse_update';
+  | 'pulse_update'
+  | 'refund_confirmation';
 
 const LOGO_SIGN_SECONDS = 60 * 60 * 24 * 30; // 30 days
 

@@ -162,6 +162,13 @@ function SignupForm() {
           >
             Already have an account? Sign in
           </Link>
+          <p className="w-full text-center text-xs text-muted-foreground">
+            14-day free trial, cancel anytime — see{' '}
+            <Link href="/refund-policy" className="underline underline-offset-2">
+              refund policy
+            </Link>
+            .
+          </p>
         </CardFooter>
       </form>
     </Card>

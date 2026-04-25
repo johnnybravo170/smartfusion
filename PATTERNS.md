@@ -36,8 +36,9 @@ Soft-delete confirmations follow one shape. When you change the wording, button 
 
 - `src/components/features/customers/delete-customer-button.tsx`
 - `src/components/features/projects/delete-project-button.tsx`
+- `src/components/features/billing/cancel-subscription-button.tsx` — async preview-on-open variant; shows the prorated refund amount + access end date inside the dialog before the destructive button is enabled. No "are you sure / why are you leaving" upsell — locked policy.
 
-Both use shadcn `AlertDialog`, wrap the action in a transition, handle `NEXT_REDIRECT`, and surface errors via toast.
+All three use shadcn `AlertDialog`, wrap the action in a transition, and surface errors via toast. Delete variants additionally handle `NEXT_REDIRECT`.
 
 ---
 
