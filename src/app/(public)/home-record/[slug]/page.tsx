@@ -164,7 +164,8 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
           </p>
         ) : null}
         <p className="mt-3 text-xs text-muted-foreground">
-          Prepared by {snapshot.contractor.name} • Generated {formatDate(snapshot.generated_at)}
+          {logoUrl ? '' : `Prepared by ${snapshot.contractor.name} • `}
+          Generated {formatDate(snapshot.generated_at)}
         </p>
         {hasPdf || hasZip ? (
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">

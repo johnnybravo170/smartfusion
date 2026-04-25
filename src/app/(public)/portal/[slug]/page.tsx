@@ -409,8 +409,9 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
             alt={businessName}
             className="mx-auto mb-3 max-h-12 w-auto object-contain"
           />
-        ) : null}
-        <p className="text-sm font-medium text-muted-foreground">{businessName}</p>
+        ) : (
+          <p className="text-sm font-medium text-muted-foreground">{businessName}</p>
+        )}
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">{p.name as string}</h1>
         {customerName ? <p className="mt-1 text-sm text-muted-foreground">{customerName}</p> : null}
       </header>
