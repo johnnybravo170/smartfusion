@@ -1,10 +1,12 @@
 'use client';
 
 /**
- * Green dismissible card shown at the top of the dashboard the first
- * time a customer views one of this operator's estimates. Persists
- * across refreshes until the operator clicks dismiss or a newer
- * first-view event arrives (older acknowledged event → drops off).
+ * Green dismissible card shown at the top of the dashboard when a customer
+ * either opens (`viewed`) or approves (`approved`) one of this operator's
+ * estimates. Approval gets a stronger treatment with an ACCEPTED badge.
+ *
+ * Persists across refreshes until dismissed or a newer event for a
+ * different project arrives.
  */
 
 import { PartyPopper, X } from 'lucide-react';
@@ -45,22 +47,38 @@ export function EstimateCelebrationCard({ celebration }: { celebration: Estimate
   }
 
   const who = celebration.customerName ?? 'A customer';
+  const isApproved = celebration.kind === 'approved';
+
+  // Approved gets a stronger emerald treatment with an ACCEPTED badge;
+  // viewed keeps the original lighter green.
+  const wrapperClass = isApproved
+    ? 'flex items-start gap-3 rounded-lg border-2 border-emerald-500 bg-emerald-100 p-4 dark:border-emerald-600 dark:bg-emerald-950/60'
+    : 'flex items-start gap-3 rounded-lg border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/40';
+
+  const headline = isApproved
+    ? `${who} accepted ${celebration.projectName}`
+    : `${who} just opened your estimate`;
 
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/40">
+    <div className={wrapperClass}>
       <div className="flex size-9 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
         <PartyPopper className="size-5" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-emerald-950 dark:text-emerald-100">
-          {who} just opened your estimate
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {isApproved ? (
+            <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-white">
+              Accepted
+            </span>
+          ) : null}
+          <p className="font-medium text-emerald-950 dark:text-emerald-100">{headline}</p>
+        </div>
         <p className="mt-0.5 text-sm text-emerald-800 dark:text-emerald-300">
           <Link
             href={`/projects/${celebration.projectId}?tab=estimate`}
             className="underline underline-offset-2 hover:no-underline"
           >
-            {celebration.projectName}
+            {isApproved ? 'Open the project' : celebration.projectName}
           </Link>{' '}
           · {relativeTime(celebration.viewedAt)}
         </p>

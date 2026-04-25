@@ -33,7 +33,8 @@ export type EmailTemplateKey =
   | 'lead_notification'
   | 'referral_invite'
   | 'pulse_update'
-  | 'refund_confirmation';
+  | 'refund_confirmation'
+  | 'estimate_accepted_notification';
 
 const LOGO_SIGN_SECONDS = 60 * 60 * 24 * 30; // 30 days
 

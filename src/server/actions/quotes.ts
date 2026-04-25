@@ -908,6 +908,7 @@ export async function approveQuotePublicAction(
         const { sendEmail } = await import('@/lib/email/send');
         const { quoteResponseEmailHtml } = await import('@/lib/email/templates/quote-response');
 
+        // MUST be app.heyhenry.io (not heyhenry.io — that's the marketing site).
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io';
 
         await sendEmail({
@@ -1018,6 +1019,7 @@ export async function declineQuotePublicAction(
         const { sendEmail } = await import('@/lib/email/send');
         const { quoteResponseEmailHtml } = await import('@/lib/email/templates/quote-response');
 
+        // MUST be app.heyhenry.io (not heyhenry.io — that's the marketing site).
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.heyhenry.io';
 
         await sendEmail({

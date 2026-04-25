@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getEmailBrandingForTenant } from '@/lib/email/branding';
 import { sendEmail } from '@/lib/email/send';
+import { estimateAcceptedEmailHtml } from '@/lib/email/templates/estimate-accepted-notification';
 import { estimateApprovalEmailHtml } from '@/lib/email/templates/estimate-approval';
 import {
   estimateViewedEmailHtml,
@@ -228,6 +229,17 @@ export async function approveEstimateAction(
     actor: 'customer',
   });
 
+  // Notify the operator who sent the estimate. Best-effort — failures
+  // don't block the customer-facing approval response.
+  notifyOperatorOfApproval({
+    admin,
+    tenantId: p.tenant_id as string,
+    projectId: p.id as string,
+    projectName: p.name as string,
+  }).catch((err) => {
+    console.warn('Failed to notify operator of estimate approval:', err);
+  });
+
   // Henry suggestion: seed tasks from estimate scope buckets.
   const { onEstimateApproved } = await import('@/server/ai/triggers');
   await onEstimateApproved(p.id as string);
@@ -394,6 +406,7 @@ async function notifyOperatorOfFirstView(params: {
     : (customerRaw?.name ?? null);
   const businessName = (tenant?.name as string | undefined) ?? 'Your team';
 
+  // MUST be app.heyhenry.io (not heyhenry.io — that's the marketing site).
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.heyhenry.io';
   const projectUrl = `${appUrl}/projects/${projectId}?tab=estimate`;
 
@@ -403,6 +416,70 @@ async function notifyOperatorOfFirstView(params: {
     to: operatorEmail,
     subject: `🎉 ${who} just opened your estimate`,
     html: estimateViewedEmailHtml({
+      customerName,
+      projectName,
+      projectUrl,
+      businessName,
+    }),
+  });
+}
+
+/**
+ * Email the operator who sent the estimate when the customer approves it.
+ * Mirrors `notifyOperatorOfFirstView` — same actor/email lookup chain,
+ * different subject + template.
+ */
+async function notifyOperatorOfApproval(params: {
+  admin: ReturnType<typeof createAdminClient>;
+  tenantId: string;
+  projectId: string;
+  projectName: string;
+}): Promise<void> {
+  const { admin, tenantId, projectId, projectName } = params;
+
+  const { data: sentEvent } = await admin
+    .from('project_events')
+    .select('actor')
+    .eq('project_id', projectId)
+    .eq('kind', 'estimate_sent')
+    .order('occurred_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const actorMemberId = (sentEvent?.actor as string | null) ?? null;
+  if (!actorMemberId) return;
+
+  const { data: member } = await admin
+    .from('tenant_members')
+    .select('user_id')
+    .eq('id', actorMemberId)
+    .maybeSingle();
+  if (!member?.user_id) return;
+
+  const { data: authUser } = await admin.auth.admin.getUserById(member.user_id as string);
+  const operatorEmail = authUser?.user?.email;
+  if (!operatorEmail) return;
+
+  const [{ data: projectFull }, { data: tenant }] = await Promise.all([
+    admin.from('projects').select('customers:customer_id (name)').eq('id', projectId).maybeSingle(),
+    admin.from('tenants').select('name').eq('id', tenantId).maybeSingle(),
+  ]);
+  const customerRaw = projectFull?.customers as { name?: string } | { name?: string }[] | null;
+  const customerName = Array.isArray(customerRaw)
+    ? (customerRaw[0]?.name ?? null)
+    : (customerRaw?.name ?? null);
+  const businessName = (tenant?.name as string | undefined) ?? 'Your team';
+
+  // MUST be app.heyhenry.io (not heyhenry.io — that's the marketing site).
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.heyhenry.io';
+  const projectUrl = `${appUrl}/projects/${projectId}?tab=estimate`;
+
+  const who = customerName ?? 'Your customer';
+  await sendEmail({
+    tenantId,
+    to: operatorEmail,
+    subject: `🎉 ${who} approved your estimate!`,
+    html: estimateAcceptedEmailHtml({
       customerName,
       projectName,
       projectUrl,
