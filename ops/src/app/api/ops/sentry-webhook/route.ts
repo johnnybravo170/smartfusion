@@ -127,8 +127,18 @@ function normalise(payload: SentryWebhookPayload, resource: string | null): Norm
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const signature = req.headers.get('sentry-hook-signature');
+  const resourceDbg = req.headers.get('sentry-hook-resource');
+
+  // Temporary diagnostic — first wired Sentry test fires have failed and we
+  // need the actual headers/body shape to fix the parser. Strip after.
+  console.log('[sentry-webhook] resource=%s sig?=%s body_len=%d body_preview=%s',
+    resourceDbg,
+    signature ? 'yes' : 'no',
+    rawBody.length,
+    rawBody.slice(0, 500));
 
   if (!verifySignature(rawBody, signature, env.sentryWebhookSecret)) {
+    console.log('[sentry-webhook] FAIL: invalid signature');
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
   }
 
@@ -146,6 +156,8 @@ export async function POST(req: NextRequest) {
 
   const n = normalise(payload, resource);
   if (!n) {
+    console.log('[sentry-webhook] FAIL: normalise returned null. action=%s data_keys=%s',
+      payload.action, Object.keys(payload.data ?? {}).join(','));
     return NextResponse.json({ error: 'No issue/event in payload' }, { status: 400 });
   }
 
