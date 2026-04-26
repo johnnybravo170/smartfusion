@@ -190,6 +190,8 @@ async function sendVerificationEmail(input: {
       <p>Or open this link: <br/><a href="${link}">${link}</a></p>
       <p>This link expires in 24 hours.</p>
     `,
+    caslCategory: 'transactional',
+    relatedType: 'auth',
   });
 }
 

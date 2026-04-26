@@ -181,6 +181,10 @@ export async function createJobAction(input: JobFormInput): Promise<JobActionRes
           time: formattedTime,
           address: location,
         }),
+        caslCategory: 'transactional',
+        relatedType: 'job',
+        relatedId: data.id,
+        caslEvidence: { kind: 'appointment_confirmation', jobId: data.id },
         attachments: [
           {
             filename: 'appointment.ics',
@@ -394,6 +398,10 @@ export async function changeJobStatusAction(input: {
             date: formattedDate,
             time: formattedTime,
           }),
+          caslCategory: 'transactional',
+          relatedType: 'job',
+          relatedId: fullJob.id as string,
+          caslEvidence: { kind: 'appointment_cancellation', jobId: fullJob.id as string },
           attachments: [
             {
               filename: 'appointment.ics',

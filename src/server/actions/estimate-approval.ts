@@ -131,6 +131,10 @@ export async function sendEstimateForApprovalAction(input: {
     to: customerEmail,
     subject: `Estimate for ${p.name as string} — ${tenant.name}`,
     html,
+    caslCategory: 'transactional',
+    relatedType: 'estimate',
+    relatedId: input.projectId,
+    caslEvidence: { kind: 'estimate_send', projectId: input.projectId },
   });
 
   const admin = createAdminClient();
@@ -421,6 +425,10 @@ async function notifyOperatorOfFirstView(params: {
       projectUrl,
       businessName,
     }),
+    caslCategory: 'transactional',
+    relatedType: 'estimate',
+    relatedId: projectId,
+    caslEvidence: { kind: 'estimate_viewed_internal', projectId },
   });
 }
 
@@ -485,6 +493,10 @@ async function notifyOperatorOfApproval(params: {
       projectUrl,
       businessName,
     }),
+    caslCategory: 'transactional',
+    relatedType: 'estimate',
+    relatedId: projectId,
+    caslEvidence: { kind: 'estimate_accepted_internal', projectId },
   });
 }
 
@@ -616,6 +628,10 @@ async function dispatchFeedbackNotifications(args: {
           to: email,
           subject: `New estimate feedback from ${customerName}`,
           html: `<p>${preview}</p><p><a href="${feedbackUrl}">Open in HeyHenry</a></p>`,
+          caslCategory: 'transactional',
+          relatedType: 'feedback',
+          relatedId: projectId,
+          caslEvidence: { kind: 'feedback_internal_notify', projectId },
         }).catch((err) => console.error('[feedback] email send failed:', err));
       }
     }
@@ -628,6 +644,8 @@ async function dispatchFeedbackNotifications(args: {
           to: phone,
           body: `${preview} ${feedbackUrl}`,
           relatedType: 'platform',
+          caslCategory: 'transactional',
+          caslEvidence: { kind: 'feedback_internal_notify', projectId },
         }).catch((err) => console.error('[feedback] sms send failed:', err));
       }
     }

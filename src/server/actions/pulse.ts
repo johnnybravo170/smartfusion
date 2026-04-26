@@ -173,6 +173,10 @@ export async function approvePulseAction(updateId: string): Promise<PulseActionR
       to: email,
       subject: `Update on your ${projectName} project`,
       html,
+      caslCategory: 'transactional',
+      relatedType: 'pulse',
+      relatedId: row.job_id as string,
+      caslEvidence: { kind: 'pulse_update', jobId: row.job_id, updateId },
     });
     if (res.ok) sentEmailTo = email;
   }
@@ -186,6 +190,8 @@ export async function approvePulseAction(updateId: string): Promise<PulseActionR
       body: `Update on your ${projectName} project: ${publicUrl}`,
       relatedType: 'job',
       relatedId: row.job_id as string,
+      caslCategory: 'transactional',
+      caslEvidence: { kind: 'pulse_update', jobId: row.job_id, updateId },
     });
     if (res.ok) sentSmsTo = phone;
   }

@@ -123,6 +123,17 @@ export async function sendReferralEmailAction(
       referrerName: tenant.name,
       referralUrl,
     }),
+    // Referrer-initiated invitation. Implied consent under CASL personal-relationship
+    // exemption (referrer + referee are real-world contacts). Phase B: capture
+    // referrer attestation at submit time so this is auditable.
+    caslCategory: 'response_to_request',
+    relatedType: 'referral',
+    relatedId: refCode.id,
+    caslEvidence: {
+      kind: 'referral_invite',
+      referralCodeId: refCode.id,
+      referrerTenantId: tenant.id,
+    },
   });
 
   if (!result.ok) {

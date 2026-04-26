@@ -63,6 +63,8 @@ async function notifyHomeownerOfPhase(input: {
         body,
         relatedType: 'job',
         relatedId: input.projectId,
+        caslCategory: 'transactional',
+        caslEvidence: { kind: 'phase_change_notify', projectId: input.projectId },
       }).catch((err) => console.error('[phase-advance] sms failed:', err));
     }
     if (emailRaw) {
@@ -87,6 +89,10 @@ async function notifyHomeownerOfPhase(input: {
         to: emailRaw,
         subject: `${projectName} — ${input.phaseName}`,
         html,
+        caslCategory: 'transactional',
+        relatedType: 'job',
+        relatedId: input.projectId,
+        caslEvidence: { kind: 'phase_change_notify', projectId: input.projectId },
       }).catch((err) => console.error('[phase-advance] email failed:', err));
     }
 

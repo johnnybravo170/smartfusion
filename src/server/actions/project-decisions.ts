@@ -97,6 +97,8 @@ export async function createDecisionAction(input: {
         body,
         relatedType: 'job',
         relatedId: input.projectId,
+        caslCategory: 'transactional',
+        caslEvidence: { kind: 'decision_request', projectId: input.projectId, approvalCode },
       });
     } catch (err) {
       console.error('[decision] sms send failed:', err);

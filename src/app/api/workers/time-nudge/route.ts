@@ -131,6 +131,10 @@ export async function GET(request: Request) {
           subject: 'Log today\u2019s hours',
           tenantId: w.tenant_id,
           html: `<p>Hey ${who},</p><p>Quick reminder to log today\u2019s hours for <strong>${tenant}</strong> before you wind down.</p><p><a href="${logUrl}">Log hours \u2192</a></p>`,
+          caslCategory: 'transactional',
+          relatedType: 'time_nudge',
+          relatedId: w.user_id,
+          caslEvidence: { kind: 'time_nudge', workerId: w.user_id },
         });
         if (res.ok) emailed += 1;
       }
@@ -142,6 +146,8 @@ export async function GET(request: Request) {
         to: w.phone,
         body,
         identity: 'operator',
+        caslCategory: 'transactional',
+        caslEvidence: { kind: 'time_nudge', workerId: w.user_id },
       });
       if (res.ok) texted += 1;
     }

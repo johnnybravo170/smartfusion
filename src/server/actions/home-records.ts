@@ -686,7 +686,16 @@ export async function emailHomeRecordAction(
 </html>`.trim();
 
   const { sendEmail } = await import('@/lib/email/send');
-  const result = await sendEmail({ to, subject, html, tenantId: tenant.id });
+  const result = await sendEmail({
+    to,
+    subject,
+    html,
+    tenantId: tenant.id,
+    caslCategory: 'transactional',
+    relatedType: 'home_record',
+    relatedId: homeRecordId,
+    caslEvidence: { kind: 'home_record_share', homeRecordId },
+  });
   if (!result.ok) {
     return { ok: false, error: result.error ?? 'Email send failed.' };
   }

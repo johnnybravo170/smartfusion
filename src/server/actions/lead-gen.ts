@@ -204,6 +204,10 @@ export async function submitLeadAction(input: {
           surfaceSummary,
           dashboardUrl: `${appUrl}/quotes/${quote.id}`,
         }),
+        caslCategory: 'transactional',
+        relatedType: 'lead',
+        relatedId: quote.id,
+        caslEvidence: { kind: 'lead_internal_notify', quoteId: quote.id },
       }).catch((err) => {
         console.error('Lead notification email failed:', err);
       });

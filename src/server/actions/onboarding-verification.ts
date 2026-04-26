@@ -55,6 +55,9 @@ export async function resendEmailVerificationAction(): Promise<VerificationResul
       <p>Or open this link: <br/><a href="${link}">${link}</a></p>
       <p>Link expires in 24 hours.</p>
     `,
+    caslCategory: 'transactional',
+    relatedType: 'auth',
+    caslEvidence: { kind: 'email_verification', userId: user.id },
   });
   if (!result.ok) return { ok: false, error: result.error ?? 'Email send failed.' };
   return { ok: true };
@@ -118,6 +121,8 @@ export async function sendPhoneVerificationAction(input: {
     to: phone,
     body: `HeyHenry verification code: ${code}. Expires in 10 minutes.`,
     identity: 'platform',
+    caslCategory: 'transactional',
+    caslEvidence: { kind: 'phone_verification_code', userId: user.id },
   });
   if (!sms.ok) return { ok: false, error: sms.error };
 

@@ -5,6 +5,7 @@
 
 export * from './ar';
 export * from './audit-log';
+export * from './casl';
 export * from './contact-notes';
 export * from './customers';
 export * from './data-exports';

@@ -85,6 +85,9 @@ export const smsTools: AiTool[] = [
             | 'platform'
             | undefined,
           relatedId: input.related_id as string | undefined,
+          // Operator-driven send via AI tool — operator confirms recipient/body explicitly.
+          caslCategory: 'transactional',
+          caslEvidence: { kind: 'ai_operator_sms', identity: input.identity ?? 'operator' },
         });
 
         if (!result.ok) {

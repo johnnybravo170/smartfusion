@@ -95,6 +95,10 @@ export async function createWorkerInviteAction(input?: {
   <p style="color: #999; font-size: 12px;"><a href="https://heyhenry.io/?utm_source=tenant_email&amp;utm_medium=referral&amp;utm_campaign=sent_via_footer&amp;utm_content=team_invite" style="color:inherit;text-decoration:none">Sent via HeyHenry</a></p>
 </body>
 </html>`,
+          caslCategory: 'transactional',
+          relatedType: 'team',
+          relatedId: invite.code,
+          caslEvidence: { kind: 'team_invite', inviteCode: invite.code },
         });
       } catch {
         // Email failure is non-fatal — return the link so the owner can share manually.
@@ -227,6 +231,9 @@ export async function sendWorkerInviteEmailAction(
       tenantId: tenant.id,
       to: email,
       subject: `You're invited to join ${tenant.name} on HeyHenry`,
+      caslCategory: 'transactional',
+      relatedType: 'team',
+      caslEvidence: { kind: 'team_invite_resend' },
       html: `<!DOCTYPE html>
 <html>
 <body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">

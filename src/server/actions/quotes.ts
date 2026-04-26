@@ -389,6 +389,10 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
           viewUrl,
           validityDays,
         }),
+        caslCategory: 'transactional',
+        relatedType: 'estimate',
+        relatedId: input.quoteId,
+        caslEvidence: { kind: 'estimate_send', quoteId: input.quoteId },
       });
 
       if (emailResult.ok) {
@@ -922,6 +926,10 @@ export async function approveQuotePublicAction(
             totalFormatted,
             viewUrl: `${appUrl}/quotes/${quoteId}`,
           }),
+          caslCategory: 'transactional',
+          relatedType: 'estimate',
+          relatedId: quoteId,
+          caslEvidence: { kind: 'estimate_accepted_internal', quoteId },
         });
       } catch (e) {
         console.error('Failed to send quote acceptance email:', e);
@@ -1034,6 +1042,10 @@ export async function declineQuotePublicAction(
             reason: trimmedReason,
             viewUrl: `${appUrl}/quotes/${quoteId}`,
           }),
+          caslCategory: 'transactional',
+          relatedType: 'estimate',
+          relatedId: quoteId,
+          caslEvidence: { kind: 'estimate_declined_internal', quoteId },
         });
       } catch (e) {
         console.error('Failed to send quote decline email:', e);

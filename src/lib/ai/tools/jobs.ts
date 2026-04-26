@@ -504,6 +504,8 @@ export const jobTools: AiTool[] = [
           identity: 'operator',
           relatedType: 'job',
           relatedId: job.id,
+          caslCategory: 'transactional',
+          caslEvidence: { kind: 'review_request', jobId: job.id },
         });
 
         if (!smsResult.ok) {

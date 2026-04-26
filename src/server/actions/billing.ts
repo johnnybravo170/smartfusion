@@ -303,6 +303,10 @@ export async function cancelSubscriptionAction(): Promise<CancelResult> {
           isTrial: true,
         }),
         tenantId: tenant.id,
+        caslCategory: 'transactional',
+        relatedType: 'billing',
+        relatedId: stripeSubId,
+        caslEvidence: { kind: 'trial_cancellation', subscriptionId: stripeSubId },
       });
     }
 
@@ -378,6 +382,14 @@ export async function cancelSubscriptionAction(): Promise<CancelResult> {
         isTrial: false,
       }),
       tenantId: tenant.id,
+      caslCategory: 'transactional',
+      relatedType: 'billing',
+      relatedId: stripeSubId,
+      caslEvidence: {
+        kind: 'paid_cancellation',
+        subscriptionId: stripeSubId,
+        refundId: stripeRefundId,
+      },
     });
   }
 

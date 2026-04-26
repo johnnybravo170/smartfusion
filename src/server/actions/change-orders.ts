@@ -164,6 +164,10 @@ export async function sendChangeOrderAction(
       to: customerEmail,
       subject: `Change order for ${projectName} — ${tenant.name}`,
       html,
+      caslCategory: 'transactional',
+      relatedType: 'change_order',
+      relatedId: changeOrderId,
+      caslEvidence: { kind: 'change_order_send', projectId, changeOrderId },
     });
   }
 
@@ -186,6 +190,8 @@ export async function sendChangeOrderAction(
         body,
         relatedType: 'job',
         relatedId: projectId,
+        caslCategory: 'transactional',
+        caslEvidence: { kind: 'change_order_send', changeOrderId, projectId },
       });
     } catch (err) {
       console.error('[change-order] sms send failed:', err);
@@ -508,6 +514,9 @@ async function dispatchChangeOrderNotifications(args: {
           to: email,
           subject: `Change order ${verb}: "${title}"`,
           html: `<p>${body}</p><p><a href="${projectUrl}">Open in HeyHenry</a></p>`,
+          caslCategory: 'transactional',
+          relatedType: 'change_order',
+          caslEvidence: { kind: 'change_order_response_internal_notify', verb },
         }).catch((err) => console.error('[change-order] email failed:', err));
       }
     }
@@ -520,6 +529,8 @@ async function dispatchChangeOrderNotifications(args: {
           to: phone,
           body: `${body} ${projectUrl}`,
           relatedType: 'platform',
+          caslCategory: 'transactional',
+          caslEvidence: { kind: 'change_order_response_internal_notify', verb },
         }).catch((err) => console.error('[change-order] sms failed:', err));
       }
     }

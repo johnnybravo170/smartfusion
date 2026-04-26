@@ -133,7 +133,45 @@ Inline-edit follows §4's keyboard contract (Enter saves, Escape cancels, blur s
 
 ---
 
-## 11. Plan / feature gating
+## 11. CASL-classified sends
+
+Every outbound email and SMS goes through one of two wrappers, and **every
+call must declare a `caslCategory`**. See `CASL.md` for the rulebook. When
+you change one send path (template, evidence shape, related type), evaluate
+sibling sends in the same family and surface them to the user.
+
+- `src/lib/email/send.ts` — `sendEmail` wrapper. Logs every send to
+  `email_send_log`. Required: `caslCategory`. Optional: `caslEvidence`,
+  `relatedType`, `relatedId`.
+- `src/lib/twilio/client.ts` — `sendSms` wrapper. Logs to `twilio_messages`.
+  Same contract.
+- `src/lib/ar/executor.ts` — AR engine. Only legitimate caller for CEM
+  categories (`express_consent`, `implied_consent_*`). Handles RFC 8058
+  unsubscribe + suppression list automatically.
+
+Send-path families to keep aligned when CASL evidence shape changes:
+
+- **Estimate flow** — `src/server/actions/estimate-approval.ts` (4 sends),
+  `src/server/actions/quotes.ts` (3 sends)
+- **Change order flow** — `src/server/actions/change-orders.ts` (email + SMS
+  + internal notify)
+- **Invoice flow** — `src/server/actions/invoices.ts` (2 sends)
+- **Job lifecycle** — `src/server/actions/jobs.ts`,
+  `src/server/actions/project-phases.ts`, `src/server/actions/pulse.ts`,
+  `src/server/actions/portal-updates.ts`
+- **Account / auth** — `src/server/actions/auth.ts`,
+  `src/server/actions/onboarding-verification.ts`,
+  `src/server/actions/team.ts`, `src/server/actions/billing.ts`
+- **Lead intake** — `src/server/actions/lead-gen.ts`,
+  `src/server/actions/referrals.ts`
+- **Marketing** — `src/lib/ar/executor.ts` (express_consent only)
+
+Never bolt promotional content onto a transactional template — that flips
+the send into CEM territory and loses the transactional exemption.
+
+---
+
+## 12. Plan / feature gating
 
 All plan-tier checks go through `src/lib/billing/features.ts`. **Never write inline `if (tenant.plan === 'pro')` checks** — they drift and rot. Adding a gated feature is one line in `FEATURE_TIERS`.
 

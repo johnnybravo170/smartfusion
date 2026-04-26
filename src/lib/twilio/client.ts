@@ -16,6 +16,7 @@
  */
 
 import twilio, { type Twilio } from 'twilio';
+import type { CaslCategory } from '@/lib/db/schema/casl';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export type SendIdentity = 'operator' | 'platform';
@@ -27,6 +28,17 @@ export type SendSmsInput = {
   identity?: SendIdentity;
   relatedType?: 'job' | 'quote' | 'invoice' | 'customer' | 'support_ticket' | 'platform';
   relatedId?: string;
+  /**
+   * CASL category. See `src/lib/db/schema/casl.ts`. Required for every send.
+   * SMS is exempt from CASL form requirements (no footer/unsubscribe needed
+   * in the body), but the audit trail still requires the category.
+   *
+   * For `express_consent` SMS sends, route through the AR engine
+   * (`src/lib/ar/executor.ts`) so suppression-list and double-opt-in
+   * machinery is consistent.
+   */
+  caslCategory: CaslCategory;
+  caslEvidence?: Record<string, unknown>;
 };
 
 export type SendSmsResult =
@@ -194,7 +206,16 @@ async function isOptedOut(to: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 export async function sendSms(input: SendSmsInput): Promise<SendSmsResult> {
-  const { tenantId, to, body, identity = 'operator', relatedType, relatedId } = input;
+  const {
+    tenantId,
+    to,
+    body,
+    identity = 'operator',
+    relatedType,
+    relatedId,
+    caslCategory,
+    caslEvidence,
+  } = input;
 
   if (!to || !body) {
     return { ok: false, error: 'to and body are required' };
@@ -232,6 +253,8 @@ export async function sendSms(input: SendSmsInput): Promise<SendSmsResult> {
       related_type: relatedType ?? null,
       related_id: relatedId ?? null,
       status: 'queued',
+      casl_category: caslCategory,
+      casl_evidence: caslEvidence ?? null,
     })
     .select('id')
     .single();

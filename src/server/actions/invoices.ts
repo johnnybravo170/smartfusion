@@ -291,6 +291,10 @@ export async function sendInvoiceAction(input: {
           customerNote: (invoice.customer_note as string | null) ?? undefined,
           hasStripe: !!stripeAccountId,
         }),
+        caslCategory: 'transactional',
+        relatedType: 'invoice',
+        relatedId: invoice.id,
+        caslEvidence: { kind: 'invoice_send', invoiceId: invoice.id, jobId: invoice.job_id },
       });
 
       if (emailResult.ok) {
@@ -404,6 +408,10 @@ export async function resendInvoiceAction(input: {
           payUrl: paymentUrl,
           customerNote: (invoice.customer_note as string | null) ?? undefined,
         }),
+        caslCategory: 'transactional',
+        relatedType: 'invoice',
+        relatedId: invoice.id,
+        caslEvidence: { kind: 'invoice_resend', invoiceId: invoice.id },
       });
 
       if (emailResult.ok) {

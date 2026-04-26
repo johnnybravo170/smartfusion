@@ -258,6 +258,10 @@ export async function sendPortalInviteAction(projectId: string): Promise<PortalA
     to: customerEmail,
     subject: `Your project portal — ${projectData.name}`,
     html,
+    caslCategory: 'transactional',
+    relatedType: 'job',
+    relatedId: String(projectData.id ?? ''),
+    caslEvidence: { kind: 'portal_invite', projectId: projectData.id },
   });
 
   if (!result.ok) {

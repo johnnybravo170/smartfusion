@@ -255,6 +255,10 @@ async function runChannelStep(
         'List-Unsubscribe': `<${unsubUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
       },
+      caslCategory: 'express_consent',
+      caslEvidence: { enrollmentId, stepId, contactId: contact.id, arSendLogId: logRow.id },
+      relatedType: 'platform',
+      relatedId: enrollmentId,
     });
     await db
       .update(arSendLog)
@@ -282,6 +286,8 @@ async function runChannelStep(
       body,
       identity: 'platform',
       relatedType: 'platform',
+      caslCategory: 'express_consent',
+      caslEvidence: { enrollmentId, stepId, contactId: contact.id, arSendLogId: logRow.id },
     });
     await db
       .update(arSendLog)
