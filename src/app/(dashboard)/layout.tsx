@@ -13,6 +13,7 @@ import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { TenantProvider } from '@/lib/auth/tenant-context';
 import { getOperatorProfile } from '@/lib/db/queries/profile';
 import { HenryScreenProvider } from '@/lib/henry/screen-context';
+import { SentryUserContext } from '@/lib/sentry/sentry-user-context';
 import { createClient } from '@/lib/supabase/server';
 
 // All dashboard routes require the authenticated user's tenant context. They
@@ -59,6 +60,14 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   return (
     <HenryScreenProvider>
       <ChatProvider>
+        {tenant && currentUser ? (
+          <SentryUserContext
+            userId={currentUser.id}
+            tenantId={tenant.id}
+            tenantPlan={tenant.plan}
+            tenantVertical={tenant.vertical}
+          />
+        ) : null}
         <div className="flex min-h-screen w-full overflow-x-hidden">
           <SidebarNav vertical={vertical} />
           <div className="flex min-h-screen min-w-0 flex-1 flex-col">

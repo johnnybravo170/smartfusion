@@ -43,6 +43,7 @@
     "@google/genai": "^1.50.1",
     "@hookform/resolvers": "^5.2.2",
     "@react-google-maps/api": "^2.20.8",
+    "@sentry/nextjs": "^10.50.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.2",
     "archiver": "^7.0.1",

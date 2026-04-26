@@ -7,6 +7,7 @@
  * not on token refresh.
  */
 
+import * as Sentry from '@sentry/nextjs';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import type { Plan, SubscriptionStatus } from '@/lib/billing/features';
@@ -71,6 +72,13 @@ async function getCurrentTenantUncached(): Promise<CurrentTenant | null> {
   // object at runtime, but TS is conservative here.
   const tenant = Array.isArray(member.tenants) ? member.tenants[0] : member.tenants;
   if (!tenant) return null;
+
+  // Tag every server-side error with tenant + user UUIDs (no PII per
+  // PIPEDA — names/emails are scrubbed by sentry/scrub.ts).
+  Sentry.setUser({ id: user.id });
+  Sentry.setTag('tenant_id', tenant.id);
+  Sentry.setTag('tenant_plan', (tenant.plan ?? 'starter') as string);
+  Sentry.setTag('tenant_vertical', (tenant.vertical ?? 'pressure_washing') as string);
 
   return {
     id: tenant.id,
