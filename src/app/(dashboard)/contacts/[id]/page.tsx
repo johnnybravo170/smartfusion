@@ -2,6 +2,7 @@ import { ArrowLeft, Calendar, FileText, Mail, MapPin, Pencil, Phone, Receipt } f
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ContactNotesFeed } from '@/components/features/contacts/contact-notes-feed';
+import { DoNotAutoMessageToggle } from '@/components/features/contacts/do-not-auto-message-toggle';
 import { CustomerTypeBadge } from '@/components/features/customers/customer-type-badge';
 import { DeleteCustomerButton } from '@/components/features/customers/delete-customer-button';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
@@ -144,6 +145,16 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
       </section>
 
       <ContactNotesFeed contactId={customer.id} notes={notes} timezone={tz} />
+
+      {customer.email || customer.phone ? (
+        <DoNotAutoMessageToggle
+          customerId={customer.id}
+          enabled={customer.do_not_auto_message}
+          setAt={customer.do_not_auto_message_at}
+          source={customer.do_not_auto_message_source}
+          timezone={tz}
+        />
+      ) : null}
 
       {isLeadKind ? (
         <LeadTasksSection leadId={customer.id} tasks={leadTasks} isOwner={isOwner} />

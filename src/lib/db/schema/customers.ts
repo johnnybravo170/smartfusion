@@ -12,7 +12,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { check, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { tenants } from './tenants';
 
 export const customers = pgTable(
@@ -40,6 +40,15 @@ export const customers = pgTable(
      * Column retained for read compatibility until a follow-up migration drops it.
      */
     notes: text('notes'),
+    /**
+     * CASL kill switch. When true, no automated outbound messages of any
+     * kind are sent to this customer (AR sequences, broadcasts, follow-ups).
+     * Manual sends from a contractor still go through. Auto-set when the
+     * customer unsubscribes, replies STOP, or files a Resend complaint.
+     */
+    doNotAutoMessage: boolean('do_not_auto_message').notNull().default(false),
+    doNotAutoMessageAt: timestamp('do_not_auto_message_at', { withTimezone: true }),
+    doNotAutoMessageSource: text('do_not_auto_message_source'),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).default(sql`now()`).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).default(sql`now()`).notNull(),
@@ -56,6 +65,10 @@ export const customers = pgTable(
     check(
       'customers_type_requires_customer_kind',
       sql`${table.kind} = 'customer' OR ${table.type} IS NULL`,
+    ),
+    check(
+      'customers_do_not_auto_message_source_check',
+      sql`${table.doNotAutoMessageSource} IS NULL OR ${table.doNotAutoMessageSource} IN ('unsubscribe_link', 'sms_stop', 'email_complaint', 'manual_owner', 'manual_admin')`,
     ),
   ],
 );

@@ -75,6 +75,17 @@ export async function POST(request: Request) {
       },
       { onConflict: 'phone_number' },
     );
+    // CASL: STOP applies platform-wide. Flip do_not_auto_message on every
+    // customer row matching this phone number across all tenants.
+    await supabase
+      .from('customers')
+      .update({
+        do_not_auto_message: true,
+        do_not_auto_message_at: now,
+        do_not_auto_message_source: 'sms_stop',
+      })
+      .eq('phone', from)
+      .eq('do_not_auto_message', false);
   } else if (isStart) {
     await supabase.from('sms_preferences').upsert(
       {

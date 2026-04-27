@@ -9,10 +9,11 @@
  * confirmation UI, which Gmail/Yahoo require for bulk senders.
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { verifyUnsubToken } from '@/lib/ar/unsub-token';
 import { getDb } from '@/lib/db/client';
 import { arContacts, arEnrollments, arSuppressionList } from '@/lib/db/schema/ar';
+import { customers } from '@/lib/db/schema/customers';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,22 @@ export async function POST(_request: Request, { params }: { params: Promise<{ to
           reason: 'unsubscribe',
         })
         .onConflictDoNothing();
+      // CASL: also flip the kill switch on every matching customer row
+      // (across tenants) so future automated messages from any contractor
+      // are blocked.
+      await db
+        .update(customers)
+        .set({
+          doNotAutoMessage: true,
+          doNotAutoMessageAt: now,
+          doNotAutoMessageSource: 'unsubscribe_link',
+        })
+        .where(
+          and(
+            sql`lower(${customers.email}) = ${contact.email.toLowerCase()}`,
+            eq(customers.doNotAutoMessage, false),
+          ),
+        );
     }
   } else {
     // Per-sequence unsubscribe: cancel only matching active enrollments.

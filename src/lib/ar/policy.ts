@@ -183,6 +183,23 @@ export async function checkSendPolicy(
     if (opted) return { send: false, defer: false, reason: 'sms_preference_opted_out' };
   }
 
+  // Customer-level kill switch (CASL). Once a recipient has been flagged
+  // do_not_auto_message — via unsubscribe, STOP, complaint, or manual — no
+  // automated send goes out, regardless of suppression-list state.
+  // Match on email (lowercased) or phone (E.164) across tenants — if the same
+  // person is in multiple contractors' books, all must honor the stop.
+  const dnamRows =
+    params.channel === 'email'
+      ? await db.execute(
+          sql`SELECT 1 FROM public.customers WHERE lower(email) = ${address.toLowerCase()} AND do_not_auto_message = true LIMIT 1`,
+        )
+      : await db.execute(
+          sql`SELECT 1 FROM public.customers WHERE phone = ${address} AND do_not_auto_message = true LIMIT 1`,
+        );
+  if ((dnamRows as unknown as Array<unknown>).length > 0) {
+    return { send: false, defer: false, reason: 'customer_do_not_auto_message' };
+  }
+
   // Send window.
   const timezone = contact.timezone || 'America/Vancouver';
   const windowCheck = checkWindow(now, params.window, timezone);

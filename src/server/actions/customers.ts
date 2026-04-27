@@ -238,6 +238,45 @@ export async function patchCustomerEmailAction(
 }
 
 /**
+ * Toggle the customer-level CASL kill switch. When `enabled` is true, no
+ * automated outbound message of any kind will be sent to this customer
+ * regardless of tenant or per-quote settings. Manual sends from the
+ * contractor still go through.
+ *
+ * Source is recorded so audits can distinguish operator-initiated from
+ * platform-initiated stops (the webhook paths set their own source values).
+ */
+export async function setDoNotAutoMessageAction(
+  customerId: string,
+  enabled: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('customers')
+    .update({
+      do_not_auto_message: enabled,
+      do_not_auto_message_at: enabled ? now : null,
+      do_not_auto_message_source: enabled
+        ? tenant.member.role === 'admin' || tenant.member.role === 'owner'
+          ? 'manual_owner'
+          : 'manual_admin'
+        : null,
+      updated_at: now,
+    })
+    .eq('id', customerId)
+    .is('deleted_at', null);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/contacts/${customerId}`);
+  return { ok: true };
+}
+
+/**
  * Soft-delete. `customers.deleted_at` exists (migration 0018), so we set it
  * and leave the row in place to preserve foreign-key references from quotes,
  * jobs, and invoices.

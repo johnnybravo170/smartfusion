@@ -21,6 +21,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { verifySvixSignature } from '@/lib/ar/webhook-verify';
 import { getDb } from '@/lib/db/client';
 import { arSendLog, arSuppressionList } from '@/lib/db/schema/ar';
+import { customers } from '@/lib/db/schema/customers';
 
 export const dynamic = 'force-dynamic';
 
@@ -135,6 +136,20 @@ export async function POST(request: Request) {
             reason: 'complaint',
           })
           .onConflictDoNothing();
+        // CASL: complaint = legal stop signal. Flip platform-wide.
+        await db
+          .update(customers)
+          .set({
+            doNotAutoMessage: true,
+            doNotAutoMessageAt: now,
+            doNotAutoMessageSource: 'email_complaint',
+          })
+          .where(
+            and(
+              sql`lower(${customers.email}) = ${toAddress.toLowerCase()}`,
+              eq(customers.doNotAutoMessage, false),
+            ),
+          );
       }
       break;
 
