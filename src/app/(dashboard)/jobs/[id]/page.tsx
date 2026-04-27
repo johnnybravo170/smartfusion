@@ -89,7 +89,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </p>
         </div>
         <div className="flex items-start gap-4">
-          <JobStatusSelect jobId={job.id} currentStatus={job.status} hasPhotos={photoCount > 0} />
+          <JobStatusSelect
+            jobId={job.id}
+            currentStatus={job.status}
+            hasPhotos={photoCount > 0}
+            customerName={customerName}
+            quoteTotalCents={job.quote?.total_cents ?? null}
+            hasInvoice={(job.invoices ?? []).length > 0}
+          />
           <div className="flex items-center gap-2">
             <UpdateClientButton jobId={job.id} />
             <Button asChild variant="outline" size="sm">

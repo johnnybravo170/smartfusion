@@ -8,6 +8,7 @@
 
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { JobCompleteInvoicePrompt } from '@/components/features/jobs/job-complete-invoice-prompt';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,14 +33,23 @@ export function JobStatusSelect({
   jobId,
   currentStatus,
   hasPhotos = true,
+  customerName,
+  quoteTotalCents,
+  hasInvoice,
 }: {
   jobId: string;
   currentStatus: JobStatus;
   hasPhotos?: boolean;
+  /** Used by the post-complete invoice prompt. */
+  customerName?: string;
+  quoteTotalCents?: number | null;
+  /** Suppress the invoice prompt if one already exists for this job. */
+  hasInvoice?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [invoicePromptOpen, setInvoicePromptOpen] = useState(false);
 
   function applyStatus(next: string) {
     startTransition(async () => {
@@ -49,6 +59,11 @@ export function JobStatusSelect({
         return;
       }
       toast.success(`Moved to ${jobStatusLabels[next as JobStatus]}`);
+      // Surface the "create invoice" prompt the moment a job is completed.
+      // Skipped if an invoice already exists or we don't know the customer.
+      if (next === 'complete' && !hasInvoice && customerName) {
+        setInvoicePromptOpen(true);
+      }
     });
   }
 
@@ -113,6 +128,16 @@ export function JobStatusSelect({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {customerName ? (
+        <JobCompleteInvoicePrompt
+          jobId={jobId}
+          customerName={customerName}
+          quoteTotalCents={quoteTotalCents ?? null}
+          open={invoicePromptOpen}
+          onOpenChange={setInvoicePromptOpen}
+        />
+      ) : null}
     </>
   );
 }

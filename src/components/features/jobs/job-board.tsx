@@ -39,6 +39,7 @@ import { cn } from '@/lib/utils';
 import { type JobStatus, jobStatuses, jobStatusLabels } from '@/lib/validators/job';
 import { changeJobStatusAction } from '@/server/actions/jobs';
 import { JobCard } from './job-card';
+import { JobCompleteInvoicePrompt } from './job-complete-invoice-prompt';
 
 type BoardState = Record<JobStatus, JobWithCustomer[]>;
 
@@ -62,6 +63,7 @@ export function JobBoard({ board }: { board: JobBoardData }) {
   const [state, setState] = useState<BoardState>(() => toBoardState(board));
   const [, startTransition] = useTransition();
   const [activeJob, setActiveJob] = useState<JobWithCustomer | null>(null);
+  const [completedJob, setCompletedJob] = useState<JobWithCustomer | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -116,6 +118,13 @@ export function JobBoard({ board }: { board: JobBoardData }) {
         return;
       }
       toast.success(`Moved to ${jobStatusLabels[toStatus]}`);
+      // Drag-to-complete → surface the invoice prompt. The board doesn't
+      // carry quote totals or invoice presence, so the prompt opens
+      // without a pre-filled amount; the operator confirms and lands
+      // on the draft-invoice page where the amount is shown.
+      if (toStatus === 'complete') {
+        setCompletedJob(job);
+      }
     });
   }
 
@@ -134,6 +143,15 @@ export function JobBoard({ board }: { board: JobBoardData }) {
       <DragOverlay>
         {activeJob ? <JobCard job={activeJob} draggable className="rotate-1 shadow-lg" /> : null}
       </DragOverlay>
+      {completedJob ? (
+        <JobCompleteInvoicePrompt
+          jobId={completedJob.id}
+          customerName={completedJob.customer?.name ?? 'this customer'}
+          quoteTotalCents={null}
+          open={!!completedJob}
+          onOpenChange={(o) => !o && setCompletedJob(null)}
+        />
+      ) : null}
     </DndContext>
   );
 }

@@ -396,7 +396,7 @@ describe.skipIf(!canRun)('cross-tenant RLS isolation (integration)', () => {
       if (list.error) {
         // Pass — the table doesn't even let anon SELECT.
       } else {
-        const ids = (list.data ?? []).map((r) => (r as Record<string, unknown>)[pk]);
+        const ids = (list.data ?? []).map((r) => (r as unknown as Record<string, unknown>)[pk]);
         expect(ids, `${c.table}: anon-A should not see B's row in list`).not.toContain(bRowId);
       }
 
