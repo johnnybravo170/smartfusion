@@ -22,7 +22,6 @@ import PortalTabServer from '@/components/features/projects/tabs/portal-tab-serv
 import SelectionsTabServer from '@/components/features/projects/tabs/selections-tab-server';
 import { TabSkeleton } from '@/components/features/projects/tabs/tab-skeleton';
 import TimeTabServer from '@/components/features/projects/tabs/time-tab-server';
-import VarianceTabServer from '@/components/features/projects/tabs/variance-tab-server';
 import { listBucketsForProject } from '@/lib/db/queries/project-buckets';
 import { getProject } from '@/lib/db/queries/projects';
 import type { LifecycleStage } from '@/lib/validators/project';
@@ -85,12 +84,15 @@ export default async function ProjectDetailPage({
   const [project, projectBuckets] = await Promise.all([getProject(id), listBucketsForProject(id)]);
   if (!project) notFound();
 
+  // Tab URL slugs are kept as-is (`buckets`, `costs`) so existing bookmarks
+  // and links don't break. Only the user-facing labels are renamed —
+  // `Budget` (was Cost Buckets) and `Spend` (was Costs). Variance was
+  // merged into Overview.
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
-    { key: 'buckets', label: 'Cost Buckets' },
+    { key: 'buckets', label: 'Budget' },
     { key: 'estimate', label: 'Estimate' },
-    { key: 'costs', label: 'Costs' },
-    { key: 'variance', label: 'Variance' },
+    { key: 'costs', label: 'Spend' },
     { key: 'change-orders', label: 'Change Orders' },
     { key: 'time', label: 'Time' },
     { key: 'invoices', label: 'Invoices' },
@@ -204,7 +206,9 @@ export default async function ProjectDetailPage({
         {tab === 'buckets' ? <BucketsTabServer projectId={id} /> : null}
         {tab === 'estimate' ? <EstimateTabServer projectId={id} /> : null}
         {tab === 'costs' ? <CostsTabServer projectId={id} /> : null}
-        {tab === 'variance' ? <VarianceTabServer projectId={id} /> : null}
+        {/* Variance merged into Overview — keep route alive for old bookmarks
+            but render Overview content. Drop entirely in a future cleanup. */}
+        {tab === 'variance' ? <OverviewTabServer projectId={id} /> : null}
         {tab === 'invoices' ? <InvoicesTabServer projectId={id} /> : null}
         {tab === 'time' ? <TimeTabServer projectId={id} /> : null}
         {tab === 'memos' ? <MemosTabServer projectId={id} /> : null}

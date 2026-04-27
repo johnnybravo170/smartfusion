@@ -1,5 +1,7 @@
 'use client';
 
+import { Pencil } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Fragment, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -13,8 +15,6 @@ import {
 } from '@/lib/validators/manual-approval';
 import { resetEstimateAction } from '@/server/actions/estimate-approval';
 import { createInvoiceFromEstimateAction } from '@/server/actions/invoices';
-import { deleteCostLineAction } from '@/server/actions/project-cost-control';
-import { CostLineForm } from './cost-line-form';
 import { CostLinePhotoStrip } from './cost-line-photo-strip';
 import { EstimateFeedbackCard, type FeedbackRow } from './estimate-feedback-card';
 import { ManualApprovalDialog } from './manual-approval-dialog';
@@ -39,7 +39,6 @@ export type EstimateApprovalInfo = {
 export function EstimateTab({
   projectId,
   costLines,
-  catalog,
   managementFeeRate,
   approval,
   costLinePhotoUrls,
@@ -48,6 +47,11 @@ export function EstimateTab({
 }: {
   projectId: string;
   costLines: CostLineRow[];
+  /**
+   * Materials catalog. Unused inline since 2026-04-27 — Estimate became
+   * read-only on line items and edits were moved to the Budget tab. Kept
+   * in props in case the aggressive Build/Preview merge lands later.
+   */
   catalog: MaterialsCatalogRow[];
   managementFeeRate: number;
   approval: EstimateApprovalInfo;
@@ -55,21 +59,12 @@ export function EstimateTab({
   feedback: FeedbackRow[];
   bucketsById: Record<string, { name: string; section: string | null; order: number }>;
 }) {
-  const [showForm, setShowForm] = useState(false);
-  const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
   const [manualDialog, setManualDialog] = useState<{
     open: boolean;
     mode: 'approve' | 'decline';
   }>({ open: false, mode: 'approve' });
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
-
-  function deleteLine(id: string) {
-    if (!confirm('Delete this line?')) return;
-    startTransition(async () => {
-      await deleteCostLineAction(id, projectId);
-    });
-  }
 
   function createInvoice() {
     startTransition(async () => {
@@ -329,19 +324,26 @@ export function EstimateTab({
         </div>
       ) : null}
 
-      {/* Top-anchored form is for Add only. Edit happens inline inside the
-          row below so the operator keeps their scroll position. */}
-      {showForm ? (
-        <CostLineForm projectId={projectId} catalog={catalog} onDone={() => setShowForm(false)} />
-      ) : (
-        <Button size="sm" onClick={() => setShowForm(true)}>
-          + Add line
+      {/* Estimate is read-only on line items. Editing happens in the Budget
+          tab so there's a single source of truth — discoverability dies
+          when both surfaces accept edits. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
+        <span>Line items are edited in the Budget tab.</span>
+        <Button asChild size="sm" variant="outline">
+          <Link href={`/projects/${projectId}?tab=buckets`}>
+            <Pencil className="size-3.5" />
+            Open Budget
+          </Link>
         </Button>
-      )}
+      </div>
 
       {costLines.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No cost lines yet. Add your first item above.
+          No line items yet.{' '}
+          <Link href={`/projects/${projectId}?tab=buckets`} className="text-foreground underline">
+            Add your first item in Budget
+          </Link>
+          .
         </p>
       ) : (
         <div className="space-y-4">
@@ -352,7 +354,6 @@ export function EstimateTab({
                 <col className="w-24" />
                 <col className="w-28" />
                 <col className="w-20" />
-                <col className="w-24" />
               </colgroup>
               <thead>
                 <tr className="border-b bg-muted/50">
@@ -360,7 +361,6 @@ export function EstimateTab({
                   <th className="px-3 py-2 text-right font-medium">Cost</th>
                   <th className="px-3 py-2 text-right font-medium">Total</th>
                   <th className="px-3 py-2 text-right font-medium">Markup</th>
-                  <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -369,7 +369,7 @@ export function EstimateTab({
                     {sec.section ? (
                       <tr className="border-b bg-muted/30">
                         <td
-                          colSpan={5}
+                          colSpan={4}
                           className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
                         >
                           {sec.section}
@@ -378,7 +378,6 @@ export function EstimateTab({
                     ) : null}
                     {sec.buckets.flatMap(({ lines }) =>
                       lines.map((line) => {
-                        const isEditing = editingLine?.id === line.id;
                         const photos = (line.photo_storage_paths ?? [])
                           .map((path) => ({
                             path,
@@ -387,11 +386,7 @@ export function EstimateTab({
                           .filter((p) => p.url);
                         return (
                           <Fragment key={line.id}>
-                            <tr
-                              className={
-                                isEditing ? 'align-top' : 'align-top border-b last:border-0'
-                              }
-                            >
+                            <tr className="align-top border-b last:border-0">
                               <td className="px-3 py-2">
                                 <p className="font-medium">{line.label}</p>
                                 {line.notes ? (
@@ -415,42 +410,7 @@ export function EstimateTab({
                               <td className="px-3 py-2 text-right text-muted-foreground">
                                 {Number(line.markup_pct).toFixed(1)}%
                               </td>
-                              <td className="px-3 py-2">
-                                <div className="flex justify-end gap-1">
-                                  <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    onClick={() => {
-                                      setEditingLine(isEditing ? null : line);
-                                      setShowForm(false);
-                                    }}
-                                  >
-                                    {isEditing ? 'Close' : 'Edit'}
-                                  </Button>
-                                  <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    className="text-destructive hover:text-destructive"
-                                    onClick={() => deleteLine(line.id)}
-                                  >
-                                    Del
-                                  </Button>
-                                </div>
-                              </td>
                             </tr>
-                            {isEditing ? (
-                              <tr className="border-b bg-muted/30">
-                                <td colSpan={5} className="p-4">
-                                  <CostLineForm
-                                    projectId={projectId}
-                                    initial={line}
-                                    catalog={catalog}
-                                    photoUrls={costLinePhotoUrls}
-                                    onDone={() => setEditingLine(null)}
-                                  />
-                                </td>
-                              </tr>
-                            ) : null}
                           </Fragment>
                         );
                       }),

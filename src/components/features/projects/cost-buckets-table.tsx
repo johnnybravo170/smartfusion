@@ -98,7 +98,7 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
   }
 
   function removeBucket(bucketId: string) {
-    if (!confirm('Remove this bucket? Any cost lines attached will be orphaned.')) return;
+    if (!confirm('Remove this category? Any line items attached will be orphaned.')) return;
     startTransition(async () => {
       const result = await removeBucketAction({ id: bucketId, project_id: projectId });
       if (result.ok) toast.success('Bucket removed');
@@ -129,7 +129,7 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => setShowAddBucket((v) => !v)}>
-          {showAddBucket ? 'Cancel' : '+ Add bucket'}
+          {showAddBucket ? 'Cancel' : '+ Add category'}
         </Button>
         <Button size="sm" variant="outline" onClick={generateEstimate} disabled={isPending}>
           Generate Estimate
@@ -163,7 +163,7 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
                 <thead>
                   <tr className="border-b bg-muted/50">
                     <th className="px-2 py-2" />
-                    <th className="px-3 py-2 text-left font-medium">Bucket</th>
+                    <th className="px-3 py-2 text-left font-medium">Category</th>
                     <th className="px-3 py-2 text-right font-medium">Estimate</th>
                     <th className="px-3 py-2 text-right font-medium">Actual</th>
                     <th className="px-3 py-2 text-right font-medium">Remaining</th>
@@ -373,7 +373,7 @@ function BucketRow(props: BucketRowProps) {
           <td colSpan={6} className="px-3 py-3">
             <div className="space-y-2">
               {bucketLines.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No line items in this bucket yet.</p>
+                <p className="text-xs text-muted-foreground">No line items in this category yet.</p>
               ) : (
                 <table className="w-full text-xs">
                   <thead>
@@ -544,7 +544,7 @@ function AddBucketForm({ projectId, onDone }: { projectId: string; onDone: () =>
       </div>
       <div className="mt-3 flex gap-2">
         <Button type="submit" size="sm" disabled={isPending}>
-          {isPending ? 'Adding…' : 'Add bucket'}
+          {isPending ? 'Adding…' : 'Add category'}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>
           Cancel

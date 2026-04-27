@@ -140,8 +140,8 @@ export function VarianceTab({ variance }: { variance: VarianceData }) {
 
       {estimated_cents === 0 && actual_total_cents === 0 && (
         <p className="text-sm text-muted-foreground">
-          No cost lines or bills recorded yet. Add cost lines in the Estimate tab and log bills in
-          the Costs tab.
+          No line items or bills recorded yet. Add line items in the Budget tab and log bills in the
+          Spend tab.
         </p>
       )}
     </div>

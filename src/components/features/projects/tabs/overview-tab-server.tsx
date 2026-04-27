@@ -1,20 +1,22 @@
-import { BudgetSummaryCard } from '@/components/features/projects/budget-summary';
 import { ProjectTimeline } from '@/components/features/projects/project-timeline';
-import { getBudgetVsActual } from '@/lib/db/queries/project-buckets';
+import { VarianceTab } from '@/components/features/projects/variance-tab';
+import { getVarianceReport } from '@/lib/db/queries/cost-lines';
 import { listProjectEvents } from '@/lib/db/queries/project-events';
 import { getProject } from '@/lib/db/queries/projects';
 
 export default async function OverviewTabServer({ projectId }: { projectId: string }) {
-  const [project, budget, projectEvents] = await Promise.all([
+  const [project, variance, projectEvents] = await Promise.all([
     getProject(projectId),
-    getBudgetVsActual(projectId),
+    getVarianceReport(projectId),
     listProjectEvents(projectId),
   ]);
   if (!project) return null;
 
   return (
     <div className="space-y-6">
-      <BudgetSummaryCard budget={budget} />
+      {/* Variance is the headline "are we on track?" view. Used to live on
+          its own tab — merged in 2026-04-27 to remove a redundant click. */}
+      <VarianceTab variance={variance} />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <div className="rounded-lg border p-4">
@@ -46,7 +48,7 @@ export default async function OverviewTabServer({ projectId }: { projectId: stri
           <p className="text-sm font-medium">{Math.round(project.management_fee_rate * 100)}%</p>
         </div>
         <div className="rounded-lg border p-4">
-          <p className="text-xs text-muted-foreground">Cost Buckets</p>
+          <p className="text-xs text-muted-foreground">Categories</p>
           <p className="text-sm font-medium">{project.cost_buckets.length}</p>
         </div>
       </div>
