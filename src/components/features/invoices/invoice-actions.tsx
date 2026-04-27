@@ -1,6 +1,17 @@
 'use client';
 
-import { Ban, CheckCircle, Copy, Loader2, Mail, Paperclip, Send, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Ban,
+  CheckCircle,
+  Copy,
+  Loader2,
+  Mail,
+  Paperclip,
+  Send,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -38,6 +49,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 import {
+  extractPaymentReceiptAction,
   markInvoicePaidAction,
   resendInvoiceAction,
   sendInvoiceAction,
@@ -59,6 +71,8 @@ type Props = {
   paymentUrl: string | null;
   customerEmail: string | null;
   hasStripe?: boolean;
+  /** Invoice grand total in cents — used to flag amount mismatches in OCR. */
+  invoiceTotalCents?: number;
 };
 
 type StagedReceipt = {
@@ -81,6 +95,7 @@ export function InvoiceActions({
   paymentUrl,
   customerEmail,
   hasStripe = true,
+  invoiceTotalCents,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -89,6 +104,9 @@ export function InvoiceActions({
   const [paymentNotes, setPaymentNotes] = useState('');
   const [staged, setStaged] = useState<StagedReceipt[]>([]);
   const [paidDialogOpen, setPaidDialogOpen] = useState(false);
+  const [ocrPending, setOcrPending] = useState(false);
+  const [ocrAmountCents, setOcrAmountCents] = useState<number | null>(null);
+  const [ocrApplied, setOcrApplied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleAddReceipts(files: FileList | null) {
@@ -110,6 +128,64 @@ export function InvoiceActions({
       });
     }
     setStaged((prev) => [...prev, ...incoming]);
+
+    // Fire OCR on the first image only if we don't already have a result —
+    // multiple receipt photos for one payment are usually different views of
+    // the same cheque. GC can re-fire by removing all and re-adding.
+    if (!ocrApplied && !ocrPending && incoming.length > 0) {
+      const first = incoming[0];
+      runOcr(first.file);
+    }
+  }
+
+  function runOcr(file: File) {
+    setOcrPending(true);
+    void (async () => {
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('payment_method', paymentMethod);
+        const result = await extractPaymentReceiptAction(fd);
+        if (!result.ok) {
+          // Silent — OCR failure is not fatal, GC fills manually.
+          return;
+        }
+        const { amount_cents, reference, paid_on, payer_name, notes } = result.data;
+        const filledParts: string[] = [];
+
+        // Soft-fill: only populate fields the user hasn't typed into.
+        if (reference) {
+          setPaymentReference((prev) => {
+            if (prev.trim()) return prev;
+            filledParts.push('reference');
+            return reference;
+          });
+        }
+
+        const noteFragments: string[] = [];
+        if (payer_name) noteFragments.push(`From ${payer_name}`);
+        if (paid_on) noteFragments.push(`Dated ${paid_on}`);
+        if (notes) noteFragments.push(notes);
+        if (noteFragments.length > 0) {
+          setPaymentNotes((prev) => {
+            if (prev.trim()) return prev;
+            filledParts.push('notes');
+            return noteFragments.join(' · ');
+          });
+        }
+
+        if (typeof amount_cents === 'number') {
+          setOcrAmountCents(amount_cents);
+        }
+
+        if (filledParts.length > 0) {
+          setOcrApplied(true);
+          toast.info(`Filled ${filledParts.join(' + ')} from receipt photo.`);
+        }
+      } finally {
+        setOcrPending(false);
+      }
+    })();
   }
 
   function removeStaged(id: string) {
@@ -125,6 +201,9 @@ export function InvoiceActions({
     setStaged([]);
     setPaymentReference('');
     setPaymentNotes('');
+    setOcrAmountCents(null);
+    setOcrApplied(false);
+    setOcrPending(false);
   }
 
   function handleSend() {
@@ -341,7 +420,20 @@ export function InvoiceActions({
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label>Receipt photos (optional)</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Receipt photos (optional)</Label>
+                  {ocrPending ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <Loader2 className="size-3 animate-spin" />
+                      Reading receipt…
+                    </span>
+                  ) : ocrApplied ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <Sparkles className="size-3" />
+                      Filled from photo
+                    </span>
+                  ) : null}
+                </div>
                 <div className="flex flex-wrap items-start gap-2">
                   {staged.map((s) => (
                     <div
@@ -386,8 +478,21 @@ export function InvoiceActions({
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Snap a photo of the cheque or signed receipt. Up to 10, max 10 MB each.
+                  Snap a photo of the cheque or signed receipt. Up to 10, max 10 MB each. Henry
+                  reads the photo and prefills the fields above.
                 </p>
+                {ocrAmountCents != null &&
+                invoiceTotalCents != null &&
+                Math.abs(ocrAmountCents - invoiceTotalCents) > 1 ? (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                      Photo shows ${(ocrAmountCents / 100).toFixed(2)} but invoice total is $
+                      {(invoiceTotalCents / 100).toFixed(2)}. Partial payment, wrong photo, or bad
+                      read?
+                    </span>
+                  </div>
+                ) : null}
               </div>
             </div>
             <DialogFooter>

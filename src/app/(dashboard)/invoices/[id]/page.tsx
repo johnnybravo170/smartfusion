@@ -188,6 +188,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           paymentUrl={invoice.pdf_url}
           customerEmail={invoice.customer?.email ?? null}
           hasStripe={hasStripe}
+          invoiceTotalCents={totalCents}
         />
         <PrintButton />
       </div>

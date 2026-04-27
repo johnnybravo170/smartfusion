@@ -10,6 +10,7 @@
  * See PHASE_1_PLAN.md Phase 1C.
  */
 
+import { GoogleGenAI } from '@google/genai';
 import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import type { InvoiceLineItem } from '@/lib/db/queries/invoices';
@@ -1100,4 +1101,118 @@ export async function generateFinalInvoiceAction(input: {
   revalidatePath(`/projects/${input.projectId}`);
   revalidatePath('/invoices');
   return { ok: true, id: data.id as string };
+}
+
+/**
+ * Extract structured fields from a payment receipt photo (cheque, e-transfer
+ * screenshot, paper receipt) using Gemini 2.5 Flash. Used to prepopulate the
+ * Record Payment dialog — never authoritative, always GC-confirmed.
+ *
+ * Returns null fields when the model can't read them; the caller leaves
+ * those inputs untouched.
+ */
+export type ReceiptExtraction = {
+  amount_cents: number | null;
+  reference: string | null;
+  paid_on: string | null; // ISO date
+  payer_name: string | null;
+  notes: string | null;
+};
+
+export async function extractPaymentReceiptAction(
+  formData: FormData,
+): Promise<{ ok: true; data: ReceiptExtraction } | { ok: false; error: string }> {
+  const file = formData.get('file');
+  const paymentMethod = String(formData.get('payment_method') ?? 'other');
+
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: 'No file uploaded.' };
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    return { ok: false, error: 'Receipt must be under 10 MB.' };
+  }
+  if (!file.type.startsWith('image/')) {
+    return { ok: false, error: 'OCR only runs on images.' };
+  }
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { ok: false, error: 'OCR not configured.' };
+
+  const buf = Buffer.from(await file.arrayBuffer());
+  const base64 = buf.toString('base64');
+
+  const methodHint =
+    paymentMethod === 'cheque'
+      ? 'This is a photo of a cheque. The reference is the cheque number printed on the cheque (typically top-right).'
+      : paymentMethod === 'e-transfer'
+        ? 'This is a screenshot of an Interac e-Transfer notification. The reference is the confirmation/reference code.'
+        : paymentMethod === 'cash'
+          ? 'This is a photo of a paper cash receipt. There may be no reference number; leave reference null if absent.'
+          : 'This is a payment receipt of unspecified type. Extract whatever fields are visible.';
+
+  const prompt = `${methodHint}
+
+Extract these fields and return strict JSON:
+- amount_cents: integer cents (e.g. $1,840.00 → 184000). null if unreadable.
+- reference: short alphanumeric reference (cheque number, e-transfer confirmation code). null if not present.
+- paid_on: ISO date YYYY-MM-DD if a date is visible. null otherwise.
+- payer_name: the name of the person/company who paid (top-left of cheque, "From" in e-transfer). null if not visible.
+- notes: a one-line human-readable note ONLY if there is something noteworthy beyond the structured fields above (e.g. "memo line: kitchen reno deposit"). null otherwise — do not narrate the obvious.
+
+Return ONLY valid JSON, no prose, no markdown fences.`;
+
+  const ai = new GoogleGenAI({ apiKey });
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }, { inlineData: { mimeType: file.type, data: base64 } }],
+          },
+        ],
+        config: { responseMimeType: 'application/json', temperature: 0.1 },
+      });
+      break;
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('503') && !msg.includes('UNAVAILABLE') && !msg.includes('overload')) {
+        return { ok: false, error: `OCR failed: ${msg}` };
+      }
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1) ** 2));
+    }
+  }
+  if (!response) {
+    const msg = lastErr instanceof Error ? lastErr.message : 'OCR unavailable';
+    return { ok: false, error: msg };
+  }
+
+  const text = response.text ?? '';
+  let parsed: ReceiptExtraction;
+  try {
+    const raw = JSON.parse(text) as Record<string, unknown>;
+    parsed = {
+      amount_cents: typeof raw.amount_cents === 'number' ? Math.round(raw.amount_cents) : null,
+      reference:
+        typeof raw.reference === 'string' && raw.reference.trim() ? raw.reference.trim() : null,
+      paid_on:
+        typeof raw.paid_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.paid_on)
+          ? raw.paid_on
+          : null,
+      payer_name:
+        typeof raw.payer_name === 'string' && raw.payer_name.trim() ? raw.payer_name.trim() : null,
+      notes: typeof raw.notes === 'string' && raw.notes.trim() ? raw.notes.trim() : null,
+    };
+  } catch {
+    return { ok: false, error: 'OCR returned invalid JSON.' };
+  }
+
+  return { ok: true, data: parsed };
 }
