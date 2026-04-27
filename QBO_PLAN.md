@@ -90,7 +90,7 @@ Each row is one Playwright e2e test that hits the sandbox.
 | 8 | Mark invoice paid via cash | QBO Payment, `PaymentMethodRef`=Cash |
 | 9 | Mark invoice paid via e-transfer | QBO Payment, `PaymentMethodRef`=Other (or custom EFT method) |
 | 10 | Void an invoice | QBO Invoice voided (not deleted) |
-| 11 | Sync fails (force token revocation mid-test) | `qbo_sync_log.status='failed'`, retry button surfaces, ops card created |
+| 11 | Sync fails (force token revocation mid-test) | `qbo_sync_log.status='failed'`, retry button surfaces, ops card created, **failure email goes to the actor who triggered it** (GC if invoice send, bookkeeper if portal retry) |
 | 12 | Token expires (force expire `expires_at`) | Refresh-token flow runs, sync continues, no user-visible disruption |
 | 13 | Reconnect after revoke | Old `realm_id` retained; new tokens overwrite cleanly |
 
@@ -270,15 +270,22 @@ All syncs go through BullMQ. The user-facing action returns immediately.
 
 ```ts
 // In markInvoicePaidAction, after the DB update:
-await qboQueue.add('sync-payment', { tenantId, invoiceId }, {
+await qboQueue.add('sync-payment', {
+  tenantId,
+  invoiceId,
+  actor: { kind: currentActor.kind, userId: currentActor.userId, email: currentActor.email },
+}, {
   attempts: 4,
   backoff: { type: 'exponential', delay: 2000 },
   removeOnComplete: 100,
 });
 ```
 
-Worker reads, calls QBO, writes to `qbo_sync_log`. On final failure, posts
-an ops card with the payload + error.
+The `actor` is whoever triggered the action — `kind` is `'gc'`, `'bookkeeper'`,
+or `'system'` (cron-driven). The worker calls QBO, writes to `qbo_sync_log`.
+On final failure it emails `actor.email` directly (so bookkeeper-triggered
+syncs notify the bookkeeper, GC-triggered notify the GC) and posts an ops
+card. `kind='system'` cron failures route to the GC.
 
 ---
 
@@ -299,8 +306,7 @@ ALTER TABLE public.tenants
   ADD COLUMN IF NOT EXISTS qbo_disconnected_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS qbo_default_item_id TEXT,
   ADD COLUMN IF NOT EXISTS qbo_payment_method_map JSONB,
-  ADD COLUMN IF NOT EXISTS qbo_tax_code_map JSONB,
-  ADD COLUMN IF NOT EXISTS qbo_bookkeeper_email TEXT;
+  ADD COLUMN IF NOT EXISTS qbo_tax_code_map JSONB;
 
 COMMENT ON COLUMN public.tenants.qbo_realm_id IS
   'QBO company id, populated on OAuth connect.';
@@ -310,8 +316,6 @@ COMMENT ON COLUMN public.tenants.qbo_payment_method_map IS
   'Cached QBO payment method ids per type, e.g. {"cash":"1","cheque":"2","e-transfer":"7",...}';
 COMMENT ON COLUMN public.tenants.qbo_tax_code_map IS
   'Per-province QBO TaxCode ids, e.g. {"BC":"4","ON":"8","_tax_exempt":"3"}';
-COMMENT ON COLUMN public.tenants.qbo_bookkeeper_email IS
-  'Optional CC address for sync-failure emails. GC types this in QBO settings.';
 
 -- Per-row QBO refs
 ALTER TABLE public.customers
@@ -337,6 +341,10 @@ CREATE TABLE IF NOT EXISTS public.qbo_sync_log (
   entity_id       UUID NOT NULL,
   qbo_id          TEXT,
   status          TEXT NOT NULL CHECK (status IN ('queued','running','succeeded','failed')),
+  -- Who triggered this sync. Determines who gets the failure email.
+  actor_kind      TEXT NOT NULL CHECK (actor_kind IN ('gc','bookkeeper','system')),
+  actor_user_id   UUID,
+  actor_email     TEXT,
   request_body    JSONB,
   response_body   JSONB,
   error_message   TEXT,
@@ -424,7 +432,7 @@ Every failure surfaces in three places:
 | Phase | Scope | Size | Ship-when |
 |---|---|---|---|
 | **0. Plan + sandbox setup** | Get Intuit Developer account, sandbox company, env vars in Vercel | 1 | Day 1 |
-| **1. OAuth flow + connection UI** | `/api/qbo/start`, `/api/qbo/callback`, settings page disconnected/connected states, schema migration, post-connect TaxCode + PaymentMethod fetch + map population, optional bookkeeper-email field | 5 | Day 2-4 |
+| **1. OAuth flow + connection UI** | `/api/qbo/start`, `/api/qbo/callback`, settings page disconnected/connected states, schema migration, post-connect TaxCode + PaymentMethod fetch + map population | 5 | Day 2-4 |
 | **2. Customer push** | Sync action, queue worker, per-row status, e2e test against sandbox | 3 | Day 5-6 |
 | **3. Invoice push** | Single-line invoice mapping with multi-province TaxCode lookup, tax-mismatch warnings, void handling | 5 | Day 7-9 |
 | **4. Payment push** | All 5 payment methods mapped to QBO PaymentMethodRef, Stripe webhook hookup | 3 | Day 10-11 |
@@ -479,11 +487,13 @@ infra.
    custom method id. Cleaner than dumping detail in `PaymentRefNum`.
 3. **Backfill on connect.** Default to forward-only with a one-click
    "backfill last 90 days" option visible right after connection.
-4. **Bookkeeper notification on failure.** GC-only by default. QBO settings
-   page exposes an optional **"Also notify bookkeeper at <email>"** field
-   (defaulted blank). When set, sync-failure emails CC that address. The
-   GC typing the address is the consent — sidesteps the privacy issue of
-   us inferring a bookkeeper from OAuth.
+4. **Sync notifications — actor-based routing.** Whoever triggered the
+   action gets the email. If a bookkeeper retries a failed sync from inside
+   the bookkeeper portal, the failure email goes to them. If the GC sends
+   an invoice (which auto-syncs) and it fails, the failure email goes to
+   the GC. We already know who's logged in. No opt-in field, no inferring
+   third parties from OAuth, no privacy puzzle. This applies to every
+   sync-related email, not just failures.
 
 ### 12.1 Multi-province tax mapping
 
