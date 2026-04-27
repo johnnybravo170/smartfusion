@@ -205,3 +205,15 @@ All plan-tier checks go through `src/lib/billing/features.ts`. **Never write inl
 - `src/components/features/billing/past-due-banner.tsx` — top-of-shell banner; rendered once in `(dashboard)/layout.tsx`.
 
 Spec rule: gated features are **visible but locked**, never hidden. `past_due` and `unpaid` collapse the effective plan to `starter` at the gate (handled inside `effectivePlan` — call sites don't repeat this logic).
+
+---
+
+## 14. Duplicate-detection dialogs
+
+When a server action returns a `{ duplicate: { existing_id, vendor, amount_cents, expense_date } }` shape (overhead expenses today, possibly other entities later), every caller renders the same shared dialog so the user gets a consistent View existing / Cancel / Save anyway flow regardless of entry point.
+
+- `src/components/features/expenses/duplicate-expense-dialog.tsx` — shared dialog component. Props: `duplicate`, `onClose`, `onForceSave`, `busy`.
+- `src/components/features/expenses/overhead-expense-form.tsx` — full overhead form caller.
+- `src/components/layout/quick-log-expense-button.tsx` — top-bar quick-log caller.
+
+When you add a new caller (or extend the duplicate-detection rule to a new entity type), surface the existing callers and ask the user before changing the dialog's contract. Don't degrade one caller's UX (e.g. swap the dialog for a toast) without explicit decision — that's exactly the bug this pattern was extracted to fix.

@@ -15,6 +15,10 @@
 import { DollarSign, Loader2 } from 'lucide-react';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import {
+  type DuplicateExpense,
+  DuplicateExpenseDialog,
+} from '@/components/features/expenses/duplicate-expense-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -93,6 +97,7 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
   const [vendorGstNumber, setVendorGstNumber] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(todayLocal());
+  const [duplicate, setDuplicate] = useState<DuplicateExpense | null>(null);
   const [pending, startSaving] = useTransition();
 
   useEffect(() => {
@@ -165,6 +170,45 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
     setIsDraggingOver(false);
   }
 
+  function runSave(force: boolean) {
+    const amountCents = Math.round(Number.parseFloat(amount) * 100);
+    startSaving(async () => {
+      const fd = new FormData();
+      fd.append('amount_cents', String(amountCents));
+      fd.append('expense_date', date);
+      if (vendor.trim()) fd.append('vendor', vendor.trim());
+      if (vendorGstNumber.trim()) fd.append('vendor_gst_number', vendorGstNumber.trim());
+      if (description.trim()) fd.append('description', description.trim());
+      if (receipt) fd.append('receipt', receipt);
+      if (force) fd.append('force', '1');
+
+      if (mode === 'project') {
+        fd.append('project_id', projectId);
+        if (bucketId) fd.append('bucket_id', bucketId);
+        const res = await logExpenseWithReceiptAction(fd);
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        toast.success('Project expense logged.');
+        onDone();
+      } else {
+        fd.append('category_id', categoryId);
+        const res = await logOverheadExpenseAction(fd);
+        if (!res.ok) {
+          if ('duplicate' in res) {
+            setDuplicate(res.duplicate);
+            return;
+          }
+          toast.error(res.error);
+          return;
+        }
+        toast.success('Overhead expense logged.');
+        onDone();
+      }
+    });
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const amountCents = Math.round(Number.parseFloat(amount) * 100);
@@ -184,42 +228,7 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
       toast.error('Pick a category.');
       return;
     }
-
-    startSaving(async () => {
-      const fd = new FormData();
-      fd.append('amount_cents', String(amountCents));
-      fd.append('expense_date', date);
-      if (vendor.trim()) fd.append('vendor', vendor.trim());
-      if (vendorGstNumber.trim()) fd.append('vendor_gst_number', vendorGstNumber.trim());
-      if (description.trim()) fd.append('description', description.trim());
-      if (receipt) fd.append('receipt', receipt);
-
-      if (mode === 'project') {
-        fd.append('project_id', projectId);
-        if (bucketId) fd.append('bucket_id', bucketId);
-        const res = await logExpenseWithReceiptAction(fd);
-        if (!res.ok) {
-          toast.error(res.error);
-          return;
-        }
-        toast.success('Project expense logged.');
-        onDone();
-      } else {
-        fd.append('category_id', categoryId);
-        const res = await logOverheadExpenseAction(fd);
-        if (!res.ok) {
-          // duplicate variant carries no `error` string — surface generic message
-          if ('duplicate' in res) {
-            toast.error('Looks like a duplicate. Review existing expenses in /expenses.');
-            return;
-          }
-          toast.error(res.error);
-          return;
-        }
-        toast.success('Overhead expense logged.');
-        onDone();
-      }
-    });
+    runSave(false);
   }
 
   const busy = pending || extracting;
@@ -463,6 +472,16 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
           )}
         </Button>
       </div>
+
+      <DuplicateExpenseDialog
+        duplicate={duplicate}
+        onClose={() => setDuplicate(null)}
+        onForceSave={() => {
+          setDuplicate(null);
+          runSave(true);
+        }}
+        busy={busy}
+      />
     </form>
   );
 }

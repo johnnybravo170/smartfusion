@@ -14,6 +14,10 @@ import { Loader2, Paperclip, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import {
+  type DuplicateExpense,
+  DuplicateExpenseDialog,
+} from '@/components/features/expenses/duplicate-expense-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -142,12 +146,7 @@ export function OverheadExpenseForm({
   // When editing: existingReceiptUrl is the signed URL for the already-
   // attached receipt. removeExistingReceipt lets the user clear it.
   const [removeExistingReceipt, setRemoveExistingReceipt] = useState(false);
-  const [duplicate, setDuplicate] = useState<{
-    existing_id: string;
-    vendor: string;
-    amount_cents: number;
-    expense_date: string;
-  } | null>(null);
+  const [duplicate, setDuplicate] = useState<DuplicateExpense | null>(null);
   const [categoryId, setCategoryId] = useState(initialValues?.categoryId ?? '');
   const [amount, setAmount] = useState(
     initialValues ? centsToDollars(initialValues.amountCents) : '',
@@ -537,63 +536,15 @@ export function OverheadExpenseForm({
         onCreated={onCategoryCreated}
       />
 
-      <Dialog open={!!duplicate} onOpenChange={(o) => !o && setDuplicate(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Possible duplicate</DialogTitle>
-            <DialogDescription>
-              {duplicate ? (
-                <>
-                  You already logged{' '}
-                  <span className="font-medium text-foreground">
-                    ${(duplicate.amount_cents / 100).toFixed(2)}
-                  </span>{' '}
-                  at <span className="font-medium text-foreground">{duplicate.vendor}</span> on{' '}
-                  <span className="font-medium text-foreground">
-                    {new Date(duplicate.expense_date).toLocaleDateString('en-CA', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </span>
-                  . Log this one anyway?
-                </>
-              ) : null}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            {duplicate ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  router.push(`/expenses/${duplicate.existing_id}/edit`);
-                }}
-              >
-                View existing
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setDuplicate(null)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                setDuplicate(null);
-                runSave(true);
-              }}
-              disabled={pending}
-            >
-              Save anyway
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DuplicateExpenseDialog
+        duplicate={duplicate}
+        onClose={() => setDuplicate(null)}
+        onForceSave={() => {
+          setDuplicate(null);
+          runSave(true);
+        }}
+        busy={pending}
+      />
     </form>
   );
 }
