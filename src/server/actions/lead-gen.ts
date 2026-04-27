@@ -8,6 +8,7 @@
  * tenant row before any inserts.
  */
 
+import { headers } from 'next/headers';
 import { sendEmail } from '@/lib/email/send';
 import { leadNotificationHtml } from '@/lib/email/templates/lead-notification';
 import {
@@ -26,6 +27,10 @@ export async function submitLeadAction(input: {
   email: string;
   phone: string;
   notes?: string;
+  /** True when the lead ticked the "send me marketing" checkbox. */
+  marketingOptIn?: boolean;
+  /** Verbatim wording shown next to the checkbox at submission time. */
+  marketingWording?: string;
   surfaces: Array<{
     surface_type: string;
     sqft: number;
@@ -156,6 +161,37 @@ export async function submitLeadAction(input: {
     related_type: 'quote',
     related_id: quote.id,
   });
+
+  // 7b. CASL: capture marketing consent if the lead ticked the opt-in box.
+  // Captures IP + user-agent + the verbatim wording that was on screen so a
+  // future audit can reconstruct exactly what the recipient agreed to.
+  if (input.marketingOptIn) {
+    try {
+      const h = await headers();
+      const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? h.get('x-real-ip') ?? null;
+      const userAgent = h.get('user-agent') ?? null;
+      await admin.from('consent_events').insert({
+        tenant_id: tenant.id,
+        contact_id: customer.id,
+        contact_kind: 'customer',
+        email: parsed.data.email,
+        phone: parsed.data.phone,
+        consent_type: 'general_marketing',
+        source: 'intake_form',
+        wording_shown: input.marketingWording ?? null,
+        ip,
+        user_agent: userAgent,
+        evidence: {
+          form: 'public_quote_widget',
+          quote_id: quote.id,
+          submission_total_cents: totals.total_cents,
+        },
+      });
+    } catch (err) {
+      // Non-fatal — the lead saved, the customer can re-consent later.
+      console.error('[casl] consent_events insert failed:', err);
+    }
+  }
 
   // 8. Get operator info for notifications.
   const { data: memberData } = await admin

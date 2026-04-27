@@ -8,11 +8,28 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
+/**
+ * Wording shown next to the marketing opt-in checkbox. Captured verbatim
+ * into `consent_events.wording_shown` at submission time so a CASL audit
+ * can prove what the recipient agreed to.
+ */
+export const MARKETING_OPT_IN_WORDING =
+  'Yes, send me occasional tips, seasonal reminders, and special offers. (Optional — your quote does not depend on this.)';
+
 type LeadCaptureFormProps = {
-  onSubmit: (data: { name: string; email: string; phone: string; notes: string }) => void;
+  onSubmit: (data: {
+    name: string;
+    email: string;
+    phone: string;
+    notes: string;
+    marketingOptIn: boolean;
+    marketingWording: string;
+  }) => void;
   pending: boolean;
   error: string | null;
 };
@@ -22,6 +39,7 @@ export function LeadCaptureForm({ onSubmit, pending, error }: LeadCaptureFormPro
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
@@ -41,7 +59,14 @@ export function LeadCaptureForm({ onSubmit, pending, error }: LeadCaptureFormPro
       return;
     }
 
-    onSubmit({ name: name.trim(), email: email.trim(), phone: phone.trim(), notes: notes.trim() });
+    onSubmit({
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      notes: notes.trim(),
+      marketingOptIn,
+      marketingWording: MARKETING_OPT_IN_WORDING,
+    });
   }
 
   const displayError = error || localError;
@@ -104,6 +129,21 @@ export function LeadCaptureForm({ onSubmit, pending, error }: LeadCaptureFormPro
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
+      </div>
+
+      <div className="flex items-start gap-2 rounded-md border bg-muted/30 px-3 py-2.5">
+        <Checkbox
+          id="lead-marketing-optin"
+          checked={marketingOptIn}
+          onCheckedChange={(v) => setMarketingOptIn(v === true)}
+          className="mt-0.5"
+        />
+        <Label
+          htmlFor="lead-marketing-optin"
+          className="flex-1 cursor-pointer text-xs font-normal text-muted-foreground"
+        >
+          {MARKETING_OPT_IN_WORDING}
+        </Label>
       </div>
 
       {displayError ? (

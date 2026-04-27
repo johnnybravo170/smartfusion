@@ -113,6 +113,32 @@ TS schema: `src/lib/db/schema/casl.ts`.
 
 ---
 
+## Voice / call recording
+
+Today HeyHenry has two voice surfaces, both operator-only:
+
+- `src/hooks/use-voice.ts` — operator talks to Henry (the AI chat) via the
+  browser Web Speech API. No customer audio is captured.
+- `src/server/actions/project-memos.ts` — operator records voice notes
+  about a project; transcribed locally for the project record.
+
+Neither captures customer audio. CASL voice-recording rules don't apply
+to either path.
+
+When the **missed-call lead capture** feature ships (separate kanban
+card), it WILL record customer voicemails via Twilio. That's the point
+where a recording disclosure becomes mandatory:
+
+- Greeting played at the start of every recorded voicemail must include
+  *"This call is being recorded."* (One-line is enough — covers both
+  Canadian one-party and US two-party state requirements.)
+- Persist a `consent_events` row with `consent_type='voice_recording'`
+  per recording, evidence = `{ twilio_recording_sid }`.
+
+Until then, this section is a placeholder.
+
+---
+
 ## When in doubt
 
 If a category is genuinely ambiguous, mark it `unclassified` with a

@@ -128,6 +128,8 @@ export function PublicQuoteForm({ tenantId, businessName, catalog }: PublicQuote
     email: string;
     phone: string;
     notes: string;
+    marketingOptIn: boolean;
+    marketingWording: string;
   }) {
     setError(null);
     startTransition(async () => {
@@ -137,6 +139,8 @@ export function PublicQuoteForm({ tenantId, businessName, catalog }: PublicQuote
         email: data.email,
         phone: data.phone,
         notes: data.notes || undefined,
+        marketingOptIn: data.marketingOptIn,
+        marketingWording: data.marketingWording,
         surfaces: surfaces.map((s) => ({
           surface_type: s.surface_type,
           sqft: s.sqft,

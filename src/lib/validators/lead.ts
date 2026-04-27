@@ -21,6 +21,8 @@ export const leadSubmitSchema = z.object({
   email: z.string().trim().email('Enter a valid email'),
   phone: z.string().trim().min(7, 'Enter a valid phone number').max(30),
   notes: z.string().trim().max(2000).optional().or(z.literal('')),
+  marketingOptIn: z.boolean().optional(),
+  marketingWording: z.string().max(1000).optional(),
   surfaces: z.array(leadSurfaceSchema).min(1, 'Add at least one surface'),
 });
 
