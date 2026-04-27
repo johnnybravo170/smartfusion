@@ -79,7 +79,12 @@ Each row is one Playwright e2e test that hits the sandbox.
 | 2 | Create customer in HeyHenry | QBO Customer created with name + email + (optional) address |
 | 3 | Edit customer name in HeyHenry | QBO Customer updated, same `Id` |
 | 4 | Create + send invoice (1 line item, GST) | QBO Invoice with one line, correct `TxnTaxDetail`, customer ref |
-| 5 | Create invoice with 5 line items + tax-exempt | QBO Invoice with 5 lines, no tax |
+| 5 | Create invoice with 5 line items + tax-exempt | QBO Invoice with 5 lines, `TaxCodeRef` = tax-exempt code, no tax |
+| 5b | Invoice for BC customer (GST+PST) | QBO Invoice with `TaxCodeRef`=`GST/PST BC`, total tax = 12% of subtotal |
+| 5c | Invoice for ON customer (HST) | QBO Invoice with `TaxCodeRef`=`HST ON`, total tax = 13% |
+| 5d | Invoice for AB customer (GST only) | QBO Invoice with `TaxCodeRef`=`GST`, total tax = 5% |
+| 5e | Invoice with customer missing province | Sync blocked, clear UI error: "Province needed before QBO sync" |
+| 5f | Invoice for tenant whose QBO is missing the right TaxCode | Sync blocked, actionable error pointing to QBO Sales Tax settings |
 | 6 | Mark invoice paid via Stripe | QBO Payment linked to invoice, `PaymentMethodRef`=Credit Card |
 | 7 | Mark invoice paid via cheque (record-payment dialog) | QBO Payment, `PaymentMethodRef`=Check, reference field populated |
 | 8 | Mark invoice paid via cash | QBO Payment, `PaymentMethodRef`=Cash |
@@ -212,13 +217,19 @@ don't fire.
 - **Mapping (V1 simple):**
   - `CustomerRef.value` ← `customers.qbo_customer_id`
   - One `SalesItemLineDetail` line with `ItemRef` = generic
-    "Construction services" item we create on first connection
-  - `Amount` ← `invoice.amount_cents + sum(line_items)`
-  - `TxnTaxDetail.TotalTax` ← `invoice.tax_cents`
-  - `TxnTaxDetail.TaxLine` ← Canadian GST 5% (configurable per-tenant later)
+    "Construction services" item created on first connection
+  - `Line[0].SalesItemLineDetail.TaxCodeRef.value` ← TaxCode id from
+    `tenants.qbo_tax_code_map[customer.province]` (or `_tax_exempt` for
+    exempt customers). See §12.1 for the province → TaxCode lookup.
+  - `Amount` ← `invoice.amount_cents + sum(line_items)` (pre-tax)
   - `DocNumber` ← short invoice id `inv-{first8}`
   - `PrivateNote` ← internal note ("Synced from HeyHenry — invoice {full id}")
   - `CustomerMemo` ← `invoice.customer_note` if present
+- **Tax verification:** after the invoice is created, read back the QBO
+  response and assert `TxnTaxDetail.TotalTax * 100 ≈ invoice.tax_cents`
+  within ±$0.02. Mismatch logs a `tax_mismatch` warning + posts an ops
+  card; sync still succeeds (QBO is the source of truth for the
+  bookkeeper).
 - **Idempotency:** track `invoices.qbo_invoice_id` + `qbo_sync_token`.
 - **V1.1 follow-up:** push each line item as its own QBO line. Requires
   Item catalog work — separate card.
@@ -287,14 +298,20 @@ ALTER TABLE public.tenants
   ADD COLUMN IF NOT EXISTS qbo_connected_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS qbo_disconnected_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS qbo_default_item_id TEXT,
-  ADD COLUMN IF NOT EXISTS qbo_payment_method_map JSONB;
+  ADD COLUMN IF NOT EXISTS qbo_payment_method_map JSONB,
+  ADD COLUMN IF NOT EXISTS qbo_tax_code_map JSONB,
+  ADD COLUMN IF NOT EXISTS qbo_bookkeeper_email TEXT;
 
 COMMENT ON COLUMN public.tenants.qbo_realm_id IS
   'QBO company id, populated on OAuth connect.';
 COMMENT ON COLUMN public.tenants.qbo_default_item_id IS
   'QBO Item id used for every invoice line in V1. Created on first connect.';
 COMMENT ON COLUMN public.tenants.qbo_payment_method_map IS
-  'Cached QBO payment method ids per type, e.g. {"cash":"1","cheque":"2",...}';
+  'Cached QBO payment method ids per type, e.g. {"cash":"1","cheque":"2","e-transfer":"7",...}';
+COMMENT ON COLUMN public.tenants.qbo_tax_code_map IS
+  'Per-province QBO TaxCode ids, e.g. {"BC":"4","ON":"8","_tax_exempt":"3"}';
+COMMENT ON COLUMN public.tenants.qbo_bookkeeper_email IS
+  'Optional CC address for sync-failure emails. GC types this in QBO settings.';
 
 -- Per-row QBO refs
 ALTER TABLE public.customers
@@ -407,9 +424,9 @@ Every failure surfaces in three places:
 | Phase | Scope | Size | Ship-when |
 |---|---|---|---|
 | **0. Plan + sandbox setup** | Get Intuit Developer account, sandbox company, env vars in Vercel | 1 | Day 1 |
-| **1. OAuth flow + connection UI** | `/api/qbo/start`, `/api/qbo/callback`, settings page disconnected/connected states, schema migration | 5 | Day 2-4 |
+| **1. OAuth flow + connection UI** | `/api/qbo/start`, `/api/qbo/callback`, settings page disconnected/connected states, schema migration, post-connect TaxCode + PaymentMethod fetch + map population, optional bookkeeper-email field | 5 | Day 2-4 |
 | **2. Customer push** | Sync action, queue worker, per-row status, e2e test against sandbox | 3 | Day 5-6 |
-| **3. Invoice push** | Single-line invoice mapping with GST, void handling | 5 | Day 7-9 |
+| **3. Invoice push** | Single-line invoice mapping with multi-province TaxCode lookup, tax-mismatch warnings, void handling | 5 | Day 7-9 |
 | **4. Payment push** | All 5 payment methods mapped to QBO PaymentMethodRef, Stripe webhook hookup | 3 | Day 10-11 |
 | **5. Error surfacing** | Failed-sync UI, retry buttons, ops card on permanent failure, drift cron | 3 | Day 12-13 |
 | **6. End-to-end pass on Jonathan's real QBO trial** | Manual verification with Cathy/bookkeeper | 1 | Day 14 |
@@ -452,22 +469,80 @@ infra.
 
 ---
 
-## 12. Open Questions for Jonathan
+## 12. Decisions (resolved 2026-04-26)
 
-1. **Default GST rate.** V1 hardcodes 5% Canadian GST. Multi-province
-   bookkeeping (HST in Ontario, PST in BC, etc.) — do we need this V1, or
-   defer? Recommend defer; surface as fast-follow.
-2. **Payment method mapping.** QBO has built-in Cash / Check / Credit Card.
-   For e-transfer, do we create a custom "EFT" method in QBO at connection
-   time, or map to "Other" and put detail in `PaymentRefNum`? Recommend
-   custom method for clarity.
-3. **Backfill on connect.** When a GC connects QBO with 50 existing paid
-   invoices in HeyHenry, do we push them all retroactively, or sync forward
-   only? Recommend: ask the GC, default to forward-only with one-click
-   "backfill last 90 days" option.
-4. **Bookkeeper notification.** When a sync fails, only the GC sees it
-   today. Should we also email the connected QBO account's primary email?
-   Probably no for V1 (privacy), but worth flagging.
+1. **Tax handling — full Canadian multi-province support in V1.**
+   BC will be the bulk of early customers, but tax behavior needs to be
+   correct for every customer regardless of province. Detail in §12.1.
+2. **e-Transfer payment method.** Create a custom "EFT" payment method in
+   QBO at connection time. Map `payment_method='e-transfer'` → that
+   custom method id. Cleaner than dumping detail in `PaymentRefNum`.
+3. **Backfill on connect.** Default to forward-only with a one-click
+   "backfill last 90 days" option visible right after connection.
+4. **Bookkeeper notification on failure.** GC-only by default. QBO settings
+   page exposes an optional **"Also notify bookkeeper at <email>"** field
+   (defaulted blank). When set, sync-failure emails CC that address. The
+   GC typing the address is the consent — sidesteps the privacy issue of
+   us inferring a bookkeeper from OAuth.
+
+### 12.1 Multi-province tax mapping
+
+Canadian provincial sales tax is messy. We already compute the right
+`tax_cents` per invoice via `canadianTax.getContext(tenantId)` (driven by
+the customer's province). What QBO needs additionally is the **TaxCode**
+to apply on the line — QBO computes tax itself from the code, and bookkeepers
+care that the right code shows up so their reports are clean.
+
+**Provincial reality (rates as of 2026):**
+
+| Province | Composition | QBO TaxCode (built-in name) |
+|---|---|---|
+| BC | GST 5% + PST 7% | `GST/PST BC` |
+| AB, NT, NU, YT | GST 5% | `GST` |
+| SK | GST 5% + PST 6% | `GST/PST SK` |
+| MB | GST 5% + RST 7% | `GST/RST MB` |
+| QC | GST 5% + QST 9.975% | `GST/QST QC` |
+| ON | HST 13% | `HST ON` |
+| NB, NL, NS, PE | HST 15% | `HST` (province-specific built-in) |
+| Out-of-Canada / zero-rated | 0% | `Zero-rated` or `Out of scope` |
+
+**Implementation:**
+
+- On connection, fetch the tenant's QBO TaxCodes via
+  `GET /v3/company/{realmId}/query?query=SELECT * FROM TaxCode`
+- Build a `qbo_tax_code_map` JSONB on `tenants` keyed by province code:
+  `{ "BC": "<id>", "ON": "<id>", "AB": "<id>", ... }`
+- For each invoice push:
+  1. Derive tax province: prefer `customer.province`, fall back to
+     `tenant.province` (operators based in BC servicing BC customers
+     hit this hot path)
+  2. Look up the TaxCode id from the map
+  3. Set `Line[i].SalesItemLineDetail.TaxCodeRef.value` to that id
+  4. Trust QBO's computed tax — but assert that QBO's `TxnTaxDetail.TotalTax`
+     matches our `invoice.tax_cents` within $0.02. If not, log a
+     `qbo_sync_log` row with `status='succeeded'` but `warning='tax_mismatch'`
+     and post an ops card. Don't block the sync.
+
+- If the customer has no province set: surface a warning in the dialog
+  ("Province needed before QBO sync — defaults to {tenant province}").
+  Don't silently guess.
+
+- **Tax-exempt customers** (`customers.tax_exempt=true`): map to QBO's
+  built-in "Out of scope" or "Zero-rated" TaxCode (decided per-tenant on
+  first tax-exempt sync). Same `qbo_tax_code_map` extended with a
+  `_tax_exempt` key.
+
+- **Tenant doesn't have the right TaxCodes set up in QBO** (e.g. just-
+  signed-up GC who only has `GST` because Intuit didn't provision provincial
+  combos): surface an actionable error: "QBO is missing the BC PST tax
+  code. Create it in QBO Settings → Sales Tax, then click Reconnect Tax
+  Codes here." Don't auto-create — too risky to mess with someone's tax
+  setup.
+
+**Out of scope for V1 (fast-follows):**
+- Quebec QST registration (separate registration from federal GST)
+- US sales tax (handled by separate US Stripe Tax integration card)
+- Cross-border invoices (different rules entirely)
 
 ---
 
