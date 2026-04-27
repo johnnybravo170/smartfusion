@@ -4,6 +4,9 @@ import {
   EstimateRender,
   type EstimateRenderLine,
 } from '@/components/features/projects/estimate-render';
+import { resolveTenantAutoFollowupEnabled } from '@/lib/ar/system-sequences';
+import { getCurrentTenant } from '@/lib/auth/helpers';
+import { hasFeature } from '@/lib/billing/features';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -122,6 +125,18 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
   const status =
     (p.estimate_status as 'draft' | 'pending_approval' | 'approved' | 'declined') ?? 'draft';
 
+  // Auto-followup checkbox — defaults to tenant setting, gated to Growth plan.
+  const tenantCtx = await getCurrentTenant();
+  const autoFollowupAvailable = tenantCtx
+    ? hasFeature(
+        { plan: tenantCtx.plan, subscriptionStatus: tenantCtx.subscriptionStatus },
+        'customers.followup_sequences',
+      )
+    : false;
+  const autoFollowupTenantDefault = tenantCtx
+    ? await resolveTenantAutoFollowupEnabled(tenantCtx.id)
+    : false;
+
   return (
     <div className="mx-auto max-w-2xl px-4 pb-10">
       <EstimatePreviewSendBar
@@ -132,6 +147,8 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
         totalFormatted={formatCurrency(total)}
         lineCount={costLines.length}
         alreadySent={status !== 'draft'}
+        autoFollowupTenantDefault={autoFollowupTenantDefault}
+        autoFollowupAvailable={autoFollowupAvailable}
       />
 
       <div className="rounded-lg border bg-card p-6 shadow-sm">

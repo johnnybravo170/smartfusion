@@ -24,6 +24,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -38,6 +39,10 @@ type Props = {
   totalFormatted: string;
   lineCount: number;
   alreadySent: boolean;
+  /** Tenant default for quote-follow-up (Settings → Automations). */
+  autoFollowupTenantDefault: boolean;
+  /** Whether the tenant's plan unlocks the follow-up feature. */
+  autoFollowupAvailable: boolean;
 };
 
 export function EstimatePreviewSendBar({
@@ -48,10 +53,17 @@ export function EstimatePreviewSendBar({
   totalFormatted,
   lineCount,
   alreadySent,
+  autoFollowupTenantDefault,
+  autoFollowupAvailable,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  // Auto-followup checkbox — defaults to the tenant's setting, contractor can
+  // override per-send. Disabled when the plan tier doesn't unlock the feature.
+  const [autoFollowup, setAutoFollowup] = useState(
+    autoFollowupAvailable ? autoFollowupTenantDefault : false,
+  );
 
   // Email-capture state (only used when customer has no email).
   const [email, setEmail] = useState('');
@@ -68,7 +80,11 @@ export function EstimatePreviewSendBar({
 
   function handleSend() {
     startTransition(async () => {
-      const res = await sendEstimateForApprovalAction({ projectId, note: note.trim() || null });
+      const res = await sendEstimateForApprovalAction({
+        projectId,
+        note: note.trim() || null,
+        autoFollowupOverride: autoFollowup,
+      });
       if (res.ok) {
         toast.success('Estimate sent to customer');
         setOpen(false);
@@ -95,7 +111,11 @@ export function EstimatePreviewSendBar({
       }
       setResolvedEmail(trimmed);
       // Now send.
-      const res = await sendEstimateForApprovalAction({ projectId, note: note.trim() || null });
+      const res = await sendEstimateForApprovalAction({
+        projectId,
+        note: note.trim() || null,
+        autoFollowupOverride: autoFollowup,
+      });
       if (res.ok) {
         toast.success('Estimate sent to customer');
         setOpen(false);
@@ -186,6 +206,12 @@ export function EstimatePreviewSendBar({
                     rows={3}
                   />
                 </div>
+                <AutoFollowupRow
+                  checked={autoFollowup}
+                  onCheckedChange={setAutoFollowup}
+                  disabled={pending || !autoFollowupAvailable}
+                  available={autoFollowupAvailable}
+                />
               </div>
 
               <AlertDialogFooter>
@@ -245,6 +271,12 @@ export function EstimatePreviewSendBar({
                         rows={3}
                       />
                     </div>
+                    <AutoFollowupRow
+                      checked={autoFollowup}
+                      onCheckedChange={setAutoFollowup}
+                      disabled={pending || !autoFollowupAvailable}
+                      available={autoFollowupAvailable}
+                    />
                   </div>
                 </AlertDialogDescription>
               </AlertDialogHeader>
@@ -263,6 +295,40 @@ export function EstimatePreviewSendBar({
           )}
         </AlertDialog>
       </div>
+    </div>
+  );
+}
+
+function AutoFollowupRow({
+  checked,
+  onCheckedChange,
+  disabled,
+  available,
+}: {
+  checked: boolean;
+  onCheckedChange: (next: boolean) => void;
+  disabled: boolean;
+  available: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-md border bg-muted/30 px-3 py-2.5">
+      <Checkbox
+        id="confirm-auto-followup"
+        checked={checked}
+        onCheckedChange={(v) => onCheckedChange(v === true)}
+        disabled={disabled}
+        className="mt-0.5"
+      />
+      <Label
+        htmlFor="confirm-auto-followup"
+        className="flex-1 cursor-pointer text-xs font-normal text-muted-foreground"
+      >
+        Auto follow up if no response —{' '}
+        <span className="text-foreground">SMS at 24h, email at 48h.</span>{' '}
+        {!available ? (
+          <span className="text-amber-700">Available on Growth plan and up.</span>
+        ) : null}
+      </Label>
     </div>
   );
 }

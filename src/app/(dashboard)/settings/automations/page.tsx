@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { AutomationsCard } from '@/components/features/settings/automations-card';
 import { resolveTenantAutoFollowupEnabled } from '@/lib/ar/system-sequences';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { hasFeature } from '@/lib/billing/features';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,10 @@ export default async function AutomationsSettingsPage() {
   if (!tenant) redirect('/login');
 
   const quoteFollowupEnabled = await resolveTenantAutoFollowupEnabled(tenant.id);
+  const featureUnlocked = hasFeature(
+    { plan: tenant.plan, subscriptionStatus: tenant.subscriptionStatus },
+    'customers.followup_sequences',
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -32,7 +37,7 @@ export default async function AutomationsSettingsPage() {
         </p>
       </div>
 
-      <AutomationsCard initialEnabled={quoteFollowupEnabled} />
+      <AutomationsCard initialEnabled={quoteFollowupEnabled} featureUnlocked={featureUnlocked} />
     </div>
   );
 }

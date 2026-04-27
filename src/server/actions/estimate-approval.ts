@@ -48,6 +48,11 @@ async function emitProjectEvent(
 export async function sendEstimateForApprovalAction(input: {
   projectId: string;
   note?: string | null;
+  /**
+   * Per-send override for the autopilot. When undefined, the project's
+   * `auto_followup_enabled` value (or tenant default) is used.
+   */
+  autoFollowupOverride?: boolean;
 }): Promise<EstimateActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
@@ -70,7 +75,10 @@ export async function sendEstimateForApprovalAction(input: {
   const customerPhone = (customerRaw?.phone as string | null) ?? null;
   const customerName = (customerRaw?.name as string) ?? 'Customer';
   const taxExempt = Boolean(customerRaw?.tax_exempt);
-  const perQuoteFollowup = (p.auto_followup_enabled as boolean | null) ?? null;
+  const perQuoteFollowup =
+    typeof input.autoFollowupOverride === 'boolean'
+      ? input.autoFollowupOverride
+      : ((p.auto_followup_enabled as boolean | null) ?? null);
 
   if (!customerEmail) {
     return { ok: false, error: 'Customer has no email address on file.' };

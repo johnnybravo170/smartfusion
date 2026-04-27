@@ -20,10 +20,19 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm';
+import { hasFeature } from '@/lib/billing/features';
 import { getDb } from '@/lib/db/client';
 import { arSequences, arSteps, arTemplates } from '@/lib/db/schema/ar';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export const QUOTE_FOLLOWUP_SYSTEM_KEY = 'quote_followup_v1' as const;
+
+/**
+ * Tag applied to a contact at T+72h when the customer hasn't responded.
+ * Surface this in the dashboard "Money at Risk" card so the owner sees
+ * which leads need a personal touch.
+ */
+export const NEEDS_OWNER_ATTENTION_TAG = 'needs_owner_attention' as const;
 
 const SMS_BODY = `Hi {{first_name}}, just checking — did you get a chance to look at the quote we sent? Happy to walk through it or tweak anything. Reply STOP to opt out.`;
 
@@ -126,6 +135,17 @@ export async function ensureQuoteFollowupSequence(tenantId: string): Promise<str
       templateId: emailTemplate.id,
       config: {},
     },
+    // T+72h: no message — tag the contact so the dashboard "needs your
+    // attention" card picks them up. Owner makes the personal touch.
+    {
+      sequenceId: seq.id,
+      version: 1,
+      position: 3,
+      type: 'tag',
+      delayMinutes: 72 * 60,
+      templateId: null,
+      config: { add: [NEEDS_OWNER_ATTENTION_TAG] },
+    },
   ]);
 
   return seq.id;
@@ -150,10 +170,35 @@ export async function resolveTenantAutoFollowupEnabled(tenantId: string): Promis
 }
 
 /**
+ * Plan-tier gate. Quote follow-up requires the Growth tier (or higher) and
+ * an active subscription — past_due / canceled tenants can't enroll new
+ * customers. In-flight enrollments are stopped at dispatch by ar/policy.ts.
+ */
+async function tenantHasFollowupFeature(tenantId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from('tenants')
+    .select('plan, subscription_status')
+    .eq('id', tenantId)
+    .maybeSingle();
+  if (!data) return false;
+  return hasFeature(
+    {
+      // biome-ignore lint/suspicious/noExplicitAny: tenants.plan is a Plan enum
+      plan: (data.plan ?? 'starter') as any,
+      // biome-ignore lint/suspicious/noExplicitAny: same
+      subscriptionStatus: (data.subscription_status ?? 'trialing') as any,
+    },
+    'customers.followup_sequences',
+  );
+}
+
+/**
  * The merged decision: should we enroll this specific quote in the
  * follow-up sequence at send time?
  *
  * Inputs:
+ *   - plan tier (Growth+ required, hard gate — overrides everything)
  *   - tenant default (resolveTenantAutoFollowupEnabled)
  *   - per-quote override (null = follow tenant; boolean = explicit)
  *   - customer-level kill switch is checked at send time by ar/policy.ts —
@@ -164,6 +209,8 @@ export async function shouldEnrollQuoteFollowup(params: {
   tenantId: string;
   perQuoteOverride: boolean | null;
 }): Promise<boolean> {
+  // Plan-tier check first — silently no-op if the tenant doesn't have access.
+  if (!(await tenantHasFollowupFeature(params.tenantId))) return false;
   if (params.perQuoteOverride === false) return false;
   if (params.perQuoteOverride === true) return true;
   return resolveTenantAutoFollowupEnabled(params.tenantId);

@@ -52,12 +52,17 @@ export default async function QuotesPage({
               : `${counts.draft} draft · ${counts.sent} sent · ${counts.expired} expired · ${counts.rejected} declined`}
           </p>
         </div>
-        <Button asChild>
-          <Link href="/quotes/new">
-            <Plus className="size-3.5" />
-            New quote
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link href="/quotes/stale">Stale quotes</Link>
+          </Button>
+          <Button asChild>
+            <Link href="/quotes/new">
+              <Plus className="size-3.5" />
+              New quote
+            </Link>
+          </Button>
+        </div>
       </header>
 
       {counts.all > 0 && (
