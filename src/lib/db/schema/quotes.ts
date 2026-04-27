@@ -6,7 +6,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { check, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { customers } from './customers';
 import { tenants } from './tenants';
 
@@ -26,6 +26,11 @@ export const quotes = pgTable(
     pdfUrl: text('pdf_url'),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    /**
+     * null = follow tenant default (tenant_prefs.automation.quote_followup_enabled).
+     * Set explicitly per-quote at send time to override.
+     */
+    autoFollowupEnabled: boolean('auto_followup_enabled'),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).default(sql`now()`).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).default(sql`now()`).notNull(),

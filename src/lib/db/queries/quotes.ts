@@ -55,6 +55,7 @@ export type QuoteRow = {
   sent_at: string | null;
   accepted_at: string | null;
   notes: string | null;
+  auto_followup_enabled: boolean | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -79,7 +80,7 @@ export type QuoteListFilters = {
 export type QuoteStatusCounts = Record<QuoteStatus | 'all', number>;
 
 const QUOTE_COLUMNS =
-  'id, tenant_id, customer_id, status, subtotal_cents, tax_cents, total_cents, pdf_url, sent_at, accepted_at, notes, created_at, updated_at, deleted_at';
+  'id, tenant_id, customer_id, status, subtotal_cents, tax_cents, total_cents, pdf_url, sent_at, accepted_at, notes, auto_followup_enabled, created_at, updated_at, deleted_at';
 
 const QUOTE_WITH_CUSTOMER_SELECT = `${QUOTE_COLUMNS}, customers:customer_id (id, name, email, phone, address_line1, city, province, postal_code)`;
 

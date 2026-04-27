@@ -11,6 +11,8 @@
 import crypto from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { emitArEvent } from '@/lib/ar/event-bus';
+import { ensureQuoteFollowupSequence, shouldEnrollQuoteFollowup } from '@/lib/ar/system-sequences';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import type { CatalogEntryRow } from '@/lib/db/queries/service-catalog';
 import {
@@ -421,6 +423,39 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
     related_type: 'quote',
     related_id: input.quoteId,
   });
+
+  // Quote follow-up autopilot — same logic as estimate-approval flow.
+  if (emailSent && customer?.email) {
+    try {
+      const perQuoteFollowup =
+        ((quote as Record<string, unknown>).auto_followup_enabled as boolean | null) ?? null;
+      const enroll = await shouldEnrollQuoteFollowup({
+        tenantId: tenant.id,
+        perQuoteOverride: perQuoteFollowup,
+      });
+      if (enroll) {
+        await ensureQuoteFollowupSequence(tenant.id);
+        const [firstName, ...rest] = (customer.name ?? 'there').split(' ');
+        await emitArEvent({
+          tenantId: tenant.id,
+          eventType: 'quote_sent',
+          payload: {
+            quote_id: input.quoteId,
+            total_cents: quote.total_cents,
+            from_name: tenant.name,
+          },
+          contact: {
+            email: customer.email,
+            phone: customer.phone ?? null,
+            firstName: firstName ?? null,
+            lastName: rest.join(' ') || null,
+          },
+        });
+      }
+    } catch (err) {
+      console.error('[autopilot] quote_sent enrollment failed:', err);
+    }
+  }
 
   revalidatePath('/quotes');
   revalidatePath(`/quotes/${input.quoteId}`);

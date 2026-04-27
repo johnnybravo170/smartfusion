@@ -1,4 +1,5 @@
 import {
+  Bot,
   Building2,
   ChevronRight,
   CreditCard,
@@ -199,6 +200,25 @@ export default function SettingsPage() {
       <Suspense fallback={<div className="h-48 animate-pulse rounded-xl border bg-card" />}>
         <PublicQuoteLinkSection />
       </Suspense>
+
+      <Link href="/settings/automations" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bot className="size-5" />
+                <div>
+                  <CardTitle>Automations</CardTitle>
+                  <CardDescription>
+                    Quote follow-ups and other background sequences Henry runs for you.
+                  </CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Card>
+      </Link>
 
       <Link href="/settings/team" className="block">
         <Card className="transition-colors hover:bg-muted/50">

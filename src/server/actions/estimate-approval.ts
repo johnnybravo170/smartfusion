@@ -2,6 +2,8 @@
 
 import crypto from 'node:crypto';
 import { revalidatePath } from 'next/cache';
+import { emitArEvent } from '@/lib/ar/event-bus';
+import { ensureQuoteFollowupSequence, shouldEnrollQuoteFollowup } from '@/lib/ar/system-sequences';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getEmailBrandingForTenant } from '@/lib/email/branding';
 import { sendEmail } from '@/lib/email/send';
@@ -55,7 +57,7 @@ export async function sendEstimateForApprovalAction(input: {
   const { data: project, error: projErr } = await supabase
     .from('projects')
     .select(
-      'id, name, estimate_status, estimate_approval_code, management_fee_rate, customers:customer_id (name, email, tax_exempt)',
+      'id, name, estimate_status, estimate_approval_code, management_fee_rate, auto_followup_enabled, customers:customer_id (name, email, phone, tax_exempt)',
     )
     .eq('id', input.projectId)
     .single();
@@ -65,8 +67,10 @@ export async function sendEstimateForApprovalAction(input: {
   const p = project as Record<string, unknown>;
   const customerRaw = p.customers as Record<string, unknown> | null;
   const customerEmail = customerRaw?.email as string | null;
+  const customerPhone = (customerRaw?.phone as string | null) ?? null;
   const customerName = (customerRaw?.name as string) ?? 'Customer';
   const taxExempt = Boolean(customerRaw?.tax_exempt);
+  const perQuoteFollowup = (p.auto_followup_enabled as boolean | null) ?? null;
 
   if (!customerEmail) {
     return { ok: false, error: 'Customer has no email address on file.' };
@@ -145,6 +149,40 @@ export async function sendEstimateForApprovalAction(input: {
     meta: { to: customerEmail, total_cents: total },
     actor: tenant.member.id,
   });
+
+  // Quote follow-up autopilot: if the tenant + per-quote settings allow,
+  // ensure the system sequence exists and emit a quote_sent event so the
+  // event-bus enrolls the customer. The customer-level kill switch is
+  // checked at dispatch time by ar/policy.ts, not here.
+  try {
+    const enroll = await shouldEnrollQuoteFollowup({
+      tenantId: tenant.id,
+      perQuoteOverride: perQuoteFollowup,
+    });
+    if (enroll) {
+      await ensureQuoteFollowupSequence(tenant.id);
+      const [firstName, ...rest] = customerName.split(' ');
+      await emitArEvent({
+        tenantId: tenant.id,
+        eventType: 'quote_sent',
+        payload: {
+          project_id: input.projectId,
+          project_name: p.name,
+          total_cents: total,
+          from_name: tenant.name,
+        },
+        contact: {
+          email: customerEmail,
+          phone: customerPhone,
+          firstName: firstName ?? null,
+          lastName: rest.join(' ') || null,
+        },
+      });
+    }
+  } catch (err) {
+    // Non-fatal — the quote was sent; autopilot enrollment can be retried.
+    console.error('[autopilot] quote_sent enrollment failed:', err);
+  }
 
   revalidatePath(`/projects/${input.projectId}`);
   return { ok: true, code };
