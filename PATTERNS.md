@@ -133,7 +133,32 @@ Inline-edit follows §4's keyboard contract (Enter saves, Escape cancels, blur s
 
 ---
 
-## 11. CASL-classified sends
+## 11. Cross-tenant RLS test (every new tenant-scoped table)
+
+Every table protected by RLS must have a cross-tenant isolation test. We
+run a single comprehensive runner that provisions tenants A and B,
+authenticates as A, and runs five assertions per table:
+
+1. SELECT does not return B's row
+2. Targeted lookup of B's row returns null
+3. UPDATE on B's row affects zero rows
+4. DELETE on B's row affects zero rows
+5. Cross-tenant INSERT (with B's tenant_id) is rejected by WITH CHECK
+
+- `tests/integration/cross-tenant-rls.test.ts` — the runner. Add new tables
+  by appending to `RLS_TABLE_CASES`. See the comment block at the top for
+  the entry shape (table name, seed function, update payload, optional
+  insert-rejection payload).
+- `tests/integration/customers-rls.test.ts` — older single-table version,
+  kept for reference; the comprehensive runner above covers customers too.
+
+When you `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` in a migration, you
+**must** add an entry to the runner in the same PR. CI catches missing
+isolation but only for tables you've registered.
+
+---
+
+## 12. CASL-classified sends
 
 Every outbound email and SMS goes through one of two wrappers, and **every
 call must declare a `caslCategory`**. See `CASL.md` for the rulebook. When
@@ -171,7 +196,7 @@ the send into CEM territory and loses the transactional exemption.
 
 ---
 
-## 12. Plan / feature gating
+## 13. Plan / feature gating
 
 All plan-tier checks go through `src/lib/billing/features.ts`. **Never write inline `if (tenant.plan === 'pro')` checks** — they drift and rot. Adding a gated feature is one line in `FEATURE_TIERS`.
 
