@@ -226,6 +226,21 @@ async function runChannelStep(
     })
     .returning({ id: arSendLog.id });
 
+  // CASL category for this send. Read from sequence trigger_config; default
+  // to express_consent for legacy sequences without an explicit category.
+  // Per-sequence categorization matters because not every AR send is bulk
+  // marketing — quote follow-up is response_to_request, review requests are
+  // transactional, etc.
+  const sequenceCfg = (sequence.triggerConfig as Record<string, unknown> | null) ?? {};
+  const sequenceCaslCategory =
+    (sequenceCfg.casl_category as
+      | 'transactional'
+      | 'response_to_request'
+      | 'implied_consent_inquiry'
+      | 'implied_consent_ebr'
+      | 'express_consent'
+      | undefined) ?? 'express_consent';
+
   if (channel === 'email') {
     const html = template.bodyHtml ? renderTemplate(template.bodyHtml, vars) : undefined;
     const subject = template.subject ? renderTemplate(template.subject, vars) : '';
@@ -255,8 +270,14 @@ async function runChannelStep(
         'List-Unsubscribe': `<${unsubUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
       },
-      caslCategory: 'express_consent',
-      caslEvidence: { enrollmentId, stepId, contactId: contact.id, arSendLogId: logRow.id },
+      caslCategory: sequenceCaslCategory,
+      caslEvidence: {
+        enrollmentId,
+        stepId,
+        contactId: contact.id,
+        arSendLogId: logRow.id,
+        sequenceId: sequence.id,
+      },
       relatedType: 'platform',
       relatedId: enrollmentId,
     });
@@ -286,8 +307,14 @@ async function runChannelStep(
       body,
       identity: 'platform',
       relatedType: 'platform',
-      caslCategory: 'express_consent',
-      caslEvidence: { enrollmentId, stepId, contactId: contact.id, arSendLogId: logRow.id },
+      caslCategory: sequenceCaslCategory,
+      caslEvidence: {
+        enrollmentId,
+        stepId,
+        contactId: contact.id,
+        arSendLogId: logRow.id,
+        sequenceId: sequence.id,
+      },
     });
     await db
       .update(arSendLog)

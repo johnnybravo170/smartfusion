@@ -63,7 +63,7 @@ export async function ensureQuoteFollowupSequence(tenantId: string): Promise<str
 
   // Look for an existing system sequence by key.
   const existing = await db
-    .select({ id: arSequences.id })
+    .select({ id: arSequences.id, triggerConfig: arSequences.triggerConfig })
     .from(arSequences)
     .where(
       and(
@@ -72,7 +72,23 @@ export async function ensureQuoteFollowupSequence(tenantId: string): Promise<str
       ),
     )
     .limit(1);
-  if (existing[0]) return existing[0].id;
+  if (existing[0]) {
+    // Backfill casl_category on legacy installs (Phase A shipped without it,
+    // so existing rows default to express_consent in the executor — wrong).
+    const cfg = (existing[0].triggerConfig as Record<string, unknown> | null) ?? {};
+    if (!cfg.casl_category) {
+      await db
+        .update(arSequences)
+        .set({
+          triggerConfig: {
+            ...cfg,
+            casl_category: 'response_to_request',
+          },
+        })
+        .where(eq(arSequences.id, existing[0].id));
+    }
+    return existing[0].id;
+  }
 
   // Templates first.
   const [smsTemplate] = await db
@@ -110,6 +126,11 @@ export async function ensureQuoteFollowupSequence(tenantId: string): Promise<str
       triggerConfig: {
         event_type: 'quote_sent',
         system_key: QUOTE_FOLLOWUP_SYSTEM_KEY,
+        // The customer asked for a quote — follow-up sends fall under CASL's
+        // response_to_request exemption (not express_consent). The executor
+        // reads this and threads it through to email_send_log/twilio_messages
+        // so audits can trace the legal basis per send.
+        casl_category: 'response_to_request',
       },
       allowReenrollment: true,
     })

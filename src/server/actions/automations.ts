@@ -10,7 +10,11 @@
 
 import { revalidatePath } from 'next/cache';
 import { emitArEvent } from '@/lib/ar/event-bus';
-import { ensureQuoteFollowupSequence, shouldEnrollQuoteFollowup } from '@/lib/ar/system-sequences';
+import {
+  ensureQuoteFollowupSequence,
+  NEEDS_OWNER_ATTENTION_TAG,
+  shouldEnrollQuoteFollowup,
+} from '@/lib/ar/system-sequences';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -122,5 +126,28 @@ export async function enrollStaleQuoteFollowupAction(input: {
   });
 
   revalidatePath('/quotes/stale');
+  return { ok: true };
+}
+
+/**
+ * Remove the `needs_owner_attention` tag from a contact — the owner has
+ * personally followed up, so it can drop off the Money-at-Risk dashboard.
+ */
+export async function clearMoneyAtRiskAction(input: {
+  contactId: string;
+}): Promise<AutomationActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from('ar_contact_tags')
+    .delete()
+    .eq('contact_id', input.contactId)
+    .eq('tag', NEEDS_OWNER_ATTENTION_TAG);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/dashboard');
   return { ok: true };
 }

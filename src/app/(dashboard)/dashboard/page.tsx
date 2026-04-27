@@ -1,6 +1,7 @@
 import { CommandCenter, PersonalTasksCard } from '@/components/features/dashboard/command-center';
 import { EstimateCelebrationCard } from '@/components/features/dashboard/estimate-celebration-card';
 import { KeyMetrics } from '@/components/features/dashboard/key-metrics';
+import { MoneyAtRiskCard } from '@/components/features/dashboard/money-at-risk-card';
 import { NeedsAttention } from '@/components/features/dashboard/needs-attention';
 import { PipelineSummary } from '@/components/features/dashboard/pipeline-summary';
 import { RecentActivity } from '@/components/features/dashboard/recent-activity';
@@ -21,6 +22,7 @@ import {
   getTodaysJobs,
 } from '@/lib/db/queries/dashboard';
 import { getPendingEstimateCelebration } from '@/lib/db/queries/estimate-celebrations';
+import { listMoneyAtRisk } from '@/lib/db/queries/money-at-risk';
 import { getBusinessProfile, getOperatorProfile } from '@/lib/db/queries/profile';
 import {
   getDashboardTaskBuckets,
@@ -89,6 +91,8 @@ export default async function DashboardPage() {
     listPendingChangeOrdersForDashboard(),
   ]);
 
+  const moneyAtRisk = await listMoneyAtRisk(tenant.id);
+
   const tasksToVerify = await listTasksAwaitingVerification();
 
   const firstName = operator?.firstName?.trim() || null;
@@ -121,6 +125,8 @@ export default async function DashboardPage() {
         changeOrdersPending={pendingChangeOrders}
         tasksToVerify={tasksToVerify}
       />
+
+      <MoneyAtRiskCard rows={moneyAtRisk} />
 
       <PersonalTasksCard tasks={taskBuckets.personalTop} />
 
