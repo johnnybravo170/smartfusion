@@ -66,11 +66,13 @@ export const workerInvoiceStatusTone = {
   paid: 'success',
 } as const satisfies Record<string, StatusTone>;
 
-/** Project lifecycle stage. */
+/** Project lifecycle stage. Mirrors jobStatusTone so 'active'/'in-progress'
+ *  reads as warning (amber) and 'complete' reads as success (emerald) — the
+ *  two need to be visually distinct in the projects list. */
 export const projectStageTone = {
   planning: 'info',
   awaiting_approval: 'warning',
-  active: 'success',
+  active: 'warning',
   on_hold: 'hold',
   declined: 'danger',
   complete: 'success',
