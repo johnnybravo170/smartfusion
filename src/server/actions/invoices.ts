@@ -503,10 +503,23 @@ export async function voidInvoiceAction(input: {
 export async function markInvoicePaidAction(input: {
   invoiceId: string;
   paymentMethod?: string;
+  paymentReference?: string;
+  paymentNotes?: string;
+  receiptPaths?: string[];
 }): Promise<InvoiceActionResult> {
-  const parsed = invoiceMarkPaidSchema.safeParse({ invoice_id: input.invoiceId });
+  const parsed = invoiceMarkPaidSchema.safeParse({
+    invoice_id: input.invoiceId,
+    payment_method: input.paymentMethod,
+    payment_reference: input.paymentReference,
+    payment_notes: input.paymentNotes,
+    receipt_paths: input.receiptPaths,
+  });
   if (!parsed.success) {
-    return { ok: false, error: 'Invalid invoice id.' };
+    return {
+      ok: false,
+      error: 'Invalid input.',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
   }
 
   const tenant = await getCurrentTenant();
@@ -531,22 +544,37 @@ export async function markInvoicePaidAction(input: {
     return { ok: false, error: `Cannot mark as paid from status "${invoice.status}".` };
   }
 
-  const method = input.paymentMethod ?? 'other';
+  const method = parsed.data.payment_method ?? 'other';
+  const reference = parsed.data.payment_reference?.trim() || null;
+  const notes = parsed.data.payment_notes?.trim() || null;
+  const receiptPaths = parsed.data.receipt_paths ?? [];
   const now = new Date().toISOString();
   const { error: updateErr } = await supabase
     .from('invoices')
-    .update({ status: 'paid', paid_at: now, payment_method: method, updated_at: now })
+    .update({
+      status: 'paid',
+      paid_at: now,
+      payment_method: method,
+      payment_reference: reference,
+      payment_notes: notes,
+      payment_receipt_paths: receiptPaths,
+      updated_at: now,
+    })
     .eq('id', invoice.id);
 
   if (updateErr) {
     return { ok: false, error: `Failed to mark as paid: ${updateErr.message}` };
   }
 
+  const refSuffix = reference ? ` (ref ${reference})` : '';
+  const photoSuffix = receiptPaths.length
+    ? ` ${receiptPaths.length} receipt photo${receiptPaths.length === 1 ? '' : 's'} attached.`
+    : '';
   await supabase.from('worklog_entries').insert({
     tenant_id: tenant.id,
     entry_type: 'system',
     title: 'Invoice paid',
-    body: `Invoice #${invoice.id.slice(0, 8)} marked as paid via ${method}.`,
+    body: `Invoice #${invoice.id.slice(0, 8)} marked as paid via ${method}${refSuffix}.${photoSuffix}`,
     related_type: 'job',
     related_id: invoice.job_id,
   });
@@ -555,6 +583,63 @@ export async function markInvoicePaidAction(input: {
   revalidatePath(`/invoices/${invoice.id}`);
   revalidatePath(`/jobs/${invoice.job_id}`);
   return { ok: true, id: invoice.id };
+}
+
+/**
+ * Upload a payment-receipt photo for an invoice. Returns the storage path
+ * which the caller passes to markInvoicePaidAction in receiptPaths.
+ *
+ * Path: `${tenantId}/invoice-${invoiceId}/receipt-${uuid}.${ext}` — same
+ * `photos` bucket and tenant-scoped RLS as job/project photos (0020).
+ */
+export async function uploadInvoiceReceiptAction(
+  formData: FormData,
+): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+  const file = formData.get('file');
+  const invoiceId = formData.get('invoice_id');
+
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: 'No file uploaded.' };
+  }
+  if (typeof invoiceId !== 'string' || !/^[0-9a-fA-F-]{36}$/.test(invoiceId)) {
+    return { ok: false, error: 'Invalid invoice id.' };
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    return { ok: false, error: 'Receipt must be under 10 MB.' };
+  }
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) {
+    return { ok: false, error: 'Not signed in or missing tenant.' };
+  }
+
+  const supabase = await createClient();
+
+  // Verify the invoice belongs to the caller's tenant before writing storage.
+  const { data: invoice, error: invErr } = await supabase
+    .from('invoices')
+    .select('id')
+    .eq('id', invoiceId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (invErr || !invoice) {
+    return { ok: false, error: 'Invoice not found.' };
+  }
+
+  const ext = (file.name.match(/\.([a-z0-9]{1,6})$/i)?.[1] ?? 'jpg').toLowerCase();
+  const photoId = crypto.randomUUID();
+  const path = `${tenant.id}/invoice-${invoiceId}/receipt-${photoId}.${ext}`;
+  const contentType = file.type || 'image/jpeg';
+
+  const { error: upErr } = await supabase.storage.from('photos').upload(path, file, {
+    contentType,
+    upsert: false,
+  });
+  if (upErr) {
+    return { ok: false, error: `Upload failed: ${upErr.message}` };
+  }
+
+  return { ok: true, path };
 }
 
 /**

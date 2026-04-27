@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime } from '@/lib/date/format';
 import { getInvoice } from '@/lib/db/queries/invoices';
+import { getSignedUrls } from '@/lib/storage/photos';
 import { createClient } from '@/lib/supabase/server';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 import { duplicateInvoiceAction } from '@/server/actions/invoices';
@@ -156,14 +157,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
       {/* Status-specific info */}
       {invoice.status === 'paid' && invoice.paid_at && (
-        <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
-          <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
-            Paid on {formatTimestamp(invoice.paid_at)}
-            {(invoice as Record<string, unknown>).payment_method
-              ? ` via ${(invoice as Record<string, unknown>).payment_method}`
-              : ''}
-          </p>
-        </section>
+        <PaidSection
+          paidAt={formatTimestamp(invoice.paid_at)}
+          method={invoice.payment_method}
+          reference={invoice.payment_reference}
+          notes={invoice.payment_notes}
+          receiptPaths={invoice.payment_receipt_paths ?? []}
+        />
       )}
 
       {invoice.status === 'void' && (
@@ -218,6 +218,70 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </section>
       )}
     </div>
+  );
+}
+
+async function PaidSection({
+  paidAt,
+  method,
+  reference,
+  notes,
+  receiptPaths,
+}: {
+  paidAt: string;
+  method: string | null;
+  reference: string | null;
+  notes: string | null;
+  receiptPaths: string[];
+}) {
+  const urlMap = receiptPaths.length > 0 ? await getSignedUrls(receiptPaths) : new Map();
+
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
+      <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
+        Paid on {paidAt}
+        {method ? ` via ${method}` : ''}
+        {reference ? ` (ref ${reference})` : ''}
+      </p>
+      {notes ? (
+        <p className="whitespace-pre-line text-sm text-emerald-900/80 dark:text-emerald-200/80">
+          {notes}
+        </p>
+      ) : null}
+      {receiptPaths.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {receiptPaths.map((path) => {
+            const url = urlMap.get(path);
+            if (!url) {
+              return (
+                <div
+                  key={path}
+                  className="flex size-20 items-center justify-center rounded-md border bg-muted text-xs text-muted-foreground"
+                >
+                  Missing
+                </div>
+              );
+            }
+            return (
+              <a
+                key={path}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="block size-20 overflow-hidden rounded-md border bg-background"
+              >
+                {/* biome-ignore lint/performance/noImgElement: signed URLs bypass next/image optimizer */}
+                <img
+                  src={url}
+                  alt="Payment receipt"
+                  className="size-full object-cover transition-transform hover:scale-105"
+                />
+              </a>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
   );
 }
 

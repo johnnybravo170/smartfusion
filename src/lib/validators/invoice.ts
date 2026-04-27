@@ -58,8 +58,25 @@ export const invoiceVoidSchema = z.object({
   invoice_id: z.string().uuid({ message: 'Invalid invoice id.' }),
 });
 
+export const paymentMethods = ['cash', 'cheque', 'e-transfer', 'stripe', 'other'] as const;
+export type PaymentMethod = (typeof paymentMethods)[number];
+
 export const invoiceMarkPaidSchema = z.object({
   invoice_id: z.string().uuid({ message: 'Invalid invoice id.' }),
+  payment_method: z.enum(paymentMethods).optional(),
+  payment_reference: z
+    .string()
+    .trim()
+    .max(200, { message: 'Reference must be at most 200 characters.' })
+    .optional()
+    .or(z.literal('')),
+  payment_notes: z
+    .string()
+    .trim()
+    .max(2000, { message: 'Notes must be at most 2000 characters.' })
+    .optional()
+    .or(z.literal('')),
+  receipt_paths: z.array(z.string().min(1).max(500)).max(10).optional(),
 });
 
 export type InvoiceCreateInput = z.infer<typeof invoiceCreateSchema>;
