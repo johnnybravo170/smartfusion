@@ -22,20 +22,22 @@ function StatBox({
   sub,
   highlight,
   danger,
+  success,
 }: {
   label: string;
   value: string;
   sub?: string;
   highlight?: boolean;
   danger?: boolean;
+  success?: boolean;
 }) {
   return (
     <div
-      className={`rounded-lg border p-4 ${highlight ? 'bg-primary/5 border-primary/30' : ''} ${danger ? 'bg-destructive/5 border-destructive/30' : ''}`}
+      className={`rounded-lg border p-4 ${success ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : highlight ? 'bg-primary/5 border-primary/30' : ''} ${danger ? 'bg-destructive/5 border-destructive/30' : ''}`}
     >
       <p className="text-xs text-muted-foreground">{label}</p>
       <p
-        className={`mt-1 text-xl font-semibold tabular-nums ${danger ? 'text-destructive' : highlight ? 'text-primary' : ''}`}
+        className={`mt-1 text-xl font-semibold tabular-nums ${danger ? 'text-destructive' : success ? 'text-emerald-700 dark:text-emerald-300' : highlight ? 'text-primary' : ''}`}
       >
         {value}
       </p>
@@ -44,7 +46,13 @@ function StatBox({
   );
 }
 
-export function VarianceTab({ variance }: { variance: VarianceData }) {
+export function VarianceTab({
+  variance,
+  lifecycleStage,
+}: {
+  variance: VarianceData;
+  lifecycleStage?: string;
+}) {
   const {
     estimated_cents,
     committed_cents,
@@ -55,12 +63,22 @@ export function VarianceTab({ variance }: { variance: VarianceData }) {
     by_category,
   } = variance;
 
+  const isComplete = lifecycleStage === 'complete';
+
   const marginPct =
     estimated_cents > 0
       ? Math.round(((estimated_cents - actual_total_cents) / estimated_cents) * 100)
       : null;
 
-  const isAtRisk = actual_total_cents > estimated_cents * 0.8;
+  // For closed projects costs are settled — only flag danger when actually over budget.
+  // For in-flight projects, warn at >80% of estimate.
+  const isAtRisk = isComplete
+    ? margin_at_risk_cents < 0
+    : actual_total_cents > estimated_cents * 0.8;
+
+  const marginPositive = margin_at_risk_cents > 0;
+  const marginLabel = isComplete ? 'Realized Margin' : 'Margin at Risk';
+  const marginSubLabel = isComplete ? 'final margin' : 'remaining margin';
 
   return (
     <div className="space-y-6">
@@ -75,10 +93,11 @@ export function VarianceTab({ variance }: { variance: VarianceData }) {
           danger={isAtRisk}
         />
         <StatBox
-          label="Margin at Risk"
+          label={marginLabel}
           value={formatCurrency(margin_at_risk_cents)}
-          sub={marginPct !== null ? `${marginPct}% remaining margin` : undefined}
+          sub={marginPct !== null ? `${marginPct}% ${marginSubLabel}` : undefined}
           danger={margin_at_risk_cents < 0}
+          success={isComplete && marginPositive}
         />
       </div>
 
