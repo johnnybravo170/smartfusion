@@ -6,6 +6,7 @@ import { ProjectTabs } from '@/components/features/projects/project-tabs';
 import { ProjectsTable } from '@/components/features/projects/projects-table';
 import { Button } from '@/components/ui/button';
 import { getProjectsAwaitingApproval } from '@/lib/db/queries/awaiting-approval';
+import { listProjectProgress } from '@/lib/db/queries/cost-lines';
 import { listCustomers } from '@/lib/db/queries/customers';
 import { countProjectsByLifecycleStage, listProjects } from '@/lib/db/queries/projects';
 import type { LifecycleStage } from '@/lib/validators/project';
@@ -60,6 +61,9 @@ export default async function ProjectsPage({
         ? projects.filter((p) => p.lifecycle_stage === 'complete')
         : projects.filter((p) => p.lifecycle_stage !== 'on_hold');
 
+  // Batch-fetch derived progress (work status + cost burn) for visible rows.
+  const progress = await listProjectProgress(filtered.map((p) => p.id));
+
   const tabCounts = {
     all: total,
     awaiting_approval: awaitingApproval.length,
@@ -106,14 +110,18 @@ export default async function ProjectsPage({
         </div>
       ) : (
         <ProjectsTable
-          projects={filtered.map((p) => ({
-            id: p.id,
-            name: p.name,
-            lifecycle_stage: p.lifecycle_stage as LifecycleStage,
-            start_date: p.start_date,
-            percent_complete: p.percent_complete,
-            customer: p.customer ? { id: p.customer.id, name: p.customer.name } : null,
-          }))}
+          projects={filtered.map((p) => {
+            const prog = progress.get(p.id);
+            return {
+              id: p.id,
+              name: p.name,
+              lifecycle_stage: p.lifecycle_stage as LifecycleStage,
+              start_date: p.start_date,
+              work_status_pct: prog?.workStatusPct ?? 0,
+              cost_burn_pct: prog?.costBurnPct ?? 0,
+              customer: p.customer ? { id: p.customer.id, name: p.customer.name } : null,
+            };
+          })}
           customerOptions={customerOptions}
         />
       )}

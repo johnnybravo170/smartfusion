@@ -62,7 +62,38 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
   const businessName = (tenant?.name as string) ?? 'Your Contractor';
   const customerName = (customer?.name as string) ?? '';
   const projectId = p.id as string;
-  const percentComplete = (p.percent_complete as number) ?? 0;
+
+  // Derived "% complete" — same rule as the rest of the app:
+  // - lifecycle 'complete' → 100
+  // - lifecycle 'cancelled' → 0
+  // - else → cost-to-cost capped at 99 (final paint/punchlist doesn't add
+  //   cost, so the work isn't actually done until lifecycle flips).
+  // Manual `percent_complete` column is no longer used.
+  const lifecycleStage = (p.lifecycle_stage as string) ?? 'planning';
+  let percentComplete = 0;
+  if (lifecycleStage === 'complete') {
+    percentComplete = 100;
+  } else if (lifecycleStage !== 'cancelled') {
+    const [linesRes, billsRes, expensesRes] = await Promise.all([
+      admin.from('project_cost_lines').select('line_price_cents').eq('project_id', projectId),
+      admin.from('project_bills').select('amount_cents').eq('project_id', projectId),
+      admin.from('expenses').select('amount_cents').eq('project_id', projectId),
+    ]);
+    const est = (linesRes.data ?? []).reduce(
+      (s, r) => s + ((r as { line_price_cents: number }).line_price_cents ?? 0),
+      0,
+    );
+    const bills = (billsRes.data ?? []).reduce(
+      (s, r) => s + ((r as { amount_cents: number }).amount_cents ?? 0),
+      0,
+    );
+    const exps = (expensesRes.data ?? []).reduce(
+      (s, r) => s + ((r as { amount_cents: number }).amount_cents ?? 0),
+      0,
+    );
+    const burn = est > 0 ? ((bills + exps) / est) * 100 : 0;
+    percentComplete = Math.min(99, Math.round(burn));
+  }
 
   // Sign the contractor logo (lives in the photos bucket, same
   // convention as the rest of the app's tenant logos).

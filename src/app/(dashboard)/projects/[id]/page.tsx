@@ -22,6 +22,7 @@ import PortalTabServer from '@/components/features/projects/tabs/portal-tab-serv
 import SelectionsTabServer from '@/components/features/projects/tabs/selections-tab-server';
 import { TabSkeleton } from '@/components/features/projects/tabs/tab-skeleton';
 import TimeTabServer from '@/components/features/projects/tabs/time-tab-server';
+import { getProjectProgress } from '@/lib/db/queries/cost-lines';
 import { listBucketsForProject } from '@/lib/db/queries/project-buckets';
 import { getProject } from '@/lib/db/queries/projects';
 import type { LifecycleStage } from '@/lib/validators/project';
@@ -81,7 +82,11 @@ export default async function ProjectDetailPage({
   // Shell-only queries. getProject is React.cache-wrapped, so generateMetadata
   // + the shell + any inner tab that also calls it (e.g. OverviewTab) dedupe
   // to a single DB hit per request.
-  const [project, projectBuckets] = await Promise.all([getProject(id), listBucketsForProject(id)]);
+  const [project, projectBuckets, progress] = await Promise.all([
+    getProject(id),
+    listBucketsForProject(id),
+    getProjectProgress(id),
+  ]);
   if (!project) notFound();
 
   // Tab URL slugs are kept as-is (`buckets`, `costs`) so existing bookmarks
@@ -130,7 +135,10 @@ export default async function ProjectDetailPage({
             <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
           ) : null}
           <div className="mt-1">
-            <PercentCompleteEditor project={project} />
+            <PercentCompleteEditor
+              workStatusPct={progress.workStatusPct}
+              costBurnPct={progress.costBurnPct}
+            />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1">

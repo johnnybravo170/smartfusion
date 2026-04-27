@@ -45,6 +45,99 @@ export const listCostLines = cache(async (projectId: string): Promise<CostLineRo
   return (data ?? []) as CostLineRow[];
 });
 
+/**
+ * Derived progress numbers for a project. Two distinct concepts:
+ *
+ * - `workStatusPct` — "where are we in the job?" 0-100. For lifecycle 'complete'
+ *   this is always 100. For active projects it's cost-to-cost capped at 99
+ *   (because final paint/punchlist doesn't add cost — work isn't done until
+ *   lifecycle flips). Used everywhere user-facing: project list, portal, etc.
+ *
+ * - `costBurnPct` — pure financial signal: cost incurred / estimated revenue,
+ *   uncapped. Can exceed 100 (over budget). Surfaced on the variance tab so
+ *   the gap between this and workStatusPct is the over/under-budget signal.
+ */
+export type ProjectProgress = {
+  workStatusPct: number;
+  costBurnPct: number;
+  estRevenueCents: number;
+  actualCostCents: number;
+};
+
+function computeProgress(
+  lifecycleStage: string,
+  estRevenueCents: number,
+  actualCostCents: number,
+): ProjectProgress {
+  const burn = estRevenueCents > 0 ? (actualCostCents / estRevenueCents) * 100 : 0;
+  let workStatusPct: number;
+  if (lifecycleStage === 'complete') {
+    workStatusPct = 100;
+  } else if (lifecycleStage === 'cancelled') {
+    workStatusPct = 0;
+  } else {
+    workStatusPct = Math.min(99, Math.round(burn));
+  }
+  return {
+    workStatusPct,
+    costBurnPct: Math.round(burn),
+    estRevenueCents,
+    actualCostCents,
+  };
+}
+
+/** Batch-fetch progress for many projects in one round-trip. */
+export async function listProjectProgress(
+  projectIds: string[],
+): Promise<Map<string, ProjectProgress>> {
+  const out = new Map<string, ProjectProgress>();
+  if (projectIds.length === 0) return out;
+
+  const supabase = await createClient();
+  const [linesRes, billsRes, expensesRes, projectsRes] = await Promise.all([
+    supabase
+      .from('project_cost_lines')
+      .select('project_id, line_price_cents')
+      .in('project_id', projectIds),
+    supabase.from('project_bills').select('project_id, amount_cents').in('project_id', projectIds),
+    supabase.from('expenses').select('project_id, amount_cents').in('project_id', projectIds),
+    supabase.from('projects').select('id, lifecycle_stage').in('id', projectIds),
+  ]);
+
+  const est = new Map<string, number>();
+  for (const r of (linesRes.data ?? []) as { project_id: string; line_price_cents: number }[]) {
+    est.set(r.project_id, (est.get(r.project_id) ?? 0) + r.line_price_cents);
+  }
+  const cost = new Map<string, number>();
+  for (const r of (billsRes.data ?? []) as { project_id: string; amount_cents: number }[]) {
+    cost.set(r.project_id, (cost.get(r.project_id) ?? 0) + r.amount_cents);
+  }
+  for (const r of (expensesRes.data ?? []) as { project_id: string; amount_cents: number }[]) {
+    cost.set(r.project_id, (cost.get(r.project_id) ?? 0) + r.amount_cents);
+  }
+  const stage = new Map<string, string>();
+  for (const r of (projectsRes.data ?? []) as { id: string; lifecycle_stage: string }[]) {
+    stage.set(r.id, r.lifecycle_stage);
+  }
+
+  for (const id of projectIds) {
+    out.set(id, computeProgress(stage.get(id) ?? 'planning', est.get(id) ?? 0, cost.get(id) ?? 0));
+  }
+  return out;
+}
+
+export async function getProjectProgress(projectId: string): Promise<ProjectProgress> {
+  const map = await listProjectProgress([projectId]);
+  return (
+    map.get(projectId) ?? {
+      workStatusPct: 0,
+      costBurnPct: 0,
+      estRevenueCents: 0,
+      actualCostCents: 0,
+    }
+  );
+}
+
 export async function getVarianceReport(projectId: string): Promise<{
   estimated_cents: number;
   committed_cents: number;

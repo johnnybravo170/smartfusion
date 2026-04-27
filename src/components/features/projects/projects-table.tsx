@@ -24,7 +24,10 @@ type ProjectRow = {
   name: string;
   lifecycle_stage: LifecycleStage;
   start_date: string | null;
-  percent_complete: number;
+  // Derived: cost-to-cost capped at 99 for active, 100 for complete, 0 for cancelled.
+  work_status_pct: number;
+  // Derived: uncapped cost / est revenue. >100 = over budget.
+  cost_burn_pct: number;
   customer: { id: string; name: string } | null;
 };
 
@@ -81,7 +84,7 @@ export function ProjectsTable({
         return a.start_date.localeCompare(b.start_date) * dir;
       }
       case 'complete':
-        return (a.percent_complete - b.percent_complete) * dir;
+        return (a.work_status_pct - b.work_status_pct) * dir;
       default:
         return 0;
     }
@@ -163,7 +166,18 @@ export function ProjectsTable({
                     })
                   : '—'}
               </td>
-              <td className="px-4 py-3 text-right">{p.percent_complete}%</td>
+              <td className="px-4 py-3 text-right tabular-nums">
+                <div>{p.work_status_pct}%</div>
+                <div
+                  className={cn(
+                    'text-xs',
+                    p.cost_burn_pct > 100 ? 'text-destructive' : 'text-muted-foreground',
+                  )}
+                  title="Cost burn: cost incurred / estimated revenue"
+                >
+                  burn {p.cost_burn_pct}%
+                </div>
+              </td>
               <td className="px-2 py-3 text-right">
                 <CloneProjectDialog
                   projectId={p.id}
