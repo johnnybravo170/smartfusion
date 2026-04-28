@@ -211,12 +211,6 @@ function detectCodeFromName(
  */
 const CODE_PREFIX_RE = /^([0-9][\w.-]*)\s*[—–\-�]\s*(.+)$/;
 
-function splitCodeFromName(value: string): { code: string; name: string } | null {
-  const m = CODE_PREFIX_RE.exec(value.trim());
-  if (!m) return null;
-  return { code: m[1].trim(), name: m[2].trim() };
-}
-
 /** Last-resort: numeric-most column = code, longest text column = name. */
 function detectByContentShape(rows: string[][]): {
   codeIdx: number;
@@ -528,30 +522,6 @@ For each category, pick the best-matching account code and name, or null if noth
   });
 
   return { ok: true, accounts, suggestions };
-}
-
-/** Helper for callers that already have rows + chosen columns. */
-export function extractAccountsFromRows(opts: {
-  allRows: string[][];
-  hasHeader: boolean;
-  codeIdx: number;
-  nameIdx: number;
-  codeFromName: boolean;
-}): CoaRow[] {
-  const dataRows = opts.hasHeader ? opts.allRows.slice(1) : opts.allRows;
-  const out: CoaRow[] = [];
-  for (const r of dataRows) {
-    const nameRaw = (r[opts.nameIdx] ?? '').trim();
-    if (!nameRaw) continue;
-    if (opts.codeFromName || opts.codeIdx === -1) {
-      const split = splitCodeFromName(nameRaw);
-      if (split?.code && split.name) out.push(split);
-      continue;
-    }
-    const code = (r[opts.codeIdx] ?? '').trim();
-    if (code && nameRaw) out.push({ code, name: nameRaw });
-  }
-  return out;
 }
 
 /**
