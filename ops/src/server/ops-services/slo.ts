@@ -107,9 +107,11 @@ async function sentryDiscover(
 
 async function fetchHotPathStats(windowDays: number): Promise<HotPath[]> {
   // One Discover query covers all hot paths — we filter client-side after.
-  const transactionFilter = HOT_PATHS.map((h) => `"${h.transaction}"`).join(' OR ');
+  // Sentry's `transaction:[a,b]` array form mishandles values containing
+  // colons / spaces, so we OR them together instead.
+  const transactionFilter = HOT_PATHS.map((h) => `transaction:"${h.transaction}"`).join(' OR ');
   const rows = await sentryDiscover(
-    `is_transaction:true transaction:[${transactionFilter}]`,
+    `is_transaction:true (${transactionFilter})`,
     ['transaction', 'p95(span.duration)', 'count()', 'failure_rate()'],
     windowDays,
   );
