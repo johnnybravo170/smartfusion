@@ -8,7 +8,7 @@
  * from buckets" button that seeds cost lines from bucket estimates.
  */
 
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -154,7 +154,7 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
                 <colgroup>
                   <col className="w-8" />
                   <col />
-                  <col className="w-32" />
+                  <col className="w-44" />
                   <col className="w-28" />
                   <col className="w-32" />
                   <col className="w-32" />
@@ -307,28 +307,43 @@ function BucketRow(props: BucketRowProps) {
         <td className="px-3 py-2 text-right">
           {editingId === line.bucket_id ? (
             <div className="flex items-center justify-end gap-1">
-              <span className="text-muted-foreground">$</span>
-              <Input
-                type="number"
-                step="0.01"
-                className="h-7 w-24 text-right text-sm"
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') saveEdit(line.bucket_id);
-                  if (e.key === 'Escape') setEditingId(null);
-                }}
-                autoFocus
-              />
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2"
-                disabled={isPending}
+              <div className="relative flex-1">
+                <span className="-translate-y-1/2 absolute top-1/2 left-2 text-muted-foreground text-sm">
+                  $
+                </span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  className="h-7 pl-5 text-right text-sm"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveEdit(line.bucket_id);
+                    if (e.key === 'Escape') setEditingId(null);
+                  }}
+                  onBlur={() => saveEdit(line.bucket_id)}
+                  autoFocus
+                />
+              </div>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => saveEdit(line.bucket_id)}
+                disabled={isPending}
+                aria-label="Save"
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
               >
-                Save
-              </Button>
+                <Check className="size-4" />
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setEditingId(null)}
+                aria-label="Cancel"
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
             </div>
           ) : (
             <button
