@@ -51,6 +51,9 @@ export default async function TimeTabServer({ projectId }: { projectId: string }
           // "Owner/admin" when the person actually has a name set.
           const posterName =
             wp?.display_name ?? (e.user_id ? operatorNames.get(e.user_id) : undefined) ?? null;
+          const cat = e.budget_category_id
+            ? project.budget_categories.find((b) => b.id === e.budget_category_id)
+            : null;
           return {
             id: e.id,
             entry_date: e.entry_date,
@@ -58,6 +61,8 @@ export default async function TimeTabServer({ projectId }: { projectId: string }
             notes: e.notes ?? null,
             worker_profile_id: e.worker_profile_id ?? null,
             worker_name: posterName,
+            budget_category_id: e.budget_category_id ?? null,
+            budget_category_name: cat?.name ?? null,
           };
         })}
       />

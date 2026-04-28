@@ -38,13 +38,17 @@ export async function getOperatorNamesForTenant(tenantId: string): Promise<Map<s
   const memberUserIds = Array.from(
     new Set((tenantMembers ?? []).map((m) => m.user_id as string).filter(Boolean)),
   );
+  // Direct getUserById per user (was: listUsers({perPage:200})). The paginated
+  // call missed users beyond the first page on bigger tenants — JVD's owner
+  // entries were falling through to "Owner/admin" because his auth user was
+  // outside the page window. Direct lookups are O(N members) but N is small.
   const emailByUserId = new Map<string, string>();
-  if (memberUserIds.length > 0) {
-    const { data: authPage } = await admin.auth.admin.listUsers({ perPage: 200 });
-    for (const u of authPage?.users ?? []) {
-      if (u.email && memberUserIds.includes(u.id)) emailByUserId.set(u.id, u.email);
-    }
-  }
+  await Promise.all(
+    memberUserIds.map(async (uid) => {
+      const { data } = await admin.auth.admin.getUserById(uid);
+      if (data?.user?.email) emailByUserId.set(uid, data.user.email);
+    }),
+  );
 
   const out = new Map<string, string>();
   for (const m of tenantMembers ?? []) {

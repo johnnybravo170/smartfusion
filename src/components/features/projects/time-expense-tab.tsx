@@ -28,6 +28,8 @@ type TimeEntry = {
   notes: string | null;
   worker_profile_id: string | null;
   worker_name: string | null;
+  budget_category_id: string | null;
+  budget_category_name: string | null;
 };
 type Expense = {
   id: string;
@@ -510,6 +512,7 @@ export function TimeExpenseTab({
                 <tr className="border-b bg-muted/50">
                   <th className="px-3 py-2 text-left font-medium">Date</th>
                   <th className="px-3 py-2 text-left font-medium">Worker</th>
+                  <th className="px-3 py-2 text-left font-medium">Category</th>
                   <th className="px-3 py-2 text-right font-medium">Hours</th>
                   <th className="px-3 py-2 text-left font-medium">Notes</th>
                   <th className="px-3 py-2" />
@@ -520,6 +523,9 @@ export function TimeExpenseTab({
                   <tr key={entry.id} className="border-b last:border-0">
                     <td className="px-3 py-2">{entry.entry_date}</td>
                     <td className="px-3 py-2">{entry.worker_name ?? 'Owner/admin'}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {entry.budget_category_name ?? <span className="italic">unallocated</span>}
+                    </td>
                     <td className="px-3 py-2 text-right">{Number(entry.hours)}h</td>
                     <td className="px-3 py-2 text-muted-foreground">{entry.notes || '—'}</td>
                     <td className="px-3 py-2 text-right">
