@@ -4,25 +4,50 @@
  * Bookkeeper chart-of-accounts upload + AI mapping.
  *
  * Flow:
- *   1. Upload a CSV of the accountant's chart of accounts (code + name,
- *      plus an optional type/description column).
- *   2. Parse to `{code, name}` rows.
- *   3. Run an OpenAI pass that, given the tenant's expense categories
- *      and the parsed accounts, suggests the best match for each
- *      category with a confidence score.
- *   4. Hand the suggestions back to the client; the operator/bookkeeper
- *      reviews and applies them individually or in bulk.
+ *   1. Upload a CSV or XLSX of the accountant's chart of accounts.
+ *   2. `parseCoaFileAction` ingests it: detects encoding (UTF-8 / win-1252),
+ *      detects code + name columns via a cascade
+ *      (heuristic → code-from-name parser → AI), returns a preview.
+ *   3. UI surfaces the detected columns; user confirms or overrides.
+ *   4. `runCoaMappingAction` takes the confirmed `{code, name}` rows and
+ *      runs an OpenAI pass that suggests the best account match for
+ *      each tenant expense category.
+ *   5. Operator reviews and applies suggestions one or many at a time.
  *
- * MVP supports CSV only. XLSX can come later if anyone complains.
+ * Onboarding philosophy: failing to import is a churn risk. We try hard
+ * to figure it out, and when we can't we always fall through to a
+ * column-pick UI rather than tossing the user back to a toast.
  */
 
+import * as XLSX from 'xlsx';
 import { z } from 'zod';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-const MAX_BYTES = 2 * 1024 * 1024; // 2MB is plenty for a COA
+const MAX_BYTES = 5 * 1024 * 1024; // 5MB — XLSX runs bigger than CSV
+const PREVIEW_ROWS = 10;
 
 export type CoaRow = { code: string; name: string };
+
+export type DetectionSource = 'header' | 'code-from-name' | 'fallback' | 'manual' | 'none';
+
+export type CoaParsePreview = {
+  headers: string[];
+  sampleRows: string[][];
+  totalRows: number;
+  detectedCodeIdx: number | null;
+  detectedNameIdx: number | null;
+  detectionSource: DetectionSource;
+  detectionConfidence: 'high' | 'medium' | 'low';
+  /** True when the name column embeds the code (e.g. "1010 — CCS Savings"). */
+  codeFromName: boolean;
+  encodingFallbackUsed: boolean;
+  fileType: 'csv' | 'xlsx';
+};
+
+export type CoaParseResult =
+  | { ok: true; allRows: string[][]; hasHeader: boolean; preview: CoaParsePreview }
+  | { ok: false; error: string };
 
 export type CoaSuggestion = {
   categoryId: string;
@@ -35,17 +60,13 @@ export type CoaSuggestion = {
 };
 
 export type CoaMappingResult =
-  | {
-      ok: true;
-      accounts: CoaRow[];
-      suggestions: CoaSuggestion[];
-    }
+  | { ok: true; accounts: CoaRow[]; suggestions: CoaSuggestion[] }
   | { ok: false; error: string };
 
-/**
- * Minimal CSV parser: handles quoted fields + commas inside quotes.
- * Good enough for the shape accountants export. Skips empty rows.
- */
+// ---------------------------------------------------------------------------
+// CSV parsing
+// ---------------------------------------------------------------------------
+
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -85,51 +106,156 @@ function parseCsv(text: string): string[][] {
 }
 
 /**
- * Heuristically pick the code + name columns. Looks at the header row
- * for common labels; if not present, falls back to: first numeric-ish
- * column = code, longest text column = name.
+ * Decode CSV bytes. Tries UTF-8 first; if the result contains the Unicode
+ * replacement character, retries as windows-1252 (the default encoding
+ * for QuickBooks Desktop CSV exports on Windows).
  */
-function detectColumns(rows: string[][]): { codeIdx: number; nameIdx: number } | null {
+function decodeCsv(buf: ArrayBuffer): { text: string; fallbackUsed: boolean } {
+  const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+  if (!utf8.includes('�')) return { text: utf8, fallbackUsed: false };
+  // Mojibake detected — re-decode as windows-1252.
+  const win1252 = new TextDecoder('windows-1252').decode(buf);
+  return { text: win1252, fallbackUsed: true };
+}
+
+// ---------------------------------------------------------------------------
+// XLSX parsing
+// ---------------------------------------------------------------------------
+
+function parseXlsx(buf: ArrayBuffer): string[][] {
+  const wb = XLSX.read(buf, { type: 'array' });
+  const sheetName = wb.SheetNames[0];
+  if (!sheetName) return [];
+  const sheet = wb.Sheets[sheetName];
+  if (!sheet) return [];
+  const raw = XLSX.utils.sheet_to_json<Array<string | number | boolean | null>>(sheet, {
+    header: 1,
+    defval: '',
+    raw: false,
+    blankrows: false,
+  });
+  return raw.map((row) => row.map((cell) => (cell == null ? '' : String(cell))));
+}
+
+// ---------------------------------------------------------------------------
+// Column detection cascade
+// ---------------------------------------------------------------------------
+
+const CODE_HEADER_HINTS = [
+  'code',
+  'acct',
+  'account #',
+  'account no',
+  'account number',
+  'accnt',
+  'a/c',
+  'gl',
+  'gl code',
+  'number',
+  'no.',
+  'no ',
+];
+
+const NAME_HEADER_HINTS = ['name', 'account', 'description', 'title'];
+
+/** Strip dots, extra whitespace, lowercase. "Accnt. #" → "accnt #". */
+function normalizeHeader(h: string): string {
+  return h.toLowerCase().replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function detectByHeader(rows: string[][]): {
+  codeIdx: number;
+  nameIdx: number;
+  confidence: 'high' | 'medium' | 'low';
+} | null {
   if (rows.length === 0) return null;
-  const header = rows[0].map((h) => h.toLowerCase().trim());
-  const codeCandidates = ['code', 'account code', 'account #', 'number', 'account number', 'no.'];
-  const nameCandidates = ['name', 'account', 'account name', 'description'];
-  let codeIdx = header.findIndex((h) => codeCandidates.some((c) => h.includes(c)));
-  let nameIdx = header.findIndex((h) => nameCandidates.some((c) => h.includes(c)));
-
-  const hasHeader = codeIdx >= 0 || nameIdx >= 0;
-
-  if (!hasHeader) {
-    // No header row — guess from the data. Pick the column whose values
-    // look most numeric as the code column, the one with the most text
-    // as the name column.
-    const sample = rows.slice(0, Math.min(10, rows.length));
-    const scores = (sample[0] ?? []).map((_, i) => {
-      let numeric = 0;
-      let textLen = 0;
-      for (const r of sample) {
-        const v = (r[i] ?? '').trim();
-        if (/^[0-9]+(-[0-9]+)*$/.test(v)) numeric++;
-        textLen += v.length;
-      }
-      return { i, numeric, textLen };
-    });
-    scores.sort((a, b) => b.numeric - a.numeric);
-    codeIdx = scores[0]?.i ?? 0;
-    const textScores = scores.filter((s) => s.i !== codeIdx).sort((a, b) => b.textLen - a.textLen);
-    nameIdx = textScores[0]?.i ?? 1;
+  const header = rows[0].map(normalizeHeader);
+  const codeIdx = header.findIndex((h) => h && CODE_HEADER_HINTS.some((c) => h.includes(c)));
+  const nameIdx = header.findIndex((h) => h && NAME_HEADER_HINTS.some((c) => h.includes(c)));
+  if (codeIdx >= 0 && nameIdx >= 0 && codeIdx !== nameIdx) {
+    return { codeIdx, nameIdx, confidence: 'high' };
   }
-
-  if (codeIdx < 0 || nameIdx < 0 || codeIdx === nameIdx) return null;
-  return { codeIdx, nameIdx };
+  return null;
 }
 
 /**
- * Parse the uploaded CSV and run an AI pass to suggest mappings. Does
- * NOT save — the UI shows suggestions, operator accepts per-row or
- * in bulk, then applyCoaMappingAction writes the codes.
+ * QuickBooks Desktop and many Sage exports embed the code inside the
+ * name column ("1010 — CCS Savings"). When we found a name column but
+ * no code column, see whether the name field reliably starts with a
+ * numeric/code-shaped token. Returns a synthesised codeIdx === -1
+ * sentinel meaning "use the parser when extracting accounts".
  */
-export async function analyzeCoaAction(formData: FormData): Promise<CoaMappingResult> {
+function detectCodeFromName(
+  rows: string[][],
+  nameIdx: number,
+  hasHeader: boolean,
+): { confidence: 'high' | 'medium' | 'low' } | null {
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  if (dataRows.length === 0) return null;
+  const sample = dataRows.slice(0, 20);
+  let hits = 0;
+  for (const r of sample) {
+    const v = (r[nameIdx] ?? '').trim();
+    if (CODE_PREFIX_RE.test(v)) hits++;
+  }
+  const ratio = hits / sample.length;
+  if (ratio >= 0.8) return { confidence: 'high' };
+  if (ratio >= 0.5) return { confidence: 'medium' };
+  return null;
+}
+
+/**
+ * Match a leading code token in a name field. Accepts digits with
+ * optional dots/dashes, then a separator (em-dash, en-dash, hyphen, or
+ * the windows-1252 mojibake `�`), then the rest.
+ */
+const CODE_PREFIX_RE = /^([0-9][\w.-]*)\s*[—–\-�]\s*(.+)$/;
+
+function splitCodeFromName(value: string): { code: string; name: string } | null {
+  const m = CODE_PREFIX_RE.exec(value.trim());
+  if (!m) return null;
+  return { code: m[1].trim(), name: m[2].trim() };
+}
+
+/** Last-resort: numeric-most column = code, longest text column = name. */
+function detectByContentShape(rows: string[][]): {
+  codeIdx: number;
+  nameIdx: number;
+  confidence: 'medium' | 'low';
+} | null {
+  if (rows.length === 0) return null;
+  const sample = rows.slice(0, Math.min(10, rows.length));
+  const cols = (sample[0] ?? []).length;
+  if (cols < 2) return null;
+  const scores = Array.from({ length: cols }, (_, i) => {
+    let numeric = 0;
+    let textLen = 0;
+    for (const r of sample) {
+      const v = (r[i] ?? '').trim();
+      if (/^[0-9]+([.-][0-9]+)*$/.test(v)) numeric++;
+      textLen += v.length;
+    }
+    return { i, numeric, textLen };
+  });
+  const sortedNumeric = [...scores].sort((a, b) => b.numeric - a.numeric);
+  const codeIdx = sortedNumeric[0]?.numeric > 0 ? sortedNumeric[0].i : -1;
+  if (codeIdx < 0) return null;
+  const sortedText = scores.filter((s) => s.i !== codeIdx).sort((a, b) => b.textLen - a.textLen);
+  const nameIdx = sortedText[0]?.i ?? -1;
+  if (nameIdx < 0) return null;
+  return { codeIdx, nameIdx, confidence: 'low' };
+}
+
+function looksLikeHeaderRow(row: string[]): boolean {
+  // No raw numbers, mostly text.
+  return row.every((v) => v.trim() === '' || !/^-?\d+(\.\d+)?$/.test(v.trim()));
+}
+
+// ---------------------------------------------------------------------------
+// Public actions
+// ---------------------------------------------------------------------------
+
+export async function parseCoaFileAction(formData: FormData): Promise<CoaParseResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
 
@@ -137,40 +263,132 @@ export async function analyzeCoaAction(formData: FormData): Promise<CoaMappingRe
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: 'No file uploaded.' };
   }
-  if (file.size > MAX_BYTES) return { ok: false, error: 'File is larger than 2MB.' };
+  if (file.size > MAX_BYTES) {
+    return { ok: false, error: `File is larger than ${MAX_BYTES / 1024 / 1024}MB.` };
+  }
 
-  const text = new TextDecoder().decode(new Uint8Array(await file.arrayBuffer()));
-  const rows = parseCsv(text);
+  const buf = await file.arrayBuffer();
+  const lowerName = file.name.toLowerCase();
+  const isXlsx =
+    lowerName.endsWith('.xlsx') ||
+    lowerName.endsWith('.xlsm') ||
+    lowerName.endsWith('.xls') ||
+    file.type.includes('spreadsheet') ||
+    file.type.includes('excel');
+
+  let rows: string[][];
+  let fileType: 'csv' | 'xlsx';
+  let encodingFallbackUsed = false;
+
+  if (isXlsx) {
+    fileType = 'xlsx';
+    try {
+      rows = parseXlsx(buf);
+    } catch (e) {
+      return {
+        ok: false,
+        error: `Couldn't read spreadsheet: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
+  } else {
+    fileType = 'csv';
+    const decoded = decodeCsv(buf);
+    encodingFallbackUsed = decoded.fallbackUsed;
+    rows = parseCsv(decoded.text);
+  }
+
   if (rows.length === 0) return { ok: false, error: 'File is empty.' };
 
-  const cols = detectColumns(rows);
-  if (!cols) {
-    return {
-      ok: false,
-      error: "Couldn't detect code/name columns. Expected a CSV with 'code' and 'name' columns.",
-    };
+  const hasHeader = looksLikeHeaderRow(rows[0]);
+  const headers = hasHeader
+    ? rows[0].map((h) => h.trim())
+    : rows[0].map((_, i) => `Column ${i + 1}`);
+
+  // ---- detection cascade ---------------------------------------------------
+  let detectedCodeIdx: number | null = null;
+  let detectedNameIdx: number | null = null;
+  let detectionSource: DetectionSource = 'none';
+  let detectionConfidence: 'high' | 'medium' | 'low' = 'low';
+  let codeFromName = false;
+
+  if (hasHeader) {
+    const byHeader = detectByHeader(rows);
+    if (byHeader) {
+      detectedCodeIdx = byHeader.codeIdx;
+      detectedNameIdx = byHeader.nameIdx;
+      detectionSource = 'header';
+      detectionConfidence = byHeader.confidence;
+    }
   }
 
-  // Assume row 0 is a header if it contained any of our label candidates.
-  const headerRow = rows[0].map((h) => h.toLowerCase().trim());
-  const hasHeader =
-    headerRow.includes('code') ||
-    headerRow.includes('name') ||
-    headerRow.some((h) => h.includes('account'));
-  const dataRows = hasHeader ? rows.slice(1) : rows;
-
-  const accounts: CoaRow[] = dataRows
-    .map((r) => ({
-      code: (r[cols.codeIdx] ?? '').trim(),
-      name: (r[cols.nameIdx] ?? '').trim(),
-    }))
-    .filter((a) => a.code.length > 0 && a.name.length > 0);
-
-  if (accounts.length === 0) {
-    return { ok: false, error: 'No valid rows found. Check your file.' };
+  if (detectedNameIdx == null && hasHeader) {
+    // Found a name-ish header but no code-ish header? Try code-from-name.
+    const header = rows[0].map(normalizeHeader);
+    const nameIdx = header.findIndex((h) => h && NAME_HEADER_HINTS.some((c) => h.includes(c)));
+    if (nameIdx >= 0) {
+      const cfn = detectCodeFromName(rows, nameIdx, true);
+      if (cfn) {
+        detectedCodeIdx = -1;
+        detectedNameIdx = nameIdx;
+        detectionSource = 'code-from-name';
+        detectionConfidence = cfn.confidence;
+        codeFromName = true;
+      }
+    }
   }
 
-  // Pull the tenant's current categories (with current codes + parent names).
+  if (detectedNameIdx == null) {
+    const shape = detectByContentShape(rows);
+    if (shape) {
+      detectedCodeIdx = shape.codeIdx;
+      detectedNameIdx = shape.nameIdx;
+      detectionSource = 'fallback';
+      detectionConfidence = shape.confidence;
+    }
+  }
+
+  // No AI fallback — when heuristics fail, we surface the raw preview to
+  // the UI and let the user pick columns manually. Cheap, predictable,
+  // and the user is in the best position to decide on weird files.
+
+  const sampleRows = (hasHeader ? rows.slice(1) : rows).slice(0, PREVIEW_ROWS);
+
+  return {
+    ok: true,
+    allRows: rows,
+    hasHeader,
+    preview: {
+      headers,
+      sampleRows,
+      totalRows: hasHeader ? rows.length - 1 : rows.length,
+      detectedCodeIdx,
+      detectedNameIdx,
+      detectionSource,
+      detectionConfidence,
+      codeFromName,
+      encodingFallbackUsed,
+      fileType,
+    },
+  };
+}
+
+const RUN_MAPPING_INPUT = z.object({
+  accounts: z
+    .array(z.object({ code: z.string().min(1).max(80), name: z.string().min(1).max(500) }))
+    .min(1)
+    .max(2000),
+});
+
+export async function runCoaMappingAction(input: {
+  accounts: CoaRow[];
+}): Promise<CoaMappingResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const parsed = RUN_MAPPING_INPUT.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'Invalid accounts list.' };
+  const accounts = parsed.data.accounts;
+
   const admin = createAdminClient();
   const { data: catRows, error: catErr } = await admin
     .from('expense_categories')
@@ -202,7 +420,6 @@ export async function analyzeCoaAction(formData: FormData): Promise<CoaMappingRe
     };
   });
 
-  // Skip parents with children — not mappable themselves.
   const mappable = categories.filter((c) => !c.isParentWithChildren);
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -281,7 +498,7 @@ For each category, pick the best-matching account code and name, or null if noth
   const content = payload.choices?.[0]?.message?.content;
   if (!content) return { ok: false, error: 'OpenAI returned no content.' };
 
-  let parsed: {
+  let parsedMap: {
     mappings: Array<{
       category_id: string;
       suggested_code: string | null;
@@ -291,12 +508,12 @@ For each category, pick the best-matching account code and name, or null if noth
     }>;
   };
   try {
-    parsed = JSON.parse(content);
+    parsedMap = JSON.parse(content);
   } catch {
     return { ok: false, error: 'OpenAI returned non-JSON.' };
   }
 
-  const byCatId = new Map(parsed.mappings.map((m) => [m.category_id, m]));
+  const byCatId = new Map(parsedMap.mappings.map((m) => [m.category_id, m]));
   const suggestions: CoaSuggestion[] = categories.map((c) => {
     const m = byCatId.get(c.id);
     return {
@@ -313,9 +530,33 @@ For each category, pick the best-matching account code and name, or null if noth
   return { ok: true, accounts, suggestions };
 }
 
+/** Helper for callers that already have rows + chosen columns. */
+export function extractAccountsFromRows(opts: {
+  allRows: string[][];
+  hasHeader: boolean;
+  codeIdx: number;
+  nameIdx: number;
+  codeFromName: boolean;
+}): CoaRow[] {
+  const dataRows = opts.hasHeader ? opts.allRows.slice(1) : opts.allRows;
+  const out: CoaRow[] = [];
+  for (const r of dataRows) {
+    const nameRaw = (r[opts.nameIdx] ?? '').trim();
+    if (!nameRaw) continue;
+    if (opts.codeFromName || opts.codeIdx === -1) {
+      const split = splitCodeFromName(nameRaw);
+      if (split?.code && split.name) out.push(split);
+      continue;
+    }
+    const code = (r[opts.codeIdx] ?? '').trim();
+    if (code && nameRaw) out.push({ code, name: nameRaw });
+  }
+  return out;
+}
+
 /**
  * Apply accepted mappings. Input is a list of {category_id, account_code}
- * pairs — typically the user-accepted subset of the analyzeCoaAction
+ * pairs — typically the user-accepted subset of the runCoaMappingAction
  * suggestions (with any manual edits).
  */
 export async function applyCoaMappingAction(input: {
