@@ -14,6 +14,7 @@ export type Surface = {
   doNotUseFor: string[];
   write_tool: string;
   read_tools: string[];
+  admin_tools?: string[];
   admin_path: string;
   examples: string[];
 };
@@ -104,6 +105,7 @@ export const SURFACES: Surface[] = [
     doNotUseFor: ['Date-stamped events (→ worklog).', 'Choices-with-reasoning (→ decisions).'],
     write_tool: 'knowledge_write',
     read_tools: ['knowledge_search'],
+    admin_tools: ['knowledge_update', 'knowledge_delete'],
     admin_path: '/knowledge',
     examples: [
       '"HeyHenry ICP: solo pressure-washing contractors in Canada, $80k–$300k ARR."',
@@ -169,6 +171,9 @@ export function renderMarkdown(onlySurface?: SurfaceKey): string {
     lines.push('');
     lines.push(`**Write tool:** \`${s.write_tool}\``);
     lines.push(`**Read tools:** ${s.read_tools.map((t) => `\`${t}\``).join(', ')}`);
+    if (s.admin_tools && s.admin_tools.length > 0) {
+      lines.push(`**Admin tools:** ${s.admin_tools.map((t) => `\`${t}\``).join(', ')}`);
+    }
     lines.push(`**Admin page:** ${s.admin_path}`);
     lines.push('');
     lines.push('**Use for:**');
