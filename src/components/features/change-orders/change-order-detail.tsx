@@ -17,10 +17,12 @@ export function ChangeOrderDetail({
   changeOrder,
   projectId,
   proofSignedUrls = {},
+  budgetCategoryNamesById = {},
 }: {
   changeOrder: ChangeOrderRow;
   projectId: string;
   proofSignedUrls?: Record<string, string>;
+  budgetCategoryNamesById?: Record<string, string>;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -205,6 +207,32 @@ export function ChangeOrderDetail({
           </p>
         </div>
       </div>
+
+      {co.cost_breakdown && co.cost_breakdown.length > 0 ? (
+        <div className="rounded-lg border p-4">
+          <p className="text-xs text-muted-foreground mb-3">Cost Impact by Category</p>
+          <table className="w-full text-sm">
+            <tbody>
+              {co.cost_breakdown.map((row) => {
+                const sign = row.amount_cents >= 0 ? '+' : '';
+                return (
+                  <tr key={row.budget_category_id} className="border-b last:border-0">
+                    <td className="py-1.5">
+                      {budgetCategoryNamesById[row.budget_category_id] ?? row.budget_category_id}
+                    </td>
+                    <td
+                      className={`py-1.5 text-right tabular-nums ${row.amount_cents < 0 ? 'text-emerald-700' : ''}`}
+                    >
+                      {sign}
+                      {formatCurrency(row.amount_cents)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       {/* Timeline */}
       <div className="rounded-lg border p-4">

@@ -54,6 +54,9 @@ export default async function ChangeOrderDetailPage({
         changeOrder={changeOrder}
         projectId={id}
         proofSignedUrls={proofSignedUrls}
+        budgetCategoryNamesById={Object.fromEntries(
+          project.budget_categories.map((b) => [b.id, b.name]),
+        )}
       />
     </div>
   );

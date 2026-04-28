@@ -46,6 +46,32 @@ export const changeOrderCreateSchema = z
       .int({ message: 'Cost impact must be a whole number of cents.' }),
     timeline_impact_days: z.coerce.number().int({ message: 'Timeline impact must be whole days.' }),
     affected_buckets: z.array(z.string().uuid()).default([]),
+    /**
+     * Per-budget-category attribution. Sum of amount_cents must equal
+     * cost_impact_cents (validated server-side via .superRefine below).
+     * Categories with amount_cents === 0 are stripped before insert.
+     */
+    cost_breakdown: z
+      .array(
+        z.object({
+          budget_category_id: z.string().uuid(),
+          amount_cents: z.coerce
+            .number()
+            .int({ message: 'Per-category amount must be whole cents.' }),
+        }),
+      )
+      .default([]),
+  })
+  .superRefine((data, ctx) => {
+    if (data.cost_breakdown.length === 0) return;
+    const sum = data.cost_breakdown.reduce((s, r) => s + r.amount_cents, 0);
+    if (sum !== data.cost_impact_cents) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['cost_breakdown'],
+        message: `Per-category amounts must sum to the total cost impact ($${(data.cost_impact_cents / 100).toFixed(2)}); got $${(sum / 100).toFixed(2)}.`,
+      });
+    }
   })
   .refine((data) => data.project_id || data.job_id, {
     message: 'Either project_id or job_id is required.',

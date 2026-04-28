@@ -22,15 +22,26 @@ export function ChangeOrderForm({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [reason, setReason] = useState('');
-  const [costDollars, setCostDollars] = useState('');
   const [timelineDays, setTimelineDays] = useState('0');
-  const [selectedBuckets, setSelectedBuckets] = useState<string[]>([]);
+  // Per-category dollar allocation. Empty string = blank input; "0" or "" both
+  // skipped on submit. Total cost impact is derived from the sum.
+  const [allocByBucket, setAllocByBucket] = useState<Record<string, string>>({});
+
+  // Cost impact is computed from per-category allocations — no separate field.
+  const totalCostCents = Object.values(allocByBucket).reduce((sum, v) => {
+    const n = Math.round(parseFloat(v || '0') * 100);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+  const breakdown = Object.entries(allocByBucket)
+    .map(([id, v]) => ({
+      budget_category_id: id,
+      amount_cents: Math.round(parseFloat(v || '0') * 100),
+    }))
+    .filter((r) => Number.isFinite(r.amount_cents) && r.amount_cents !== 0);
 
   async function handleSubmit(sendImmediately: boolean) {
     setLoading(true);
     setError(null);
-
-    const costCents = Math.round(parseFloat(costDollars || '0') * 100);
 
     const result = await createChangeOrderAction({
       project_id: projectId,
@@ -38,9 +49,10 @@ export function ChangeOrderForm({
       title,
       description,
       reason,
-      cost_impact_cents: costCents,
+      cost_impact_cents: totalCostCents,
       timeline_impact_days: parseInt(timelineDays || '0', 10),
-      affected_buckets: selectedBuckets,
+      affected_buckets: breakdown.map((r) => r.budget_category_id),
+      cost_breakdown: breakdown,
     });
 
     if (!result.ok) {
@@ -63,10 +75,13 @@ export function ChangeOrderForm({
     router.refresh();
   }
 
-  function toggleBucket(bucketId: string) {
-    setSelectedBuckets((prev) =>
-      prev.includes(bucketId) ? prev.filter((id) => id !== bucketId) : [...prev, bucketId],
-    );
+  function setAlloc(bucketId: string, value: string) {
+    setAllocByBucket((prev) => {
+      const next = { ...prev };
+      if (value === '' || value === '0') delete next[bucketId];
+      else next[bucketId] = value;
+      return next;
+    });
   }
 
   useHenryForm({
@@ -81,11 +96,13 @@ export function ChangeOrderForm({
         type: 'text',
         currentValue: reason,
       },
+      // Cost impact is computed from per-category allocations; the agent
+      // form-fill helper sees a derived total rather than a single field.
       {
         name: 'cost_dollars',
-        label: 'Cost impact in dollars (negative for credit)',
+        label: 'Cost impact in dollars (auto-derived from per-category allocations)',
         type: 'number',
-        currentValue: costDollars,
+        currentValue: (totalCostCents / 100).toFixed(2),
       },
       {
         name: 'timeline_days',
@@ -108,8 +125,9 @@ export function ChangeOrderForm({
         return true;
       }
       if (name === 'cost_dollars') {
-        setCostDollars(value);
-        return true;
+        // Derived field — agent fill is a no-op; users adjust per-category
+        // amounts directly to change the total.
+        return false;
       }
       if (name === 'timeline_days') {
         setTimelineDays(value);
@@ -166,59 +184,80 @@ export function ChangeOrderForm({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium" htmlFor="co-cost">
-            Cost Impact ($)
-          </label>
-          <input
-            id="co-cost"
-            type="number"
-            step="0.01"
-            value={costDollars}
-            onChange={(e) => setCostDollars(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            placeholder="0.00"
-          />
-          <p className="mt-1 text-xs text-muted-foreground">Use negative for credits</p>
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium" htmlFor="co-timeline">
-            Timeline Impact (days)
-          </label>
-          <input
-            id="co-timeline"
-            type="number"
-            value={timelineDays}
-            onChange={(e) => setTimelineDays(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-          <p className="mt-1 text-xs text-muted-foreground">Use negative to shorten</p>
-        </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium" htmlFor="co-timeline">
+          Timeline Impact (days)
+        </label>
+        <input
+          id="co-timeline"
+          type="number"
+          value={timelineDays}
+          onChange={(e) => setTimelineDays(e.target.value)}
+          className="w-full max-w-xs rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+        <p className="mt-1 text-xs text-muted-foreground">Use negative to shorten</p>
       </div>
 
       {budgetCategories.length > 0 ? (
         <div>
-          <span className="mb-2 block text-sm font-medium">Affected Cost Buckets</span>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-            {budgetCategories.map((bucket) => (
-              <label
-                key={bucket.id}
-                className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer hover:bg-muted/30"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedBuckets.includes(bucket.id)}
-                  onChange={() => toggleBucket(bucket.id)}
-                  className="rounded border-gray-300"
-                />
-                <span>{bucket.name}</span>
-                <span className="text-xs text-muted-foreground">({bucket.section})</span>
-              </label>
-            ))}
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <span className="block text-sm font-medium">Cost Impact by Category</span>
+            <span className="text-xs text-muted-foreground">
+              Type amounts only on affected categories. Use negative for credits.
+            </span>
           </div>
+          <div className="overflow-hidden rounded-md border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/30">
+                  <th className="px-3 py-2 text-left font-medium">Category</th>
+                  <th className="w-28 px-3 py-2 text-right font-medium">Section</th>
+                  <th className="w-40 px-3 py-2 text-right font-medium">Amount ($)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {budgetCategories.map((bucket) => (
+                  <tr key={bucket.id} className="border-b last:border-0">
+                    <td className="px-3 py-2">{bucket.name}</td>
+                    <td className="px-3 py-2 text-right text-xs text-muted-foreground">
+                      {bucket.section}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={allocByBucket[bucket.id] ?? ''}
+                        onChange={(e) => setAlloc(bucket.id, e.target.value)}
+                        placeholder="0.00"
+                        className="h-8 w-32 rounded-md border px-2 text-right text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t bg-muted/40 font-semibold">
+                  <td className="px-3 py-2" colSpan={2}>
+                    Total Cost Impact
+                  </td>
+                  <td
+                    className={`px-3 py-2 text-right tabular-nums ${totalCostCents < 0 ? 'text-emerald-700' : ''}`}
+                  >
+                    ${(totalCostCents / 100).toFixed(2)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          {breakdown.length === 0 ? (
+            <p className="mt-2 text-xs text-amber-700">
+              Enter at least one category amount before saving.
+            </p>
+          ) : null}
         </div>
-      ) : null}
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          No budget categories on this project — set up categories on the Budget tab first.
+        </p>
+      )}
 
       <div className="flex gap-3 pt-4 border-t">
         <button

@@ -37,6 +37,7 @@ export async function createChangeOrderAction(input: {
   cost_impact_cents: number;
   timeline_impact_days: number;
   affected_buckets?: string[];
+  cost_breakdown?: { budget_category_id: string; amount_cents: number }[];
 }): Promise<ChangeOrderActionResult> {
   const parsed = changeOrderCreateSchema.safeParse(input);
   if (!parsed.success) {
@@ -68,6 +69,7 @@ export async function createChangeOrderAction(input: {
       cost_impact_cents: parsed.data.cost_impact_cents,
       timeline_impact_days: parsed.data.timeline_impact_days,
       affected_buckets: parsed.data.affected_buckets,
+      cost_breakdown: parsed.data.cost_breakdown.filter((r) => r.amount_cents !== 0),
       status: 'draft',
       approval_code: approvalCode,
       created_by: tenant.member.id,
