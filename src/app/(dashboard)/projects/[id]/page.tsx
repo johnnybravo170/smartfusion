@@ -160,6 +160,7 @@ export default async function ProjectDetailPage({
               <Link
                 key={s.key}
                 href={`/projects/${id}?tab=${s.key}`}
+                prefetch={false}
                 className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
                   active
                     ? 'bg-primary/10 text-primary'
@@ -197,6 +198,7 @@ export default async function ProjectDetailPage({
           <Link
             key={t.key}
             href={`/projects/${id}?tab=${t.key}`}
+            prefetch={false}
             className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
               tab === t.key
                 ? 'border-primary text-primary'
