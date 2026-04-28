@@ -1,5 +1,4 @@
 {
-  "regions": ["yyz1"],
   "crons": [
     { "path": "/api/ar/cron", "schedule": "* * * * *" },
     { "path": "/api/photos/ai-worker", "schedule": "* * * * *" },
