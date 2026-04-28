@@ -63,6 +63,7 @@ async function getCurrentTenantUncached(): Promise<CurrentTenant | null> {
       'id, role, phone, phone_verified_at, tenants(id, name, slug, timezone, vertical, plan, subscription_status, trial_ends_at)',
     )
     .eq('user_id', user.id)
+    .eq('is_active_for_user', true)
     .maybeSingle();
 
   if (!member?.tenants) return null;

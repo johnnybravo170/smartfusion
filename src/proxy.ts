@@ -84,6 +84,7 @@ export async function proxy(request: NextRequest) {
       .from('tenant_members')
       .select('role')
       .eq('user_id', user.id)
+      .eq('is_active_for_user', true)
       .maybeSingle();
     const requestedNext = url.searchParams.get('next');
     const safeNext =
@@ -137,6 +138,7 @@ export async function proxy(request: NextRequest) {
       .from('tenant_members')
       .select('id, role')
       .eq('user_id', user.id)
+      .eq('is_active_for_user', true)
       .maybeSingle();
 
     if (!member) {
