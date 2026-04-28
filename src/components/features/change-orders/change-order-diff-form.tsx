@@ -67,6 +67,8 @@ export function ChangeOrderDiffForm({
   const [editsById, setEditsById] = useState<Record<string, LineEdit>>({});
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [added, setAdded] = useState<AddedLine[]>([]);
+  // Per-category narrative notes — surfaces under each affected category.
+  const [notesByCategory, setNotesByCategory] = useState<Record<string, string>>({});
 
   // Group lines by budget_category_id, keyed for stable rendering.
   const linesByCategory = useMemo(() => {
@@ -260,6 +262,9 @@ export function ChangeOrderDiffForm({
       timeline_impact_days: parseInt(timelineDays || '0', 10),
       cost_impact_cents: totalDelta,
       diff,
+      category_notes: Object.entries(notesByCategory)
+        .map(([id, note]) => ({ budget_category_id: id, note: note.trim() }))
+        .filter((n) => n.note.length > 0),
     });
     if (!result.ok) {
       setError(result.error);
@@ -364,6 +369,9 @@ export function ChangeOrderDiffForm({
             {categories.map((category) => {
               const lines = linesByCategory.get(category.id) ?? [];
               const addedHere = added.filter((a) => a.budget_category_id === category.id);
+              const hasAnyEdit =
+                lines.some((l) => removedIds.has(l.id) || editsById[l.id] !== undefined) ||
+                addedHere.length > 0;
               return (
                 <div key={category.id} className="rounded-md border">
                   <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-2">
@@ -378,6 +386,22 @@ export function ChangeOrderDiffForm({
                       Add line
                     </Button>
                   </div>
+                  {hasAnyEdit ? (
+                    <div className="border-b bg-amber-50/30 px-3 py-2">
+                      <input
+                        type="text"
+                        value={notesByCategory[category.id] ?? ''}
+                        onChange={(e) =>
+                          setNotesByCategory((prev) => ({
+                            ...prev,
+                            [category.id]: e.target.value,
+                          }))
+                        }
+                        placeholder="Why? (optional — shown to the customer alongside the change)"
+                        className="h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                  ) : null}
                   {lines.length === 0 && addedHere.length === 0 ? (
                     <p className="px-3 py-2 text-xs text-muted-foreground">
                       No lines yet — click "+ Add line" to add one.

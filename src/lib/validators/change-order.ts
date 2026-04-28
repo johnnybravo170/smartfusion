@@ -61,6 +61,14 @@ export const changeOrderCreateSchema = z
         }),
       )
       .default([]),
+    category_notes: z
+      .array(
+        z.object({
+          budget_category_id: z.string().uuid(),
+          note: z.string().trim().max(2000),
+        }),
+      )
+      .default([]),
   })
   .superRefine((data, ctx) => {
     if (data.cost_breakdown.length === 0) return;

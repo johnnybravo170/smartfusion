@@ -26,6 +26,9 @@ export function ChangeOrderForm({
   // Per-category dollar allocation. Empty string = blank input; "0" or "" both
   // skipped on submit. Total cost impact is derived from the sum.
   const [allocByBucket, setAllocByBucket] = useState<Record<string, string>>({});
+  // Per-category narrative notes — explains WHY the category was affected.
+  // Stripped of empty strings before submit.
+  const [notesByBucket, setNotesByBucket] = useState<Record<string, string>>({});
 
   // Cost impact is computed from per-category allocations — no separate field.
   const totalCostCents = Object.values(allocByBucket).reduce((sum, v) => {
@@ -53,6 +56,9 @@ export function ChangeOrderForm({
       timeline_impact_days: parseInt(timelineDays || '0', 10),
       affected_buckets: breakdown.map((r) => r.budget_category_id),
       cost_breakdown: breakdown,
+      category_notes: Object.entries(notesByBucket)
+        .map(([id, note]) => ({ budget_category_id: id, note: note.trim() }))
+        .filter((n) => n.note.length > 0),
     });
 
     if (!result.ok) {
@@ -216,24 +222,43 @@ export function ChangeOrderForm({
                 </tr>
               </thead>
               <tbody>
-                {budgetCategories.map((bucket) => (
-                  <tr key={bucket.id} className="border-b last:border-0">
-                    <td className="px-3 py-2">{bucket.name}</td>
-                    <td className="px-3 py-2 text-right text-xs text-muted-foreground">
-                      {bucket.section}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={allocByBucket[bucket.id] ?? ''}
-                        onChange={(e) => setAlloc(bucket.id, e.target.value)}
-                        placeholder="0.00"
-                        className="h-8 w-32 rounded-md border px-2 text-right text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {budgetCategories.map((bucket) => {
+                  const hasAmount = !!allocByBucket[bucket.id] && allocByBucket[bucket.id] !== '0';
+                  return (
+                    <tr key={bucket.id} className="border-b last:border-0 align-top">
+                      <td className="px-3 py-2">
+                        <div>{bucket.name}</div>
+                        {hasAmount ? (
+                          <input
+                            type="text"
+                            value={notesByBucket[bucket.id] ?? ''}
+                            onChange={(e) =>
+                              setNotesByBucket((prev) => ({
+                                ...prev,
+                                [bucket.id]: e.target.value,
+                              }))
+                            }
+                            placeholder="Why? (optional — explains the change to the customer)"
+                            className="mt-1 h-7 w-full rounded-md border px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs text-muted-foreground">
+                        {bucket.section}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={allocByBucket[bucket.id] ?? ''}
+                          onChange={(e) => setAlloc(bucket.id, e.target.value)}
+                          placeholder="0.00"
+                          className="h-8 w-32 rounded-md border px-2 text-right text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
                 <tr className="border-t bg-muted/40 font-semibold">
                   <td className="px-3 py-2" colSpan={2}>
                     Total Cost Impact

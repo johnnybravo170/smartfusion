@@ -57,6 +57,7 @@ export async function createChangeOrderV2Action(input: {
   timeline_impact_days: number;
   cost_impact_cents: number;
   diff: ChangeOrderDiffEntry[];
+  category_notes?: { budget_category_id: string; note: string }[];
 }): Promise<ChangeOrderActionResult> {
   if (!input.title.trim()) return { ok: false, error: 'Title is required.' };
   if (!input.description.trim()) return { ok: false, error: 'Description is required.' };
@@ -88,6 +89,7 @@ export async function createChangeOrderV2Action(input: {
             .filter((id): id is string => typeof id === 'string'),
         ),
       ),
+      category_notes: (input.category_notes ?? []).filter((n) => n.note.trim().length > 0),
       flow_version: 2,
       status: 'draft',
       approval_code: approvalCode,
@@ -138,6 +140,7 @@ export async function createChangeOrderAction(input: {
   timeline_impact_days: number;
   affected_buckets?: string[];
   cost_breakdown?: { budget_category_id: string; amount_cents: number }[];
+  category_notes?: { budget_category_id: string; note: string }[];
 }): Promise<ChangeOrderActionResult> {
   const parsed = changeOrderCreateSchema.safeParse(input);
   if (!parsed.success) {
@@ -170,6 +173,7 @@ export async function createChangeOrderAction(input: {
       timeline_impact_days: parsed.data.timeline_impact_days,
       affected_buckets: parsed.data.affected_buckets,
       cost_breakdown: parsed.data.cost_breakdown.filter((r) => r.amount_cents !== 0),
+      category_notes: parsed.data.category_notes.filter((n) => n.note.length > 0),
       status: 'draft',
       approval_code: approvalCode,
       created_by: tenant.member.id,

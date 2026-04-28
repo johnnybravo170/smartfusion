@@ -210,6 +210,22 @@ export function ChangeOrderDetail({
         </div>
       </div>
 
+      {co.flow_version === 2 && co.category_notes && co.category_notes.length > 0 ? (
+        <div className="rounded-lg border p-4">
+          <p className="text-xs text-muted-foreground mb-3">Notes by Category</p>
+          <ul className="space-y-2 text-sm">
+            {co.category_notes.map((n) => (
+              <li key={n.budget_category_id}>
+                <span className="font-medium">
+                  {budgetCategoryNamesById[n.budget_category_id] ?? n.budget_category_id}
+                </span>
+                <span className="ml-2 text-muted-foreground italic">{n.note}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {co.flow_version === 2 && diffLines.length > 0 ? (
         <div className="rounded-lg border p-4">
           <p className="text-xs text-muted-foreground mb-3">Line-level Changes</p>
@@ -281,10 +297,18 @@ export function ChangeOrderDetail({
             <tbody>
               {co.cost_breakdown.map((row) => {
                 const sign = row.amount_cents >= 0 ? '+' : '';
+                const note = co.category_notes?.find(
+                  (n) => n.budget_category_id === row.budget_category_id,
+                )?.note;
                 return (
-                  <tr key={row.budget_category_id} className="border-b last:border-0">
+                  <tr key={row.budget_category_id} className="border-b last:border-0 align-top">
                     <td className="py-1.5">
-                      {budgetCategoryNamesById[row.budget_category_id] ?? row.budget_category_id}
+                      <div>
+                        {budgetCategoryNamesById[row.budget_category_id] ?? row.budget_category_id}
+                      </div>
+                      {note ? (
+                        <div className="mt-0.5 text-xs italic text-muted-foreground">{note}</div>
+                      ) : null}
                     </td>
                     <td
                       className={`py-1.5 text-right tabular-nums ${row.amount_cents < 0 ? 'text-emerald-700' : ''}`}
