@@ -45,6 +45,8 @@ export function BudgetCategoriesTable({
 }: BudgetCategoriesTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [editingDescId, setEditingDescId] = useState<string | null>(null);
+  const [editDescValue, setEditDescValue] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [addingLineFor, setAddingLineFor] = useState<string | null>(null);
   const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
@@ -120,6 +122,27 @@ export function BudgetCategoriesTable({
       if (result.ok) {
         toast.success('Estimate updated');
         setEditingId(null);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  function startEditDesc(line: BudgetLine) {
+    setEditingDescId(line.budget_category_id);
+    setEditDescValue(line.budget_category_description ?? '');
+  }
+
+  function saveEditDesc(bucketId: string) {
+    startTransition(async () => {
+      const result = await updateBudgetCategoryAction({
+        id: bucketId,
+        project_id: projectId,
+        description: editDescValue.trim(),
+      });
+      if (result.ok) {
+        toast.success('Description updated');
+        setEditingDescId(null);
       } else {
         toast.error(result.error);
       }
@@ -236,6 +259,12 @@ export function BudgetCategoriesTable({
                         catalog={catalog}
                         isFocused={line.budget_category_id === focusBucketId}
                         showHighlight={highlight && line.budget_category_id === focusBucketId}
+                        editingDescId={editingDescId}
+                        editDescValue={editDescValue}
+                        setEditDescValue={setEditDescValue}
+                        setEditingDescId={setEditingDescId}
+                        saveEditDesc={saveEditDesc}
+                        startEditDesc={startEditDesc}
                       />
                     );
                   })}
@@ -289,6 +318,12 @@ type BudgetCategoryRowProps = {
   catalog: MaterialsCatalogRow[];
   isFocused: boolean;
   showHighlight: boolean;
+  editingDescId: string | null;
+  editDescValue: string;
+  setEditDescValue: (v: string) => void;
+  setEditingDescId: (v: string | null) => void;
+  saveEditDesc: (id: string) => void;
+  startEditDesc: (line: BudgetLine) => void;
 };
 
 function BudgetCategoryRow(props: BudgetCategoryRowProps) {
@@ -316,6 +351,12 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
     catalog,
     isFocused,
     showHighlight,
+    editingDescId,
+    editDescValue,
+    setEditDescValue,
+    setEditingDescId,
+    saveEditDesc,
+    startEditDesc,
   } = props;
 
   // Callback ref — fires once when the focused row mounts; scroll into
@@ -346,11 +387,50 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
           </button>
         </td>
         <td className="px-3 py-2">
-          {line.budget_category_name}
-          {bucketLines.length > 0 && (
-            <span className="ml-2 text-xs text-muted-foreground">
-              ({bucketLines.length} line{bucketLines.length === 1 ? '' : 's'})
-            </span>
+          <div>
+            {line.budget_category_name}
+            {bucketLines.length > 0 && (
+              <span className="ml-2 text-xs text-muted-foreground">
+                ({bucketLines.length} line{bucketLines.length === 1 ? '' : 's'})
+              </span>
+            )}
+          </div>
+          {editingDescId === line.budget_category_id ? (
+            <div className="mt-1 flex items-center gap-1">
+              <Input
+                className="h-7 text-xs"
+                value={editDescValue}
+                onChange={(e) => setEditDescValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveEditDesc(line.budget_category_id);
+                  if (e.key === 'Escape') setEditingDescId(null);
+                }}
+                onBlur={() => saveEditDesc(line.budget_category_id)}
+                placeholder="Description (shown on estimate)"
+                autoFocus
+              />
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setEditingDescId(null)}
+                aria-label="Cancel"
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => startEditDesc(line)}
+              className="mt-0.5 block w-full text-left text-xs text-muted-foreground hover:text-foreground"
+            >
+              {line.budget_category_description ? (
+                <span className="whitespace-pre-wrap">{line.budget_category_description}</span>
+              ) : (
+                <span className="italic opacity-60">+ Add description</span>
+              )}
+            </button>
           )}
         </td>
         <td className="px-3 py-2 text-right">
@@ -538,6 +618,7 @@ function AddBudgetCategoryForm({ projectId, onDone }: { projectId: string; onDon
   const [name, setName] = useState('');
   const [section, setSection] = useState('interior');
   const [estimate, setEstimate] = useState('');
+  const [description, setDescription] = useState('');
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
@@ -553,6 +634,7 @@ function AddBudgetCategoryForm({ projectId, onDone }: { projectId: string; onDon
         name: name.trim(),
         section,
         estimate_cents,
+        description: description.trim() || undefined,
       });
       if (result.ok) {
         toast.success('Bucket added');
@@ -605,6 +687,18 @@ function AddBudgetCategoryForm({ projectId, onDone }: { projectId: string; onDon
             value={estimate}
             onChange={(e) => setEstimate(e.target.value)}
             placeholder="0.00"
+          />
+        </div>
+        <div className="sm:col-span-4">
+          <label htmlFor="add-bucket-description" className="mb-1 block text-xs font-medium">
+            Description{' '}
+            <span className="text-muted-foreground">(optional — shown on estimate)</span>
+          </label>
+          <Input
+            id="add-bucket-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g. Demo existing tile, prep subfloor, install LVP"
           />
         </div>
       </div>

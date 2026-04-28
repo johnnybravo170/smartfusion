@@ -25,6 +25,8 @@ export type EstimateRenderLine = {
   budget_category_name?: string | null;
   bucket_section?: string | null;
   bucket_order?: number;
+  /** Optional description for the bucket. Rendered as subtext under the bucket header. */
+  bucket_description?: string | null;
   /** Signed URLs to any photos attached to this line. */
   photo_urls?: string[];
 };
@@ -82,6 +84,7 @@ function renderGroups(lines: EstimateRenderLine[]) {
   type Bucket = {
     key: string;
     bucketName: string;
+    description: string | null;
     order: number;
     lines: EstimateRenderLine[];
   };
@@ -98,6 +101,7 @@ function renderGroups(lines: EstimateRenderLine[]) {
       key,
       section: l.bucket_section ?? null,
       bucketName: l.budget_category_name ?? 'Other',
+      description: l.bucket_description ?? null,
       order: l.bucket_order ?? Number.MAX_SAFE_INTEGER,
       lines: [],
     };
@@ -113,7 +117,13 @@ function renderGroups(lines: EstimateRenderLine[]) {
       order: b.order,
       buckets: [],
     };
-    s.buckets.push({ key: b.key, bucketName: b.bucketName, order: b.order, lines: b.lines });
+    s.buckets.push({
+      key: b.key,
+      bucketName: b.bucketName,
+      description: b.description,
+      order: b.order,
+      lines: b.lines,
+    });
     s.order = Math.min(s.order, b.order);
     bySection.set(sKey, s);
   }
@@ -147,8 +157,20 @@ function renderGroups(lines: EstimateRenderLine[]) {
                   </td>
                 </tr>
               ) : null}
-              {sec.buckets.flatMap((g) =>
-                g.lines.map((l) => {
+              {sec.buckets.flatMap((g) => [
+                ...(g.description?.trim()
+                  ? [
+                      <tr key={`${g.key}__desc`} className="border-b bg-muted/10">
+                        <td colSpan={2} className="px-3 py-2">
+                          <p className="text-xs font-medium text-foreground">{g.bucketName}</p>
+                          <p className="mt-0.5 whitespace-pre-wrap text-xs text-muted-foreground">
+                            {g.description.trim()}
+                          </p>
+                        </td>
+                      </tr>,
+                    ]
+                  : []),
+                ...g.lines.map((l) => {
                   const hasDetail = !!l.notes || (l.photo_urls && l.photo_urls.length > 0);
                   const detailContent = hasDetail ? (
                     <>
@@ -187,7 +209,7 @@ function renderGroups(lines: EstimateRenderLine[]) {
                     </Fragment>
                   );
                 }),
-              )}
+              ])}
             </Fragment>
           ))}
         </tbody>

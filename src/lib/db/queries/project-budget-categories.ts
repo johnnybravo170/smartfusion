@@ -26,6 +26,7 @@ export type BudgetCategoryRow = {
 export type BudgetLine = {
   budget_category_id: string;
   budget_category_name: string;
+  budget_category_description: string | null;
   section: string;
   estimate_cents: number;
   labor_cents: number;
@@ -143,6 +144,7 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
     return {
       budget_category_id: b.id,
       budget_category_name: b.name,
+      budget_category_description: b.description,
       section: b.section,
       estimate_cents: b.estimate_cents,
       labor_cents,

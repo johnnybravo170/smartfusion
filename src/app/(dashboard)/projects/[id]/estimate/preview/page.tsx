@@ -69,14 +69,18 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
       .order('created_at', { ascending: true }),
     supabase
       .from('project_budget_categories')
-      .select('id, name, section, display_order')
+      .select('id, name, section, description, display_order')
       .eq('project_id', id),
   ]);
-  const bucketInfo = new Map<string, { name: string; section: string | null; order: number }>();
+  const bucketInfo = new Map<
+    string,
+    { name: string; section: string | null; description: string | null; order: number }
+  >();
   for (const b of buckets ?? []) {
     bucketInfo.set(b.id as string, {
       name: (b.name as string) ?? '',
       section: (b.section as string | null) ?? null,
+      description: (b.description as string | null) ?? null,
       order: (b.display_order as number) ?? 0,
     });
   }
@@ -111,6 +115,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
       budget_category_name: info?.name ?? null,
       bucket_section: info?.section ?? null,
       bucket_order: info?.order,
+      bucket_description: info?.description ?? null,
       photo_urls: (raw.photo_storage_paths ?? [])
         .map((p) => photoUrlByPath.get(p) ?? '')
         .filter(Boolean),
