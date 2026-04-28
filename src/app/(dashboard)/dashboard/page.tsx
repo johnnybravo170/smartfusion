@@ -9,6 +9,7 @@ import { RenovationPipelineSummary } from '@/components/features/dashboard/renov
 import { TodaysJobs } from '@/components/features/dashboard/todays-jobs';
 import { AwaitingApprovalList } from '@/components/features/projects/awaiting-approval-list';
 import { getCurrentUser, requireTenant } from '@/lib/auth/helpers';
+import { getRecentActivityFeed } from '@/lib/db/queries/activity-feed';
 import { getProjectsAwaitingApproval } from '@/lib/db/queries/awaiting-approval';
 import { listPendingChangeOrdersForDashboard } from '@/lib/db/queries/change-orders';
 import {
@@ -16,7 +17,6 @@ import {
   getHourInTimezone,
   getKeyMetrics,
   getPipelineMetrics,
-  getRecentActivity,
   getRenovationPipelineMetrics,
   getRevenueYtd,
   getTodaysJobs,
@@ -72,7 +72,7 @@ export default async function DashboardPage() {
     getProjectsAwaitingApproval(),
     getPendingEstimateCelebration(),
     getAttentionItems(tz),
-    getRecentActivity(),
+    getRecentActivityFeed(),
     getRevenueYtd(tz),
     getBusinessProfile(tenant.id),
     user ? getOperatorProfile(tenant.id, user.id) : Promise.resolve(null),
