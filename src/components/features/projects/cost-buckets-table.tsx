@@ -331,6 +331,7 @@ function BucketRow(props: BucketRowProps) {
                 onClick={() => saveEdit(line.bucket_id)}
                 disabled={isPending}
                 aria-label="Save"
+                title="Save (Enter)"
                 className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
               >
                 <Check className="size-4" />
@@ -340,6 +341,7 @@ function BucketRow(props: BucketRowProps) {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setEditingId(null)}
                 aria-label="Cancel"
+                title="Cancel (Esc)"
                 className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <X className="size-4" />
