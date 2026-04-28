@@ -14,7 +14,7 @@
 
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { newMembershipShouldBeActive } from '@/lib/auth/helpers';
+import { newTenantMemberDefaults } from '@/lib/auth/helpers';
 import { updateReferralOnSignup } from '@/lib/db/queries/referrals';
 import { sendEmail } from '@/lib/email/send';
 import { generateReferralCode } from '@/lib/referral/code-generator';
@@ -104,8 +104,8 @@ export async function signupAction(input: {
       tenant_id: tenant.id,
       user_id: userId,
       role: 'owner',
+      ...(await newTenantMemberDefaults(admin, userId)),
       phone: normalizedPhone,
-      is_active_for_user: await newMembershipShouldBeActive(admin, userId),
     });
     if (memberErr) {
       // Tenant row exists but membership failed — delete the tenant too so

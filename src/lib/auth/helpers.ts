@@ -16,22 +16,46 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * Returns true if a freshly-inserted tenant_members row for `userId` should
- * have `is_active_for_user = true`. Use this at every signup/invite-accept
- * INSERT site so the user always has an active membership without violating
- * the partial unique index `tenant_members_one_active_per_user`.
+ * Defaults for a freshly-inserted tenant_members row. Use this at every
+ * signup/invite-accept INSERT site:
+ *
+ *   - `is_active_for_user`: true if the user has no other active
+ *     membership yet (so the partial unique index isn't violated).
+ *   - `phone` / `phone_verified_at`: inherited from any prior membership
+ *     where the user already verified, so they don't have to re-verify
+ *     per-workspace. Spread before any explicit overrides:
+ *
+ *       .insert({ tenant_id, user_id, role, ...defaults })
+ *
+ *   Callers that want to force a different value (e.g. worker invites
+ *   that bypass phone verification) should override the field after the
+ *   spread.
  */
-export async function newMembershipShouldBeActive(
+export async function newTenantMemberDefaults(
   admin: SupabaseClient,
   userId: string,
-): Promise<boolean> {
+): Promise<{
+  is_active_for_user: boolean;
+  phone: string | null;
+  phone_verified_at: string | null;
+}> {
   const { data } = await admin
     .from('tenant_members')
-    .select('id')
+    .select('phone, phone_verified_at, is_active_for_user')
     .eq('user_id', userId)
-    .eq('is_active_for_user', true)
-    .maybeSingle();
-  return !data;
+    .order('created_at', { ascending: true });
+  const rows = (data ?? []) as Array<{
+    phone: string | null;
+    phone_verified_at: string | null;
+    is_active_for_user: boolean | null;
+  }>;
+  const verified = rows.find((r) => !!r.phone_verified_at) ?? null;
+  const hasActive = rows.some((r) => r.is_active_for_user === true);
+  return {
+    is_active_for_user: !hasActive,
+    phone: verified?.phone ?? null,
+    phone_verified_at: verified?.phone_verified_at ?? null,
+  };
 }
 
 /**
