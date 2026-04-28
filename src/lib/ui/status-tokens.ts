@@ -25,9 +25,38 @@
  * Each token is a full Tailwind class string so callers can spread it
  * directly into `className`. Classes include hover + border variants so
  * they work as either `<Badge variant="outline">` or a bare span.
+ *
+ * `statusToneIcon` carries a leading glyph for each tone — color is
+ * trained-in but icons are for color-blind users (and screen readers
+ * via aria-hidden). WCAG SC 1.4.1: don't rely on color alone.
  */
 
+import {
+  BadgeCheck,
+  Check,
+  CheckCircle2,
+  Circle,
+  Hourglass,
+  type LucideIcon,
+  Package,
+  PauseCircle,
+  Play,
+  Send,
+  Users,
+  XCircle,
+} from 'lucide-react';
+
 export type StatusTone = 'neutral' | 'info' | 'warning' | 'success' | 'done' | 'danger' | 'hold';
+
+export const statusToneIcon: Record<StatusTone, LucideIcon> = {
+  neutral: Circle,
+  info: Send,
+  warning: Hourglass,
+  success: Check,
+  done: CheckCircle2,
+  danger: XCircle,
+  hold: PauseCircle,
+};
 
 export const statusToneClass: Record<StatusTone, string> = {
   neutral: 'bg-muted text-muted-foreground border-transparent hover:bg-muted',
@@ -105,6 +134,17 @@ export const changeOrderStatusTone = {
  * signal in the task UI; verified gets its own teal because it's a
  * "double-confirmed" state beyond plain done.
  */
+export const taskStatusIcon: Record<string, LucideIcon> = {
+  in_progress: Hourglass,
+  blocked: XCircle,
+  done: CheckCircle2,
+  ready: Play,
+  waiting_client: Hourglass,
+  waiting_material: Package,
+  waiting_sub: Users,
+  verified: BadgeCheck,
+};
+
 export const taskStatusClass = {
   // Aligned with StatusTone:
   in_progress: statusToneClass.warning, // amber, matches projects.active + jobs.in_progress

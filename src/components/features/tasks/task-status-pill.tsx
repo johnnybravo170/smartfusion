@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { taskStatusClass } from '@/lib/ui/status-tokens';
+import { taskStatusClass, taskStatusIcon } from '@/lib/ui/status-tokens';
 import { cn } from '@/lib/utils';
 import { type TaskStatus, taskStatuses, taskStatusLabels } from '@/lib/validators/task';
 import { changeStatusAction } from '@/server/actions/tasks';
@@ -28,6 +28,7 @@ export function TaskStatusPill({
   currentStatus: TaskStatus;
 }) {
   const [pending, startTransition] = useTransition();
+  const Icon = taskStatusIcon[currentStatus];
 
   function onChange(next: string) {
     if (next === currentStatus) return;
@@ -47,7 +48,12 @@ export function TaskStatusPill({
         )}
         aria-label="Change task status"
       >
-        <SelectValue>{taskStatusLabels[currentStatus]}</SelectValue>
+        <SelectValue>
+          <span className="inline-flex items-center gap-1">
+            {Icon ? <Icon aria-hidden="true" className="size-3" /> : null}
+            {taskStatusLabels[currentStatus]}
+          </span>
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {taskStatuses.map((s) => (

@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge';
-import { jobStatusTone, statusToneClass } from '@/lib/ui/status-tokens';
+import { jobStatusTone, statusToneClass, statusToneIcon } from '@/lib/ui/status-tokens';
 import { cn } from '@/lib/utils';
 import { type JobStatus, jobStatusLabels } from '@/lib/validators/job';
 
@@ -8,13 +8,16 @@ import { type JobStatus, jobStatusLabels } from '@/lib/validators/job';
  * column headers so the status reads the same in both places.
  */
 export function JobStatusBadge({ status, className }: { status: JobStatus; className?: string }) {
+  const tone = jobStatusTone[status];
+  const Icon = statusToneIcon[tone];
   return (
     <Badge
       data-slot="job-status-badge"
       data-status={status}
       variant="outline"
-      className={cn('font-medium border', statusToneClass[jobStatusTone[status]], className)}
+      className={cn('gap-1 font-medium border', statusToneClass[tone], className)}
     >
+      <Icon aria-hidden="true" className="size-3" />
       {jobStatusLabels[status]}
     </Badge>
   );
