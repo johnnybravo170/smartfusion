@@ -1,4 +1,5 @@
 import {
+  Bell,
   Bot,
   Building2,
   ChevronRight,
@@ -211,6 +212,25 @@ export default function SettingsPage() {
                   <CardTitle>Automations</CardTitle>
                   <CardDescription>
                     Quote follow-ups and other background sequences Henry runs for you.
+                  </CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Card>
+      </Link>
+
+      <Link href="/settings/reminders" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bell className="size-5" />
+                <div>
+                  <CardTitle>Reminders</CardTitle>
+                  <CardDescription>
+                    Recurring SMS nudges to log time, log receipts, or review your week.
                   </CardDescription>
                 </div>
               </div>
