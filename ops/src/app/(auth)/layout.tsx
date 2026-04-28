@@ -9,6 +9,7 @@ const NAV = [
   { href: '/admin/kanban', label: 'Kanban' },
   { href: '/admin/launch', label: 'Launch' },
   { href: '/admin/stats', label: 'Stats' },
+  { href: '/admin/slo', label: 'SLO' },
   { href: '/decisions', label: 'Decisions' },
   { href: '/knowledge', label: 'Knowledge' },
   { href: '/admin/keys', label: 'API Keys' },
