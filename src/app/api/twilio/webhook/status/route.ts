@@ -44,7 +44,9 @@ export async function POST(request: Request) {
 
   await supabase.from('twilio_messages').update(patch).eq('sid', sid);
 
-  return new Response('', { status: 204 });
+  // Per fetch spec, 204 No Content responses must have a null body —
+  // passing '' throws "Invalid response status code 204" on Node 22+.
+  return new Response(null, { status: 204 });
 }
 
 function validateTwilioSignature(request: Request, rawBody: string): boolean {
