@@ -58,8 +58,22 @@ const EXPENSES_ITEM: NavItem = {
  *   - Do NOT get "Quotes" — the polygon-measurement quoting tool is for
  *     pressure-washing-style verticals. Renovation estimates live on
  *     projects (projects.estimate_status + lifecycle_stage).
+ *
+ * Personal tenants (Jonathan's dogfood workspace + future personal
+ * workspaces): no jobs/projects/quotes/invoices/team — just CRM +
+ * inbox + expenses. Used as a personal contact/expense tracker, not
+ * a contractor job-management surface.
  */
 export function getNavItems(vertical: string): NavItem[] {
+  if (vertical === 'personal') {
+    return [
+      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/contacts', label: 'Contacts', icon: Users },
+      { href: '/inbox', label: 'Inbox', icon: Inbox },
+      EXPENSES_ITEM,
+      { href: '/settings', label: 'Settings', icon: Settings },
+    ];
+  }
   if (vertical === 'renovation' || vertical === 'tile') {
     const items = CORE_ITEMS.filter((item) => item.href !== '/quotes');
     // Insert Projects + Calendar after Contacts (index 1 = Contacts).
