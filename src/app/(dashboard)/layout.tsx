@@ -11,6 +11,7 @@ import { Header } from '@/components/layout/header';
 import { SidebarNav } from '@/components/layout/sidebar';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { TenantProvider } from '@/lib/auth/tenant-context';
+import { listUserMemberships } from '@/lib/db/queries/memberships';
 import { getOperatorProfile } from '@/lib/db/queries/profile';
 import { HenryScreenProvider } from '@/lib/henry/screen-context';
 import { SentryUserContext } from '@/lib/sentry/sentry-user-context';
@@ -50,12 +51,15 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   // does NOT bounce un-subscribed tenants — existing live tenants pre-date
   // billing and must keep their access.
 
-  const businessName = tenant?.name;
   const timezone = tenant?.timezone || 'America/Vancouver';
   const vertical = tenant?.vertical || 'pressure_washing';
-  const operatorProfile =
-    tenant && currentUser ? await getOperatorProfile(tenant.id, currentUser.id) : null;
+  const [operatorProfile, memberships] = await Promise.all([
+    tenant && currentUser ? getOperatorProfile(tenant.id, currentUser.id) : Promise.resolve(null),
+    currentUser ? listUserMemberships(currentUser.id) : Promise.resolve([]),
+  ]);
   const ownerRateCents = operatorProfile?.defaultHourlyRateCents ?? null;
+  const activeMembership = memberships.find((m) => m.isActive) ?? null;
+  const accentColor = activeMembership?.accentColor ?? null;
 
   return (
     <HenryScreenProvider>
@@ -68,13 +72,17 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             tenantVertical={tenant.vertical}
           />
         ) : null}
+        {accentColor ? (
+          <div className="h-1 w-full" style={{ backgroundColor: accentColor }} aria-hidden />
+        ) : null}
         <div className="flex min-h-screen w-full overflow-x-hidden">
           <SidebarNav vertical={vertical} />
           <div className="flex min-h-screen min-w-0 flex-1 flex-col">
             <Header
-              businessName={businessName}
               vertical={vertical}
               ownerRateCents={ownerRateCents}
+              memberships={memberships}
+              activeTenantId={tenant?.id ?? null}
             />
             {tenant ? <PastDueBanner status={tenant.subscriptionStatus} /> : null}
             {tenant ? (

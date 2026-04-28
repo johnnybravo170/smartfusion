@@ -5,21 +5,22 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import type { UserMembership } from '@/lib/db/queries/memberships';
 import { QuickLogExpenseButton } from './quick-log-expense-button';
 import { QuickLogTimeButton } from './quick-log-time-button';
 import { MobileSidebarToggle } from './sidebar';
+import { WorkspaceSwitcher } from './workspace-switcher';
 
 type HeaderProps = {
-  businessName?: string;
   vertical?: string;
   ownerRateCents?: number | null;
+  memberships: UserMembership[];
+  activeTenantId: string | null;
 };
 
-export function Header({ businessName, vertical, ownerRateCents }: HeaderProps) {
+export function Header({ vertical, ownerRateCents, memberships, activeTenantId }: HeaderProps) {
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-3">
@@ -46,27 +47,7 @@ export function Header({ businessName, vertical, ownerRateCents }: HeaderProps) 
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" aria-label="User menu">
-              {businessName ?? 'Account'}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            {businessName ? (
-              <>
-                <DropdownMenuLabel className="font-medium">{businessName}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-              </>
-            ) : null}
-            <DropdownMenuItem asChild>
-              <Link href="/settings">Profile</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/logout">Logout</Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <WorkspaceSwitcher memberships={memberships} activeTenantId={activeTenantId} />
       </div>
     </header>
   );
