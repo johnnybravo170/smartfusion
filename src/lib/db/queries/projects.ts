@@ -14,7 +14,9 @@ import type { LifecycleStage } from '@/lib/validators/project';
 export type ProjectCustomerSummary = {
   id: string;
   name: string;
-  type: 'residential' | 'commercial' | 'agent';
+  /** Nullable: legacy customers (and contacts created via lead intake) may
+   *  not have a categorical type set yet. Don't gate rendering on it. */
+  type: 'residential' | 'commercial' | 'agent' | null;
 };
 
 export type ProjectRow = {
@@ -89,10 +91,14 @@ function extractCustomer(raw: unknown): ProjectCustomerSummary | null {
   const candidate = Array.isArray(raw) ? raw[0] : raw;
   if (!candidate || typeof candidate !== 'object') return null;
   const obj = candidate as Record<string, unknown>;
-  if (typeof obj.id !== 'string' || typeof obj.name !== 'string' || typeof obj.type !== 'string') {
-    return null;
-  }
-  return { id: obj.id, name: obj.name, type: obj.type as ProjectCustomerSummary['type'] };
+  // id + name are the load-bearing fields for rendering; type is
+  // categorization that can be null on legacy/lead-intake-created customers.
+  if (typeof obj.id !== 'string' || typeof obj.name !== 'string') return null;
+  const type =
+    obj.type === 'residential' || obj.type === 'commercial' || obj.type === 'agent'
+      ? obj.type
+      : null;
+  return { id: obj.id, name: obj.name, type };
 }
 
 function normalizeProject(row: Record<string, unknown>): ProjectWithCustomer {
