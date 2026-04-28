@@ -36,8 +36,10 @@ export default async function VerifyOnboardingPage({
   const phoneVerified = !!member?.phone_verified_at;
 
   // Already done — forward to plan-pick (or dashboard if already subscribed,
-  // which the plan page resolves itself).
+  // which the plan page resolves itself). Personal-vertical tenants skip
+  // billing entirely and go straight to the dashboard.
   if (emailVerified && phoneVerified) {
+    if (tenant.vertical === 'personal') redirect('/dashboard');
     const qs = new URLSearchParams();
     if (params.plan) qs.set('plan', params.plan);
     if (params.billing) qs.set('billing', params.billing);

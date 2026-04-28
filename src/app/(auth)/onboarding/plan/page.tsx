@@ -12,6 +12,9 @@ type SearchParams = Promise<{ plan?: string; billing?: string; canceled?: string
 export default async function OnboardingPlanPage({ searchParams }: { searchParams: SearchParams }) {
   const { user, tenant } = await requireTenant();
 
+  // Personal workspaces don't have a paid plan surface — bounce out.
+  if (tenant.vertical === 'personal') redirect('/dashboard');
+
   // Already subscribed → straight through to dashboard.
   const admin = createAdminClient();
   const { data: row } = await admin
