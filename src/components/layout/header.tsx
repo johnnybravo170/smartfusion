@@ -8,23 +8,24 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { UserMembership } from '@/lib/db/queries/memberships';
+import type { VerticalNavItem } from '@/lib/verticals/load-pack';
 import { QuickLogExpenseButton } from './quick-log-expense-button';
 import { QuickLogTimeButton } from './quick-log-time-button';
 import { MobileSidebarToggle } from './sidebar';
 import { WorkspaceSwitcher } from './workspace-switcher';
 
 type HeaderProps = {
-  vertical?: string;
+  navItems: VerticalNavItem[];
   ownerRateCents?: number | null;
   memberships: UserMembership[];
   activeTenantId: string | null;
 };
 
-export function Header({ vertical, ownerRateCents, memberships, activeTenantId }: HeaderProps) {
+export function Header({ navItems, ownerRateCents, memberships, activeTenantId }: HeaderProps) {
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-3">
-        <MobileSidebarToggle vertical={vertical} />
+        <MobileSidebarToggle navItems={navItems} />
       </div>
 
       <div className="flex items-center gap-2">

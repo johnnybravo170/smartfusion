@@ -3,44 +3,47 @@
 import { ChevronLeft, ChevronRight, Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { getNavItems } from '@/lib/constants/nav';
 import { cn } from '@/lib/utils';
+import type { VerticalNavItem } from '@/lib/verticals/load-pack';
+import { resolveIcon } from './nav-icon';
 import { NavLink } from './nav-link';
 
 const COLLAPSED_KEY = 'henryos:sidebar:collapsed';
 
 function NavList({
-  vertical,
+  navItems,
   collapsed = false,
   onNavigate,
 }: {
-  vertical: string;
+  navItems: VerticalNavItem[];
   collapsed?: boolean;
   onNavigate?: () => void;
 }) {
-  const items = getNavItems(vertical);
   return (
     <nav
       aria-label="Primary"
       className={cn('flex flex-col gap-1', collapsed ? 'px-2 py-3' : 'p-3')}
     >
-      {items.map((item) => (
-        <NavLink
-          key={item.href}
-          href={item.href}
-          icon={item.icon}
-          onNavigate={onNavigate}
-          collapsed={collapsed}
-          label={item.label}
-        >
-          {item.label}
-        </NavLink>
-      ))}
+      {navItems.map((item) => {
+        const Icon = resolveIcon(item.icon);
+        return (
+          <NavLink
+            key={item.href}
+            href={item.href}
+            icon={Icon}
+            onNavigate={onNavigate}
+            collapsed={collapsed}
+            label={item.label}
+          >
+            {item.label}
+          </NavLink>
+        );
+      })}
     </nav>
   );
 }
 
-export function SidebarNav({ vertical = 'pressure_washing' }: { vertical?: string }) {
+export function SidebarNav({ navItems }: { navItems: VerticalNavItem[] }) {
   // Hydrate collapsed state from localStorage so it persists across reloads.
   // Default = expanded; only flip to collapsed if the stored value says so.
   const [collapsed, setCollapsed] = useState(false);
@@ -99,13 +102,13 @@ export function SidebarNav({ vertical = 'pressure_washing' }: { vertical?: strin
         </Button>
       </div>
       <div className="flex-1 overflow-y-auto">
-        <NavList vertical={vertical} collapsed={collapsed} />
+        <NavList navItems={navItems} collapsed={collapsed} />
       </div>
     </aside>
   );
 }
 
-export function MobileSidebarToggle({ vertical = 'pressure_washing' }: { vertical?: string }) {
+export function MobileSidebarToggle({ navItems }: { navItems: VerticalNavItem[] }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -146,7 +149,7 @@ export function MobileSidebarToggle({ vertical = 'pressure_washing' }: { vertica
               </Button>
             </div>
             <div className="overflow-y-auto">
-              <NavList vertical={vertical} onNavigate={() => setOpen(false)} />
+              <NavList navItems={navItems} onNavigate={() => setOpen(false)} />
             </div>
           </div>
         </div>

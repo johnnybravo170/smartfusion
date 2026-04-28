@@ -16,6 +16,7 @@ import { getOperatorProfile } from '@/lib/db/queries/profile';
 import { HenryScreenProvider } from '@/lib/henry/screen-context';
 import { SentryUserContext } from '@/lib/sentry/sentry-user-context';
 import { createClient } from '@/lib/supabase/server';
+import { loadVerticalPack } from '@/lib/verticals/load-pack';
 
 // All dashboard routes require the authenticated user's tenant context. They
 // cannot be statically prerendered (would try to run Supabase client without
@@ -53,9 +54,10 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   const timezone = tenant?.timezone || 'America/Vancouver';
   const vertical = tenant?.vertical || 'pressure_washing';
-  const [operatorProfile, memberships] = await Promise.all([
+  const [operatorProfile, memberships, verticalPack] = await Promise.all([
     tenant && currentUser ? getOperatorProfile(tenant.id, currentUser.id) : Promise.resolve(null),
     currentUser ? listUserMemberships(currentUser.id) : Promise.resolve([]),
+    loadVerticalPack(vertical),
   ]);
   const ownerRateCents = operatorProfile?.defaultHourlyRateCents ?? null;
   const activeMembership = memberships.find((m) => m.isActive) ?? null;
@@ -76,10 +78,10 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           <div className="h-1 w-full" style={{ backgroundColor: accentColor }} aria-hidden />
         ) : null}
         <div className="flex min-h-screen w-full overflow-x-hidden">
-          <SidebarNav vertical={vertical} />
+          <SidebarNav navItems={verticalPack.navItems} />
           <div className="flex min-h-screen min-w-0 flex-1 flex-col">
             <Header
-              vertical={vertical}
+              navItems={verticalPack.navItems}
               ownerRateCents={ownerRateCents}
               memberships={memberships}
               activeTenantId={tenant?.id ?? null}

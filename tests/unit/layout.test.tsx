@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NavLink } from '@/components/layout/nav-link';
 import { SidebarNav } from '@/components/layout/sidebar';
-import { NAV_ITEMS } from '@/lib/constants/nav';
+import type { VerticalNavItem } from '@/lib/verticals/load-pack';
 
 const pathnameMock = vi.hoisted(() => vi.fn<() => string>());
 
@@ -10,30 +10,17 @@ vi.mock('next/navigation', () => ({
   usePathname: pathnameMock,
 }));
 
-describe('NAV_ITEMS', () => {
-  it('contains all nine nav items', () => {
-    expect(NAV_ITEMS).toHaveLength(9);
-    const hrefs = NAV_ITEMS.map((item) => item.href);
-    expect(hrefs).toEqual([
-      '/dashboard',
-      '/contacts',
-      '/quotes',
-      '/jobs',
-      '/invoices',
-      '/inbox',
-      '/settings/team',
-      '/referrals',
-      '/settings',
-    ]);
-  });
-
-  it('every nav item has a label and an icon component', () => {
-    for (const item of NAV_ITEMS) {
-      expect(item.label).toBeTruthy();
-      expect(item.icon).toBeTypeOf('object');
-    }
-  });
-});
+const TEST_NAV: VerticalNavItem[] = [
+  { href: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+  { href: '/contacts', label: 'Contacts', icon: 'Users' },
+  { href: '/quotes', label: 'Quotes', icon: 'FileText' },
+  { href: '/jobs', label: 'Jobs', icon: 'ClipboardList' },
+  { href: '/invoices', label: 'Invoices', icon: 'Receipt' },
+  { href: '/inbox', label: 'Inbox', icon: 'Inbox' },
+  { href: '/settings/team', label: 'Team', icon: 'UserCog' },
+  { href: '/referrals', label: 'Refer & Earn', icon: 'Gift' },
+  { href: '/settings', label: 'Settings', icon: 'Settings' },
+];
 
 describe('SidebarNav', () => {
   beforeEach(() => {
@@ -42,9 +29,9 @@ describe('SidebarNav', () => {
 
   it('renders every nav item as a link', () => {
     pathnameMock.mockReturnValue('/dashboard');
-    render(<SidebarNav />);
+    render(<SidebarNav navItems={TEST_NAV} />);
 
-    for (const item of NAV_ITEMS) {
+    for (const item of TEST_NAV) {
       const links = screen.getAllByRole('link', { name: new RegExp(item.label, 'i') });
       expect(links.length).toBeGreaterThan(0);
       expect(links[0]).toHaveAttribute('href', item.href);
