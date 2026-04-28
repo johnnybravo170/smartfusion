@@ -21,8 +21,8 @@ export type EstimateRenderLine = {
    * Bucket this line belongs to. Used for grouping on the customer-facing
    * estimate. Lines without a bucket group under "Other".
    */
-  bucket_id?: string | null;
-  bucket_name?: string | null;
+  budget_category_id?: string | null;
+  budget_category_name?: string | null;
   bucket_section?: string | null;
   bucket_order?: number;
   /** Signed URLs to any photos attached to this line. */
@@ -73,7 +73,7 @@ function formatDate(iso: string | null | undefined): string | null {
 }
 
 /**
- * Group lines by bucket (bucket_id) and then by section. Renders the same
+ * Group lines by bucket (budget_category_id) and then by section. Renders the same
  * columns in each bucket's own table so the customer sees the contractor's
  * chosen divisions (e.g. UPSTAIRS WORK → Closets, Vanity, Paint) rather
  * than a single flat list.
@@ -93,11 +93,11 @@ function renderGroups(lines: EstimateRenderLine[]) {
   };
   const byBucket = new Map<string, Bucket & { section: string | null }>();
   for (const l of lines) {
-    const key = l.bucket_id ?? '__none__';
+    const key = l.budget_category_id ?? '__none__';
     const g = byBucket.get(key) ?? {
       key,
       section: l.bucket_section ?? null,
-      bucketName: l.bucket_name ?? 'Other',
+      bucketName: l.budget_category_name ?? 'Other',
       order: l.bucket_order ?? Number.MAX_SAFE_INTEGER,
       lines: [],
     };

@@ -318,7 +318,7 @@ export async function acceptInboundLeadAction(
   let bucketIds: string[] = [];
   if (bucketRows.length) {
     const { data: bs, error: bErr } = await supabase
-      .from('project_cost_buckets')
+      .from('project_budget_categories')
       .insert(bucketRows)
       .select('id');
     if (bErr) return { ok: false, error: `Buckets: ${bErr.message}` };
@@ -334,7 +334,7 @@ export async function acceptInboundLeadAction(
       const unitPrice = Number(l.unit_price_cents ?? 0) || 0;
       lineRows.push({
         project_id: proj.id,
-        bucket_id: bucketId,
+        budget_category_id: bucketId,
         category: 'material',
         label: l.label,
         notes: l.notes?.trim() || null,

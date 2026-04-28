@@ -3,17 +3,17 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useHenryForm } from '@/hooks/use-henry-form';
-import type { CostBucketSummary } from '@/lib/db/queries/projects';
+import type { BudgetCategorySummary } from '@/lib/db/queries/projects';
 import { createChangeOrderAction, sendChangeOrderAction } from '@/server/actions/change-orders';
 
 export function ChangeOrderForm({
   projectId,
   jobId,
-  costBuckets,
+  budgetCategories,
 }: {
   projectId?: string;
   jobId?: string;
-  costBuckets: CostBucketSummary[];
+  budgetCategories: BudgetCategorySummary[];
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -197,11 +197,11 @@ export function ChangeOrderForm({
         </div>
       </div>
 
-      {costBuckets.length > 0 ? (
+      {budgetCategories.length > 0 ? (
         <div>
           <span className="mb-2 block text-sm font-medium">Affected Cost Buckets</span>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-            {costBuckets.map((bucket) => (
+            {budgetCategories.map((bucket) => (
               <label
                 key={bucket.id}
                 className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer hover:bg-muted/30"

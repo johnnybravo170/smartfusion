@@ -57,7 +57,7 @@ export async function parseProjectAugmentAction(formData: FormData): Promise<Par
   }
 
   const { data: bucketRows } = await supabase
-    .from('project_cost_buckets')
+    .from('project_budget_categories')
     .select('id, name, section, project_cost_lines (label)')
     .eq('project_id', projectId)
     .order('display_order');
@@ -189,7 +189,7 @@ export type ApplyAugmentInput = {
   description_addendum: string | null;
   new_buckets: Array<{ name: string; section: string | null }>;
   new_lines: Array<{
-    bucket_name: string;
+    budget_category_name: string;
     label: string;
     notes: string | null;
     qty: number;
@@ -206,7 +206,7 @@ export type ApplyAugmentInput = {
     description: string | null;
     amount_cents: number;
     gst_cents: number;
-    bucket_name: string | null;
+    budget_category_name: string | null;
     /** Index into the FormData "images" list — uploaded as attachment_storage_path. */
     source_image_index: number | null;
   }>;
@@ -216,7 +216,7 @@ export type ApplyAugmentInput = {
     amount_cents: number;
     expense_date: string | null;
     description: string | null;
-    bucket_name: string | null;
+    budget_category_name: string | null;
     /** Index into the FormData "images" list — uploaded as receipt_url. */
     source_image_index: number | null;
   }>;
@@ -303,7 +303,7 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
   // pre-existing and freshly inserted buckets.
   {
     const { data: existing } = await supabase
-      .from('project_cost_buckets')
+      .from('project_budget_categories')
       .select('id, name, display_order')
       .eq('project_id', input.projectId);
     for (const b of existing ?? []) {
@@ -321,7 +321,7 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
         display_order: nextOrder + i,
       }));
       const { data: inserted, error } = await supabase
-        .from('project_cost_buckets')
+        .from('project_budget_categories')
         .insert(rows)
         .select('id, name');
       if (error) return { ok: false, error: `Buckets: ${error.message}` };
@@ -352,7 +352,7 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
 
     const lineRows: Array<Record<string, unknown>> = [];
     input.new_lines.forEach((l, lineIdx) => {
-      const bucketId = bucketIdByName.get(l.bucket_name.toLowerCase()) ?? null;
+      const bucketId = bucketIdByName.get(l.budget_category_name.toLowerCase()) ?? null;
       const qty = Number(l.qty) || 1;
       const unitPrice = Number(l.unit_price_cents ?? 0) || 0;
       const ownPhotos = (l.source_image_indexes ?? [])
@@ -363,7 +363,7 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
       const photoPaths = lineIdx === 0 ? [...ownPhotos, ...orphanPaths] : ownPhotos;
       lineRows.push({
         project_id: input.projectId,
-        bucket_id: bucketId,
+        budget_category_id: bucketId,
         category: 'material',
         label: l.label,
         notes: l.notes?.trim() || null,
@@ -406,15 +406,15 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
         receiptStoragePath = path;
       }
 
-      const bucketId = e.bucket_name
-        ? (bucketIdByName.get(e.bucket_name.toLowerCase()) ?? null)
+      const bucketId = e.budget_category_name
+        ? (bucketIdByName.get(e.budget_category_name.toLowerCase()) ?? null)
         : null;
 
       const { error: insErr } = await admin.from('expenses').insert({
         tenant_id: tenant.id,
         user_id: user.id,
         project_id: input.projectId,
-        bucket_id: bucketId,
+        budget_category_id: bucketId,
         amount_cents: e.amount_cents,
         vendor: e.vendor?.trim() || null,
         vendor_gst_number: e.vendor_gst_number?.trim() || null,
@@ -455,8 +455,8 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
         attachmentStoragePath = path;
       }
 
-      const bucketId = b.bucket_name
-        ? (bucketIdByName.get(b.bucket_name.toLowerCase()) ?? null)
+      const bucketId = b.budget_category_name
+        ? (bucketIdByName.get(b.budget_category_name.toLowerCase()) ?? null)
         : null;
 
       const { error: insErr } = await supabase.from('project_bills').insert({
@@ -468,7 +468,7 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
         description: b.description?.trim() || null,
         amount_cents: b.amount_cents,
         gst_cents: b.gst_cents ?? 0,
-        bucket_id: bucketId,
+        budget_category_id: bucketId,
         attachment_storage_path: attachmentStoragePath,
         status: 'pending',
       });

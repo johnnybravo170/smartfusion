@@ -10,8 +10,8 @@ import { createClient } from '@/lib/supabase/server';
 
 export type SubQuoteAllocationRow = {
   id: string;
-  bucket_id: string;
-  bucket_name: string | null;
+  budget_category_id: string;
+  budget_category_name: string | null;
   allocated_cents: number;
   notes: string | null;
 };
@@ -53,18 +53,18 @@ export async function listProjectSubQuotes(projectId: string): Promise<SubQuoteR
   const { data: allocations } = await supabase
     .from('project_sub_quote_allocations')
     .select(
-      'id, sub_quote_id, bucket_id, allocated_cents, notes, project_cost_buckets:bucket_id(name)',
+      'id, sub_quote_id, budget_category_id, allocated_cents, notes, project_budget_categories:budget_category_id(name)',
     )
     .in('sub_quote_id', ids);
 
   const allocsByQuote = new Map<string, SubQuoteAllocationRow[]>();
   for (const a of allocations ?? []) {
-    const bucket = a.project_cost_buckets as { name?: string } | { name?: string }[] | null;
+    const bucket = a.project_budget_categories as { name?: string } | { name?: string }[] | null;
     const bucketName = Array.isArray(bucket) ? (bucket[0]?.name ?? null) : (bucket?.name ?? null);
     const row: SubQuoteAllocationRow = {
       id: a.id as string,
-      bucket_id: a.bucket_id as string,
-      bucket_name: bucketName,
+      budget_category_id: a.budget_category_id as string,
+      budget_category_name: bucketName,
       allocated_cents: a.allocated_cents as number,
       notes: (a.notes as string | null) ?? null,
     };

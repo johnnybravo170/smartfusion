@@ -15,8 +15,8 @@ export type ProjectBillRow = {
   receipt_url: string | null;
   cost_code: string | null;
   vendor_gst_number: string | null;
-  bucket_id: string | null;
-  bucket_name: string | null;
+  budget_category_id: string | null;
+  budget_category_name: string | null;
   attachment_storage_path: string | null;
   created_at: string;
   updated_at: string;
@@ -27,14 +27,14 @@ export async function listProjectBills(projectId: string): Promise<ProjectBillRo
   const { data, error } = await supabase
     .from('project_bills')
     .select(
-      'id, tenant_id, project_id, vendor, bill_date, description, amount_cents, gst_cents, status, receipt_url, cost_code, vendor_gst_number, bucket_id, attachment_storage_path, created_at, updated_at, project_cost_buckets(name)',
+      'id, tenant_id, project_id, vendor, bill_date, description, amount_cents, gst_cents, status, receipt_url, cost_code, vendor_gst_number, budget_category_id, attachment_storage_path, created_at, updated_at, project_budget_categories(name)',
     )
     .eq('project_id', projectId)
     .order('bill_date', { ascending: false });
   if (error) throw new Error(`Failed to list project bills: ${error.message}`);
   return ((data ?? []) as unknown[]).map((row) => {
     const r = row as Record<string, unknown>;
-    const bucketRel = r.project_cost_buckets as { name: string } | null;
+    const bucketRel = r.project_budget_categories as { name: string } | null;
     return {
       id: r.id as string,
       tenant_id: r.tenant_id as string,
@@ -48,8 +48,8 @@ export async function listProjectBills(projectId: string): Promise<ProjectBillRo
       receipt_url: (r.receipt_url as string | null) ?? null,
       cost_code: (r.cost_code as string | null) ?? null,
       vendor_gst_number: (r.vendor_gst_number as string | null) ?? null,
-      bucket_id: (r.bucket_id as string | null) ?? null,
-      bucket_name: bucketRel?.name ?? null,
+      budget_category_id: (r.budget_category_id as string | null) ?? null,
+      budget_category_name: bucketRel?.name ?? null,
       attachment_storage_path: (r.attachment_storage_path as string | null) ?? null,
       created_at: r.created_at as string,
       updated_at: r.updated_at as string,

@@ -143,7 +143,7 @@ export async function createProjectAction(input: {
     })),
   ];
 
-  const { error: bucketErr } = await supabase.from('project_cost_buckets').insert(bucketRows);
+  const { error: bucketErr } = await supabase.from('project_budget_categories').insert(bucketRows);
 
   if (bucketErr) {
     // Project created but buckets failed. Still return success so the user
@@ -417,7 +417,7 @@ export async function cloneProjectAction(input: {
 
   if (input.clone_cost_buckets) {
     const { data: srcBuckets } = await supabase
-      .from('project_cost_buckets')
+      .from('project_budget_categories')
       .select('id, name, section, description, estimate_cents, display_order, is_visible_in_report')
       .eq('project_id', input.source_id);
 
@@ -440,16 +440,16 @@ export async function cloneProjectAction(input: {
           is_visible_in_report: b.is_visible_in_report,
         };
       });
-      const { error: bErr } = await supabase.from('project_cost_buckets').insert(rows);
+      const { error: bErr } = await supabase.from('project_budget_categories').insert(rows);
       if (bErr) console.error('Failed to clone cost buckets:', bErr.message);
     }
 
-    // Estimate line items live on project_cost_lines, keyed by bucket_id.
+    // Estimate line items live on project_cost_lines, keyed by budget_category_id.
     // Without these, cloned projects show empty buckets with no prices.
     const { data: srcLines } = await supabase
       .from('project_cost_lines')
       .select(
-        'bucket_id, catalog_item_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, markup_pct, line_cost_cents, line_price_cents, sort_order, notes, photo_storage_paths',
+        'budget_category_id, catalog_item_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, markup_pct, line_cost_cents, line_price_cents, sort_order, notes, photo_storage_paths',
       )
       .eq('project_id', input.source_id);
 
@@ -458,7 +458,9 @@ export async function cloneProjectAction(input: {
         ...l,
         tenant_id: tenant.id,
         project_id: created.id,
-        bucket_id: l.bucket_id ? (bucketIdMap.get(l.bucket_id) ?? null) : null,
+        budget_category_id: l.budget_category_id
+          ? (bucketIdMap.get(l.budget_category_id) ?? null)
+          : null,
         photo_storage_paths: input.keep_line_photos ? l.photo_storage_paths : [],
       }));
       const { error: lErr } = await supabase.from('project_cost_lines').insert(lineRows);

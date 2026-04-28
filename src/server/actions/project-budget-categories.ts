@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/server';
 
 export type BucketActionResult = { ok: true; id: string } | { ok: false; error: string };
 
-export async function updateBucketAction(input: {
+export async function updateBudgetCategoryAction(input: {
   id: string;
   project_id: string;
   estimate_cents?: number;
@@ -25,7 +25,10 @@ export async function updateBucketAction(input: {
   if (input.is_visible_in_report !== undefined)
     updates.is_visible_in_report = input.is_visible_in_report;
 
-  const { error } = await supabase.from('project_cost_buckets').update(updates).eq('id', input.id);
+  const { error } = await supabase
+    .from('project_budget_categories')
+    .update(updates)
+    .eq('id', input.id);
 
   if (error) {
     return { ok: false, error: error.message };
@@ -35,7 +38,7 @@ export async function updateBucketAction(input: {
   return { ok: true, id: input.id };
 }
 
-export async function addBucketAction(input: {
+export async function addBudgetCategoryAction(input: {
   project_id: string;
   name: string;
   section: string;
@@ -51,7 +54,7 @@ export async function addBucketAction(input: {
 
   // Determine next display_order
   const { data: existing } = await supabase
-    .from('project_cost_buckets')
+    .from('project_budget_categories')
     .select('display_order')
     .eq('project_id', input.project_id)
     .order('display_order', { ascending: false })
@@ -62,7 +65,7 @@ export async function addBucketAction(input: {
     : 0;
 
   const { data, error } = await supabase
-    .from('project_cost_buckets')
+    .from('project_budget_categories')
     .insert({
       project_id: input.project_id,
       tenant_id: tenant.id,
@@ -83,7 +86,7 @@ export async function addBucketAction(input: {
   return { ok: true, id: data.id };
 }
 
-export async function removeBucketAction(input: {
+export async function removeBudgetCategoryAction(input: {
   id: string;
   project_id: string;
 }): Promise<BucketActionResult> {
@@ -93,12 +96,12 @@ export async function removeBucketAction(input: {
   const { count: timeCount } = await supabase
     .from('time_entries')
     .select('id', { count: 'exact', head: true })
-    .eq('bucket_id', input.id);
+    .eq('budget_category_id', input.id);
 
   const { count: expenseCount } = await supabase
     .from('expenses')
     .select('id', { count: 'exact', head: true })
-    .eq('bucket_id', input.id);
+    .eq('budget_category_id', input.id);
 
   if ((timeCount ?? 0) > 0 || (expenseCount ?? 0) > 0) {
     return {
@@ -107,7 +110,7 @@ export async function removeBucketAction(input: {
     };
   }
 
-  const { error } = await supabase.from('project_cost_buckets').delete().eq('id', input.id);
+  const { error } = await supabase.from('project_budget_categories').delete().eq('id', input.id);
 
   if (error) {
     return { ok: false, error: error.message };
@@ -181,7 +184,7 @@ export async function seedBucketsFromTemplateAction(input: {
     })),
   ];
 
-  const { error } = await supabase.from('project_cost_buckets').insert(rows);
+  const { error } = await supabase.from('project_budget_categories').insert(rows);
 
   if (error) {
     return { ok: false, error: error.message };

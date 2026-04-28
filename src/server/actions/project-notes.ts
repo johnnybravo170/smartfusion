@@ -114,7 +114,7 @@ export async function askHenryAboutProjectAction(input: {
       .eq('id', input.projectId)
       .maybeSingle(),
     supabase
-      .from('project_cost_buckets')
+      .from('project_budget_categories')
       .select(
         'name, section, project_cost_lines (label, qty, unit, unit_price_cents, line_price_cents, notes)',
       )

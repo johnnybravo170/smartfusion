@@ -16,28 +16,33 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
-import type { BudgetLine } from '@/lib/db/queries/project-buckets';
+import type { BudgetLine } from '@/lib/db/queries/project-budget-categories';
 import { formatCurrency, formatCurrencyCompact } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 import {
-  addBucketAction,
-  removeBucketAction,
-  updateBucketAction,
-} from '@/server/actions/project-buckets';
+  addBudgetCategoryAction,
+  removeBudgetCategoryAction,
+  updateBudgetCategoryAction,
+} from '@/server/actions/project-budget-categories';
 import {
   deleteCostLineAction,
   generateEstimateFromBucketsAction,
 } from '@/server/actions/project-cost-control';
 import { CostLineForm } from './cost-line-form';
 
-type CostBucketsTableProps = {
+type BudgetCategoriesTableProps = {
   lines: BudgetLine[];
   projectId: string;
   costLines: CostLineRow[];
   catalog: MaterialsCatalogRow[];
 };
 
-export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostBucketsTableProps) {
+export function BudgetCategoriesTable({
+  lines,
+  projectId,
+  costLines,
+  catalog,
+}: BudgetCategoriesTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -50,14 +55,17 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
 
   // Variance tab on Overview deep-links here with `?focus=<category>` so
   // the user lands directly on the bucket they wanted to edit. Match by
-  // bucket_name (case-insensitive — variance categories arrive lowercase
+  // budget_category_name (case-insensitive — variance categories arrive lowercase
   // capitalize; bucket names are operator-typed). Highlight fades after
   // ~2.5s so the table looks normal again on subsequent interactions.
   const focusName = searchParams.get('focus');
   const focusBucketId = useMemo(() => {
     if (!focusName) return null;
     const needle = focusName.toLowerCase().trim();
-    return lines.find((l) => l.bucket_name.toLowerCase().trim() === needle)?.bucket_id ?? null;
+    return (
+      lines.find((l) => l.budget_category_name.toLowerCase().trim() === needle)
+        ?.budget_category_id ?? null
+    );
   }, [focusName, lines]);
 
   const [highlight, setHighlight] = useState(false);
@@ -75,12 +83,12 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
     sections.set(line.section, existing);
   }
 
-  const linesByBucket = new Map<string, CostLineRow[]>();
+  const linesByBudgetCategory = new Map<string, CostLineRow[]>();
   for (const cl of costLines) {
-    if (!cl.bucket_id) continue;
-    const arr = linesByBucket.get(cl.bucket_id) ?? [];
+    if (!cl.budget_category_id) continue;
+    const arr = linesByBudgetCategory.get(cl.budget_category_id) ?? [];
     arr.push(cl);
-    linesByBucket.set(cl.bucket_id, arr);
+    linesByBudgetCategory.set(cl.budget_category_id, arr);
   }
 
   function toggleExpand(bucketId: string) {
@@ -93,7 +101,7 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
   }
 
   function startEdit(line: BudgetLine) {
-    setEditingId(line.bucket_id);
+    setEditingId(line.budget_category_id);
     setEditValue(String(line.estimate_cents / 100));
   }
 
@@ -104,7 +112,7 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
       return;
     }
     startTransition(async () => {
-      const result = await updateBucketAction({
+      const result = await updateBudgetCategoryAction({
         id: bucketId,
         project_id: projectId,
         estimate_cents: cents,
@@ -121,7 +129,7 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
   function removeBucket(bucketId: string) {
     if (!confirm('Remove this category? Any line items attached will be orphaned.')) return;
     startTransition(async () => {
-      const result = await removeBucketAction({ id: bucketId, project_id: projectId });
+      const result = await removeBudgetCategoryAction({ id: bucketId, project_id: projectId });
       if (result.ok) toast.success('Bucket removed');
       else toast.error(result.error);
     });
@@ -158,7 +166,7 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
       </div>
 
       {showAddBucket && (
-        <AddBucketForm projectId={projectId} onDone={() => setShowAddBucket(false)} />
+        <AddBudgetCategoryForm projectId={projectId} onDone={() => setShowAddBucket(false)} />
       )}
 
       {Array.from(sections.entries()).map(([section, sectionLines]) => {
@@ -199,12 +207,12 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
                         ? Math.min(Math.round((line.actual_cents / line.estimate_cents) * 100), 100)
                         : 0;
                     const isOver = line.remaining_cents < 0;
-                    const isExpanded = expanded.has(line.bucket_id);
-                    const bucketLines = linesByBucket.get(line.bucket_id) ?? [];
+                    const isExpanded = expanded.has(line.budget_category_id);
+                    const bucketLines = linesByBudgetCategory.get(line.budget_category_id) ?? [];
 
                     return (
-                      <BucketRow
-                        key={line.bucket_id}
+                      <BudgetCategoryRow
+                        key={line.budget_category_id}
                         line={line}
                         progress={progress}
                         isOver={isOver}
@@ -226,8 +234,8 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
                         deleteLine={deleteLine}
                         projectId={projectId}
                         catalog={catalog}
-                        isFocused={line.bucket_id === focusBucketId}
-                        showHighlight={highlight && line.bucket_id === focusBucketId}
+                        isFocused={line.budget_category_id === focusBucketId}
+                        showHighlight={highlight && line.budget_category_id === focusBucketId}
                       />
                     );
                   })}
@@ -257,7 +265,7 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
   );
 }
 
-type BucketRowProps = {
+type BudgetCategoryRowProps = {
   line: BudgetLine;
   progress: number;
   isOver: boolean;
@@ -283,7 +291,7 @@ type BucketRowProps = {
   showHighlight: boolean;
 };
 
-function BucketRow(props: BucketRowProps) {
+function BudgetCategoryRow(props: BudgetCategoryRowProps) {
   const {
     line,
     progress,
@@ -331,14 +339,14 @@ function BucketRow(props: BucketRowProps) {
           <button
             type="button"
             className="text-muted-foreground hover:text-foreground"
-            onClick={() => toggleExpand(line.bucket_id)}
+            onClick={() => toggleExpand(line.budget_category_id)}
             aria-label={isExpanded ? 'Collapse' : 'Expand'}
           >
             {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </button>
         </td>
         <td className="px-3 py-2">
-          {line.bucket_name}
+          {line.budget_category_name}
           {bucketLines.length > 0 && (
             <span className="ml-2 text-xs text-muted-foreground">
               ({bucketLines.length} line{bucketLines.length === 1 ? '' : 's'})
@@ -346,7 +354,7 @@ function BucketRow(props: BucketRowProps) {
           )}
         </td>
         <td className="px-3 py-2 text-right">
-          {editingId === line.bucket_id ? (
+          {editingId === line.budget_category_id ? (
             <div className="flex items-center justify-end gap-1">
               <div className="relative flex-1">
                 <span className="-translate-y-1/2 absolute top-1/2 left-2 text-muted-foreground text-sm">
@@ -359,17 +367,17 @@ function BucketRow(props: BucketRowProps) {
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') saveEdit(line.bucket_id);
+                    if (e.key === 'Enter') saveEdit(line.budget_category_id);
                     if (e.key === 'Escape') setEditingId(null);
                   }}
-                  onBlur={() => saveEdit(line.bucket_id)}
+                  onBlur={() => saveEdit(line.budget_category_id)}
                   autoFocus
                 />
               </div>
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => saveEdit(line.bucket_id)}
+                onClick={() => saveEdit(line.budget_category_id)}
                 disabled={isPending}
                 aria-label="Save"
                 title="Save (Enter)"
@@ -419,7 +427,7 @@ function BucketRow(props: BucketRowProps) {
             size="xs"
             variant="ghost"
             className="text-destructive hover:text-destructive"
-            onClick={() => removeBucket(line.bucket_id)}
+            onClick={() => removeBucket(line.budget_category_id)}
           >
             ×
           </Button>
@@ -491,19 +499,19 @@ function BucketRow(props: BucketRowProps) {
                 </table>
               )}
 
-              {editingLine && editingLine.bucket_id === line.bucket_id ? (
+              {editingLine && editingLine.budget_category_id === line.budget_category_id ? (
                 <CostLineForm
                   projectId={projectId}
                   initial={editingLine}
                   catalog={catalog}
-                  defaultBucketId={line.bucket_id}
+                  defaultBucketId={line.budget_category_id}
                   onDone={() => setEditingLine(null)}
                 />
-              ) : addingLineFor === line.bucket_id ? (
+              ) : addingLineFor === line.budget_category_id ? (
                 <CostLineForm
                   projectId={projectId}
                   catalog={catalog}
-                  defaultBucketId={line.bucket_id}
+                  defaultBucketId={line.budget_category_id}
                   onDone={() => setAddingLineFor(null)}
                 />
               ) : (
@@ -511,11 +519,11 @@ function BucketRow(props: BucketRowProps) {
                   size="xs"
                   variant="outline"
                   onClick={() => {
-                    setAddingLineFor(line.bucket_id);
+                    setAddingLineFor(line.budget_category_id);
                     setEditingLine(null);
                   }}
                 >
-                  + Add line to {line.bucket_name}
+                  + Add line to {line.budget_category_name}
                 </Button>
               )}
             </div>
@@ -526,7 +534,7 @@ function BucketRow(props: BucketRowProps) {
   );
 }
 
-function AddBucketForm({ projectId, onDone }: { projectId: string; onDone: () => void }) {
+function AddBudgetCategoryForm({ projectId, onDone }: { projectId: string; onDone: () => void }) {
   const [name, setName] = useState('');
   const [section, setSection] = useState('interior');
   const [estimate, setEstimate] = useState('');
@@ -540,7 +548,7 @@ function AddBucketForm({ projectId, onDone }: { projectId: string; onDone: () =>
     }
     const estimate_cents = Math.round(parseFloat(estimate || '0') * 100);
     startTransition(async () => {
-      const result = await addBucketAction({
+      const result = await addBudgetCategoryAction({
         project_id: projectId,
         name: name.trim(),
         section,

@@ -33,7 +33,7 @@ export type SubQuoteResult =
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 const allocationInput = z.object({
-  bucket_id: z.string().uuid(),
+  budget_category_id: z.string().uuid(),
   allocated_cents: z.coerce.number().int().min(0),
   notes: z.string().trim().max(500).nullable().optional(),
 });
@@ -173,7 +173,7 @@ async function insertQuote(args: {
   if (parsed.allocations.length > 0) {
     const rows = parsed.allocations.map((a) => ({
       sub_quote_id: quoteId,
-      bucket_id: a.bucket_id,
+      budget_category_id: a.budget_category_id,
       allocated_cents: a.allocated_cents,
       notes: a.notes?.trim() || null,
     }));
@@ -215,7 +215,11 @@ export async function updateSubQuoteAction(input: {
   notes?: string;
   quote_date?: string;
   valid_until?: string;
-  allocations: Array<{ bucket_id: string; allocated_cents: number; notes?: string | null }>;
+  allocations: Array<{
+    budget_category_id: string;
+    allocated_cents: number;
+    notes?: string | null;
+  }>;
 }): Promise<SubQuoteResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
@@ -256,7 +260,7 @@ export async function updateSubQuoteAction(input: {
   if (parsed.data.allocations.length > 0) {
     const rows = parsed.data.allocations.map((a) => ({
       sub_quote_id: parsed.data.id,
-      bucket_id: a.bucket_id,
+      budget_category_id: a.budget_category_id,
       allocated_cents: a.allocated_cents,
       notes: a.notes?.trim() || null,
     }));
@@ -276,7 +280,11 @@ export async function updateSubQuoteAction(input: {
 export async function setSubQuoteAllocationsAction(input: {
   subQuoteId: string;
   projectId: string;
-  allocations: Array<{ bucket_id: string; allocated_cents: number; notes?: string | null }>;
+  allocations: Array<{
+    budget_category_id: string;
+    allocated_cents: number;
+    notes?: string | null;
+  }>;
 }): Promise<SubQuoteResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
@@ -299,7 +307,7 @@ export async function setSubQuoteAllocationsAction(input: {
   if (parsed.data.allocations.length > 0) {
     const rows = parsed.data.allocations.map((a) => ({
       sub_quote_id: parsed.data.subQuoteId,
-      bucket_id: a.bucket_id,
+      budget_category_id: a.budget_category_id,
       allocated_cents: a.allocated_cents,
       notes: a.notes?.trim() || null,
     }));
@@ -347,7 +355,7 @@ export async function acceptSubQuoteAction(input: {
 
   const { data: allocations, error: aErr } = await supabase
     .from('project_sub_quote_allocations')
-    .select('bucket_id, allocated_cents')
+    .select('budget_category_id, allocated_cents')
     .eq('sub_quote_id', input.subQuoteId);
   if (aErr) return { ok: false, error: aErr.message };
 
@@ -381,13 +389,15 @@ export async function acceptSubQuoteAction(input: {
   } else if (replaceMode === 'auto' && priorAccepted?.length) {
     // Supersede only when bucket overlap exists — different buckets =
     // genuinely separate scopes (tile kitchen vs tile bathroom).
-    const ourBuckets = new Set((allocations ?? []).map((a) => a.bucket_id as string));
+    const ourBuckets = new Set((allocations ?? []).map((a) => a.budget_category_id as string));
     for (const prior of priorAccepted) {
       const { data: priorAllocs } = await supabase
         .from('project_sub_quote_allocations')
-        .select('bucket_id')
+        .select('budget_category_id')
         .eq('sub_quote_id', prior.id as string);
-      const overlap = (priorAllocs ?? []).some((pa) => ourBuckets.has(pa.bucket_id as string));
+      const overlap = (priorAllocs ?? []).some((pa) =>
+        ourBuckets.has(pa.budget_category_id as string),
+      );
       if (overlap) toSupersede.push(prior.id as string);
     }
   }
@@ -482,7 +492,7 @@ export async function createProjectBucketAction(input: {
   // Next display_order = max(existing) + 10 so the new bucket lands at
   // the end of the list without clashing.
   const { data: existing } = await supabase
-    .from('project_cost_buckets')
+    .from('project_budget_categories')
     .select('display_order')
     .eq('project_id', parsed.data.projectId)
     .order('display_order', { ascending: false })
@@ -490,7 +500,7 @@ export async function createProjectBucketAction(input: {
   const nextOrder = ((existing?.[0]?.display_order as number | undefined) ?? 0) + 10;
 
   const { data, error } = await supabase
-    .from('project_cost_buckets')
+    .from('project_budget_categories')
     .insert({
       tenant_id: tenant.id,
       project_id: parsed.data.projectId,
@@ -586,7 +596,7 @@ export async function parseSubQuoteFromFileAction(
   if (!project) return { ok: false, error: 'Project not found.' };
 
   const { data: bucketRows } = await supabase
-    .from('project_cost_buckets')
+    .from('project_budget_categories')
     .select('id, name, section')
     .eq('project_id', projectId)
     .order('display_order');
@@ -706,7 +716,7 @@ export async function parseSubQuoteFromFileAction(
   const unmatched: UnmatchedAllocation[] = [];
 
   for (const a of parsed.allocations) {
-    const hit = bucketsByName.get(a.bucket_name);
+    const hit = bucketsByName.get(a.budget_category_name);
     if (hit) {
       matched.push({
         bucketId: hit.id,
@@ -717,7 +727,7 @@ export async function parseSubQuoteFromFileAction(
       });
     } else {
       unmatched.push({
-        proposedBucketName: a.bucket_name,
+        proposedBucketName: a.budget_category_name,
         allocatedCents: a.allocated_cents,
         reasoning: a.reasoning,
       });

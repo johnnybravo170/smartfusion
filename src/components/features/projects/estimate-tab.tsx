@@ -119,8 +119,8 @@ export function EstimateTab({
   };
   const bucketMap = new Map<string, BucketGroup & { section: string | null }>();
   for (const line of costLines) {
-    const key = line.bucket_id ?? '__none__';
-    const info = line.bucket_id ? bucketsById[line.bucket_id] : undefined;
+    const key = line.budget_category_id ?? '__none__';
+    const info = line.budget_category_id ? bucketsById[line.budget_category_id] : undefined;
     const g = bucketMap.get(key) ?? {
       key,
       bucketName: info?.name ?? 'Other',
@@ -330,7 +330,7 @@ export function EstimateTab({
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
         <span>Line items are edited in the Budget tab.</span>
         <Button asChild size="sm" variant="outline">
-          <Link href={`/projects/${projectId}?tab=buckets`}>
+          <Link href={`/projects/${projectId}?tab=budget`}>
             <Pencil className="size-3.5" />
             Open Budget
           </Link>
@@ -340,7 +340,7 @@ export function EstimateTab({
       {costLines.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No line items yet.{' '}
-          <Link href={`/projects/${projectId}?tab=buckets`} className="text-foreground underline">
+          <Link href={`/projects/${projectId}?tab=budget`} className="text-foreground underline">
             Add your first item in Budget
           </Link>
           .

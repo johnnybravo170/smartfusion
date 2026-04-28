@@ -18,7 +18,7 @@ export type CostControlResult = { ok: true; id: string } | { ok: false; error: s
 const costLineSchema = z.object({
   id: z.string().uuid().optional(),
   project_id: z.string().uuid(),
-  bucket_id: z.string().uuid().optional().or(z.literal('')),
+  budget_category_id: z.string().uuid().optional().or(z.literal('')),
   catalog_item_id: z.string().uuid().optional().or(z.literal('')),
   category: z.enum(['material', 'labour', 'sub', 'equipment', 'overhead']),
   label: z.string().trim().min(1, 'Label is required').max(300),
@@ -49,13 +49,13 @@ export async function upsertCostLineAction(input: unknown): Promise<CostControlR
   if (!tenant) return { ok: false, error: 'Not signed in.' };
 
   const supabase = await createClient();
-  const { id, bucket_id, catalog_item_id, notes, ...fields } = parsed.data;
+  const { id, budget_category_id, catalog_item_id, notes, ...fields } = parsed.data;
   const totals = computeLineTotals(fields.qty, fields.unit_cost_cents, fields.unit_price_cents);
 
   const row = {
     ...fields,
     ...totals,
-    bucket_id: bucket_id || null,
+    budget_category_id: budget_category_id || null,
     catalog_item_id: catalog_item_id || null,
     notes: notes || null,
     updated_at: new Date().toISOString(),
@@ -87,7 +87,7 @@ export async function generateEstimateFromBucketsAction(input: {
   const supabase = await createClient();
 
   const { data: buckets, error: bErr } = await supabase
-    .from('project_cost_buckets')
+    .from('project_budget_categories')
     .select('id, name, description, estimate_cents')
     .eq('project_id', input.project_id)
     .gt('estimate_cents', 0);
@@ -98,13 +98,13 @@ export async function generateEstimateFromBucketsAction(input: {
 
   const { data: existingLines, error: lErr } = await supabase
     .from('project_cost_lines')
-    .select('bucket_id')
+    .select('budget_category_id')
     .eq('project_id', input.project_id)
-    .not('bucket_id', 'is', null);
+    .not('budget_category_id', 'is', null);
   if (lErr) return { ok: false, error: lErr.message };
 
   const usedBucketIds = new Set(
-    (existingLines ?? []).map((r) => (r as { bucket_id: string }).bucket_id),
+    (existingLines ?? []).map((r) => (r as { budget_category_id: string }).budget_category_id),
   );
   const toSeed = buckets.filter((b) => !usedBucketIds.has((b as { id: string }).id)) as {
     id: string;
@@ -119,7 +119,7 @@ export async function generateEstimateFromBucketsAction(input: {
 
   const rows = toSeed.map((b) => ({
     project_id: input.project_id,
-    bucket_id: b.id,
+    budget_category_id: b.id,
     category: 'material' as const,
     label: b.name,
     notes: b.description?.trim() || null,
@@ -252,7 +252,7 @@ const MAX_BILL_ATTACHMENT_BYTES = 20 * 1024 * 1024; // 20 MB
  *   description?
  *   amount_cents             — pre-GST subtotal, integer cents
  *   gst_cents                — GST amount, integer cents (0 if no GST)
- *   bucket_id?               — cost bucket UUID
+ *   budget_category_id?               — cost bucket UUID
  *   cost_code?
  *   attachment?              — File (PDF or image)
  */
@@ -269,7 +269,7 @@ export async function upsertBillWithAttachmentAction(
   const description = String(formData.get('description') ?? '').trim() || null;
   const amount_cents = Math.round(parseFloat(String(formData.get('amount_cents') || '0')) || 0);
   const gst_cents = Math.round(parseFloat(String(formData.get('gst_cents') || '0')) || 0);
-  const bucket_id = (formData.get('bucket_id') as string | null)?.trim() || null;
+  const budget_category_id = (formData.get('budget_category_id') as string | null)?.trim() || null;
   const cost_code = (formData.get('cost_code') as string | null)?.trim() || null;
   const vendor_gst_number = (formData.get('vendor_gst_number') as string | null)?.trim() || null;
   const attachmentFile = formData.get('attachment');
@@ -313,7 +313,7 @@ export async function upsertBillWithAttachmentAction(
     description,
     amount_cents,
     gst_cents,
-    bucket_id: bucket_id || null,
+    budget_category_id: budget_category_id || null,
     cost_code,
     vendor_gst_number,
     status: 'pending',

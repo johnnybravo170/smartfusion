@@ -1,9 +1,9 @@
-import { CostBucketsTable } from '@/components/features/projects/cost-buckets-table';
+import { BudgetCategoriesTable } from '@/components/features/projects/budget-categories-table';
 import { listCostLines } from '@/lib/db/queries/cost-lines';
 import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
-import { getBudgetVsActual } from '@/lib/db/queries/project-buckets';
+import { getBudgetVsActual } from '@/lib/db/queries/project-budget-categories';
 
-export default async function BucketsTabServer({ projectId }: { projectId: string }) {
+export default async function BudgetTabServer({ projectId }: { projectId: string }) {
   const [budget, costLines, catalog] = await Promise.all([
     getBudgetVsActual(projectId),
     listCostLines(projectId),
@@ -11,7 +11,7 @@ export default async function BucketsTabServer({ projectId }: { projectId: strin
   ]);
 
   return (
-    <CostBucketsTable
+    <BudgetCategoriesTable
       lines={budget.lines}
       projectId={projectId}
       costLines={costLines}

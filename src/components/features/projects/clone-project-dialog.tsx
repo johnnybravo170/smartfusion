@@ -33,7 +33,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cloneProjectAction } from '@/server/actions/projects';
 
-type CloneOption = 'cost_buckets' | 'notes' | 'line_photos';
+type CloneOption = 'budget_categories' | 'notes' | 'line_photos';
 
 export function CloneProjectDialog({
   projectId,
@@ -54,7 +54,7 @@ export function CloneProjectDialog({
   const [customerId, setCustomerId] = useState(defaultCustomerId ?? '');
   const [customerList, setCustomerList] = useState(customers);
   const [include, setInclude] = useState<Record<CloneOption, boolean>>({
-    cost_buckets: true,
+    budget_categories: true,
     notes: true,
     line_photos: false,
   });
@@ -65,7 +65,7 @@ export function CloneProjectDialog({
       setName(`Copy of ${projectName}`);
       setCustomerId(defaultCustomerId ?? '');
       setCustomerList(customers);
-      setInclude({ cost_buckets: true, notes: true, line_photos: false });
+      setInclude({ budget_categories: true, notes: true, line_photos: false });
     }
   }, [open, projectName, defaultCustomerId, customers]);
 
@@ -83,7 +83,7 @@ export function CloneProjectDialog({
         source_id: projectId,
         customer_id: customerId,
         name: name.trim(),
-        clone_cost_buckets: include.cost_buckets,
+        clone_cost_buckets: include.budget_categories,
         clone_notes: include.notes,
         keep_line_photos: include.line_photos,
       });
@@ -147,8 +147,10 @@ export function CloneProjectDialog({
             >
               <Checkbox
                 id="clone-cost-buckets"
-                checked={include.cost_buckets}
-                onCheckedChange={(v) => setInclude((s) => ({ ...s, cost_buckets: v === true }))}
+                checked={include.budget_categories}
+                onCheckedChange={(v) =>
+                  setInclude((s) => ({ ...s, budget_categories: v === true }))
+                }
                 disabled={pending}
               />
               <div className="flex-1">
@@ -179,7 +181,7 @@ export function CloneProjectDialog({
             <label
               htmlFor="clone-line-photos"
               className={`flex items-start gap-2 rounded-md border p-2.5 ${
-                include.cost_buckets
+                include.budget_categories
                   ? 'cursor-pointer hover:bg-muted/40'
                   : 'cursor-not-allowed opacity-60'
               }`}
@@ -188,7 +190,7 @@ export function CloneProjectDialog({
                 id="clone-line-photos"
                 checked={include.line_photos}
                 onCheckedChange={(v) => setInclude((s) => ({ ...s, line_photos: v === true }))}
-                disabled={pending || !include.cost_buckets}
+                disabled={pending || !include.budget_categories}
               />
               <div className="flex-1">
                 <p className="text-sm font-medium">Keep photo references on line items</p>

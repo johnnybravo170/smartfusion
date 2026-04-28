@@ -38,7 +38,7 @@ export default async function WorkerProjectDetailPage({
   if (!project) notFound();
 
   const { data: buckets } = await admin
-    .from('project_cost_buckets')
+    .from('project_budget_categories')
     .select('id, name, section, description')
     .eq('project_id', id)
     .order('display_order', { ascending: true });

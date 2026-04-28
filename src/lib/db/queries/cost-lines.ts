@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 export type CostLineRow = {
   id: string;
   project_id: string;
-  bucket_id: string | null;
+  budget_category_id: string | null;
   catalog_item_id: string | null;
   category: 'material' | 'labour' | 'sub' | 'equipment' | 'overhead';
   label: string;
@@ -31,7 +31,7 @@ export type VarianceRow = {
 };
 
 const COLS =
-  'id, project_id, bucket_id, catalog_item_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, markup_pct, line_cost_cents, line_price_cents, sort_order, notes, photo_storage_paths, created_at, updated_at';
+  'id, project_id, budget_category_id, catalog_item_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, markup_pct, line_cost_cents, line_price_cents, sort_order, notes, photo_storage_paths, created_at, updated_at';
 
 export const listCostLines = cache(async (projectId: string): Promise<CostLineRow[]> => {
   const supabase = await createClient();

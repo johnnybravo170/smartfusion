@@ -182,7 +182,7 @@ export default async function PortalPage({ params }: { params: Promise<{ slug: s
 
   // Load original budget estimate
   const { data: buckets } = await admin
-    .from('project_cost_buckets')
+    .from('project_budget_categories')
     .select('estimate_cents')
     .eq('project_id', projectId);
 

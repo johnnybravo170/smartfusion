@@ -4,7 +4,7 @@ import { ProjectDocumentTypeToggle } from '@/components/features/projects/projec
 import { listCostLines } from '@/lib/db/queries/cost-lines';
 import { listEstimateSnippets } from '@/lib/db/queries/estimate-snippets';
 import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
-import { listBucketsForProject } from '@/lib/db/queries/project-buckets';
+import { listBudgetCategoriesForProject } from '@/lib/db/queries/project-budget-categories';
 import { getEstimateViewStats } from '@/lib/db/queries/project-events';
 import { getProject } from '@/lib/db/queries/projects';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -16,7 +16,7 @@ export default async function EstimateTabServer({ projectId }: { projectId: stri
       getProject(projectId),
       listCostLines(projectId),
       listMaterialsCatalog(),
-      listBucketsForProject(projectId),
+      listBudgetCategoriesForProject(projectId),
       getEstimateViewStats(projectId),
       listEstimateSnippets(),
     ]);

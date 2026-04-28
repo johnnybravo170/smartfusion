@@ -212,10 +212,12 @@ export function ProjectIntakeZone({
       setIncludeExpenses((res.suggestions.new_expenses ?? []).map(() => true));
       setIncludeAddendum(!!res.suggestions.description_addendum);
       setIncludeSignals(true);
-      setLineBucketSelections(res.suggestions.new_lines.map((l) => l.bucket_name));
-      setBillBucketSelections((res.suggestions.new_bills ?? []).map((b) => b.bucket_name ?? ''));
+      setLineBucketSelections(res.suggestions.new_lines.map((l) => l.budget_category_name));
+      setBillBucketSelections(
+        (res.suggestions.new_bills ?? []).map((b) => b.budget_category_name ?? ''),
+      );
       setExpenseBucketSelections(
-        (res.suggestions.new_expenses ?? []).map((e) => e.bucket_name ?? ''),
+        (res.suggestions.new_expenses ?? []).map((e) => e.budget_category_name ?? ''),
       );
       setBillReclassifiedAsExpense((res.suggestions.new_bills ?? []).map(() => false));
       setExpenseReclassifiedAsBill((res.suggestions.new_expenses ?? []).map(() => false));
@@ -230,7 +232,7 @@ export function ProjectIntakeZone({
         .map((l, i) => ({ l, i }))
         .filter(({ i }) => includeLines[i])
         .map(({ l, i }) => ({
-          bucket_name: lineBucketSelections[i] ?? l.bucket_name,
+          budget_category_name: lineBucketSelections[i] ?? l.budget_category_name,
           label: l.label,
           notes: l.notes,
           qty: l.qty,
@@ -245,7 +247,7 @@ export function ProjectIntakeZone({
       );
       const referencedNewBuckets = new Set(
         resolvedLines
-          .map((l) => l.bucket_name.toLowerCase())
+          .map((l) => l.budget_category_name.toLowerCase())
           .filter((n) => aiNewBucketNamesLower.has(n)),
       );
 
@@ -272,7 +274,8 @@ export function ProjectIntakeZone({
               description: b.description,
               amount_cents: b.amount_cents,
               gst_cents: b.gst_cents,
-              bucket_name: (billBucketSelections[i] ?? '') !== '' ? billBucketSelections[i] : null,
+              budget_category_name:
+                (billBucketSelections[i] ?? '') !== '' ? billBucketSelections[i] : null,
               source_image_index: b.source_image_index,
             })),
           ...(suggestions.new_expenses ?? [])
@@ -285,7 +288,7 @@ export function ProjectIntakeZone({
               description: e.description,
               amount_cents: e.amount_cents,
               gst_cents: 0,
-              bucket_name:
+              budget_category_name:
                 (expenseBucketSelections[i] ?? '') !== '' ? expenseBucketSelections[i] : null,
               source_image_index: e.source_image_index,
             })),
@@ -306,7 +309,7 @@ export function ProjectIntakeZone({
               amount_cents: e.amount_cents,
               expense_date: e.expense_date,
               description: e.description,
-              bucket_name:
+              budget_category_name:
                 (expenseBucketSelections[i] ?? '') !== '' ? expenseBucketSelections[i] : null,
               source_image_index: e.source_image_index,
             })),
@@ -320,7 +323,8 @@ export function ProjectIntakeZone({
               amount_cents: b.amount_cents + (b.gst_cents ?? 0),
               expense_date: b.bill_date,
               description: b.description,
-              bucket_name: (billBucketSelections[i] ?? '') !== '' ? billBucketSelections[i] : null,
+              budget_category_name:
+                (billBucketSelections[i] ?? '') !== '' ? billBucketSelections[i] : null,
               source_image_index: b.source_image_index,
             })),
         ],
@@ -509,7 +513,7 @@ export function ProjectIntakeZone({
                       <div className="flex-1 space-y-1.5">
                         <div className="flex flex-wrap items-center gap-2">
                           <select
-                            value={lineBucketSelections[i] ?? l.bucket_name}
+                            value={lineBucketSelections[i] ?? l.budget_category_name}
                             onChange={(e) =>
                               setLineBucketSelections((arr) =>
                                 arr.map((v, j) => (j === i ? e.target.value : v)),
@@ -625,7 +629,7 @@ export function ProjectIntakeZone({
                               {sq.allocations
                                 .map(
                                   (a) =>
-                                    `${a.bucket_name} $${(a.allocated_cents / 100).toFixed(2)}`,
+                                    `${a.budget_category_name} $${(a.allocated_cents / 100).toFixed(2)}`,
                                 )
                                 .join(' · ')}
                             </p>
@@ -978,17 +982,21 @@ function SubQuoteReviewDialog({
   const bucketsByName = new Map(buckets.map((b) => [b.name, b]));
   const matched = sq.allocations
     .map((a) => {
-      const hit = bucketsByName.get(a.bucket_name);
+      const hit = bucketsByName.get(a.budget_category_name);
       return hit
-        ? { bucket_id: hit.id, allocated_cents: a.allocated_cents, notes: a.reasoning }
+        ? { budget_category_id: hit.id, allocated_cents: a.allocated_cents, notes: a.reasoning }
         : null;
     })
-    .filter(Boolean) as Array<{ bucket_id: string; allocated_cents: number; notes: string }>;
+    .filter(Boolean) as Array<{
+    budget_category_id: string;
+    allocated_cents: number;
+    notes: string;
+  }>;
 
-  const unmatched = sq.allocations.filter((a) => !bucketsByName.has(a.bucket_name));
+  const unmatched = sq.allocations.filter((a) => !bucketsByName.has(a.budget_category_name));
   const unmatchedNote = unmatched.length
     ? `Henry suggested but no matching bucket:\n${unmatched
-        .map((u) => `  • ${u.bucket_name} — $${(u.allocated_cents / 100).toFixed(2)}`)
+        .map((u) => `  • ${u.budget_category_name} — $${(u.allocated_cents / 100).toFixed(2)}`)
         .join('\n')}`
     : '';
 

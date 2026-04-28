@@ -287,14 +287,14 @@ export async function approveChangeOrderAction(
     const perBucket = Math.round(costDelta / affectedBuckets.length);
     for (const bucketId of affectedBuckets) {
       const { data: bucket } = await admin
-        .from('project_cost_buckets')
+        .from('project_budget_categories')
         .select('estimate_cents')
         .eq('id', bucketId)
         .single();
 
       if (bucket) {
         await admin
-          .from('project_cost_buckets')
+          .from('project_budget_categories')
           .update({
             estimate_cents: (bucket.estimate_cents as number) + perBucket,
             updated_at: now,

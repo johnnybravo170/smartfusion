@@ -14,7 +14,7 @@ export const timeExpenseTools: AiTool[] = [
         properties: {
           project_id: { type: 'string', description: 'Project UUID' },
           job_id: { type: 'string', description: 'Job UUID' },
-          bucket_id: { type: 'string', description: 'Cost bucket UUID (for projects)' },
+          budget_category_id: { type: 'string', description: 'Cost bucket UUID (for projects)' },
           hours: { type: 'number', description: 'Hours worked (e.g. 2.5)' },
           hourly_rate_cents: {
             type: 'number',
@@ -32,7 +32,7 @@ export const timeExpenseTools: AiTool[] = [
         const result = await logTimeAction({
           project_id: input.project_id as string | undefined,
           job_id: input.job_id as string | undefined,
-          bucket_id: input.bucket_id as string | undefined,
+          budget_category_id: input.budget_category_id as string | undefined,
           hours: input.hours as number,
           hourly_rate_cents: input.hourly_rate_cents as number | undefined,
           notes: input.notes as string | undefined,
@@ -56,7 +56,7 @@ export const timeExpenseTools: AiTool[] = [
         properties: {
           project_id: { type: 'string', description: 'Project UUID' },
           job_id: { type: 'string', description: 'Job UUID' },
-          bucket_id: { type: 'string', description: 'Cost bucket UUID (for projects)' },
+          budget_category_id: { type: 'string', description: 'Cost bucket UUID (for projects)' },
           amount_cents: { type: 'number', description: 'Amount in cents (e.g. 15000 = $150.00)' },
           vendor: { type: 'string', description: 'Vendor name' },
           description: { type: 'string', description: 'What the expense was for' },
@@ -71,7 +71,7 @@ export const timeExpenseTools: AiTool[] = [
         const result = await logExpenseAction({
           project_id: input.project_id as string | undefined,
           job_id: input.job_id as string | undefined,
-          bucket_id: input.bucket_id as string | undefined,
+          budget_category_id: input.budget_category_id as string | undefined,
           amount_cents: input.amount_cents as number,
           vendor: input.vendor as string | undefined,
           description: input.description as string | undefined,
@@ -95,7 +95,7 @@ export const timeExpenseTools: AiTool[] = [
           project_id: { type: 'string', description: 'Filter by project UUID' },
           job_id: { type: 'string', description: 'Filter by job UUID' },
           user_id: { type: 'string', description: 'Filter by worker user UUID' },
-          bucket_id: { type: 'string', description: 'Filter by cost bucket UUID' },
+          budget_category_id: { type: 'string', description: 'Filter by cost bucket UUID' },
           date_from: { type: 'string', description: 'Start date (YYYY-MM-DD)' },
           date_to: { type: 'string', description: 'End date (YYYY-MM-DD)' },
           limit: { type: 'number', description: 'Max results (default 50)' },
@@ -108,7 +108,7 @@ export const timeExpenseTools: AiTool[] = [
           project_id: input.project_id as string | undefined,
           job_id: input.job_id as string | undefined,
           user_id: input.user_id as string | undefined,
-          bucket_id: input.bucket_id as string | undefined,
+          budget_category_id: input.budget_category_id as string | undefined,
           date_from: input.date_from as string | undefined,
           date_to: input.date_to as string | undefined,
           limit: Math.min((input.limit as number) || 50, 200),
@@ -141,7 +141,7 @@ export const timeExpenseTools: AiTool[] = [
         properties: {
           project_id: { type: 'string', description: 'Filter by project UUID' },
           job_id: { type: 'string', description: 'Filter by job UUID' },
-          bucket_id: { type: 'string', description: 'Filter by cost bucket UUID' },
+          budget_category_id: { type: 'string', description: 'Filter by cost bucket UUID' },
           date_from: { type: 'string', description: 'Start date (YYYY-MM-DD)' },
           date_to: { type: 'string', description: 'End date (YYYY-MM-DD)' },
           limit: { type: 'number', description: 'Max results (default 50)' },
@@ -153,7 +153,7 @@ export const timeExpenseTools: AiTool[] = [
         const expenses = await listExpenses({
           project_id: input.project_id as string | undefined,
           job_id: input.job_id as string | undefined,
-          bucket_id: input.bucket_id as string | undefined,
+          budget_category_id: input.budget_category_id as string | undefined,
           date_from: input.date_from as string | undefined,
           date_to: input.date_to as string | undefined,
           limit: Math.min((input.limit as number) || 50, 200),

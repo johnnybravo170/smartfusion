@@ -31,7 +31,7 @@ export type InvoiceTimeLine = {
   charge_rate_cents: number | null;
   amount_cents: number;
   project_name: string | null;
-  bucket_name: string | null;
+  budget_category_name: string | null;
   notes: string | null;
 };
 
@@ -136,7 +136,7 @@ export async function getInvoiceLines(
     admin
       .from('time_entries')
       .select(
-        'id, entry_date, hours, charge_rate_cents, notes, projects:project_id (name), project_cost_buckets:bucket_id (name)',
+        'id, entry_date, hours, charge_rate_cents, notes, projects:project_id (name), project_budget_categories:budget_category_id (name)',
       )
       .eq('tenant_id', tenantId)
       .eq('worker_invoice_id', invoiceId)
@@ -153,7 +153,7 @@ export async function getInvoiceLines(
 
   const time = ((timeRows ?? []) as unknown as RawInvoice[]).map((r) => {
     const proj = r.projects as { name?: string } | { name?: string }[] | null;
-    const buck = r.project_cost_buckets as { name?: string } | { name?: string }[] | null;
+    const buck = r.project_budget_categories as { name?: string } | { name?: string }[] | null;
     const p = Array.isArray(proj) ? proj[0] : proj;
     const b = Array.isArray(buck) ? buck[0] : buck;
     const hours = Number(r.hours);
@@ -165,7 +165,7 @@ export async function getInvoiceLines(
       charge_rate_cents: rate,
       amount_cents: rate ? Math.round(hours * rate) : 0,
       project_name: p?.name ?? null,
-      bucket_name: b?.name ?? null,
+      budget_category_name: b?.name ?? null,
       notes: (r.notes as string | null) ?? null,
     };
   });
@@ -199,7 +199,7 @@ export async function previewUnbilledForWorker(args: {
   let timeQuery = admin
     .from('time_entries')
     .select(
-      'id, entry_date, hours, charge_rate_cents, notes, projects:project_id (name), project_cost_buckets:bucket_id (name)',
+      'id, entry_date, hours, charge_rate_cents, notes, projects:project_id (name), project_budget_categories:budget_category_id (name)',
     )
     .eq('tenant_id', args.tenantId)
     .eq('worker_profile_id', args.workerProfileId)
@@ -226,7 +226,7 @@ export async function previewUnbilledForWorker(args: {
 
   const time = ((timeRows ?? []) as unknown as RawInvoice[]).map((r) => {
     const proj = r.projects as { name?: string } | { name?: string }[] | null;
-    const buck = r.project_cost_buckets as { name?: string } | { name?: string }[] | null;
+    const buck = r.project_budget_categories as { name?: string } | { name?: string }[] | null;
     const p = Array.isArray(proj) ? proj[0] : proj;
     const b = Array.isArray(buck) ? buck[0] : buck;
     const hours = Number(r.hours);
@@ -238,7 +238,7 @@ export async function previewUnbilledForWorker(args: {
       charge_rate_cents: rate,
       amount_cents: rate ? Math.round(hours * rate) : 0,
       project_name: p?.name ?? null,
-      bucket_name: b?.name ?? null,
+      budget_category_name: b?.name ?? null,
       notes: (r.notes as string | null) ?? null,
     };
   });

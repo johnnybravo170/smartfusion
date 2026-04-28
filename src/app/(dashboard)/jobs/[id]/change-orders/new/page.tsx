@@ -37,7 +37,7 @@ export default async function NewJobChangeOrderPage({
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">New Change Order</h1>
       <p className="mb-6 text-sm text-muted-foreground">Job for {customerName}</p>
 
-      <ChangeOrderForm jobId={id} costBuckets={[]} />
+      <ChangeOrderForm jobId={id} budgetCategories={[]} />
     </div>
   );
 }

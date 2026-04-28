@@ -32,7 +32,7 @@ export default async function NewChangeOrderPage({ params }: { params: Promise<{
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">New Change Order</h1>
       <p className="mb-6 text-sm text-muted-foreground">Project: {project.name}</p>
 
-      <ChangeOrderForm projectId={id} costBuckets={project.cost_buckets} />
+      <ChangeOrderForm projectId={id} budgetCategories={project.budget_categories} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { VarianceTab } from '@/components/features/projects/variance-tab';
+import { VarianceTab } from '@/components/features/projects/budget-summary';
 import { getVarianceReport } from '@/lib/db/queries/cost-lines';
 import { getProject } from '@/lib/db/queries/projects';
 

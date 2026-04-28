@@ -184,7 +184,7 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
 
       if (mode === 'project') {
         fd.append('project_id', projectId);
-        if (bucketId) fd.append('bucket_id', bucketId);
+        if (bucketId) fd.append('budget_category_id', bucketId);
         const res = await logExpenseWithReceiptAction(fd);
         if (!res.ok) {
           toast.error(res.error);

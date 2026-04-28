@@ -67,7 +67,7 @@ export default async function WorkerInvoiceDetailPage({
                   <div>
                     {t.entry_date} · {t.hours.toFixed(2)}h
                     {t.project_name ? ` · ${t.project_name}` : ''}
-                    {t.bucket_name ? ` · ${t.bucket_name}` : ''}
+                    {t.budget_category_name ? ` · ${t.budget_category_name}` : ''}
                   </div>
                   {t.notes ? <div className="text-xs text-muted-foreground">{t.notes}</div> : null}
                 </div>

@@ -16,7 +16,7 @@ export type TimeEntryActionResult =
 const timeEntrySchema = z.object({
   project_id: z.string().uuid().optional().or(z.literal('')),
   job_id: z.string().uuid().optional().or(z.literal('')),
-  bucket_id: z.string().uuid().optional().or(z.literal('')),
+  budget_category_id: z.string().uuid().optional().or(z.literal('')),
   hours: z.coerce.number().positive({ message: 'Hours must be greater than 0.' }),
   hourly_rate_cents: z.coerce.number().int().optional(),
   notes: z.string().trim().max(2000).optional().or(z.literal('')),
@@ -30,7 +30,7 @@ const timeEntryUpdateSchema = timeEntrySchema.extend({
 export async function logTimeAction(input: {
   project_id?: string;
   job_id?: string;
-  bucket_id?: string;
+  budget_category_id?: string;
   hours: number;
   hourly_rate_cents?: number;
   notes?: string;
@@ -65,7 +65,7 @@ export async function logTimeAction(input: {
       user_id: user.id,
       project_id: projectId,
       job_id: jobId,
-      bucket_id: parsed.data.bucket_id || null,
+      budget_category_id: parsed.data.budget_category_id || null,
       hours: parsed.data.hours,
       hourly_rate_cents: parsed.data.hourly_rate_cents ?? null,
       notes: parsed.data.notes?.trim() || null,
@@ -87,7 +87,7 @@ export async function updateTimeEntryAction(input: {
   id: string;
   project_id?: string;
   job_id?: string;
-  bucket_id?: string;
+  budget_category_id?: string;
   hours: number;
   hourly_rate_cents?: number;
   notes?: string;
@@ -108,7 +108,7 @@ export async function updateTimeEntryAction(input: {
     .update({
       project_id: parsed.data.project_id || null,
       job_id: parsed.data.job_id || null,
-      bucket_id: parsed.data.bucket_id || null,
+      budget_category_id: parsed.data.budget_category_id || null,
       hours: parsed.data.hours,
       hourly_rate_cents: parsed.data.hourly_rate_cents ?? null,
       notes: parsed.data.notes?.trim() || null,

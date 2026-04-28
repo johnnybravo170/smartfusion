@@ -235,7 +235,7 @@ function SubQuoteRowView({
               quote_date: quote.quote_date ?? '',
               valid_until: quote.valid_until ?? '',
               allocations: quote.allocations.map((a) => ({
-                bucket_id: a.bucket_id,
+                budget_category_id: a.budget_category_id,
                 allocated_cents: a.allocated_cents,
                 notes: a.notes ?? undefined,
               })),
@@ -259,7 +259,7 @@ function SubQuoteRowView({
                   key={a.id}
                   className="flex items-center justify-between rounded bg-muted/30 px-2 py-1 text-xs"
                 >
-                  <span>{a.bucket_name ?? '(deleted bucket)'}</span>
+                  <span>{a.budget_category_name ?? '(deleted bucket)'}</span>
                   <span className="tabular-nums">{formatCurrency(a.allocated_cents)}</span>
                 </div>
               ))}

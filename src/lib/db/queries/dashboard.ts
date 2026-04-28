@@ -251,7 +251,7 @@ export type PipelineMetrics = {
  *
  * Quote values come from `quotes.total_cents` (includes tax). Active
  * project value is a two-step: fetch active project ids, then sum the
- * child `project_cost_buckets.estimate_cents` rows. Accepts the extra
+ * child `project_budget_categories.estimate_cents` rows. Accepts the extra
  * round-trip because Supabase's PostgREST can't do cross-table SUMs.
  */
 export async function getPipelineMetrics(): Promise<PipelineMetrics> {
@@ -282,7 +282,7 @@ export async function getPipelineMetrics(): Promise<PipelineMetrics> {
   let activeProjectValueCents = 0;
   if (projectIds.length > 0) {
     const { data: buckets, error: bucketsErr } = await supabase
-      .from('project_cost_buckets')
+      .from('project_budget_categories')
       .select('estimate_cents')
       .in('project_id', projectIds);
     if (bucketsErr) throw new Error(`Pipeline: ${bucketsErr.message}`);
@@ -322,7 +322,7 @@ export type RenovationPipelineMetrics = {
  * projects (via cost buckets), not quotes — the polygon quoting tool
  * is irrelevant for GCs.
  *
- * Values are summed from `project_cost_buckets.estimate_cents` for each
+ * Values are summed from `project_budget_categories.estimate_cents` for each
  * stage. Single round-trip to projects, then one to buckets filtered
  * by the project ids we care about. "Complete this year" is a count
  * only (no value) because it's a retrospective metric.
@@ -366,7 +366,7 @@ export async function getRenovationPipelineMetrics(
   let valueByProject = new Map<string, number>();
   if (allIds.length > 0) {
     const { data: buckets, error: bucketsErr } = await supabase
-      .from('project_cost_buckets')
+      .from('project_budget_categories')
       .select('project_id, estimate_cents')
       .in('project_id', allIds);
     if (bucketsErr) throw new Error(`Renovation pipeline: ${bucketsErr.message}`);

@@ -3,7 +3,7 @@ import {
   ProjectNotesTab,
 } from '@/components/features/projects/project-notes-tab';
 import { listPhotosByProject } from '@/lib/db/queries/photos';
-import { getBudgetVsActual } from '@/lib/db/queries/project-buckets';
+import { getBudgetVsActual } from '@/lib/db/queries/project-budget-categories';
 import { getSignedUrls } from '@/lib/storage/photos';
 import { createClient } from '@/lib/supabase/server';
 
@@ -139,8 +139,8 @@ export default async function MemosTabServer({ projectId }: { projectId: string 
           photos: memoPhotosByMemo.get(m.id as string) ?? [],
         })),
         buckets: budget.lines.map((b) => ({
-          id: b.bucket_id,
-          name: b.bucket_name,
+          id: b.budget_category_id,
+          name: b.budget_category_name,
           section: b.section,
         })),
       }}

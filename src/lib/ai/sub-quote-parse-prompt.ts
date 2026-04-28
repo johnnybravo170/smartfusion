@@ -24,7 +24,7 @@ Rules:
 3. Dates must be ISO YYYY-MM-DD. If the document shows a less-precise date ("April 2026"), leave it null.
 4. Dollar amounts are stored as integer cents. $18,500.00 = 1850000.
 5. For allocations:
-   - bucket_name MUST be an EXACT match to one of the existing bucket names provided. Do not invent bucket names. Do not case-shift.
+   - budget_category_name MUST be an EXACT match to one of the existing bucket names provided. Do not invent bucket names. Do not case-shift.
    - If the scope text does not clearly match any existing bucket, leave allocations empty. Do not pre-fill a guess — operators strongly prefer to allocate manually rather than correct a wrong AI guess.
    - Sum of allocated_cents across all allocations should equal the extracted total_cents. If your confidence in allocating is uneven, only include the allocations you're confident in and let the operator fill in the rest.
    - Mark each allocation's confidence honestly: "high" (scope literally names the bucket), "medium" (scope thematically matches the bucket), "low" (don't include — leave for operator).
@@ -89,7 +89,7 @@ export const SUB_QUOTE_PARSE_JSON_SCHEMA = {
           type: 'object',
           additionalProperties: false,
           properties: {
-            bucket_name: { type: 'string' },
+            budget_category_name: { type: 'string' },
             allocated_cents: { type: 'integer' },
             confidence: {
               type: 'string',
@@ -97,7 +97,7 @@ export const SUB_QUOTE_PARSE_JSON_SCHEMA = {
             },
             reasoning: { type: 'string' },
           },
-          required: ['bucket_name', 'allocated_cents', 'confidence', 'reasoning'],
+          required: ['budget_category_name', 'allocated_cents', 'confidence', 'reasoning'],
         },
       },
     },
@@ -125,7 +125,7 @@ export type SubQuoteParseResult = {
     }>;
   };
   allocations: Array<{
-    bucket_name: string;
+    budget_category_name: string;
     allocated_cents: number;
     confidence: 'high' | 'medium' | 'low';
     reasoning: string;

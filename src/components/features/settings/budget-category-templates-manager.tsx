@@ -117,7 +117,7 @@ function TemplateForm({ initial, onDone }: { initial?: TemplateRow; onDone: () =
   );
 }
 
-export function BucketTemplatesManager({ templates }: { templates: TemplateRow[] }) {
+export function BudgetCategoryTemplatesManager({ templates }: { templates: TemplateRow[] }) {
   const [showForm, setShowForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<TemplateRow | null>(null);
   const [, startTransition] = useTransition();

@@ -313,7 +313,7 @@ export default function SettingsPage() {
         </Card>
       </Link>
 
-      <Link href="/settings/bucket-templates" className="block">
+      <Link href="/settings/budget-category-templates" className="block">
         <Card className="transition-colors hover:bg-muted/50">
           <CardHeader>
             <div className="flex items-center justify-between">

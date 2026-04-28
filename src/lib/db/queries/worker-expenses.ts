@@ -10,8 +10,8 @@ export type WorkerExpense = {
   receipt_url: string | null;
   project_id: string | null;
   project_name: string | null;
-  bucket_id: string | null;
-  bucket_name: string | null;
+  budget_category_id: string | null;
+  budget_category_name: string | null;
   created_at: string;
 };
 
@@ -24,7 +24,7 @@ export async function listWorkerExpenses(
   const { data, error } = await admin
     .from('expenses')
     .select(
-      'id, expense_date, amount_cents, vendor, description, receipt_storage_path, receipt_url, project_id, bucket_id, created_at, projects:project_id (name), project_cost_buckets:bucket_id (name)',
+      'id, expense_date, amount_cents, vendor, description, receipt_storage_path, receipt_url, project_id, budget_category_id, created_at, projects:project_id (name), project_budget_categories:budget_category_id (name)',
     )
     .eq('tenant_id', tenantId)
     .eq('worker_profile_id', workerProfileId)
@@ -36,7 +36,7 @@ export async function listWorkerExpenses(
 
   return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => {
     const project = r.projects as { name?: string } | { name?: string }[] | null;
-    const bucket = r.project_cost_buckets as { name?: string } | { name?: string }[] | null;
+    const bucket = r.project_budget_categories as { name?: string } | { name?: string }[] | null;
     const proj = Array.isArray(project) ? project[0] : project;
     const buck = Array.isArray(bucket) ? bucket[0] : bucket;
     return {
@@ -49,8 +49,8 @@ export async function listWorkerExpenses(
       receipt_url: (r.receipt_url as string | null) ?? null,
       project_id: (r.project_id as string | null) ?? null,
       project_name: proj?.name ?? null,
-      bucket_id: (r.bucket_id as string | null) ?? null,
-      bucket_name: buck?.name ?? null,
+      budget_category_id: (r.budget_category_id as string | null) ?? null,
+      budget_category_name: buck?.name ?? null,
       created_at: r.created_at as string,
     };
   });

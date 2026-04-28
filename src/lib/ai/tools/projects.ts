@@ -1,4 +1,4 @@
-import { getBudgetVsActual } from '@/lib/db/queries/project-buckets';
+import { getBudgetVsActual } from '@/lib/db/queries/project-budget-categories';
 import { getProject, listProjects } from '@/lib/db/queries/projects';
 import { createClient } from '@/lib/supabase/server';
 import { formatCad, formatDate } from '../format';
@@ -91,10 +91,10 @@ export const projectTools: AiTool[] = [
         if (project.target_end_date)
           output += `Target end: ${formatDate(project.target_end_date)}\n`;
         output += `Management fee: ${Math.round(project.management_fee_rate * 100)}%\n`;
-        output += `\nCost Buckets: ${project.cost_buckets.length}\n`;
+        output += `\nCost Buckets: ${project.budget_categories.length}\n`;
 
-        if (project.cost_buckets.length > 0) {
-          const totalEstimate = project.cost_buckets.reduce((s, b) => s + b.estimate_cents, 0);
+        if (project.budget_categories.length > 0) {
+          const totalEstimate = project.budget_categories.reduce((s, b) => s + b.estimate_cents, 0);
           output += `Total estimate: ${formatCad(totalEstimate)}\n`;
         }
 
@@ -221,7 +221,7 @@ export const projectTools: AiTool[] = [
         for (const [section, lines] of sections) {
           output += `${section.toUpperCase()}\n${'-'.repeat(30)}\n`;
           for (const line of lines) {
-            output += `  ${line.bucket_name}: `;
+            output += `  ${line.budget_category_name}: `;
             output += `Est ${formatCad(line.estimate_cents)} · `;
             output += `Actual ${formatCad(line.actual_cents)} · `;
             output += `Remaining ${formatCad(line.remaining_cents)}`;

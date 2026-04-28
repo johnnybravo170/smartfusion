@@ -237,7 +237,7 @@ export async function logOverheadExpenseAction(formData: FormData): Promise<Over
       tenant_id: tenant.id,
       user_id: user.id,
       project_id: null,
-      bucket_id: null,
+      budget_category_id: null,
       job_id: null,
       category_id: parsed.data.category_id,
       amount_cents: parsed.data.amount_cents,

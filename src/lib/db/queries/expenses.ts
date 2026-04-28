@@ -10,7 +10,7 @@ export type ExpenseRow = {
   user_id: string;
   worker_profile_id: string | null;
   project_id: string | null;
-  bucket_id: string | null;
+  budget_category_id: string | null;
   job_id: string | null;
   amount_cents: number;
   vendor: string | null;
@@ -26,7 +26,7 @@ export type ExpenseFilters = {
   project_id?: string;
   job_id?: string;
   user_id?: string;
-  bucket_id?: string;
+  budget_category_id?: string;
   date_from?: string;
   date_to?: string;
   limit?: number;
@@ -41,7 +41,8 @@ export async function listExpenses(filters: ExpenseFilters = {}): Promise<Expens
   if (filters.project_id) query = query.eq('project_id', filters.project_id);
   if (filters.job_id) query = query.eq('job_id', filters.job_id);
   if (filters.user_id) query = query.eq('user_id', filters.user_id);
-  if (filters.bucket_id) query = query.eq('bucket_id', filters.bucket_id);
+  if (filters.budget_category_id)
+    query = query.eq('budget_category_id', filters.budget_category_id);
   if (filters.date_from) query = query.gte('expense_date', filters.date_from);
   if (filters.date_to) query = query.lte('expense_date', filters.date_to);
 

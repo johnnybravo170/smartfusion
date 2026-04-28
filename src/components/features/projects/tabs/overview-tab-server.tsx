@@ -1,5 +1,5 @@
+import { VarianceTab } from '@/components/features/projects/budget-summary';
 import { ProjectTimeline } from '@/components/features/projects/project-timeline';
-import { VarianceTab } from '@/components/features/projects/variance-tab';
 import { getVarianceReport } from '@/lib/db/queries/cost-lines';
 import { listProjectEvents } from '@/lib/db/queries/project-events';
 import { getProject } from '@/lib/db/queries/projects';
@@ -53,7 +53,7 @@ export default async function OverviewTabServer({ projectId }: { projectId: stri
         </div>
         <div className="rounded-lg border p-4">
           <p className="text-xs text-muted-foreground">Categories</p>
-          <p className="text-sm font-medium">{project.cost_buckets.length}</p>
+          <p className="text-sm font-medium">{project.budget_categories.length}</p>
         </div>
       </div>
 

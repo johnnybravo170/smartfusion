@@ -30,19 +30,19 @@ export async function upsertBucketTemplateAction(input: unknown): Promise<Bucket
   const row = { ...fields, buckets: fields.buckets };
 
   if (id) {
-    const { error } = await supabase.from('cost_bucket_templates').update(row).eq('id', id);
+    const { error } = await supabase.from('budget_category_templates').update(row).eq('id', id);
     if (error) return { ok: false, error: error.message };
-    revalidatePath('/settings/bucket-templates');
+    revalidatePath('/settings/budget-category-templates');
     return { ok: true, id };
   }
 
   const { data, error } = await supabase
-    .from('cost_bucket_templates')
+    .from('budget_category_templates')
     .insert({ ...row, tenant_id: tenant.id })
     .select('id')
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create template.' };
-  revalidatePath('/settings/bucket-templates');
+  revalidatePath('/settings/budget-category-templates');
   return { ok: true, id: data.id as string };
 }
 
@@ -50,8 +50,8 @@ export async function deleteBucketTemplateAction(id: string): Promise<BucketTemp
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
   const supabase = await createClient();
-  const { error } = await supabase.from('cost_bucket_templates').delete().eq('id', id);
+  const { error } = await supabase.from('budget_category_templates').delete().eq('id', id);
   if (error) return { ok: false, error: error.message };
-  revalidatePath('/settings/bucket-templates');
+  revalidatePath('/settings/budget-category-templates');
   return { ok: true, id };
 }

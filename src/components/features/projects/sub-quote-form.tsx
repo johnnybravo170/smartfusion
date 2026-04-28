@@ -35,7 +35,7 @@ type Bucket = { id: string; name: string; section: 'interior' | 'exterior' | 'ge
 
 type AllocationDraft = {
   key: string;
-  bucket_id: string;
+  budget_category_id: string;
   amount_raw: string;
   notes: string;
 };
@@ -49,7 +49,7 @@ export type SubQuoteInitialValues = {
   quote_date?: string;
   valid_until?: string;
   allocations?: Array<{
-    bucket_id: string;
+    budget_category_id: string;
     allocated_cents: number;
     notes?: string;
   }>;
@@ -70,7 +70,7 @@ export type SubQuoteInitialValues = {
 function newRow(): AllocationDraft {
   return {
     key: crypto.randomUUID(),
-    bucket_id: '',
+    budget_category_id: '',
     amount_raw: '',
     notes: '',
   };
@@ -117,7 +117,7 @@ export function SubQuoteForm({
     if (prefilled.length === 0) return [newRow()];
     return prefilled.map((a) => ({
       key: crypto.randomUUID(),
-      bucket_id: a.bucket_id,
+      budget_category_id: a.budget_category_id,
       amount_raw: (a.allocated_cents / 100).toFixed(2),
       notes: a.notes ?? '',
     }));
@@ -130,7 +130,11 @@ export function SubQuoteForm({
   const diff = totalCents - allocatedCents;
   const balanced = totalCents > 0 && diff === 0;
 
-  function updateRow(key: string, field: 'bucket_id' | 'amount_raw' | 'notes', value: string) {
+  function updateRow(
+    key: string,
+    field: 'budget_category_id' | 'amount_raw' | 'notes',
+    value: string,
+  ) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
   }
 
@@ -152,12 +156,12 @@ export function SubQuoteForm({
       setNewBucketOpen(true);
       return;
     }
-    updateRow(rowKey, 'bucket_id', value);
+    updateRow(rowKey, 'budget_category_id', value);
   }
 
   function handleBucketCreated(bucket: Bucket) {
     setBuckets((prev) => [...prev, bucket]);
-    if (pendingRowKey) updateRow(pendingRowKey, 'bucket_id', bucket.id);
+    if (pendingRowKey) updateRow(pendingRowKey, 'budget_category_id', bucket.id);
     setPendingRowKey(null);
     setNewBucketOpen(false);
   }
@@ -175,10 +179,10 @@ export function SubQuoteForm({
       return;
     }
     // Drop empty rows; server validates the rest.
-    const cleaned = rows.filter((r) => r.bucket_id && toCents(r.amount_raw) > 0);
+    const cleaned = rows.filter((r) => r.budget_category_id && toCents(r.amount_raw) > 0);
 
     const allocationPayload = cleaned.map((r) => ({
-      bucket_id: r.bucket_id,
+      budget_category_id: r.budget_category_id,
       allocated_cents: toCents(r.amount_raw),
       notes: r.notes || null,
     }));
@@ -333,7 +337,7 @@ export function SubQuoteForm({
               <div key={row.key} className="grid grid-cols-12 gap-2">
                 <div className="col-span-12 sm:col-span-6">
                   <select
-                    value={row.bucket_id}
+                    value={row.budget_category_id}
                     onChange={(e) => handleBucketChange(row.key, e.target.value)}
                     disabled={pending}
                     className="block w-full rounded-md border bg-background px-3 py-2 text-sm"

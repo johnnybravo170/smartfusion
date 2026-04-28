@@ -544,7 +544,7 @@ function WorkItemRow({ memoId, itemIndex, item, buckets, memoPhotos, onDone }: W
       const result = await addMemoItemToCostLinesAction({
         memoId,
         itemIndex,
-        bucket_id: bucketId,
+        budget_category_id: bucketId,
         category,
         label: label.trim(),
         qty: qtyNum,

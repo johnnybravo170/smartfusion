@@ -87,7 +87,7 @@ export function SubQuoteUploadButton({
         quote_date: result.extracted.quote_date ?? '',
         valid_until: result.extracted.valid_until ?? '',
         allocations: result.allocations.map((a) => ({
-          bucket_id: a.bucketId,
+          budget_category_id: a.bucketId,
           allocated_cents: a.allocatedCents,
           notes: a.reasoning,
         })),

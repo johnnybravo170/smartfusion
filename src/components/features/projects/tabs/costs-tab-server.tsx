@@ -1,7 +1,7 @@
 import { CostsTab } from '@/components/features/projects/costs-tab';
 import { listExpenses } from '@/lib/db/queries/expenses';
 import { listProjectBills } from '@/lib/db/queries/project-bills';
-import { listBucketsForProject } from '@/lib/db/queries/project-buckets';
+import { listBudgetCategoriesForProject } from '@/lib/db/queries/project-budget-categories';
 import { listProjectSubQuotes } from '@/lib/db/queries/project-sub-quotes';
 import { getProject } from '@/lib/db/queries/projects';
 import { listPurchaseOrders } from '@/lib/db/queries/purchase-orders';
@@ -25,7 +25,7 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
     listPurchaseOrders(projectId),
     listProjectBills(projectId),
     listProjectSubQuotes(projectId),
-    listBucketsForProject(projectId),
+    listBudgetCategoriesForProject(projectId),
     listExpenses({ project_id: projectId, limit: 200 }),
     listWorkerProfiles(project.tenant_id),
     getOperatorNamesForTenant(project.tenant_id),
@@ -70,7 +70,7 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
       amount_cents: e.amount_cents,
       vendor: e.vendor ?? null,
       description: e.description ?? null,
-      bucket_id: (e as { bucket_id: string | null }).bucket_id ?? null,
+      budget_category_id: (e as { budget_category_id: string | null }).budget_category_id ?? null,
       worker_profile_id: e.worker_profile_id ?? null,
       worker_name: posterName,
       receipt_url: expenseReceiptUrls.get(e.id) ?? null,

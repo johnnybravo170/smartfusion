@@ -1,114 +1,197 @@
-'use client';
-
-/**
- * Budget summary component for project overview tab.
- * Shows total estimate vs actual vs remaining with a progress bar.
- */
-
-import type { BudgetSummary } from '@/lib/db/queries/project-buckets';
+import { ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 import { formatCurrency } from '@/lib/pricing/calculator';
-import { cn } from '@/lib/utils';
 
-export function BudgetSummaryCard({ budget }: { budget: BudgetSummary }) {
-  const { total_estimate_cents, total_actual_cents, total_remaining_cents } = budget;
-  const progress =
-    total_estimate_cents > 0
-      ? Math.min(Math.round((total_actual_cents / total_estimate_cents) * 100), 100)
-      : 0;
-  const isOverBudget = total_remaining_cents < 0;
+type VarianceData = {
+  estimated_cents: number;
+  committed_cents: number;
+  actual_bills_cents: number;
+  actual_expenses_cents: number;
+  actual_total_cents: number;
+  margin_at_risk_cents: number;
+  by_category: {
+    category: string;
+    estimated_cents: number;
+    committed_cents: number;
+    actual_cents: number;
+    margin_at_risk_cents: number;
+  }[];
+};
+
+function StatBox({
+  label,
+  value,
+  sub,
+  highlight,
+  danger,
+  success,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  highlight?: boolean;
+  danger?: boolean;
+  success?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-lg border p-4 ${success ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : highlight ? 'bg-primary/5 border-primary/30' : ''} ${danger ? 'bg-destructive/5 border-destructive/30' : ''}`}
+    >
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p
+        className={`mt-1 text-xl font-semibold tabular-nums ${danger ? 'text-destructive' : success ? 'text-emerald-700 dark:text-emerald-300' : highlight ? 'text-primary' : ''}`}
+      >
+        {value}
+      </p>
+      {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
+    </div>
+  );
+}
+
+export function VarianceTab({
+  variance,
+  lifecycleStage,
+  projectId,
+}: {
+  variance: VarianceData;
+  lifecycleStage?: string;
+  /** Optional — when provided, category rows + section heading deep-link
+   *  to the Budget tab so users can edit estimates from this view. */
+  projectId?: string;
+}) {
+  const {
+    estimated_cents,
+    committed_cents,
+    actual_bills_cents,
+    actual_expenses_cents,
+    actual_total_cents,
+    margin_at_risk_cents,
+    by_category,
+  } = variance;
+
+  const isComplete = lifecycleStage === 'complete';
+
+  const marginPct =
+    estimated_cents > 0
+      ? Math.round(((estimated_cents - actual_total_cents) / estimated_cents) * 100)
+      : null;
+
+  // For closed projects costs are settled — only flag danger when actually over budget.
+  // For in-flight projects, warn at >80% of estimate.
+  const isAtRisk = isComplete
+    ? margin_at_risk_cents < 0
+    : actual_total_cents > estimated_cents * 0.8;
+
+  const marginPositive = margin_at_risk_cents > 0;
+  const marginLabel = isComplete ? 'Realized Margin' : 'Margin at Risk';
+  const marginSubLabel = isComplete ? 'final margin' : 'remaining margin';
 
   return (
-    <div className="rounded-lg border p-6">
-      <h3 className="mb-4 text-sm font-medium text-muted-foreground">Budget Overview</h3>
-
-      <div className="grid grid-cols-3 gap-4 mb-4">
-        <div>
-          <p className="text-xs text-muted-foreground">Estimated</p>
-          <p className="text-lg font-semibold">{formatCurrency(total_estimate_cents)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Spent</p>
-          <p className="text-lg font-semibold">{formatCurrency(total_actual_cents)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Remaining</p>
-          <p className={cn('text-lg font-semibold', isOverBudget && 'text-red-600')}>
-            {formatCurrency(Math.abs(total_remaining_cents))}
-            {isOverBudget ? ' over' : ''}
-          </p>
-        </div>
-      </div>
-
-      <div className="h-2 w-full rounded-full bg-gray-200">
-        <div
-          className={cn(
-            'h-full rounded-full transition-all',
-            isOverBudget ? 'bg-red-500' : progress > 80 ? 'bg-yellow-500' : 'bg-green-500',
-          )}
-          style={{ width: `${Math.min(progress, 100)}%` }}
+    <div className="space-y-6">
+      {/* Top-level summary */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatBox label="Estimated Revenue" value={formatCurrency(estimated_cents)} highlight />
+        <StatBox label="Committed (Open POs)" value={formatCurrency(committed_cents)} />
+        <StatBox
+          label="Actual Cost"
+          value={formatCurrency(actual_total_cents)}
+          sub={`Bills ${formatCurrency(actual_bills_cents)} · Expenses ${formatCurrency(actual_expenses_cents)}`}
+          danger={isAtRisk}
+        />
+        <StatBox
+          label={marginLabel}
+          value={formatCurrency(margin_at_risk_cents)}
+          sub={marginPct !== null ? `${marginPct}% ${marginSubLabel}` : undefined}
+          danger={margin_at_risk_cents < 0}
+          success={isComplete && marginPositive}
         />
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">{progress}% of budget used</p>
 
-      {budget.lines.length > 0 && (
-        <div className="mt-6 overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50 text-xs">
-                <th className="px-3 py-2 text-left font-medium">Bucket</th>
-                <th className="px-3 py-2 text-right font-medium">Estimate</th>
-                <th className="px-3 py-2 text-right font-medium">Labour</th>
-                <th className="px-3 py-2 text-right font-medium">Expenses</th>
-                <th className="px-3 py-2 text-right font-medium">Bills</th>
-                <th className="px-3 py-2 text-right font-medium">Actual</th>
-                <th className="px-3 py-2 text-right font-medium">Remaining</th>
-              </tr>
-            </thead>
-            <tbody>
-              {budget.lines.map((line) => {
-                const over = line.remaining_cents < 0;
-                const pct =
-                  line.estimate_cents > 0
-                    ? Math.round((line.actual_cents / line.estimate_cents) * 100)
-                    : 0;
-                return (
-                  <tr key={line.bucket_id} className="border-b last:border-b-0">
-                    <td className="px-3 py-2">
-                      <div className="font-medium">{line.bucket_name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {line.section} · {pct}%
-                      </div>
+      {margin_at_risk_cents < 0 && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Actual costs exceed estimated revenue — this job is over budget.
+        </div>
+      )}
+
+      {/* By-category breakdown */}
+      {by_category.length > 0 && (
+        <div>
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h3 className="text-sm font-semibold">By Category</h3>
+            {projectId ? (
+              <Link
+                href={`/projects/${projectId}?tab=budget`}
+                prefetch={false}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+              >
+                Edit in Budget
+                <ArrowRight className="size-3" />
+              </Link>
+            ) : null}
+          </div>
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="px-3 py-2 text-left font-medium">Category</th>
+                  <th className="px-3 py-2 text-right font-medium">Estimated</th>
+                  <th className="px-3 py-2 text-right font-medium">Committed</th>
+                  <th className="px-3 py-2 text-right font-medium">Actual</th>
+                  <th className="px-3 py-2 text-right font-medium">Margin Left</th>
+                </tr>
+              </thead>
+              <tbody>
+                {by_category.map((row) => (
+                  <tr key={row.category} className="border-b last:border-0">
+                    <td className="px-3 py-2 capitalize font-medium">
+                      {projectId ? (
+                        <Link
+                          href={`/projects/${projectId}?tab=budget&focus=${encodeURIComponent(row.category)}`}
+                          prefetch={false}
+                          className="hover:underline"
+                        >
+                          {row.category}
+                        </Link>
+                      ) : (
+                        row.category
+                      )}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {formatCurrency(line.estimate_cents)}
+                    <td className="px-3 py-2 text-right">{formatCurrency(row.estimated_cents)}</td>
+                    <td className="px-3 py-2 text-right text-muted-foreground">
+                      {formatCurrency(row.committed_cents)}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                      {formatCurrency(line.labor_cents)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                      {formatCurrency(line.expense_cents)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
-                      {formatCurrency(line.bills_cents)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums font-medium">
-                      {formatCurrency(line.actual_cents)}
+                    <td className="px-3 py-2 text-right text-muted-foreground">
+                      {formatCurrency(row.actual_cents)}
                     </td>
                     <td
-                      className={cn(
-                        'px-3 py-2 text-right tabular-nums font-medium',
-                        over && 'text-red-600',
-                      )}
+                      className={`px-3 py-2 text-right font-medium ${row.margin_at_risk_cents < 0 ? 'text-destructive' : ''}`}
                     >
-                      {formatCurrency(Math.abs(line.remaining_cents))}
-                      {over ? ' over' : ''}
+                      {formatCurrency(row.margin_at_risk_cents)}
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+                <tr className="border-t bg-muted/30 font-semibold">
+                  <td className="px-3 py-2">Total</td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(estimated_cents)}</td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(committed_cents)}</td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(actual_total_cents)}</td>
+                  <td
+                    className={`px-3 py-2 text-right ${margin_at_risk_cents < 0 ? 'text-destructive' : 'text-primary'}`}
+                  >
+                    {formatCurrency(margin_at_risk_cents)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
+      )}
+
+      {estimated_cents === 0 && actual_total_cents === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No line items or bills recorded yet. Add line items in the Budget tab and log bills in the
+          Spend tab.
+        </p>
       )}
     </div>
   );

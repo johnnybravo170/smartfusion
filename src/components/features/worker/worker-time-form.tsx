@@ -37,7 +37,7 @@ export function WorkerTimeForm({ projects, initial }: Props) {
 
   const [pending, startTransition] = useTransition();
   const [projectId, setProjectId] = useState(initialProject);
-  const [bucketId, setBucketId] = useState(initial?.bucket_id ?? '');
+  const [bucketId, setBucketId] = useState(initial?.budget_category_id ?? '');
   const [hours, setHours] = useState(initial ? String(initial.hours) : '');
   const [date, setDate] = useState(initialDate);
   const [notes, setNotes] = useState(initial?.notes ?? '');
@@ -63,14 +63,14 @@ export function WorkerTimeForm({ projects, initial }: Props) {
         ? await updateWorkerTimeAction({
             id: initial?.id ?? '',
             project_id: projectId,
-            bucket_id: bucketId || undefined,
+            budget_category_id: bucketId || undefined,
             hours: h,
             notes: notes || undefined,
             entry_date: date,
           })
         : await logWorkerTimeAction({
             project_id: projectId,
-            bucket_id: bucketId || undefined,
+            budget_category_id: bucketId || undefined,
             hours: h,
             notes: notes || undefined,
             entry_date: date,

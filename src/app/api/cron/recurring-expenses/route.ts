@@ -113,7 +113,7 @@ export async function GET() {
       tenant_id: tenantId,
       user_id: userId,
       project_id: null,
-      bucket_id: null,
+      budget_category_id: null,
       job_id: null,
       category_id: rule.category_id as string | null,
       recurring_rule_id: rule.id as string,

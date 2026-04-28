@@ -57,7 +57,7 @@ export type ProjectWithCustomer = ProjectRow & {
   customer: ProjectCustomerSummary | null;
 };
 
-export type CostBucketSummary = {
+export type BudgetCategorySummary = {
   id: string;
   name: string;
   section: string;
@@ -68,7 +68,7 @@ export type CostBucketSummary = {
 };
 
 export type ProjectWithRelations = ProjectWithCustomer & {
-  cost_buckets: CostBucketSummary[];
+  budget_categories: BudgetCategorySummary[];
 };
 
 export type ProjectListFilters = {
@@ -148,7 +148,7 @@ async function getProjectUncached(id: string): Promise<ProjectWithRelations | nu
 
   // Load cost buckets
   const { data: bucketData, error: bucketErr } = await supabase
-    .from('project_cost_buckets')
+    .from('project_budget_categories')
     .select('id, name, section, description, estimate_cents, display_order, is_visible_in_report')
     .eq('project_id', id)
     .order('display_order', { ascending: true })
@@ -161,7 +161,7 @@ async function getProjectUncached(id: string): Promise<ProjectWithRelations | nu
   return {
     ...base,
     customer: extractCustomer(customerRaw),
-    cost_buckets: (bucketData ?? []) as CostBucketSummary[],
+    budget_categories: (bucketData ?? []) as BudgetCategorySummary[],
   };
 }
 

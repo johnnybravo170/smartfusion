@@ -385,7 +385,7 @@ async function removeWorkItemAtIndex(
 export type MemoItemCostLineInput = {
   memoId: string;
   itemIndex: number;
-  bucket_id: string;
+  budget_category_id: string;
   category: 'material' | 'labour' | 'sub' | 'equipment' | 'overhead';
   label: string;
   qty: number;
@@ -404,7 +404,7 @@ export async function addMemoItemToCostLinesAction(
   if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
 
   if (!input.label.trim()) return { ok: false, error: 'Label is required.' };
-  if (!input.bucket_id) return { ok: false, error: 'Bucket is required.' };
+  if (!input.budget_category_id) return { ok: false, error: 'Bucket is required.' };
   if (input.qty <= 0) return { ok: false, error: 'Quantity must be positive.' };
 
   const supabase = await createClient();
@@ -421,7 +421,7 @@ export async function addMemoItemToCostLinesAction(
   const line_cost_cents = Math.round(input.qty * input.unit_cost_cents);
   const { error: insertErr } = await supabase.from('project_cost_lines').insert({
     project_id: memo.project_id,
-    bucket_id: input.bucket_id,
+    budget_category_id: input.budget_category_id,
     category: input.category,
     label: input.label.trim(),
     qty: input.qty,

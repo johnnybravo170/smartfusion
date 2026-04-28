@@ -116,7 +116,7 @@ export function CostLineForm({
       const res = await upsertCostLineAction({
         id: initial?.id,
         project_id: projectId,
-        bucket_id: initial?.bucket_id ?? defaultBucketId,
+        budget_category_id: initial?.budget_category_id ?? defaultBucketId,
         category,
         label,
         qty: parseFloat(qty || '1'),

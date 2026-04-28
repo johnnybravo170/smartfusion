@@ -1,6 +1,6 @@
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
-import { BucketTemplatesManager } from '@/components/features/settings/bucket-templates-manager';
+import { BudgetCategoryTemplatesManager } from '@/components/features/settings/budget-category-templates-manager';
 import { createClient } from '@/lib/supabase/server';
 
 export const metadata = { title: 'Bucket Templates — HeyHenry' };
@@ -8,7 +8,7 @@ export const metadata = { title: 'Bucket Templates — HeyHenry' };
 export default async function BucketTemplatesPage() {
   const supabase = await createClient();
   const { data } = await supabase
-    .from('cost_bucket_templates')
+    .from('budget_category_templates')
     .select('id, name, section, buckets, is_default')
     .order('name');
 
@@ -36,7 +36,7 @@ export default async function BucketTemplatesPage() {
         </p>
       </header>
 
-      <BucketTemplatesManager templates={templates} />
+      <BudgetCategoryTemplatesManager templates={templates} />
     </div>
   );
 }

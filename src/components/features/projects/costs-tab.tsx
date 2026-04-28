@@ -257,7 +257,7 @@ function BillForm({
   const [gstRaw, setGstRaw] = useState(
     initial && initial.gst_cents > 0 ? (initial.gst_cents / 100).toFixed(2) : '',
   );
-  const [bucketId, setBucketId] = useState(initial?.bucket_id ?? '');
+  const [bucketId, setBucketId] = useState(initial?.budget_category_id ?? '');
   const [costCode, setCostCode] = useState(initial?.cost_code ?? '');
   const [vendorGstNumber, setVendorGstNumber] = useState(initial?.vendor_gst_number ?? '');
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
@@ -306,7 +306,7 @@ function BillForm({
       fd.set('description', description);
       fd.set('amount_cents', String(subtotalCents));
       fd.set('gst_cents', String(gstCents));
-      fd.set('bucket_id', bucketId);
+      fd.set('budget_category_id', bucketId);
       fd.set('cost_code', costCode);
       fd.set('vendor_gst_number', vendorGstNumber);
       if (attachmentFile) fd.set('attachment', attachmentFile);
@@ -754,9 +754,9 @@ export function CostsTab({
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">{bill.bill_date}</td>
                       <td className="px-3 py-2 text-muted-foreground">
-                        {bill.bucket_name ? (
+                        {bill.budget_category_name ? (
                           <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider">
-                            {bill.bucket_name}
+                            {bill.budget_category_name}
                           </span>
                         ) : (
                           '—'

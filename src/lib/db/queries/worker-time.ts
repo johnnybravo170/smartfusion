@@ -8,8 +8,8 @@ export type WorkerTimeEntry = {
   notes: string | null;
   project_id: string | null;
   project_name: string | null;
-  bucket_id: string | null;
-  bucket_name: string | null;
+  budget_category_id: string | null;
+  budget_category_name: string | null;
   created_at: string;
 };
 
@@ -22,7 +22,7 @@ export async function listWorkerTimeEntries(
   const { data, error } = await admin
     .from('time_entries')
     .select(
-      'id, entry_date, hours, hourly_rate_cents, notes, project_id, bucket_id, created_at, projects:project_id (name), project_cost_buckets:bucket_id (name)',
+      'id, entry_date, hours, hourly_rate_cents, notes, project_id, budget_category_id, created_at, projects:project_id (name), project_budget_categories:budget_category_id (name)',
     )
     .eq('tenant_id', tenantId)
     .eq('worker_profile_id', workerProfileId)
@@ -34,7 +34,7 @@ export async function listWorkerTimeEntries(
 
   return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => {
     const project = r.projects as { name?: string } | { name?: string }[] | null;
-    const bucket = r.project_cost_buckets as { name?: string } | { name?: string }[] | null;
+    const bucket = r.project_budget_categories as { name?: string } | { name?: string }[] | null;
     const proj = Array.isArray(project) ? project[0] : project;
     const buck = Array.isArray(bucket) ? bucket[0] : bucket;
     return {
@@ -45,8 +45,8 @@ export async function listWorkerTimeEntries(
       notes: (r.notes as string | null) ?? null,
       project_id: (r.project_id as string | null) ?? null,
       project_name: proj?.name ?? null,
-      bucket_id: (r.bucket_id as string | null) ?? null,
-      bucket_name: buck?.name ?? null,
+      budget_category_id: (r.budget_category_id as string | null) ?? null,
+      budget_category_name: buck?.name ?? null,
       created_at: r.created_at as string,
     };
   });
@@ -61,7 +61,7 @@ export async function getWorkerTimeEntry(
   const { data, error } = await admin
     .from('time_entries')
     .select(
-      'id, entry_date, hours, hourly_rate_cents, notes, project_id, bucket_id, created_at, projects:project_id (name), project_cost_buckets:bucket_id (name)',
+      'id, entry_date, hours, hourly_rate_cents, notes, project_id, budget_category_id, created_at, projects:project_id (name), project_budget_categories:budget_category_id (name)',
     )
     .eq('tenant_id', tenantId)
     .eq('worker_profile_id', workerProfileId)
@@ -73,7 +73,7 @@ export async function getWorkerTimeEntry(
 
   const r = data as unknown as Record<string, unknown>;
   const project = r.projects as { name?: string } | { name?: string }[] | null;
-  const bucket = r.project_cost_buckets as { name?: string } | { name?: string }[] | null;
+  const bucket = r.project_budget_categories as { name?: string } | { name?: string }[] | null;
   const proj = Array.isArray(project) ? project[0] : project;
   const buck = Array.isArray(bucket) ? bucket[0] : bucket;
   return {
@@ -84,8 +84,8 @@ export async function getWorkerTimeEntry(
     notes: (r.notes as string | null) ?? null,
     project_id: (r.project_id as string | null) ?? null,
     project_name: proj?.name ?? null,
-    bucket_id: (r.bucket_id as string | null) ?? null,
-    bucket_name: buck?.name ?? null,
+    budget_category_id: (r.budget_category_id as string | null) ?? null,
+    budget_category_name: buck?.name ?? null,
     created_at: r.created_at as string,
   };
 }
@@ -96,7 +96,7 @@ export type ProjectWithBuckets = {
   buckets: Array<{ id: string; name: string }>;
 };
 
-export async function listWorkerProjectsWithBuckets(
+export async function listWorkerProjectsWithBudgetCategories(
   tenantId: string,
   workerProfileId: string,
 ): Promise<ProjectWithBuckets[]> {
@@ -117,7 +117,7 @@ export async function listWorkerProjectsWithBuckets(
     .is('deleted_at', null);
 
   const { data: buckets } = await admin
-    .from('project_cost_buckets')
+    .from('project_budget_categories')
     .select('id, name, project_id')
     .in('project_id', projectIds)
     .order('display_order', { ascending: true });

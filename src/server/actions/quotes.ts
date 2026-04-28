@@ -683,7 +683,7 @@ export async function convertQuoteToProjectAction(input: {
     { name: 'Contingency', section: 'general' },
   ];
 
-  await supabase.from('project_cost_buckets').insert(
+  await supabase.from('project_budget_categories').insert(
     DEFAULT_BUCKETS.map((b, i) => ({
       project_id: projectData.id,
       tenant_id: tenant.id,

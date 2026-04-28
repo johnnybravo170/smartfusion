@@ -112,7 +112,7 @@ export function WorkerExpenseForm({ projects }: Props) {
     }
     const fd = new FormData();
     fd.append('project_id', projectId);
-    if (bucketId) fd.append('bucket_id', bucketId);
+    if (bucketId) fd.append('budget_category_id', bucketId);
     fd.append('amount_cents', String(Math.round(amt * 100)));
     fd.append('vendor', vendor);
     fd.append('vendor_gst_number', vendorGstNumber);

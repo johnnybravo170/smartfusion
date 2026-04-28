@@ -1,14 +1,14 @@
 /**
  * `project_sub_quotes` + `project_sub_quote_allocations` — the "committed"
  * leg of cost control. Quotes received from subs/suppliers, allocated
- * across one or more project_cost_buckets.
+ * across one or more project_budget_categories.
  *
  * See SUB_QUOTES_PLAN.md for design rationale. Sum of allocations must
  * equal total_cents (enforced at the server-action layer before a quote
  * can be `accepted`).
  *
  * DDL source of truth: `supabase/migrations/0094_project_sub_quotes.sql`.
- * FKs on project_id / bucket_id / tenant_id exist in SQL but are not
+ * FKs on project_id / budget_category_id / tenant_id exist in SQL but are not
  * declared in Drizzle because those parent tables don't have Drizzle
  * schemas (matches the existing convention for renovation-vertical
  * tables).
@@ -67,7 +67,7 @@ export const projectSubQuoteAllocations = pgTable(
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     subQuoteId: uuid('sub_quote_id').notNull(),
-    bucketId: uuid('bucket_id').notNull(),
+    bucketId: uuid('budget_category_id').notNull(),
     allocatedCents: bigint('allocated_cents', { mode: 'number' }).notNull(),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).default(sql`now()`).notNull(),

@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { CostBucketSummary } from '@/lib/db/queries/projects';
+import type { BudgetCategorySummary } from '@/lib/db/queries/projects';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import {
   deleteExpenseAction,
@@ -35,7 +35,7 @@ type Expense = {
   amount_cents: number;
   vendor: string | null;
   description: string | null;
-  bucket_id: string | null;
+  budget_category_id: string | null;
   worker_profile_id: string | null;
   worker_name: string | null;
   receipt_url: string | null;
@@ -48,7 +48,7 @@ function TimeForm({
   onDone,
 }: {
   projectId: string;
-  buckets: CostBucketSummary[];
+  buckets: BudgetCategorySummary[];
   defaultRateCents?: number | null;
   onDone: () => void;
 }) {
@@ -70,7 +70,7 @@ function TimeForm({
         entry_date: date,
         hours: parseFloat(hours),
         hourly_rate_cents: rateCents,
-        bucket_id: bucketId || undefined,
+        budget_category_id: bucketId || undefined,
         notes: notes || undefined,
       });
       if (res.ok) {
@@ -154,7 +154,7 @@ function ExpenseForm({
   onDone,
 }: {
   projectId: string;
-  buckets: CostBucketSummary[];
+  buckets: BudgetCategorySummary[];
   onDone: () => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -176,7 +176,7 @@ function ExpenseForm({
       fd.set('amount_cents', String(Math.round(parseFloat(amountRaw) * 100)));
       fd.set('vendor', vendor);
       fd.set('description', description);
-      fd.set('bucket_id', bucketId);
+      fd.set('budget_category_id', bucketId);
       if (receipt) fd.set('receipt', receipt);
       const res = await logExpenseWithReceiptAction(fd);
       if (res.ok) {
@@ -276,7 +276,7 @@ function EditExpenseDialog({
   onClose,
 }: {
   expense: Expense;
-  buckets: CostBucketSummary[];
+  buckets: BudgetCategorySummary[];
   onClose: () => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -284,7 +284,7 @@ function EditExpenseDialog({
   const [date, setDate] = useState(expense.expense_date);
   const [vendor, setVendor] = useState(expense.vendor ?? '');
   const [description, setDescription] = useState(expense.description ?? '');
-  const [bucketId, setBucketId] = useState(expense.bucket_id ?? '');
+  const [bucketId, setBucketId] = useState(expense.budget_category_id ?? '');
   const [error, setError] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
@@ -302,7 +302,7 @@ function EditExpenseDialog({
         amount_cents: Math.round(parsed * 100),
         vendor: vendor || null,
         description: description || null,
-        bucket_id: bucketId || null,
+        budget_category_id: bucketId || null,
       });
       if (!res.ok) {
         setError(res.error);
@@ -412,7 +412,7 @@ export function TimeExpenseTab({
   showExpenses = true,
 }: {
   projectId: string;
-  buckets: CostBucketSummary[];
+  buckets: BudgetCategorySummary[];
   timeEntries: TimeEntry[];
   expenses: Expense[];
   ownerRateCents?: number | null;

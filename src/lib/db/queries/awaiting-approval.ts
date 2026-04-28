@@ -48,7 +48,7 @@ export async function getProjectsAwaitingApproval(): Promise<AwaitingApprovalPro
   const [{ data: buckets, error: bucketsErr }, { data: views, error: viewsErr }] =
     await Promise.all([
       supabase
-        .from('project_cost_buckets')
+        .from('project_budget_categories')
         .select('project_id, estimate_cents')
         .in('project_id', ids),
       supabase

@@ -58,12 +58,12 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
     admin
       .from('project_cost_lines')
       .select(
-        'id, label, notes, qty, unit, unit_price_cents, line_price_cents, category, bucket_id, photo_storage_paths',
+        'id, label, notes, qty, unit, unit_price_cents, line_price_cents, category, budget_category_id, photo_storage_paths',
       )
       .eq('project_id', p.id as string)
       .order('created_at', { ascending: true }),
     admin
-      .from('project_cost_buckets')
+      .from('project_budget_categories')
       .select('id, name, section, display_order')
       .eq('project_id', p.id as string),
   ]);
@@ -97,12 +97,12 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
   const renderLines: EstimateRenderLine[] = (lines ?? []).map((l) => {
     const raw = l as {
       photo_storage_paths?: string[];
-      bucket_id?: string | null;
+      budget_category_id?: string | null;
     } & EstimateRenderLine;
-    const info = raw.bucket_id ? bucketInfo.get(raw.bucket_id) : undefined;
+    const info = raw.budget_category_id ? bucketInfo.get(raw.budget_category_id) : undefined;
     return {
       ...(raw as EstimateRenderLine),
-      bucket_name: info?.name ?? null,
+      budget_category_name: info?.name ?? null,
       bucket_section: info?.section ?? null,
       bucket_order: info?.order,
       photo_urls: (raw.photo_storage_paths ?? [])

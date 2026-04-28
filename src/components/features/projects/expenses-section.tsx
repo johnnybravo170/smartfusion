@@ -35,7 +35,7 @@ export type ExpenseItem = {
   amount_cents: number;
   vendor: string | null;
   description: string | null;
-  bucket_id: string | null;
+  budget_category_id: string | null;
   worker_profile_id: string | null;
   worker_name: string | null;
   receipt_url: string | null;
@@ -73,7 +73,7 @@ function ExpenseForm({
       fd.set('amount_cents', String(Math.round(parseFloat(amountRaw) * 100)));
       fd.set('vendor', vendor);
       fd.set('description', description);
-      fd.set('bucket_id', bucketId);
+      fd.set('budget_category_id', bucketId);
       if (receipt) fd.set('receipt', receipt);
       const res = await logExpenseWithReceiptAction(fd);
       if (res.ok) {
@@ -183,7 +183,7 @@ function EditExpenseDialog({
   const [date, setDate] = useState(expense.expense_date);
   const [vendor, setVendor] = useState(expense.vendor ?? '');
   const [description, setDescription] = useState(expense.description ?? '');
-  const [bucketId, setBucketId] = useState(expense.bucket_id ?? '');
+  const [bucketId, setBucketId] = useState(expense.budget_category_id ?? '');
   const [error, setError] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
@@ -201,7 +201,7 @@ function EditExpenseDialog({
         amount_cents: Math.round(parsed * 100),
         vendor: vendor || null,
         description: description || null,
-        bucket_id: bucketId || null,
+        budget_category_id: bucketId || null,
       });
       if (!res.ok) {
         setError(res.error);

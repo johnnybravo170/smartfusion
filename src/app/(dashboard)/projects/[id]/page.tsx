@@ -8,7 +8,7 @@ import { ProjectIntakeZone } from '@/components/features/projects/project-intake
 import { ProjectNameEditor } from '@/components/features/projects/project-name-editor';
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
 import { ProjectTabSelect } from '@/components/features/projects/project-tab-select';
-import BucketsTabServer from '@/components/features/projects/tabs/buckets-tab-server';
+import BudgetTabServer from '@/components/features/projects/tabs/budget-tab-server';
 import ChangeOrdersTabServer from '@/components/features/projects/tabs/change-orders-tab-server';
 import CostsTabServer from '@/components/features/projects/tabs/costs-tab-server';
 import CrewTabServer from '@/components/features/projects/tabs/crew-tab-server';
@@ -23,7 +23,7 @@ import SelectionsTabServer from '@/components/features/projects/tabs/selections-
 import { TabSkeleton } from '@/components/features/projects/tabs/tab-skeleton';
 import TimeTabServer from '@/components/features/projects/tabs/time-tab-server';
 import { getProjectProgress } from '@/lib/db/queries/cost-lines';
-import { listBucketsForProject } from '@/lib/db/queries/project-buckets';
+import { listBudgetCategoriesForProject } from '@/lib/db/queries/project-budget-categories';
 import { getProject } from '@/lib/db/queries/projects';
 import type { LifecycleStage } from '@/lib/validators/project';
 
@@ -39,7 +39,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 type Tab =
   | 'overview'
-  | 'buckets'
+  | 'budget'
   | 'estimate'
   | 'costs'
   | 'variance'
@@ -77,25 +77,27 @@ export default async function ProjectDetailPage({
 }) {
   const { id } = await params;
   const resolvedSearchParams = await searchParams;
-  const tab = (resolvedSearchParams.tab as Tab) || 'overview';
+  // Alias: old `?tab=buckets` bookmarks → `budget`. Renamed 2026-04-28.
+  const rawTab = resolvedSearchParams.tab;
+  const tab = (rawTab === 'buckets' ? 'budget' : (rawTab as Tab)) || 'overview';
 
   // Shell-only queries. getProject is React.cache-wrapped, so generateMetadata
   // + the shell + any inner tab that also calls it (e.g. OverviewTab) dedupe
   // to a single DB hit per request.
   const [project, projectBuckets, progress] = await Promise.all([
     getProject(id),
-    listBucketsForProject(id),
+    listBudgetCategoriesForProject(id),
     getProjectProgress(id),
   ]);
   if (!project) notFound();
 
-  // Tab URL slugs are kept as-is (`buckets`, `costs`) so existing bookmarks
-  // and links don't break. Only the user-facing labels are renamed —
-  // `Budget` (was Cost Buckets) and `Spend` (was Costs). Variance was
-  // merged into Overview.
+  // Tab labels are user-facing; the URL slugs match. `?tab=buckets` is
+  // aliased to `budget` above for old bookmarks (renamed 2026-04-28).
+  // `Spend` (was Costs) keeps the `costs` slug for the same reason.
+  // Variance was merged into Overview (2026-04-27).
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
-    { key: 'buckets', label: 'Budget' },
+    { key: 'budget', label: 'Budget' },
     { key: 'estimate', label: 'Estimate' },
     { key: 'costs', label: 'Spend' },
     { key: 'change-orders', label: 'Change Orders' },
@@ -213,7 +215,7 @@ export default async function ProjectDetailPage({
       {/* Tab content — each tab streams independently. */}
       <Suspense key={tab} fallback={<TabSkeleton />}>
         {tab === 'overview' ? <OverviewTabServer projectId={id} /> : null}
-        {tab === 'buckets' ? <BucketsTabServer projectId={id} /> : null}
+        {tab === 'budget' ? <BudgetTabServer projectId={id} /> : null}
         {tab === 'estimate' ? <EstimateTabServer projectId={id} /> : null}
         {tab === 'costs' ? <CostsTabServer projectId={id} /> : null}
         {/* Variance merged into Overview — keep route alive for old bookmarks

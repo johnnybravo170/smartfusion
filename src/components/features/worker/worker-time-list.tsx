@@ -123,7 +123,9 @@ export function WorkerTimeList({ entries, canEditOld }: Props) {
                                 <span className="font-medium">{entry.hours.toFixed(2)}h</span>
                                 <span className="text-muted-foreground truncate">
                                   {entry.project_name ?? 'Unknown project'}
-                                  {entry.bucket_name ? ` · ${entry.bucket_name}` : ''}
+                                  {entry.budget_category_name
+                                    ? ` · ${entry.budget_category_name}`
+                                    : ''}
                                 </span>
                               </div>
                               {entry.notes ? (

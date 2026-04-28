@@ -5,7 +5,7 @@ import { WorkerInvoiceNewForm } from '@/components/features/worker/worker-invoic
 import { requireWorker } from '@/lib/auth/helpers';
 import { previewUnbilledForWorker } from '@/lib/db/queries/worker-invoices';
 import { getOrCreateWorkerProfile } from '@/lib/db/queries/worker-profiles';
-import { listWorkerProjectsWithBuckets } from '@/lib/db/queries/worker-time';
+import { listWorkerProjectsWithBudgetCategories } from '@/lib/db/queries/worker-time';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +27,7 @@ export default async function WorkerInvoiceNewPage() {
   const canInvoice = profile.can_invoice ?? tenantRow?.workers_can_invoice_default ?? false;
   if (!canInvoice) redirect('/w');
 
-  const projects = await listWorkerProjectsWithBuckets(tenant.id, profile.id);
+  const projects = await listWorkerProjectsWithBudgetCategories(tenant.id, profile.id);
 
   const today = new Date();
   const start = new Date(today);

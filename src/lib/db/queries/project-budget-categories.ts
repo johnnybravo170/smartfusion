@@ -9,7 +9,7 @@
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 
-export type BucketRow = {
+export type BudgetCategoryRow = {
   id: string;
   project_id: string;
   tenant_id: string;
@@ -24,8 +24,8 @@ export type BucketRow = {
 };
 
 export type BudgetLine = {
-  bucket_id: string;
-  bucket_name: string;
+  budget_category_id: string;
+  budget_category_name: string;
   section: string;
   estimate_cents: number;
   labor_cents: number;
@@ -43,95 +43,106 @@ export type BudgetSummary = {
   total_remaining_cents: number;
 };
 
-export const listBucketsForProject = cache(async (projectId: string): Promise<BucketRow[]> => {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('project_cost_buckets')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('display_order', { ascending: true })
-    .order('name', { ascending: true });
+export const listBudgetCategoriesForProject = cache(
+  async (projectId: string): Promise<BudgetCategoryRow[]> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('project_budget_categories')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('display_order', { ascending: true })
+      .order('name', { ascending: true });
 
-  if (error) {
-    throw new Error(`Failed to list buckets: ${error.message}`);
-  }
-  return (data ?? []) as BucketRow[];
-});
+    if (error) {
+      throw new Error(`Failed to list buckets: ${error.message}`);
+    }
+    return (data ?? []) as BudgetCategoryRow[];
+  },
+);
 
 export async function getBudgetVsActual(projectId: string): Promise<BudgetSummary> {
   const supabase = await createClient();
 
   // 1. Load all buckets for this project
-  const buckets = await listBucketsForProject(projectId);
+  const buckets = await listBudgetCategoriesForProject(projectId);
 
-  // 2. Load time entries for this project, grouped by bucket_id
+  // 2. Load time entries for this project, grouped by budget_category_id
   const { data: timeData, error: timeErr } = await supabase
     .from('time_entries')
-    .select('bucket_id, hours, hourly_rate_cents')
+    .select('budget_category_id, hours, hourly_rate_cents')
     .eq('project_id', projectId);
 
   if (timeErr) {
     throw new Error(`Failed to load time entries: ${timeErr.message}`);
   }
 
-  // 3. Load expenses for this project, grouped by bucket_id
+  // 3. Load expenses for this project, grouped by budget_category_id
   const { data: expenseData, error: expErr } = await supabase
     .from('expenses')
-    .select('bucket_id, amount_cents')
+    .select('budget_category_id, amount_cents')
     .eq('project_id', projectId);
 
   if (expErr) {
     throw new Error(`Failed to load expenses: ${expErr.message}`);
   }
 
-  // 4. Load bills for this project, grouped by bucket_id (pre-GST subtotal only)
+  // 4. Load bills for this project, grouped by budget_category_id (pre-GST subtotal only)
   const { data: billData, error: billErr } = await supabase
     .from('project_bills')
-    .select('bucket_id, amount_cents')
+    .select('budget_category_id, amount_cents')
     .eq('project_id', projectId);
 
   if (billErr) {
     throw new Error(`Failed to load bills: ${billErr.message}`);
   }
 
-  // Aggregate labor by bucket_id
-  const laborByBucket = new Map<string, number>();
+  // Aggregate labor by budget_category_id
+  const laborByBudgetCategory = new Map<string, number>();
   for (const entry of timeData ?? []) {
     const e = entry as {
-      bucket_id: string | null;
+      budget_category_id: string | null;
       hours: number;
       hourly_rate_cents: number | null;
     };
-    if (!e.bucket_id) continue;
+    if (!e.budget_category_id) continue;
     const cost = Math.round((e.hours ?? 0) * (e.hourly_rate_cents ?? 0));
-    laborByBucket.set(e.bucket_id, (laborByBucket.get(e.bucket_id) ?? 0) + cost);
+    laborByBudgetCategory.set(
+      e.budget_category_id,
+      (laborByBudgetCategory.get(e.budget_category_id) ?? 0) + cost,
+    );
   }
 
-  // Aggregate expenses by bucket_id
-  const expenseByBucket = new Map<string, number>();
+  // Aggregate expenses by budget_category_id
+  const expenseByBudgetCategory = new Map<string, number>();
   for (const entry of expenseData ?? []) {
-    const e = entry as { bucket_id: string | null; amount_cents: number };
-    if (!e.bucket_id) continue;
-    expenseByBucket.set(e.bucket_id, (expenseByBucket.get(e.bucket_id) ?? 0) + e.amount_cents);
+    const e = entry as { budget_category_id: string | null; amount_cents: number };
+    if (!e.budget_category_id) continue;
+    expenseByBudgetCategory.set(
+      e.budget_category_id,
+      (expenseByBudgetCategory.get(e.budget_category_id) ?? 0) + e.amount_cents,
+    );
   }
 
-  // Aggregate bills by bucket_id (pre-GST subtotal — GST is an ITC, not a project cost)
-  const billsByBucket = new Map<string, number>();
+  // Aggregate bills by budget_category_id (pre-GST subtotal — GST is an ITC, not a project cost)
+  const billsByBudgetCategory = new Map<string, number>();
   for (const entry of billData ?? []) {
-    const e = entry as { bucket_id: string | null; amount_cents: number };
-    if (!e.bucket_id) continue;
-    billsByBucket.set(e.bucket_id, (billsByBucket.get(e.bucket_id) ?? 0) + e.amount_cents);
+    const e = entry as { budget_category_id: string | null; amount_cents: number };
+    if (!e.budget_category_id) continue;
+    billsByBudgetCategory.set(
+      e.budget_category_id,
+      (billsByBudgetCategory.get(e.budget_category_id) ?? 0) + e.amount_cents,
+    );
   }
 
   // Build budget lines
   const lines: BudgetLine[] = buckets.map((b) => {
-    const labor_cents = laborByBucket.get(b.id) ?? 0;
-    const expense_cents = expenseByBucket.get(b.id) ?? 0;
-    const bills_cents = billsByBucket.get(b.id) ?? 0;
+    const labor_cents = laborByBudgetCategory.get(b.id) ?? 0;
+    const expense_cents = expenseByBudgetCategory.get(b.id) ?? 0;
+    const bills_cents = billsByBudgetCategory.get(b.id) ?? 0;
     const actual_cents = labor_cents + expense_cents + bills_cents;
     return {
-      bucket_id: b.id,
-      bucket_name: b.name,
+      budget_category_id: b.id,
+      budget_category_name: b.name,
       section: b.section,
       estimate_cents: b.estimate_cents,
       labor_cents,
