@@ -14,6 +14,7 @@
 
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { newMembershipShouldBeActive } from '@/lib/auth/helpers';
 import { updateReferralOnSignup } from '@/lib/db/queries/referrals';
 import { sendEmail } from '@/lib/email/send';
 import { generateReferralCode } from '@/lib/referral/code-generator';
@@ -104,6 +105,7 @@ export async function signupAction(input: {
       user_id: userId,
       role: 'owner',
       phone: normalizedPhone,
+      is_active_for_user: await newMembershipShouldBeActive(admin, userId),
     });
     if (memberErr) {
       // Tenant row exists but membership failed — delete the tenant too so
@@ -247,9 +249,7 @@ export async function loginAction(input: {
 
 /**
  * Resolve the post-login destination based on the signed-in user's
- * tenant_members.role. Looks at the most recent tenant membership
- * (a user could in theory belong to multiple tenants, but that's not
- * a real case today — any match is fine).
+ * tenant_members.role for their currently-active membership.
  */
 async function destinationForCurrentUser(): Promise<string> {
   const supabase = await createClient();
@@ -262,8 +262,7 @@ async function destinationForCurrentUser(): Promise<string> {
     .from('tenant_members')
     .select('role')
     .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
-    .limit(1)
+    .eq('is_active_for_user', true)
     .maybeSingle();
   const role = (member?.role as string | null) ?? null;
   if (role === 'worker') return '/w';

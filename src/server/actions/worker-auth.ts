@@ -15,6 +15,7 @@
  *   8. Return { ok: true }
  */
 
+import { newMembershipShouldBeActive } from '@/lib/auth/helpers';
 import { findWorkerInviteByCode, markInviteUsed } from '@/lib/db/queries/worker-invites';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -76,6 +77,7 @@ export async function workerSignupAction(input: {
         // Workers join via vetted invite — skip the email+phone verification
         // gate that owner signups go through.
         phone_verified_at: new Date().toISOString(),
+        is_active_for_user: await newMembershipShouldBeActive(admin, userId),
       })
       .select('id')
       .single();
@@ -178,7 +180,12 @@ export async function workerLoginAndJoinAction(input: {
   // Add to tenant.
   const { data: member, error: memberErr } = await admin
     .from('tenant_members')
-    .insert({ tenant_id: invite.tenant_id, user_id: userId, role: invite.role })
+    .insert({
+      tenant_id: invite.tenant_id,
+      user_id: userId,
+      role: invite.role,
+      is_active_for_user: await newMembershipShouldBeActive(admin, userId),
+    })
     .select('id')
     .single();
 
@@ -246,7 +253,12 @@ export async function joinTenantWithSessionAction(inviteCode: string): Promise<W
 
   const { data: member, error: memberErr } = await admin
     .from('tenant_members')
-    .insert({ tenant_id: invite.tenant_id, user_id: user.id, role: invite.role })
+    .insert({
+      tenant_id: invite.tenant_id,
+      user_id: user.id,
+      role: invite.role,
+      is_active_for_user: await newMembershipShouldBeActive(admin, user.id),
+    })
     .select('id')
     .single();
 

@@ -8,11 +8,31 @@
  */
 
 import * as Sentry from '@sentry/nextjs';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import type { Plan, SubscriptionStatus } from '@/lib/billing/features';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+
+/**
+ * Returns true if a freshly-inserted tenant_members row for `userId` should
+ * have `is_active_for_user = true`. Use this at every signup/invite-accept
+ * INSERT site so the user always has an active membership without violating
+ * the partial unique index `tenant_members_one_active_per_user`.
+ */
+export async function newMembershipShouldBeActive(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  const { data } = await admin
+    .from('tenant_members')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('is_active_for_user', true)
+    .maybeSingle();
+  return !data;
+}
 
 /**
  * Per-request memoised. Page shell + multiple tab server components often
