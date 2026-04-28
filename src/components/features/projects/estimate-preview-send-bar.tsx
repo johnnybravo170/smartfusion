@@ -12,6 +12,7 @@ import { ArrowLeft, Loader2, Send } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { AutoFollowupRow } from '@/components/features/shared/auto-followup-row';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +25,6 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -295,40 +295,6 @@ export function EstimatePreviewSendBar({
           )}
         </AlertDialog>
       </div>
-    </div>
-  );
-}
-
-function AutoFollowupRow({
-  checked,
-  onCheckedChange,
-  disabled,
-  available,
-}: {
-  checked: boolean;
-  onCheckedChange: (next: boolean) => void;
-  disabled: boolean;
-  available: boolean;
-}) {
-  return (
-    <div className="flex items-start gap-2 rounded-md border bg-muted/30 px-3 py-2.5">
-      <Checkbox
-        id="confirm-auto-followup"
-        checked={checked}
-        onCheckedChange={(v) => onCheckedChange(v === true)}
-        disabled={disabled}
-        className="mt-0.5"
-      />
-      <Label
-        htmlFor="confirm-auto-followup"
-        className="flex-1 cursor-pointer text-xs font-normal text-muted-foreground"
-      >
-        Auto follow up if no response —{' '}
-        <span className="text-foreground">SMS at 24h, email at 48h.</span>{' '}
-        {!available ? (
-          <span className="text-amber-700">Available on Growth plan and up.</span>
-        ) : null}
-      </Label>
     </div>
   );
 }

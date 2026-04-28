@@ -15,7 +15,9 @@ import { QuoteStatusBadge } from '@/components/features/quotes/quote-status-badg
 import { SurfaceList } from '@/components/features/quotes/surface-list';
 import { PrintButton } from '@/components/features/shared/print-button';
 import { Button } from '@/components/ui/button';
+import { resolveTenantAutoFollowupEnabled } from '@/lib/ar/system-sequences';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { hasFeature } from '@/lib/billing/features';
 import { formatDateTime, formatRelativeTime } from '@/lib/date/format';
 import { getQuote, listWorklogForQuote } from '@/lib/db/queries/quotes';
 import type { QuoteStatus } from '@/lib/validators/quote';
@@ -31,6 +33,16 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const [quote, tenant] = await Promise.all([getQuote(id), getCurrentTenant()]);
   if (!quote) notFound();
   const tz = tenant?.timezone || 'America/Vancouver';
+
+  const autoFollowupAvailable = tenant
+    ? hasFeature(
+        { plan: tenant.plan, subscriptionStatus: tenant.subscriptionStatus },
+        'customers.followup_sequences',
+      )
+    : false;
+  const autoFollowupTenantDefault = tenant
+    ? await resolveTenantAutoFollowupEnabled(tenant.id)
+    : false;
 
   const worklog = await listWorklogForQuote(id);
 
@@ -90,7 +102,11 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                   Edit
                 </Link>
               </Button>
-              <SendQuoteButton quoteId={quote.id} />
+              <SendQuoteButton
+                quoteId={quote.id}
+                autoFollowupTenantDefault={autoFollowupTenantDefault}
+                autoFollowupAvailable={autoFollowupAvailable}
+              />
               <DuplicateQuoteButton quoteId={quote.id} />
               <PrintButton />
               <DeleteQuoteButton quoteId={quote.id} customerName={customerName} />
@@ -100,7 +116,12 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             <>
               <AcceptQuoteButton quoteId={quote.id} />
               <RejectQuoteButton quoteId={quote.id} />
-              <ResendQuoteButton quoteId={quote.id} customerEmail={quote.customer?.email ?? null} />
+              <ResendQuoteButton
+                quoteId={quote.id}
+                customerEmail={quote.customer?.email ?? null}
+                autoFollowupTenantDefault={autoFollowupTenantDefault}
+                autoFollowupAvailable={autoFollowupAvailable}
+              />
               <Button asChild variant="outline" size="sm">
                 <Link href={`/quotes/${quote.id}/edit`}>
                   <Pencil className="size-3.5" />
@@ -116,7 +137,12 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             <>
               <ConvertToJobButton quoteId={quote.id} />
               <ConvertToProjectButton quoteId={quote.id} />
-              <ResendQuoteButton quoteId={quote.id} customerEmail={quote.customer?.email ?? null} />
+              <ResendQuoteButton
+                quoteId={quote.id}
+                customerEmail={quote.customer?.email ?? null}
+                autoFollowupTenantDefault={autoFollowupTenantDefault}
+                autoFollowupAvailable={autoFollowupAvailable}
+              />
               <DuplicateQuoteButton quoteId={quote.id} />
               <PrintButton />
               {quote.pdf_url && <DownloadPdfButton pdfUrl={quote.pdf_url} />}
@@ -124,7 +150,12 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           )}
           {status === 'rejected' && (
             <>
-              <ResendQuoteButton quoteId={quote.id} customerEmail={quote.customer?.email ?? null} />
+              <ResendQuoteButton
+                quoteId={quote.id}
+                customerEmail={quote.customer?.email ?? null}
+                autoFollowupTenantDefault={autoFollowupTenantDefault}
+                autoFollowupAvailable={autoFollowupAvailable}
+              />
               <DuplicateQuoteButton quoteId={quote.id} />
               <PrintButton />
             </>

@@ -61,9 +61,19 @@ export function StaleQuotesList({
     );
   }
 
-  const onEnroll = (projectId: string, customerName: string) => {
+  const onEnroll = (projectId: string, customerName: string, daysStale: number) => {
+    // CASL implied consent expires at 180 days. The server action refuses
+    // these enrollments unless the operator confirms the customer is still
+    // expecting to hear from them.
+    let confirmExpired = false;
+    if (daysStale > 180) {
+      confirmExpired = window.confirm(
+        `This estimate was sent ${daysStale} days ago. Confirm ${customerName} is still expecting to hear from you before enrolling?`,
+      );
+      if (!confirmExpired) return;
+    }
     startTransition(async () => {
-      const res = await enrollStaleQuoteFollowupAction({ projectId });
+      const res = await enrollStaleQuoteFollowupAction({ projectId, confirmExpired });
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -73,12 +83,25 @@ export function StaleQuotesList({
   };
 
   const onEnrollAll = () => {
+    const eligible = rows.filter((r) => !r.customerHasKillSwitch && r.customerEmail);
+    const expired = eligible.filter((r) => r.daysStale > 180);
+    let confirmExpired = false;
+    if (expired.length > 0) {
+      confirmExpired = window.confirm(
+        `${expired.length} of these were sent more than 180 days ago — implied consent has expired. Confirm those customers are still expecting to hear from you?`,
+      );
+    }
     startTransition(async () => {
-      const eligible = rows.filter((r) => !r.customerHasKillSwitch && r.customerEmail);
       let ok = 0;
       let failed = 0;
       for (const row of eligible) {
-        const res = await enrollStaleQuoteFollowupAction({ projectId: row.projectId });
+        if (row.daysStale > 180 && !confirmExpired) {
+          continue;
+        }
+        const res = await enrollStaleQuoteFollowupAction({
+          projectId: row.projectId,
+          confirmExpired: row.daysStale > 180 ? confirmExpired : undefined,
+        });
         if (res.ok) ok++;
         else failed++;
       }
@@ -140,7 +163,7 @@ export function StaleQuotesList({
               variant="outline"
               size="sm"
               disabled={pending || r.customerHasKillSwitch || !r.customerEmail}
-              onClick={() => onEnroll(r.projectId, r.customerName)}
+              onClick={() => onEnroll(r.projectId, r.customerName, r.daysStale)}
             >
               <Send className="size-3.5" />
               Enroll

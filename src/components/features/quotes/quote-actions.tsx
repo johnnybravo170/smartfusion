@@ -7,8 +7,9 @@
 
 import { Briefcase, Check, Download, Loader2, Mail, Send, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { AutoFollowupRow } from '@/components/features/shared/auto-followup-row';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,13 +31,26 @@ import {
   sendQuoteAction,
 } from '@/server/actions/quotes';
 
-export function SendQuoteButton({ quoteId }: { quoteId: string }) {
+export function SendQuoteButton({
+  quoteId,
+  autoFollowupTenantDefault,
+  autoFollowupAvailable,
+}: {
+  quoteId: string;
+  /** Tenant default for quote-follow-up (Settings → Automations). */
+  autoFollowupTenantDefault: boolean;
+  /** Whether the tenant's plan unlocks the follow-up feature. */
+  autoFollowupAvailable: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [autoFollowup, setAutoFollowup] = useState(
+    autoFollowupAvailable ? autoFollowupTenantDefault : false,
+  );
 
   function handleSend() {
     startTransition(async () => {
-      const result = await sendQuoteAction({ quoteId });
+      const result = await sendQuoteAction({ quoteId, autoFollowupOverride: autoFollowup });
       if (result.ok) {
         toast.success('Quote sent.');
         if (result.warning) {
@@ -50,26 +64,58 @@ export function SendQuoteButton({ quoteId }: { quoteId: string }) {
   }
 
   return (
-    <Button onClick={handleSend} disabled={pending} size="sm">
-      {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-      Send
-    </Button>
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button size="sm" disabled={pending}>
+          {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+          Send
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Send quote to customer?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will email the quote PDF to the customer.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AutoFollowupRow
+          checked={autoFollowup}
+          onCheckedChange={setAutoFollowup}
+          disabled={pending || !autoFollowupAvailable}
+          available={autoFollowupAvailable}
+          id={`send-${quoteId}-followup`}
+        />
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleSend} disabled={pending}>
+            Send
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
 export function ResendQuoteButton({
   quoteId,
   customerEmail,
+  autoFollowupTenantDefault,
+  autoFollowupAvailable,
 }: {
   quoteId: string;
   customerEmail: string | null;
+  autoFollowupTenantDefault: boolean;
+  autoFollowupAvailable: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [autoFollowup, setAutoFollowup] = useState(
+    autoFollowupAvailable ? autoFollowupTenantDefault : false,
+  );
 
   function handleResend() {
     startTransition(async () => {
-      const result = await sendQuoteAction({ quoteId });
+      const result = await sendQuoteAction({ quoteId, autoFollowupOverride: autoFollowup });
       if (result.ok) {
         toast.success('Quote resent.');
         if (result.warning) {
@@ -99,8 +145,15 @@ export function ResendQuoteButton({
             This will send another email with the quote to the customer.
           </AlertDialogDescription>
         </AlertDialogHeader>
+        <AutoFollowupRow
+          checked={autoFollowup}
+          onCheckedChange={setAutoFollowup}
+          disabled={pending || !autoFollowupAvailable}
+          available={autoFollowupAvailable}
+          id={`resend-${quoteId}-followup`}
+        />
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={handleResend} disabled={pending}>
             Send
           </AlertDialogAction>

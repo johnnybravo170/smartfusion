@@ -29,7 +29,9 @@ import {
 } from '@/lib/db/schema/ar';
 import { FROM_EMAIL_MARKETING } from '@/lib/email/client';
 import { sendEmail } from '@/lib/email/send';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSms } from '@/lib/twilio/client';
+import { type BranchConfig, evaluateBranch } from './branch-eval';
 import { type Channel, checkSendPolicy, defaultWindow, type SendWindow } from './policy';
 import { renderTemplate } from './render';
 import { signUnsubToken } from './unsub-token';
@@ -131,9 +133,26 @@ async function runOne(enrollmentId: string, now: Date): Promise<void> {
         .set({ status: 'completed', completedAt: now })
         .where(eq(arEnrollments.id, enrollmentId));
       return;
-    case 'branch':
-      // Phase 1 branch support deferred — advance straight through.
-      break;
+    case 'branch': {
+      const cfg = (step.config as BranchConfig | null) ?? {};
+      const meta = (enrollment.metadata as Record<string, unknown> | null) ?? {};
+      const outcome = await evaluateBranch(
+        createAdminClient(),
+        cfg,
+        meta,
+        enrollment.currentPosition,
+        now,
+      );
+      await advanceEnrollment(
+        enrollmentId,
+        enrollment.currentPosition,
+        enrollment.sequenceId,
+        enrollment.version,
+        now,
+        outcome.jumpToPosition,
+      );
+      return;
+    }
   }
 
   await advanceEnrollment(
@@ -232,14 +251,23 @@ async function runChannelStep(
   // marketing — quote follow-up is response_to_request, review requests are
   // transactional, etc.
   const sequenceCfg = (sequence.triggerConfig as Record<string, unknown> | null) ?? {};
-  const sequenceCaslCategory =
-    (sequenceCfg.casl_category as
-      | 'transactional'
-      | 'response_to_request'
-      | 'implied_consent_inquiry'
-      | 'implied_consent_ebr'
-      | 'express_consent'
-      | undefined) ?? 'express_consent';
+  const enrollmentMeta = (enrollment.metadata as Record<string, unknown> | null) ?? {};
+  const VALID_CASL = new Set([
+    'transactional',
+    'response_to_request',
+    'implied_consent_inquiry',
+    'implied_consent_ebr',
+    'express_consent',
+  ]);
+  const metaOverride = enrollmentMeta.casl_category_override;
+  const sequenceCaslCategory = ((typeof metaOverride === 'string' && VALID_CASL.has(metaOverride)
+    ? metaOverride
+    : (sequenceCfg.casl_category as string | undefined)) ?? 'express_consent') as
+    | 'transactional'
+    | 'response_to_request'
+    | 'implied_consent_inquiry'
+    | 'implied_consent_ebr'
+    | 'express_consent';
 
   if (channel === 'email') {
     const html = template.bodyHtml ? renderTemplate(template.bodyHtml, vars) : undefined;
@@ -357,9 +385,10 @@ async function advanceEnrollment(
   sequenceId: string,
   version: number,
   now: Date,
+  jumpToPosition?: number,
 ): Promise<void> {
   const db = getDb();
-  const nextPosition = currentPosition + 1;
+  const nextPosition = typeof jumpToPosition === 'number' ? jumpToPosition : currentPosition + 1;
 
   const [nextStep] = await db
     .select()

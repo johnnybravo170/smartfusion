@@ -234,7 +234,12 @@ export async function updateQuoteAction(input: unknown): Promise<QuoteActionResu
   return { ok: true, id: parsed.data.id };
 }
 
-export async function sendQuoteAction(input: { quoteId: string }): Promise<QuoteActionResult> {
+export async function sendQuoteAction(input: {
+  quoteId: string;
+  /** Per-send override for the quote follow-up autopilot. When provided,
+   * takes precedence over the quote's stored `auto_followup_enabled`. */
+  autoFollowupOverride?: boolean;
+}): Promise<QuoteActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) {
     return { ok: false, error: 'Not signed in or missing tenant.' };
@@ -428,7 +433,9 @@ export async function sendQuoteAction(input: { quoteId: string }): Promise<Quote
   if (emailSent && customer?.email) {
     try {
       const perQuoteFollowup =
-        ((quote as Record<string, unknown>).auto_followup_enabled as boolean | null) ?? null;
+        typeof input.autoFollowupOverride === 'boolean'
+          ? input.autoFollowupOverride
+          : (((quote as Record<string, unknown>).auto_followup_enabled as boolean | null) ?? null);
       const enroll = await shouldEnrollQuoteFollowup({
         tenantId: tenant.id,
         perQuoteOverride: perQuoteFollowup,

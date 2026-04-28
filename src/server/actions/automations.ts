@@ -69,6 +69,10 @@ export async function setAutoQuoteFollowupAction(
  */
 export async function enrollStaleQuoteFollowupAction(input: {
   projectId: string;
+  /** Operator confirmation required when the original estimate was sent
+   * more than 180 days ago — by then CASL implied-consent has lapsed and
+   * we won't enroll silently. */
+  confirmExpired?: boolean;
 }): Promise<AutomationActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
@@ -89,7 +93,9 @@ export async function enrollStaleQuoteFollowupAction(input: {
   const supabase = await createClient();
   const { data: project } = await supabase
     .from('projects')
-    .select('id, name, customers:customer_id (name, email, phone, do_not_auto_message)')
+    .select(
+      'id, name, estimate_sent_at, customers:customer_id (name, email, phone, do_not_auto_message)',
+    )
     .eq('id', input.projectId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -104,6 +110,25 @@ export async function enrollStaleQuoteFollowupAction(input: {
     return { ok: false, error: 'Customer has opted out of automated messages.' };
   }
 
+  // CASL category drifts with the gap between original send and enrollment:
+  //   0–30  days → response_to_request
+  //   30–180 days → implied_consent_inquiry
+  //   >180 days → expired implied consent; require operator confirmation
+  const sentAtRaw = (p.estimate_sent_at as string | null) ?? null;
+  const enrolledAgeDays = sentAtRaw
+    ? Math.floor((Date.now() - new Date(sentAtRaw).getTime()) / (24 * 60 * 60 * 1000))
+    : 0;
+
+  let caslCategoryOverride: 'response_to_request' | 'implied_consent_inquiry' =
+    'response_to_request';
+  if (enrolledAgeDays >= 30) caslCategoryOverride = 'implied_consent_inquiry';
+  if (enrolledAgeDays > 180 && !input.confirmExpired) {
+    return {
+      ok: false,
+      error: `This estimate was sent ${enrolledAgeDays} days ago — implied consent has expired. Confirm the customer is still expecting to hear from you.`,
+    };
+  }
+
   await ensureQuoteFollowupSequence(tenant.id);
   const customerName = (customerRaw?.name as string) ?? 'Customer';
   const [firstName, ...rest] = customerName.split(' ');
@@ -116,6 +141,8 @@ export async function enrollStaleQuoteFollowupAction(input: {
       project_name: p.name,
       from_name: tenant.name,
       enrolled_from: 'stale_quotes',
+      enrolled_age_days: enrolledAgeDays,
+      casl_category_override: caslCategoryOverride,
     },
     contact: {
       email,
