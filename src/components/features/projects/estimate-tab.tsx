@@ -226,7 +226,17 @@ export function EstimateTab({
               Preview &amp; send
             </Button>
           ) : null}
-          {approval.status === 'pending_approval' ? (
+          {/*
+           * Copy link + Preview/Resend stay available after the estimate
+           * lands in pending/approved/declined — operator may need to
+           * forward the link again, or resend the email if the customer
+           * lost it. The customer-facing page reads live state so any
+           * post-approval line detail additions show up automatically
+           * (totals unchanged → still the approved estimate).
+           */}
+          {approval.status === 'pending_approval' ||
+          approval.status === 'approved' ||
+          approval.status === 'declined' ? (
             <>
               <Button size="sm" variant="outline" onClick={copyApprovalLink}>
                 Copy link
@@ -236,7 +246,7 @@ export function EstimateTab({
                 variant="outline"
                 onClick={() => router.push(`/projects/${projectId}/estimate/preview`)}
               >
-                Preview &amp; resend
+                Preview &amp; {approval.status === 'pending_approval' ? 'resend' : 'share'}
               </Button>
             </>
           ) : null}
