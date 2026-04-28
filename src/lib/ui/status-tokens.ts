@@ -12,7 +12,7 @@
  *   - info        Scheduled / sent / submitted (in-flight, awaiting external) — blue
  *   - warning     In progress / pending approval / expired — amber
  *   - success     Money/approval positive: paid / accepted / approved — emerald
- *   - done        Work finished, archived: project/job/task complete — indigo
+ *   - done        Work finished, archived: project/job/task complete — dark slate (filled)
  *   - danger      Rejected / declined / blocked — red
  *   - hold        On hold / paused / waiting on external — slate
  *
@@ -20,7 +20,10 @@
  * (paid, accepted, approved); done is "the work is finished and put away"
  * (project complete, job complete, task done). They used to share emerald
  * which made the projects list ambiguous — emerald now stays positive-money
- * only, indigo carries the "shipped" feel.
+ * only. Done was tried as indigo for "shipped" feel but read too close to
+ * info-blue for normal and CVD vision; switched to filled dark slate
+ * (2026-04-28) which reads "archived" and is perceptually maximally
+ * distant from every other tone.
  *
  * Each token is a full Tailwind class string so callers can spread it
  * directly into `className`. Classes include hover + border variants so
@@ -65,7 +68,10 @@ export const statusToneClass: Record<StatusTone, string> = {
     'bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300',
   success:
     'bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300',
-  done: 'bg-indigo-100 text-indigo-800 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300',
+  // Filled dark slate. Indigo was the original pick (kept emerald free for
+  // success) but read too close to info-blue for normal AND CVD vision —
+  // shipped → "archived/sealed" reads better as a dark fill anyway.
+  done: 'bg-slate-800 text-slate-50 border-slate-800 hover:bg-slate-800 dark:bg-slate-200 dark:text-slate-900 dark:border-slate-200',
   danger:
     'bg-red-100 text-red-800 border-red-200 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300',
   hold: 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-100 dark:bg-slate-800/60 dark:text-slate-300',
@@ -149,7 +155,7 @@ export const taskStatusClass = {
   // Aligned with StatusTone:
   in_progress: statusToneClass.warning, // amber, matches projects.active + jobs.in_progress
   blocked: statusToneClass.danger,
-  done: statusToneClass.done, // indigo, matches projects.complete + jobs.complete
+  done: statusToneClass.done, // filled dark slate, matches projects.complete + jobs.complete
   // Task-specific:
   ready:
     'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300',
