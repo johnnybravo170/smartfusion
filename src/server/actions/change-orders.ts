@@ -28,6 +28,106 @@ function generateApprovalCode(): string {
   return crypto.randomBytes(12).toString('base64url').slice(0, 16);
 }
 
+type ChangeOrderDiffEntry = {
+  action: 'add' | 'modify' | 'remove';
+  original_line_id?: string;
+  budget_category_id?: string;
+  category?: string;
+  label?: string;
+  qty?: number;
+  unit?: string;
+  unit_cost_cents?: number;
+  unit_price_cents?: number;
+  line_cost_cents?: number;
+  line_price_cents?: number;
+  before_snapshot?: Record<string, unknown>;
+};
+
+/**
+ * Phase-1 line-diff change order. Persists the staged diff to
+ * change_order_lines with flow_version=2 on the parent. Does NOT yet
+ * apply the diff to project_cost_lines on approval — that's a later
+ * phase. See kanban 707d5395 for the full apply-on-approval design.
+ */
+export async function createChangeOrderV2Action(input: {
+  project_id: string;
+  title: string;
+  description: string;
+  reason?: string;
+  timeline_impact_days: number;
+  cost_impact_cents: number;
+  diff: ChangeOrderDiffEntry[];
+}): Promise<ChangeOrderActionResult> {
+  if (!input.title.trim()) return { ok: false, error: 'Title is required.' };
+  if (!input.description.trim()) return { ok: false, error: 'Description is required.' };
+  if (input.diff.length === 0) {
+    return { ok: false, error: 'At least one staged change is required.' };
+  }
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+
+  const approvalCode = generateApprovalCode();
+
+  const { data: co, error: coErr } = await supabase
+    .from('change_orders')
+    .insert({
+      project_id: input.project_id,
+      tenant_id: tenant.id,
+      title: input.title.trim(),
+      description: input.description.trim(),
+      reason: input.reason?.trim() || null,
+      cost_impact_cents: input.cost_impact_cents,
+      timeline_impact_days: input.timeline_impact_days,
+      affected_buckets: Array.from(
+        new Set(
+          input.diff
+            .map((d) => d.budget_category_id ?? d.before_snapshot?.budget_category_id)
+            .filter((id): id is string => typeof id === 'string'),
+        ),
+      ),
+      flow_version: 2,
+      status: 'draft',
+      approval_code: approvalCode,
+      created_by: tenant.member.id,
+    })
+    .select('id')
+    .single();
+
+  if (coErr || !co) {
+    return { ok: false, error: coErr?.message ?? 'Failed to create change order.' };
+  }
+
+  const lineRows = input.diff.map((d) => ({
+    change_order_id: co.id,
+    tenant_id: tenant.id,
+    action: d.action,
+    original_line_id: d.original_line_id ?? null,
+    budget_category_id: d.budget_category_id ?? null,
+    category: d.category ?? null,
+    label: d.label ?? null,
+    qty: d.qty ?? null,
+    unit: d.unit ?? null,
+    unit_cost_cents: d.unit_cost_cents ?? null,
+    unit_price_cents: d.unit_price_cents ?? null,
+    line_cost_cents: d.line_cost_cents ?? null,
+    line_price_cents: d.line_price_cents ?? null,
+    before_snapshot: d.before_snapshot ?? null,
+  }));
+
+  const { error: linesErr } = await supabase.from('change_order_lines').insert(lineRows);
+  if (linesErr) {
+    // Roll back the parent CO so we don't end up with an empty diff.
+    await supabase.from('change_orders').delete().eq('id', co.id);
+    return { ok: false, error: `Failed to save diff: ${linesErr.message}` };
+  }
+
+  revalidatePath(`/projects/${input.project_id}`);
+  return { ok: true, id: co.id };
+}
+
 export async function createChangeOrderAction(input: {
   project_id?: string;
   job_id?: string;

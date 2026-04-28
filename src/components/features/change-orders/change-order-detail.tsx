@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ManualApprovalDialog } from '@/components/features/projects/manual-approval-dialog';
-import type { ChangeOrderRow } from '@/lib/db/queries/change-orders';
+import type { ChangeOrderLineRow, ChangeOrderRow } from '@/lib/db/queries/change-orders';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import type { ChangeOrderStatus } from '@/lib/validators/change-order';
 import type { ManualApprovalMethod } from '@/lib/validators/manual-approval';
@@ -18,11 +18,13 @@ export function ChangeOrderDetail({
   projectId,
   proofSignedUrls = {},
   budgetCategoryNamesById = {},
+  diffLines = [],
 }: {
   changeOrder: ChangeOrderRow;
   projectId: string;
   proofSignedUrls?: Record<string, string>;
   budgetCategoryNamesById?: Record<string, string>;
+  diffLines?: ChangeOrderLineRow[];
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -208,7 +210,71 @@ export function ChangeOrderDetail({
         </div>
       </div>
 
-      {co.cost_breakdown && co.cost_breakdown.length > 0 ? (
+      {co.flow_version === 2 && diffLines.length > 0 ? (
+        <div className="rounded-lg border p-4">
+          <p className="text-xs text-muted-foreground mb-3">Line-level Changes</p>
+          <table className="w-full text-sm">
+            <thead className="text-xs uppercase tracking-wide text-muted-foreground">
+              <tr className="border-b">
+                <th className="py-1.5 text-left font-medium">Action</th>
+                <th className="py-1.5 text-left font-medium">Line</th>
+                <th className="py-1.5 text-left font-medium">Category</th>
+                <th className="py-1.5 text-right font-medium">Before</th>
+                <th className="py-1.5 text-right font-medium">After</th>
+                <th className="py-1.5 text-right font-medium">Delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {diffLines.map((d) => {
+                const before = d.before_snapshot as {
+                  label?: string;
+                  qty?: number;
+                  line_price_cents?: number;
+                } | null;
+                const beforePrice = before?.line_price_cents ?? 0;
+                const afterPrice = d.action === 'remove' ? 0 : (d.line_price_cents ?? 0);
+                const delta = afterPrice - beforePrice;
+                const label = d.label ?? before?.label ?? '—';
+                return (
+                  <tr key={d.id} className="border-b last:border-0">
+                    <td className="py-1.5 align-top">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                          d.action === 'add'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : d.action === 'remove'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {d.action}
+                      </span>
+                    </td>
+                    <td className="py-1.5 align-top">{label}</td>
+                    <td className="py-1.5 align-top text-xs text-muted-foreground">
+                      {d.budget_category_id
+                        ? (budgetCategoryNamesById[d.budget_category_id] ?? '—')
+                        : '—'}
+                    </td>
+                    <td className="py-1.5 text-right align-top tabular-nums text-muted-foreground">
+                      {d.action === 'add' ? '—' : formatCurrency(beforePrice)}
+                    </td>
+                    <td className="py-1.5 text-right align-top tabular-nums">
+                      {d.action === 'remove' ? '—' : formatCurrency(afterPrice)}
+                    </td>
+                    <td
+                      className={`py-1.5 text-right align-top font-medium tabular-nums ${delta < 0 ? 'text-emerald-700' : ''}`}
+                    >
+                      {delta >= 0 ? '+' : ''}
+                      {formatCurrency(delta)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : co.cost_breakdown && co.cost_breakdown.length > 0 ? (
         <div className="rounded-lg border p-4">
           <p className="text-xs text-muted-foreground mb-3">Cost Impact by Category</p>
           <table className="w-full text-sm">

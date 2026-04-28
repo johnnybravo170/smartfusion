@@ -2,7 +2,7 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ChangeOrderDetail } from '@/components/features/change-orders/change-order-detail';
-import { getChangeOrder } from '@/lib/db/queries/change-orders';
+import { getChangeOrder, listChangeOrderLines } from '@/lib/db/queries/change-orders';
 import { getProject } from '@/lib/db/queries/projects';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -27,6 +27,11 @@ export default async function ChangeOrderDetailPage({
   const [project, changeOrder] = await Promise.all([getProject(id), getChangeOrder(coId)]);
 
   if (!project || !changeOrder) notFound();
+
+  // For v2 COs, load the line-level diff so the detail view can render
+  // before/after per line. v1 COs (flow_version=1) keep the breakdown view.
+  const diffLines =
+    changeOrder.flow_version === 2 ? await listChangeOrderLines(changeOrder.id) : [];
 
   // Sign any manual-approval proof attachments so the detail view can
   // render clickable links without exposing the raw storage paths.
@@ -57,6 +62,7 @@ export default async function ChangeOrderDetailPage({
         budgetCategoryNamesById={Object.fromEntries(
           project.budget_categories.map((b) => [b.id, b.name]),
         )}
+        diffLines={diffLines}
       />
     </div>
   );

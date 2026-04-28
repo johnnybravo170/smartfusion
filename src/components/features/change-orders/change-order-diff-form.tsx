@@ -1,0 +1,565 @@
+'use client';
+
+/**
+ * Phase 1 line-diff change-order editor.
+ *
+ * Renders the project's existing cost lines grouped by budget category +
+ * section. Each line is editable in place (qty / unit_price) with a live
+ * delta badge. Operator can also strikethrough-remove a line or "+ Add
+ * line" inside any category. The total cost impact is auto-derived from
+ * the sum of deltas.
+ *
+ * Phase 1 deliberately:
+ *   • does NOT auto-apply the diff to project_cost_lines on approval —
+ *     persists the staged diff only. Approval still happens, but the
+ *     underlying estimate stays untouched until the apply-on-approval
+ *     phase ships.
+ *   • does NOT prompt when editing an approved estimate — that guard
+ *     is a separate piece (kanban 707d5395 covers the full flow).
+ *
+ * Reachable today via `?v2=1` on the new-CO page; existing form stays
+ * default until this is verified end-to-end.
+ */
+
+import { Plus, RotateCcw, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import type { CostLineRow } from '@/lib/db/queries/cost-lines';
+import type { BudgetCategorySummary } from '@/lib/db/queries/projects';
+import { formatCurrency } from '@/lib/pricing/calculator';
+import { cn } from '@/lib/utils';
+import { createChangeOrderV2Action, sendChangeOrderAction } from '@/server/actions/change-orders';
+
+type LineEdit = {
+  qty?: string;
+  unit_price_dollars?: string;
+};
+
+type AddedLine = {
+  tempId: string;
+  budget_category_id: string;
+  label: string;
+  qty: string;
+  unit: string;
+  unit_price_dollars: string;
+};
+
+export function ChangeOrderDiffForm({
+  projectId,
+  budgetCategories,
+  existingLines,
+}: {
+  projectId: string;
+  budgetCategories: BudgetCategorySummary[];
+  existingLines: CostLineRow[];
+}) {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [reason, setReason] = useState('');
+  const [timelineDays, setTimelineDays] = useState('0');
+
+  const [editsById, setEditsById] = useState<Record<string, LineEdit>>({});
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+  const [added, setAdded] = useState<AddedLine[]>([]);
+
+  // Group lines by budget_category_id, keyed for stable rendering.
+  const linesByCategory = useMemo(() => {
+    const map = new Map<string | null, CostLineRow[]>();
+    for (const l of existingLines) {
+      const key = l.budget_category_id ?? null;
+      const arr = map.get(key) ?? [];
+      arr.push(l);
+      map.set(key, arr);
+    }
+    return map;
+  }, [existingLines]);
+
+  // Sections come from budgetCategories; group categories under sections.
+  const categoriesBySection = useMemo(() => {
+    const map = new Map<string, BudgetCategorySummary[]>();
+    for (const c of budgetCategories) {
+      const arr = map.get(c.section) ?? [];
+      arr.push(c);
+      map.set(c.section, arr);
+    }
+    return map;
+  }, [budgetCategories]);
+
+  // Compute total delta across every modification.
+  const totalDelta = useMemo(() => {
+    let total = 0;
+    // Modifications: (new qty * new price) - (old qty * old price)
+    for (const line of existingLines) {
+      if (removedIds.has(line.id)) {
+        total -= line.line_price_cents;
+        continue;
+      }
+      const edit = editsById[line.id];
+      if (!edit) continue;
+      const newQty = edit.qty !== undefined ? Number(edit.qty) : Number(line.qty);
+      const newUnitPriceCents =
+        edit.unit_price_dollars !== undefined
+          ? Math.round(Number(edit.unit_price_dollars) * 100)
+          : line.unit_price_cents;
+      if (Number.isNaN(newQty) || Number.isNaN(newUnitPriceCents)) continue;
+      const newPrice = Math.round(newQty * newUnitPriceCents);
+      total += newPrice - line.line_price_cents;
+    }
+    // Added lines
+    for (const a of added) {
+      const qty = Number(a.qty);
+      const unitPriceCents = Math.round(Number(a.unit_price_dollars) * 100);
+      if (Number.isNaN(qty) || Number.isNaN(unitPriceCents)) continue;
+      total += Math.round(qty * unitPriceCents);
+    }
+    return total;
+  }, [editsById, removedIds, added, existingLines]);
+
+  function setEdit(lineId: string, patch: Partial<LineEdit>) {
+    setEditsById((prev) => ({
+      ...prev,
+      [lineId]: { ...prev[lineId], ...patch },
+    }));
+  }
+
+  function clearEdit(lineId: string) {
+    setEditsById((prev) => {
+      const next = { ...prev };
+      delete next[lineId];
+      return next;
+    });
+  }
+
+  function toggleRemove(lineId: string) {
+    setRemovedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId);
+      else next.add(lineId);
+      return next;
+    });
+  }
+
+  function addLine(budgetCategoryId: string) {
+    setAdded((prev) => [
+      ...prev,
+      {
+        tempId: crypto.randomUUID(),
+        budget_category_id: budgetCategoryId,
+        label: '',
+        qty: '1',
+        unit: 'item',
+        unit_price_dollars: '',
+      },
+    ]);
+  }
+
+  function setAdded_(tempId: string, patch: Partial<AddedLine>) {
+    setAdded((prev) => prev.map((a) => (a.tempId === tempId ? { ...a, ...patch } : a)));
+  }
+
+  function removeAdded(tempId: string) {
+    setAdded((prev) => prev.filter((a) => a.tempId !== tempId));
+  }
+
+  function buildDiff() {
+    const diff: Array<{
+      action: 'modify' | 'remove' | 'add';
+      original_line_id?: string;
+      budget_category_id?: string;
+      category?: string;
+      label?: string;
+      qty?: number;
+      unit?: string;
+      unit_cost_cents?: number;
+      unit_price_cents?: number;
+      line_cost_cents?: number;
+      line_price_cents?: number;
+      before_snapshot?: Record<string, unknown>;
+    }> = [];
+
+    for (const line of existingLines) {
+      if (removedIds.has(line.id)) {
+        diff.push({
+          action: 'remove',
+          original_line_id: line.id,
+          before_snapshot: line as unknown as Record<string, unknown>,
+        });
+        continue;
+      }
+      const edit = editsById[line.id];
+      if (!edit) continue;
+      const newQty = edit.qty !== undefined ? Number(edit.qty) : Number(line.qty);
+      const newUnitPriceCents =
+        edit.unit_price_dollars !== undefined
+          ? Math.round(Number(edit.unit_price_dollars) * 100)
+          : line.unit_price_cents;
+      if (Number.isNaN(newQty) || Number.isNaN(newUnitPriceCents)) continue;
+      // No-op edits (typed back to original): skip.
+      if (newQty === Number(line.qty) && newUnitPriceCents === line.unit_price_cents) continue;
+      const newPrice = Math.round(newQty * newUnitPriceCents);
+      const newCost = Math.round(newQty * line.unit_cost_cents);
+      diff.push({
+        action: 'modify',
+        original_line_id: line.id,
+        budget_category_id: line.budget_category_id ?? undefined,
+        category: line.category,
+        label: line.label,
+        qty: newQty,
+        unit: line.unit,
+        unit_cost_cents: line.unit_cost_cents,
+        unit_price_cents: newUnitPriceCents,
+        line_cost_cents: newCost,
+        line_price_cents: newPrice,
+        before_snapshot: line as unknown as Record<string, unknown>,
+      });
+    }
+
+    for (const a of added) {
+      const qty = Number(a.qty);
+      const unitPriceCents = Math.round(Number(a.unit_price_dollars) * 100);
+      if (Number.isNaN(qty) || Number.isNaN(unitPriceCents)) continue;
+      if (!a.label.trim()) continue;
+      diff.push({
+        action: 'add',
+        budget_category_id: a.budget_category_id,
+        category: 'material',
+        label: a.label.trim(),
+        qty,
+        unit: a.unit,
+        unit_cost_cents: 0,
+        unit_price_cents: unitPriceCents,
+        line_cost_cents: 0,
+        line_price_cents: Math.round(qty * unitPriceCents),
+      });
+    }
+
+    return diff;
+  }
+
+  async function handleSubmit(sendImmediately: boolean) {
+    setLoading(true);
+    setError(null);
+    const diff = buildDiff();
+    if (diff.length === 0) {
+      setError('No changes to save — edit a line, remove one, or add a new one.');
+      setLoading(false);
+      return;
+    }
+
+    const result = await createChangeOrderV2Action({
+      project_id: projectId,
+      title,
+      description,
+      reason,
+      timeline_impact_days: parseInt(timelineDays || '0', 10),
+      cost_impact_cents: totalDelta,
+      diff,
+    });
+    if (!result.ok) {
+      setError(result.error);
+      setLoading(false);
+      return;
+    }
+    if (sendImmediately && result.id) {
+      const sendResult = await sendChangeOrderAction(result.id);
+      if (!sendResult.ok) {
+        setError(sendResult.error);
+        setLoading(false);
+        return;
+      }
+    }
+    router.push(`/projects/${projectId}?tab=change-orders`);
+    router.refresh();
+  }
+
+  return (
+    <div className="space-y-6">
+      {error ? <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
+
+      <div className="space-y-4 rounded-lg border p-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium" htmlFor="cd-title">
+            Title
+          </label>
+          <input
+            id="cd-title"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="e.g. Add pot lights to kitchen"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium" htmlFor="cd-desc">
+            Description
+          </label>
+          <textarea
+            id="cd-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            className="w-full rounded-md border px-3 py-2 text-sm"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="cd-reason">
+              Reason (optional)
+            </label>
+            <input
+              id="cd-reason"
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="w-full rounded-md border px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="cd-timeline">
+              Timeline Impact (days)
+            </label>
+            <input
+              id="cd-timeline"
+              type="number"
+              value={timelineDays}
+              onChange={(e) => setTimelineDays(e.target.value)}
+              className="w-full rounded-md border px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky top-0 z-10 flex items-baseline justify-between gap-4 rounded-lg border bg-background/95 p-4 backdrop-blur">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Cost Impact</p>
+          <p
+            className={cn(
+              'text-2xl font-semibold tabular-nums',
+              totalDelta < 0 && 'text-emerald-700',
+              totalDelta > 0 && 'text-foreground',
+            )}
+          >
+            {totalDelta >= 0 ? '+' : ''}
+            {formatCurrency(totalDelta)}
+          </p>
+        </div>
+        <p className="max-w-xs text-right text-xs text-muted-foreground">
+          Edit qty or price on any line. Strikethrough to remove. "+ Add line" to add new scope.
+        </p>
+      </div>
+
+      {Array.from(categoriesBySection.entries()).map(([section, categories]) => (
+        <div key={section}>
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            {section}
+          </h3>
+          <div className="space-y-4">
+            {categories.map((category) => {
+              const lines = linesByCategory.get(category.id) ?? [];
+              const addedHere = added.filter((a) => a.budget_category_id === category.id);
+              return (
+                <div key={category.id} className="rounded-md border">
+                  <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-2">
+                    <div className="text-sm font-medium">{category.name}</div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => addLine(category.id)}
+                    >
+                      <Plus className="size-3" />
+                      Add line
+                    </Button>
+                  </div>
+                  {lines.length === 0 && addedHere.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-muted-foreground">
+                      No lines yet — click "+ Add line" to add one.
+                    </p>
+                  ) : null}
+                  {lines.map((line) => {
+                    const isRemoved = removedIds.has(line.id);
+                    const edit = editsById[line.id];
+                    const isModified = edit !== undefined;
+                    const newQty = edit?.qty !== undefined ? Number(edit.qty) : Number(line.qty);
+                    const newUnitPriceCents =
+                      edit?.unit_price_dollars !== undefined
+                        ? Math.round(Number(edit.unit_price_dollars) * 100)
+                        : line.unit_price_cents;
+                    const newLinePrice = Math.round(newQty * newUnitPriceCents);
+                    const delta = isRemoved
+                      ? -line.line_price_cents
+                      : isModified
+                        ? newLinePrice - line.line_price_cents
+                        : 0;
+                    return (
+                      <div
+                        key={line.id}
+                        className={cn(
+                          'grid grid-cols-12 items-center gap-2 border-b px-3 py-2 text-sm last:border-0',
+                          isRemoved && 'bg-red-50/40 line-through opacity-60',
+                          !isRemoved && isModified && 'bg-amber-50/40',
+                        )}
+                      >
+                        <div className="col-span-5">{line.label}</div>
+                        <div className="col-span-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            disabled={isRemoved}
+                            defaultValue={String(line.qty)}
+                            onChange={(e) => setEdit(line.id, { qty: e.target.value })}
+                            className="h-8 text-right text-sm"
+                            placeholder={`${line.qty}`}
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            disabled={isRemoved}
+                            defaultValue={(line.unit_price_cents / 100).toFixed(2)}
+                            onChange={(e) =>
+                              setEdit(line.id, { unit_price_dollars: e.target.value })
+                            }
+                            className="h-8 text-right text-sm"
+                          />
+                        </div>
+                        <div className="col-span-2 text-right tabular-nums">
+                          {delta !== 0 ? (
+                            <span
+                              className={cn(
+                                'font-medium',
+                                delta < 0 ? 'text-emerald-700' : 'text-amber-700',
+                              )}
+                            >
+                              {delta >= 0 ? '+' : ''}
+                              {formatCurrency(delta)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              {formatCurrency(line.line_price_cents)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="col-span-1 text-right">
+                          {isRemoved ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleRemove(line.id)}
+                              aria-label="Restore"
+                              title="Restore"
+                              className="rounded p-1 hover:bg-muted"
+                            >
+                              <RotateCcw className="size-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isModified) clearEdit(line.id);
+                                else toggleRemove(line.id);
+                              }}
+                              aria-label={isModified ? 'Discard edit' : 'Remove line'}
+                              title={isModified ? 'Discard edit' : 'Remove line'}
+                              className="rounded p-1 hover:bg-muted"
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {addedHere.map((a) => {
+                    const qty = Number(a.qty);
+                    const unitPriceCents = Math.round(Number(a.unit_price_dollars) * 100);
+                    const linePrice =
+                      Number.isFinite(qty) && Number.isFinite(unitPriceCents)
+                        ? Math.round(qty * unitPriceCents)
+                        : 0;
+                    return (
+                      <div
+                        key={a.tempId}
+                        className="grid grid-cols-12 items-center gap-2 border-b bg-emerald-50/40 px-3 py-2 text-sm last:border-0"
+                      >
+                        <div className="col-span-5 flex items-center gap-2">
+                          <span className="rounded-full bg-emerald-200/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-900">
+                            New
+                          </span>
+                          <Input
+                            type="text"
+                            value={a.label}
+                            onChange={(e) => setAdded_(a.tempId, { label: e.target.value })}
+                            placeholder="Description"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={a.qty}
+                            onChange={(e) => setAdded_(a.tempId, { qty: e.target.value })}
+                            className="h-8 text-right text-sm"
+                            placeholder="Qty"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={a.unit_price_dollars}
+                            onChange={(e) =>
+                              setAdded_(a.tempId, { unit_price_dollars: e.target.value })
+                            }
+                            className="h-8 text-right text-sm"
+                            placeholder="$"
+                          />
+                        </div>
+                        <div className="col-span-2 text-right font-medium tabular-nums text-emerald-700">
+                          +{formatCurrency(linePrice)}
+                        </div>
+                        <div className="col-span-1 text-right">
+                          <button
+                            type="button"
+                            onClick={() => removeAdded(a.tempId)}
+                            aria-label="Cancel add"
+                            title="Cancel add"
+                            className="rounded p-1 hover:bg-muted"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      <div className="flex gap-3 border-t pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={loading}
+          onClick={() => handleSubmit(false)}
+        >
+          {loading ? 'Saving…' : 'Save as Draft'}
+        </Button>
+        <Button type="button" disabled={loading} onClick={() => handleSubmit(true)}>
+          {loading ? 'Sending…' : 'Save & Send for Approval'}
+        </Button>
+      </div>
+    </div>
+  );
+}

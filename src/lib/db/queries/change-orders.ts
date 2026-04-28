@@ -17,6 +17,7 @@ export type ChangeOrderRow = {
   timeline_impact_days: number;
   affected_buckets: string[];
   cost_breakdown: { budget_category_id: string; amount_cents: number }[];
+  flow_version: 1 | 2;
   status: ChangeOrderStatus;
   approval_code: string | null;
   approved_by_name: string | null;
@@ -33,7 +34,36 @@ export type ChangeOrderRow = {
 };
 
 const CO_COLUMNS =
-  'id, project_id, job_id, tenant_id, title, description, reason, cost_impact_cents, timeline_impact_days, affected_buckets, cost_breakdown, status, approval_code, approved_by_name, approved_at, declined_at, declined_reason, approval_method, approved_by_member_id, approval_proof_paths, approval_notes, created_by, created_at, updated_at';
+  'id, project_id, job_id, tenant_id, title, description, reason, cost_impact_cents, timeline_impact_days, affected_buckets, cost_breakdown, flow_version, status, approval_code, approved_by_name, approved_at, declined_at, declined_reason, approval_method, approved_by_member_id, approval_proof_paths, approval_notes, created_by, created_at, updated_at';
+
+export type ChangeOrderLineRow = {
+  id: string;
+  change_order_id: string;
+  action: 'add' | 'modify' | 'remove';
+  original_line_id: string | null;
+  budget_category_id: string | null;
+  category: string | null;
+  label: string | null;
+  qty: number | null;
+  unit: string | null;
+  unit_cost_cents: number | null;
+  unit_price_cents: number | null;
+  line_cost_cents: number | null;
+  line_price_cents: number | null;
+  before_snapshot: Record<string, unknown> | null;
+};
+
+export async function listChangeOrderLines(changeOrderId: string): Promise<ChangeOrderLineRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('change_order_lines')
+    .select(
+      'id, change_order_id, action, original_line_id, budget_category_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, line_cost_cents, line_price_cents, before_snapshot',
+    )
+    .eq('change_order_id', changeOrderId)
+    .order('created_at', { ascending: true });
+  return (data ?? []) as ChangeOrderLineRow[];
+}
 
 /**
  * Tenant-wide pending-approval change orders for the owner dashboard.
