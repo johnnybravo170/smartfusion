@@ -42,6 +42,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@google/genai": "^1.50.1",
     "@hookform/resolvers": "^5.2.2",
+    "@radix-ui/react-hover-card": "^1.1.15",
     "@react-google-maps/api": "^2.20.8",
     "@sentry/nextjs": "^10.50.0",
     "@supabase/ssr": "^0.10.2",
