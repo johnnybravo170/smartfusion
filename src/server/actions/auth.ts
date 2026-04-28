@@ -115,6 +115,17 @@ export async function signupAction(input: {
       throw new Error(memberErr.message);
     }
 
+    // Seed default overhead expense categories so /expenses/new isn't a
+    // dead-end on first use. Non-fatal — the user can recreate any.
+    await admin
+      .rpc('seed_default_expense_categories', {
+        p_tenant_id: tenant.id,
+        p_vertical: 'renovation',
+      })
+      .then(({ error }) => {
+        if (error) console.warn('Failed to seed expense categories:', error.message);
+      });
+
     // Auto-generate a referral code for the new tenant.
     const code = generateReferralCode(businessName);
     const suffix = Math.random().toString(36).slice(2, 6);
