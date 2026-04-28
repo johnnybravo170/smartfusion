@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import type { BudgetLine } from '@/lib/db/queries/project-budget-categories';
@@ -396,17 +397,21 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
             )}
           </div>
           {editingDescId === line.budget_category_id ? (
-            <div className="mt-1 flex items-center gap-1">
-              <Input
-                className="h-7 text-xs"
+            <div className="mt-1 flex items-start gap-1">
+              <Textarea
+                className="min-h-[4.5rem] resize-y text-xs"
+                rows={3}
                 value={editDescValue}
                 onChange={(e) => setEditDescValue(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') saveEditDesc(line.budget_category_id);
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    saveEditDesc(line.budget_category_id);
+                  }
                   if (e.key === 'Escape') setEditingDescId(null);
                 }}
                 onBlur={() => saveEditDesc(line.budget_category_id)}
-                placeholder="Description (shown on estimate)"
+                placeholder="Description (shown on estimate). Enter to save, Shift+Enter for new line."
                 autoFocus
               />
               <button
@@ -694,8 +699,10 @@ function AddBudgetCategoryForm({ projectId, onDone }: { projectId: string; onDon
             Description{' '}
             <span className="text-muted-foreground">(optional — shown on estimate)</span>
           </label>
-          <Input
+          <Textarea
             id="add-bucket-description"
+            rows={3}
+            className="min-h-[4.5rem] resize-y"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="e.g. Demo existing tile, prep subfloor, install LVP"
