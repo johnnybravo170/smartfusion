@@ -146,7 +146,7 @@ export function VarianceTab({
                     <td className="px-3 py-2 capitalize font-medium">
                       {projectId ? (
                         <Link
-                          href={`/projects/${projectId}?tab=buckets`}
+                          href={`/projects/${projectId}?tab=buckets&focus=${encodeURIComponent(row.category)}`}
                           prefetch={false}
                           className="hover:underline"
                         >

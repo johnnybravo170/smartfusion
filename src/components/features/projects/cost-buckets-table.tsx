@@ -9,8 +9,8 @@
  */
 
 import { Check, ChevronDown, ChevronRight, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,6 +46,27 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
   const [showAddBucket, setShowAddBucket] = useState(false);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Variance tab on Overview deep-links here with `?focus=<category>` so
+  // the user lands directly on the bucket they wanted to edit. Match by
+  // bucket_name (case-insensitive — variance categories arrive lowercase
+  // capitalize; bucket names are operator-typed). Highlight fades after
+  // ~2.5s so the table looks normal again on subsequent interactions.
+  const focusName = searchParams.get('focus');
+  const focusBucketId = useMemo(() => {
+    if (!focusName) return null;
+    const needle = focusName.toLowerCase().trim();
+    return lines.find((l) => l.bucket_name.toLowerCase().trim() === needle)?.bucket_id ?? null;
+  }, [focusName, lines]);
+
+  const [highlight, setHighlight] = useState(false);
+  useEffect(() => {
+    if (!focusBucketId) return;
+    setHighlight(true);
+    const t = setTimeout(() => setHighlight(false), 2500);
+    return () => clearTimeout(t);
+  }, [focusBucketId]);
 
   const sections = new Map<string, BudgetLine[]>();
   for (const line of lines) {
@@ -205,6 +226,8 @@ export function CostBucketsTable({ lines, projectId, costLines, catalog }: CostB
                         deleteLine={deleteLine}
                         projectId={projectId}
                         catalog={catalog}
+                        isFocused={line.bucket_id === focusBucketId}
+                        showHighlight={highlight && line.bucket_id === focusBucketId}
                       />
                     );
                   })}
@@ -256,6 +279,8 @@ type BucketRowProps = {
   deleteLine: (id: string) => void;
   projectId: string;
   catalog: MaterialsCatalogRow[];
+  isFocused: boolean;
+  showHighlight: boolean;
 };
 
 function BucketRow(props: BucketRowProps) {
@@ -281,11 +306,27 @@ function BucketRow(props: BucketRowProps) {
     deleteLine,
     projectId,
     catalog,
+    isFocused,
+    showHighlight,
   } = props;
+
+  // Callback ref — fires once when the focused row mounts; scroll into
+  // view smoothly so the user lands on it without scrolling manually.
+  const focusRef = (node: HTMLTableRowElement | null) => {
+    if (node && isFocused) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
 
   return (
     <>
-      <tr className="border-b last:border-0">
+      <tr
+        ref={isFocused ? focusRef : undefined}
+        className={cn(
+          'border-b transition-colors last:border-0',
+          showHighlight && 'bg-primary/10 ring-2 ring-primary/40 ring-inset',
+        )}
+      >
         <td className="px-2 py-2">
           <button
             type="button"
