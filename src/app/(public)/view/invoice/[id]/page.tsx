@@ -27,7 +27,7 @@ export default async function PublicInvoiceViewPage({
   const { data: invoice } = await supabase
     .from('invoices')
     .select(
-      'id, tenant_id, customer_id, status, amount_cents, tax_cents, line_items, customer_note, pdf_url, sent_at, paid_at, created_at',
+      'id, tenant_id, customer_id, status, doc_type, amount_cents, tax_cents, line_items, customer_note, pdf_url, sent_at, paid_at, created_at',
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -86,6 +86,8 @@ export default async function PublicInvoiceViewPage({
   const isPaid = invoice.status === 'paid';
   const isVoid = invoice.status === 'void';
   const paymentUrl = invoice.pdf_url;
+  const isDraw = invoice.doc_type === 'draw';
+  const docLabel = isDraw ? 'Draw Request' : 'Invoice';
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:py-12">
@@ -93,14 +95,22 @@ export default async function PublicInvoiceViewPage({
       {/* Header */}
       <div className="mb-8 text-center">
         <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{businessName}</h1>
-        <p className="mt-1 text-sm text-gray-500">Invoice #{id.slice(0, 8)}</p>
+        <p className="mt-1 text-sm text-gray-500">
+          {docLabel} #{id.slice(0, 8)}
+        </p>
+        {isDraw ? (
+          <p className="mt-1 text-xs text-gray-500">
+            Progress payment against your accepted estimate. Will be reconciled against the final
+            invoice on completion.
+          </p>
+        ) : null}
       </div>
 
       {/* Status banner */}
       {isPaid && (
         <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
           <p className="text-sm font-medium text-emerald-800">
-            This invoice has been paid.
+            This {docLabel.toLowerCase()} has been paid.
             {invoice.paid_at &&
               ` Paid on ${new Date(invoice.paid_at).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}.`}
           </p>
@@ -108,7 +118,9 @@ export default async function PublicInvoiceViewPage({
       )}
       {isVoid && (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-center">
-          <p className="text-sm font-medium text-red-800">This invoice has been voided.</p>
+          <p className="text-sm font-medium text-red-800">
+            This {docLabel.toLowerCase()} has been voided.
+          </p>
         </div>
       )}
 
@@ -120,7 +132,7 @@ export default async function PublicInvoiceViewPage({
             <p className="font-medium text-gray-900">{customer?.name ?? 'Customer'}</p>
           </div>
           <div>
-            <span className="text-gray-500">Invoice date</span>
+            <span className="text-gray-500">{docLabel} date</span>
             <p className="font-medium text-gray-900">{invoiceDate}</p>
           </div>
           {customer?.address_line1 && (

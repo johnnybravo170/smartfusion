@@ -33,7 +33,12 @@ export type InvoiceActionResult =
  * Create a draft invoice for a completed job. If the job has a linked quote,
  * we use the quote's total_cents as the invoice amount. Tax is 5% GST.
  */
-export async function createInvoiceAction(input: { jobId: string }): Promise<InvoiceActionResult> {
+export async function createInvoiceAction(input: {
+  jobId: string;
+  /** 'draw' = progress payment request against an open contract.
+   *  Defaults to 'invoice'. */
+  docType?: 'invoice' | 'draw';
+}): Promise<InvoiceActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) {
     return { ok: false, error: 'Not signed in or missing tenant.' };
@@ -115,6 +120,7 @@ export async function createInvoiceAction(input: { jobId: string }): Promise<Inv
     };
   }
 
+  const docType = input.docType === 'draw' ? 'draw' : 'invoice';
   const { data, error } = await supabase
     .from('invoices')
     .insert({
@@ -124,6 +130,7 @@ export async function createInvoiceAction(input: { jobId: string }): Promise<Inv
       status: 'draft',
       amount_cents: parsed.data.amount_cents,
       tax_cents: parsed.data.tax_cents,
+      doc_type: docType,
     })
     .select('id')
     .single();
@@ -133,11 +140,12 @@ export async function createInvoiceAction(input: { jobId: string }): Promise<Inv
   }
 
   // Worklog entry.
+  const docLabel = docType === 'draw' ? 'Draw request' : 'Invoice';
   await supabase.from('worklog_entries').insert({
     tenant_id: tenant.id,
     entry_type: 'system',
-    title: 'Invoice created',
-    body: `Draft invoice #${data.id.slice(0, 8)} created for $${(amountCents / 100).toFixed(2)} + $${(taxCents / 100).toFixed(2)} GST.`,
+    title: `${docLabel} created`,
+    body: `Draft ${docLabel.toLowerCase()} #${data.id.slice(0, 8)} created for $${(amountCents / 100).toFixed(2)} + $${(taxCents / 100).toFixed(2)} GST.`,
     related_type: 'job',
     related_id: input.jobId,
   });

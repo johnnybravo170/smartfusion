@@ -266,7 +266,12 @@ export function ChangeOrderDetail({
                         {d.action}
                       </span>
                     </td>
-                    <td className="py-1.5 align-top">{label}</td>
+                    <td className="py-1.5 align-top">
+                      <div>{label}</div>
+                      {d.notes ? (
+                        <div className="mt-0.5 text-xs italic text-muted-foreground">{d.notes}</div>
+                      ) : null}
+                    </td>
                     <td className="py-1.5 align-top text-xs text-muted-foreground">
                       {d.budget_category_id
                         ? (budgetCategoryNamesById[d.budget_category_id] ?? '—')

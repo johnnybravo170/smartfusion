@@ -51,6 +51,7 @@ export type ChangeOrderLineRow = {
   unit_price_cents: number | null;
   line_cost_cents: number | null;
   line_price_cents: number | null;
+  notes: string | null;
   before_snapshot: Record<string, unknown> | null;
 };
 
@@ -59,7 +60,7 @@ export async function listChangeOrderLines(changeOrderId: string): Promise<Chang
   const { data } = await supabase
     .from('change_order_lines')
     .select(
-      'id, change_order_id, action, original_line_id, budget_category_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, line_cost_cents, line_price_cents, before_snapshot',
+      'id, change_order_id, action, original_line_id, budget_category_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, line_cost_cents, line_price_cents, notes, before_snapshot',
     )
     .eq('change_order_id', changeOrderId)
     .order('created_at', { ascending: true });

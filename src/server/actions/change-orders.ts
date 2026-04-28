@@ -40,6 +40,7 @@ type ChangeOrderDiffEntry = {
   unit_price_cents?: number;
   line_cost_cents?: number;
   line_price_cents?: number;
+  notes?: string;
   before_snapshot?: Record<string, unknown>;
 };
 
@@ -116,6 +117,7 @@ export async function createChangeOrderV2Action(input: {
     unit_price_cents: d.unit_price_cents ?? null,
     line_cost_cents: d.line_cost_cents ?? null,
     line_price_cents: d.line_price_cents ?? null,
+    notes: d.notes?.trim() || null,
     before_snapshot: d.before_snapshot ?? null,
   }));
 
