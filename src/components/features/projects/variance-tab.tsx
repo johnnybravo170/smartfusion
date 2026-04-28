@@ -1,3 +1,5 @@
+import { ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 import { formatCurrency } from '@/lib/pricing/calculator';
 
 type VarianceData = {
@@ -49,9 +51,13 @@ function StatBox({
 export function VarianceTab({
   variance,
   lifecycleStage,
+  projectId,
 }: {
   variance: VarianceData;
   lifecycleStage?: string;
+  /** Optional — when provided, category rows + section heading deep-link
+   *  to the Budget tab so users can edit estimates from this view. */
+  projectId?: string;
 }) {
   const {
     estimated_cents,
@@ -110,7 +116,19 @@ export function VarianceTab({
       {/* By-category breakdown */}
       {by_category.length > 0 && (
         <div>
-          <h3 className="mb-3 text-sm font-semibold">By Category</h3>
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h3 className="text-sm font-semibold">By Category</h3>
+            {projectId ? (
+              <Link
+                href={`/projects/${projectId}?tab=buckets`}
+                prefetch={false}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+              >
+                Edit in Budget
+                <ArrowRight className="size-3" />
+              </Link>
+            ) : null}
+          </div>
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full text-sm">
               <thead>
@@ -125,7 +143,19 @@ export function VarianceTab({
               <tbody>
                 {by_category.map((row) => (
                   <tr key={row.category} className="border-b last:border-0">
-                    <td className="px-3 py-2 capitalize font-medium">{row.category}</td>
+                    <td className="px-3 py-2 capitalize font-medium">
+                      {projectId ? (
+                        <Link
+                          href={`/projects/${projectId}?tab=buckets`}
+                          prefetch={false}
+                          className="hover:underline"
+                        >
+                          {row.category}
+                        </Link>
+                      ) : (
+                        row.category
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-right">{formatCurrency(row.estimated_cents)}</td>
                     <td className="px-3 py-2 text-right text-muted-foreground">
                       {formatCurrency(row.committed_cents)}

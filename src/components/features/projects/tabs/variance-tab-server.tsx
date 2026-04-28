@@ -7,5 +7,11 @@ export default async function VarianceTabServer({ projectId }: { projectId: stri
     getVarianceReport(projectId),
     getProject(projectId),
   ]);
-  return <VarianceTab variance={variance} lifecycleStage={project?.lifecycle_stage} />;
+  return (
+    <VarianceTab
+      variance={variance}
+      lifecycleStage={project?.lifecycle_stage}
+      projectId={projectId}
+    />
+  );
 }

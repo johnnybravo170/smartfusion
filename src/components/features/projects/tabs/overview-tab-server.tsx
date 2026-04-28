@@ -16,7 +16,11 @@ export default async function OverviewTabServer({ projectId }: { projectId: stri
     <div className="space-y-6">
       {/* Variance is the headline "are we on track?" view. Used to live on
           its own tab — merged in 2026-04-27 to remove a redundant click. */}
-      <VarianceTab variance={variance} lifecycleStage={project.lifecycle_stage} />
+      <VarianceTab
+        variance={variance}
+        lifecycleStage={project.lifecycle_stage}
+        projectId={projectId}
+      />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <div className="rounded-lg border p-4">
