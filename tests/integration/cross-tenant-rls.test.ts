@@ -258,7 +258,7 @@ async function provisionTenant(
 
   await admin
     .from('tenant_members')
-    .insert({ tenant_id: tenantId, user_id: userId, role: 'owner' });
+    .insert({ tenant_id: tenantId, user_id: userId, role: 'owner', is_active_for_user: true });
 
   // Seed a customer + project + quote + job + invoice + ar_contact so the
   // child-table cases can FK against real rows. We do this once per tenant
@@ -380,6 +380,111 @@ describe.skipIf(!canRun)('cross-tenant RLS isolation (integration)', () => {
     if (tenantA?.userId) await admin.auth.admin.deleteUser(tenantA.userId).catch(() => {});
     if (tenantB?.userId) await admin.auth.admin.deleteUser(tenantB.userId).catch(() => {});
     await closeDb();
+  });
+
+  describe('active-membership scoping (multi-tenant user)', () => {
+    let multiUser: { userId: string; email: string };
+    let anonMulti: SupabaseClient;
+    const multiPassword = 'Correct-Horse-9-multi';
+
+    beforeAll(async () => {
+      // A user who belongs to BOTH tenant A and tenant B. Active starts on A.
+      const email = `rls-multi-${stamp}@heyhenry.test`;
+      const created = await admin.auth.admin.createUser({
+        email,
+        password: multiPassword,
+        email_confirm: true,
+      });
+      const userId = created.data.user?.id;
+      if (!userId) throw new Error('multi-user createUser failed');
+      multiUser = { userId, email };
+
+      await admin.from('tenant_members').insert({
+        tenant_id: tenantA.tenantId,
+        user_id: userId,
+        role: 'member',
+        is_active_for_user: true,
+      });
+      await admin.from('tenant_members').insert({
+        tenant_id: tenantB.tenantId,
+        user_id: userId,
+        role: 'member',
+        is_active_for_user: false,
+      });
+
+      const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
+      anonMulti = createSupabaseClient(supaUrl, anonKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const signIn = await anonMulti.auth.signInWithPassword({
+        email,
+        password: multiPassword,
+      });
+      if (signIn.error) throw new Error(`multi-user sign-in failed: ${signIn.error.message}`);
+    }, 30_000);
+
+    afterAll(async () => {
+      if (multiUser?.userId) {
+        await admin.auth.admin.deleteUser(multiUser.userId).catch(() => {});
+      }
+    });
+
+    async function customerIdsVisible(client: SupabaseClient): Promise<string[]> {
+      const r = await client.from('customers').select('id, tenant_id');
+      if (r.error) throw new Error(`select failed: ${r.error.message}`);
+      return (r.data ?? []).map((row) => (row as { id: string }).id);
+    }
+
+    it('sees only active tenant before/after switch', async () => {
+      // Active = A. Should see A's seeded customer, not B's.
+      let visible = await customerIdsVisible(anonMulti);
+      expect(visible, 'multi-user (active=A) should see A.customer').toContain(tenantA.customerId);
+      expect(visible, 'multi-user (active=A) should NOT see B.customer').not.toContain(
+        tenantB.customerId,
+      );
+
+      // Switch to B via the SECURITY DEFINER RPC.
+      const switchToB = await anonMulti.rpc('set_active_tenant_member', {
+        target_tenant_id: tenantB.tenantId,
+      });
+      expect(switchToB.error, 'switch to B should succeed').toBeNull();
+
+      visible = await customerIdsVisible(anonMulti);
+      expect(visible, 'multi-user (active=B) should see B.customer').toContain(tenantB.customerId);
+      expect(visible, 'multi-user (active=B) should NOT see A.customer').not.toContain(
+        tenantA.customerId,
+      );
+
+      // Switch back to A.
+      const switchToA = await anonMulti.rpc('set_active_tenant_member', {
+        target_tenant_id: tenantA.tenantId,
+      });
+      expect(switchToA.error, 'switch back to A should succeed').toBeNull();
+
+      visible = await customerIdsVisible(anonMulti);
+      expect(visible, 'multi-user (active=A again) should see A.customer').toContain(
+        tenantA.customerId,
+      );
+      expect(visible, 'multi-user (active=A again) should NOT see B.customer').not.toContain(
+        tenantB.customerId,
+      );
+    }, 30_000);
+
+    it('cannot switch into a tenant the user does not belong to', async () => {
+      // Provision a stranger tenant the multi-user has no membership in.
+      const stranger = await provisionTenant(admin, 'stranger', stamp);
+      try {
+        const result = await anonMulti.rpc('set_active_tenant_member', {
+          target_tenant_id: stranger.tenantId,
+        });
+        expect(result.error, 'RPC should reject switching to a non-member tenant').not.toBeNull();
+      } finally {
+        const db = getDb();
+        await db.delete(tenants).where(eq(tenants.id, stranger.tenantId));
+        await admin.auth.admin.deleteUser(stranger.userId).catch(() => {});
+      }
+    }, 30_000);
   });
 
   it.each(RLS_TABLE_CASES.map((c) => [c.table, c]))(

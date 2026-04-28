@@ -148,7 +148,12 @@ authenticates as A, and runs five assertions per table:
 - `tests/integration/cross-tenant-rls.test.ts` — the runner. Add new tables
   by appending to `RLS_TABLE_CASES`. See the comment block at the top for
   the entry shape (table name, seed function, update payload, optional
-  insert-rejection payload).
+  insert-rejection payload). The same file also contains an
+  `'active-membership scoping (multi-tenant user)'` block that proves
+  `current_tenant_id()` honors the active flag — one user with two
+  memberships sees only the active tenant's data, switching via the
+  `set_active_tenant_member` RPC swaps visibility, and the RPC rejects
+  switches to tenants the caller doesn't belong to.
 - `tests/integration/customers-rls.test.ts` — older single-table version,
   kept for reference; the comprehensive runner above covers customers too.
 
