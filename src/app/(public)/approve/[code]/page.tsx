@@ -1,4 +1,6 @@
+import { ChangeOrderDiffView } from '@/components/features/change-orders/change-order-diff-view';
 import { PublicViewLogger } from '@/components/features/public/public-view-logger';
+import type { ChangeOrderLineRow } from '@/lib/db/queries/change-orders';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ApprovalForm } from './approval-form';
 
@@ -14,8 +16,9 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
   const { data: co } = await admin
     .from('change_orders')
     .select(
-      `id, title, description, reason, cost_impact_cents, timeline_impact_days,
+      `id, project_id, title, description, reason, cost_impact_cents, timeline_impact_days,
        status, approved_by_name, approved_at, declined_at, declined_reason, approval_code,
+       flow_version, category_notes,
        projects:project_id (name, customers:customer_id (name)),
        tenants:tenant_id (name)`,
     )
@@ -113,8 +116,38 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
 
   const timelineDays = coData.timeline_impact_days as number;
 
+  // For v2 COs, surface the line-level diff + per-category notes so the
+  // homeowner sees exactly what changed before signing. v1 stays text-only.
+  const flowVersion = (coData.flow_version as number | null) ?? 1;
+  const categoryNotes =
+    (coData.category_notes as { budget_category_id: string; note: string }[] | null) ?? [];
+
+  let diffLines: ChangeOrderLineRow[] = [];
+  let budgetCategoryNamesById: Record<string, string> = {};
+  if (flowVersion === 2) {
+    const { data: lines } = await admin
+      .from('change_order_lines')
+      .select(
+        'id, change_order_id, action, original_line_id, budget_category_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, line_cost_cents, line_price_cents, notes, before_snapshot',
+      )
+      .eq('change_order_id', coData.id as string)
+      .order('created_at', { ascending: true });
+    diffLines = (lines ?? []) as ChangeOrderLineRow[];
+
+    const projectId = coData.project_id as string;
+    const { data: cats } = await admin
+      .from('project_budget_categories')
+      .select('id, name')
+      .eq('project_id', projectId);
+    budgetCategoryNamesById = Object.fromEntries(
+      ((cats ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name]),
+    );
+  }
+
+  const showDiff = flowVersion === 2 && (diffLines.length > 0 || categoryNotes.length > 0);
+
   return (
-    <div className="mx-auto max-w-lg px-4 py-12">
+    <div className={`mx-auto px-4 py-12 ${showDiff ? 'max-w-2xl' : 'max-w-lg'}`}>
       <PublicViewLogger resourceType="change_order" identifier={code} />
       <div className="mb-8 text-center">
         <p className="text-sm font-medium text-muted-foreground">{businessName}</p>
@@ -151,6 +184,14 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
             </p>
           </div>
         </div>
+
+        {showDiff ? (
+          <ChangeOrderDiffView
+            diffLines={diffLines}
+            categoryNotes={categoryNotes}
+            budgetCategoryNamesById={budgetCategoryNamesById}
+          />
+        ) : null}
 
         <ApprovalForm approvalCode={code} />
       </div>
