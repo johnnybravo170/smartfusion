@@ -42,7 +42,9 @@ jobs:
   e2e:
     name: Playwright E2E
     runs-on: ubuntu-latest
-    continue-on-error: true
+    # E2E now blocks merges. Specs run against a fresh Supabase local
+    # stack started in this job, so failures are signal — not flake from
+    # missing prod creds.
     steps:
       - uses: actions/checkout@v4
 
@@ -63,8 +65,29 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Start Supabase local stack
+        # Boots Postgres + GoTrue + PostgREST + storage in Docker. All
+        # migrations under supabase/migrations/ apply automatically.
+        run: pnpm exec supabase start
+
+      - name: Export Supabase env
+        # Remap the local stack's URLs / keys to the env names the app
+        # expects (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        # SUPABASE_SERVICE_ROLE_KEY) and pipe into GITHUB_ENV so
+        # subsequent steps + the dev server Playwright launches see them.
+        run: |
+          pnpm exec supabase status -o env \
+            --override-name api.url=NEXT_PUBLIC_SUPABASE_URL \
+            --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_ANON_KEY \
+            --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY \
+            >> "$GITHUB_ENV"
+
       - name: Run E2E tests
         run: pnpm test:e2e
+
+      - name: Stop Supabase local stack
+        if: always()
+        run: pnpm exec supabase stop --no-backup
 
       - name: Upload Playwright report
         if: always()
