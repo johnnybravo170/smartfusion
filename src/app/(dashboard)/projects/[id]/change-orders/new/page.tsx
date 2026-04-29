@@ -28,10 +28,10 @@ export default async function NewChangeOrderPage({
   const project = await getProject(id);
   if (!project) notFound();
 
-  // Phase 1 line-diff form: opt-in via ?v2=1. Existing flow stays default
-  // until the diff editor is fully verified end-to-end (apply-on-approval,
-  // estimate-page guard, audit log). See decisions log + kanban 707d5395.
-  const useDiffForm = sp.v2 === '1';
+  // Line-diff form is now the default. Apply-on-approval (kanban 8ce69bad)
+  // and estimate-page guard (kanban 0f042025) are live, closing the loop.
+  // Legacy even-distribute form still reachable via ?v2=0 as an escape hatch.
+  const useDiffForm = sp.v2 !== '0';
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -44,18 +44,7 @@ export default async function NewChangeOrderPage({
       </Link>
 
       <h1 className="mb-2 text-2xl font-semibold tracking-tight">New Change Order</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Project: {project.name}
-        {useDiffForm ? (
-          <>
-            {' '}
-            ·{' '}
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-              line-diff preview
-            </span>
-          </>
-        ) : null}
-      </p>
+      <p className="mb-6 text-sm text-muted-foreground">Project: {project.name}</p>
 
       {useDiffForm ? (
         <ChangeOrderDiffForm
