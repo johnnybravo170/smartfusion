@@ -147,55 +147,39 @@ export async function getVarianceReport(projectId: string): Promise<{
   margin_at_risk_cents: number;
   by_category: VarianceRow[];
 }> {
+  // Sourced from getBudgetVsActual so Overview groups + numbers match the
+  // Budget tab exactly. Previously this function grouped by the cost_lines
+  // `category` enum (material/labour/sub/equipment/overhead) which lied
+  // about the project's actual category structure (operator-named
+  // budget_categories). Single source of truth now.
+  const { getBudgetVsActual } = await import('./project-budget-categories');
   const supabase = await createClient();
 
-  // Fetch all in parallel.
-  const [linesRes, posRes, billsRes, expensesRes] = await Promise.all([
-    supabase
-      .from('project_cost_lines')
-      .select('category, line_cost_cents, line_price_cents')
-      .eq('project_id', projectId),
-    supabase
-      .from('purchase_orders')
-      .select('total_cents, status')
-      .eq('project_id', projectId)
-      .in('status', ['sent', 'acknowledged', 'received']),
+  const [budget, billsRes, expensesRes] = await Promise.all([
+    getBudgetVsActual(projectId),
     supabase.from('project_bills').select('amount_cents').eq('project_id', projectId),
     supabase.from('expenses').select('amount_cents').eq('project_id', projectId),
   ]);
 
-  const lines = (linesRes.data ?? []) as {
-    category: string;
-    line_cost_cents: number;
-    line_price_cents: number;
-  }[];
-  const pos = (posRes.data ?? []) as { total_cents: number }[];
   const bills = (billsRes.data ?? []) as { amount_cents: number }[];
   const expenseRows = (expensesRes.data ?? []) as { amount_cents: number }[];
 
-  const estimated_cents = lines.reduce((s, l) => s + l.line_price_cents, 0);
-  const committed_cents = pos.reduce((s, p) => s + p.total_cents, 0);
   const actual_bills_cents = bills.reduce((s, b) => s + b.amount_cents, 0);
   const actual_expenses_cents = expenseRows.reduce((s, e) => s + e.amount_cents, 0);
   const actual_total_cents = actual_bills_cents + actual_expenses_cents;
-  const margin_at_risk_cents = estimated_cents - actual_total_cents;
 
-  // Rollup by category.
-  const categoryMap = new Map<string, { estimated: number; cost: number }>();
-  for (const l of lines) {
-    const existing = categoryMap.get(l.category) ?? { estimated: 0, cost: 0 };
-    categoryMap.set(l.category, {
-      estimated: existing.estimated + l.line_price_cents,
-      cost: existing.cost + l.line_cost_cents,
-    });
-  }
+  const estimated_cents = budget.total_estimate_cents;
+  const committed_cents = budget.total_committed_cents;
+  // Margin at risk = what's left in the envelope minus what's already
+  // committed. Negative means we've over-committed before all work lands.
+  const margin_at_risk_cents = estimated_cents - actual_total_cents - committed_cents;
 
-  const by_category: VarianceRow[] = Array.from(categoryMap.entries()).map(([cat, vals]) => ({
-    category: cat,
-    estimated_cents: vals.estimated,
-    committed_cents: 0,
-    actual_cents: 0,
-    margin_at_risk_cents: vals.estimated,
+  const by_category: VarianceRow[] = budget.lines.map((l) => ({
+    category: l.budget_category_name,
+    estimated_cents: l.estimate_cents,
+    committed_cents: l.committed_cents,
+    actual_cents: l.actual_cents,
+    margin_at_risk_cents: l.remaining_cents,
   }));
 
   return {
