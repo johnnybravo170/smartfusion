@@ -451,64 +451,49 @@ export function ChangeOrderDiffForm({
                 const hasAnyEdit = hasAnyLineEdit || envDelta !== 0;
                 return (
                   <div key={category.id} className="rounded-md border">
-                    <div className="space-y-1 border-b bg-muted/30 px-3 py-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium">{category.name}</div>
-                          {category.description ? (
-                            <div className="mt-0.5 text-xs text-muted-foreground">
-                              {category.description}
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="text-right">
-                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                              Envelope
-                            </div>
-                            <div className="flex items-center justify-end gap-1">
-                              <span className="text-xs text-muted-foreground">$</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                defaultValue={(category.estimate_cents / 100).toFixed(2)}
-                                disabled={hasAnyLineEdit}
-                                onChange={(e) =>
-                                  setEnvelopeEdits((prev) => ({
-                                    ...prev,
-                                    [category.id]: e.target.value,
-                                  }))
-                                }
-                                title={
-                                  hasAnyLineEdit
-                                    ? 'Editing line items already; envelope is implied by line totals'
-                                    : 'Adjust envelope for this category'
-                                }
-                                className="h-7 w-24 rounded-md border bg-background px-2 text-right text-sm tabular-nums disabled:opacity-50"
-                              />
-                            </div>
-                            {envDelta !== 0 ? (
-                              <div
-                                className={cn(
-                                  'mt-0.5 text-xs font-medium tabular-nums',
-                                  envDelta < 0 ? 'text-emerald-700' : 'text-amber-700',
-                                )}
-                              >
-                                {envDelta >= 0 ? '+' : ''}
-                                {formatCurrency(envDelta)}
-                              </div>
-                            ) : null}
+                    <div className="grid grid-cols-12 items-center gap-2 border-b bg-muted/30 px-3 py-2">
+                      <div className="col-span-7 min-w-0">
+                        <div className="text-sm font-medium">{category.name}</div>
+                        {category.description ? (
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            {category.description}
                           </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => addLine(category.id)}
+                        ) : null}
+                      </div>
+                      <div className="col-span-5 flex items-center justify-end gap-2">
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Envelope
+                        </span>
+                        <span className="text-xs text-muted-foreground">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          defaultValue={(category.estimate_cents / 100).toFixed(2)}
+                          disabled={hasAnyLineEdit}
+                          onChange={(e) =>
+                            setEnvelopeEdits((prev) => ({
+                              ...prev,
+                              [category.id]: e.target.value,
+                            }))
+                          }
+                          title={
+                            hasAnyLineEdit
+                              ? 'Editing line items already; envelope is implied by line totals'
+                              : 'Adjust envelope for this category'
+                          }
+                          className="h-7 w-24 rounded-md border bg-background px-2 text-right text-sm tabular-nums disabled:opacity-50"
+                        />
+                        {envDelta !== 0 ? (
+                          <span
+                            className={cn(
+                              'text-xs font-medium tabular-nums',
+                              envDelta < 0 ? 'text-emerald-700' : 'text-amber-700',
+                            )}
                           >
-                            <Plus className="size-3" />
-                            Add line
-                          </Button>
-                        </div>
+                            {envDelta >= 0 ? '+' : ''}
+                            {formatCurrency(envDelta)}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                     {hasAnyEdit ? (
@@ -528,9 +513,7 @@ export function ChangeOrderDiffForm({
                       </div>
                     ) : null}
                     {lines.length === 0 && addedHere.length === 0 ? (
-                      <p className="px-3 py-2 text-xs text-muted-foreground">
-                        No lines yet — click "+ Add line" to add one.
-                      </p>
+                      <p className="px-3 py-2 text-xs text-muted-foreground">No lines yet.</p>
                     ) : null}
                     {lines.map((line) => {
                       const isRemoved = removedIds.has(line.id);
@@ -714,6 +697,17 @@ export function ChangeOrderDiffForm({
                         </div>
                       );
                     })}
+                    <div className="border-t bg-muted/10 px-3 py-2">
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => addLine(category.id)}
+                      >
+                        <Plus className="size-3" />
+                        Add line to {category.name}
+                      </Button>
+                    </div>
                   </div>
                 );
               })}
