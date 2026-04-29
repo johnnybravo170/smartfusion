@@ -7,6 +7,10 @@
     {
       "path": "/api/ops/git-stats/run",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/ops/triage-feedback/run",
+      "schedule": "10 * * * *"
     }
   ]
 }
