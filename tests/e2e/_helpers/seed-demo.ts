@@ -112,7 +112,7 @@ export async function seedDemo(opts: { label?: string } = {}): Promise<SeededDem
       tenant_id: tenantId,
       customer_id: customerId,
       name: 'Kitchen reno',
-      lifecycle_stage: 'estimating',
+      lifecycle_stage: 'active',
       management_fee_rate: 0.18,
       estimate_status: 'approved',
       estimate_approved_at: new Date().toISOString(),
