@@ -98,6 +98,7 @@ export default async function DashboardPage() {
   const tasksToVerify = await listTasksAwaitingVerification();
 
   const firstName = operator?.firstName?.trim() || null;
+  const isJonathan = user?.email === 'jonathan@smartfusion.ca';
 
   return (
     <div className="flex flex-col gap-6">
@@ -152,7 +153,7 @@ export default async function DashboardPage() {
 
       <RecentActivity entries={recentActivity} timezone={tz} />
 
-      <OverflowProbe />
+      {isJonathan ? <OverflowProbe /> : null}
     </div>
   );
 }
