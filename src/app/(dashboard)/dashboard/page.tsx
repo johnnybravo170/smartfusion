@@ -1,4 +1,3 @@
-import { OverflowProbe } from '@/components/debug/overflow-probe';
 import { ChecklistDashboardChip } from '@/components/features/checklist/dashboard-chip';
 import { CommandCenter, PersonalTasksCard } from '@/components/features/dashboard/command-center';
 import { EstimateCelebrationCard } from '@/components/features/dashboard/estimate-celebration-card';
@@ -151,8 +150,6 @@ export default async function DashboardPage() {
       <NeedsAttention items={attentionItems} />
 
       <RecentActivity entries={recentActivity} timezone={tz} />
-
-      <OverflowProbe />
     </div>
   );
 }

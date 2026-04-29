@@ -69,7 +69,7 @@ export function RecentActivity({
                     >
                       <Icon className="size-3" />
                     </Badge>
-                    <span className="truncate flex-1">
+                    <span className="min-w-0 flex-1 truncate">
                       {entry.title}
                       {entry.project_name ? (
                         <span className="text-muted-foreground"> — {entry.project_name}</span>
