@@ -5,6 +5,7 @@ import {
   type ActorCtx,
   archiveCard,
   commentCard,
+  createCard,
   listCards,
   moveCard,
   updateCard,
@@ -146,11 +147,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Sentry incidents: spawn a kanban card for each open incident that doesn't
+  // have one yet. No Gemini call — Sentry payload is already structured.
+  const incidentActions = await surfaceOpenIncidents();
+
   // Worklog the run so Jonathan / Claude can see triage history.
   const promoted = actions.filter((a) => a.applied === 'promoted').length;
   const archivedCount = actions.filter((a) => a.applied === 'archived').length;
   const dedupedCount = actions.filter((a) => a.applied === 'deduped').length;
   const failed = actions.filter((a) => a.applied === 'failed' || a.applied === 'skipped').length;
+  const incidentsSpawned = incidentActions.filter((a) => a.applied === 'spawned').length;
 
   const service = createServiceClient();
   await service
@@ -159,14 +165,88 @@ export async function GET(req: NextRequest) {
     .insert({
       actor_type: 'agent',
       actor_name: 'feedback-triage',
-      title: `Feedback triage: ${promoted} promoted, ${archivedCount} archived, ${dedupedCount} deduped${failed ? `, ${failed} failed` : ''}`,
-      body: JSON.stringify({ actions }, null, 2),
+      title: `Triage: ${promoted} promoted, ${archivedCount} archived, ${dedupedCount} deduped, ${incidentsSpawned} incidents surfaced${failed ? `, ${failed} failed` : ''}`,
+      body: JSON.stringify({ actions, incidentActions }, null, 2),
       category: 'ops',
       site: 'ops',
       tags: ['triage', 'feedback'],
     });
 
-  return NextResponse.json({ ok: true, triaged: inbox.length, actions });
+  return NextResponse.json({
+    ok: true,
+    triaged: inbox.length,
+    actions,
+    incidents_surfaced: incidentsSpawned,
+    incident_actions: incidentActions,
+  });
+}
+
+async function surfaceOpenIncidents(): Promise<
+  Array<{ incident_id: string; applied: string; card_id?: string; error?: string }>
+> {
+  const service = createServiceClient();
+
+  const { data: openIncidents, error: incErr } = await service
+    .schema('ops')
+    .from('incidents')
+    .select('id, source, severity, title, body, context, created_at')
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (incErr) throw new Error(`incidents query failed: ${incErr.message}`);
+  if (!openIncidents || openIncidents.length === 0) return [];
+
+  const incidentIds = openIncidents.map((i) => i.id as string);
+  const { data: existingCards } = await service
+    .schema('ops')
+    .from('kanban_cards')
+    .select('related_id')
+    .eq('related_type', 'incident')
+    .in('related_id', incidentIds)
+    .is('archived_at', null);
+  const surfacedIds = new Set((existingCards ?? []).map((c) => c.related_id as string));
+
+  const results: Array<{ incident_id: string; applied: string; card_id?: string; error?: string }> =
+    [];
+
+  for (const inc of openIncidents) {
+    const incId = inc.id as string;
+    if (surfacedIds.has(incId)) {
+      results.push({ incident_id: incId, applied: 'skipped' });
+      continue;
+    }
+
+    try {
+      const sev = (inc.severity as string) ?? 'med';
+      const title = `[${sev}] ${inc.title}`.slice(0, 500);
+      const body = `**Auto-surfaced from Sentry incident** \`${incId}\`
+
+Severity: \`${sev}\` · Source: \`${inc.source}\` · Opened: ${new Date(inc.created_at as string).toISOString()}
+
+${(inc.body as string | null) ?? '(no body)'}
+
+[Open incident in ops](https://ops.heyhenry.io/incidents/${incId})`;
+
+      const { id: cardId } = await createCard(ACTOR, {
+        boardSlug: 'dev',
+        column: 'todo',
+        title,
+        body,
+        tags: ['triage:claude', 'from-sentry'],
+        related_type: 'incident',
+        related_id: incId,
+      });
+      results.push({ incident_id: incId, applied: 'spawned', card_id: cardId });
+    } catch (e) {
+      results.push({
+        incident_id: incId,
+        applied: 'failed',
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  return results;
 }
 
 async function classify(
