@@ -9,6 +9,18 @@ type VarianceData = {
   estimated_cents: number;
   lines_subtotal_cents: number;
   mgmt_fee_cents: number;
+  mgmt_fee_rate: number;
+  mgmt_fee_breakdown: {
+    baseline_lines_cents: number;
+    baseline_fee_cents: number;
+    co_overrides: {
+      co_id: string;
+      cost_impact_cents: number;
+      override_rate: number;
+      fee_cents: number;
+    }[];
+    effective_rate: number;
+  };
   envelope_total_cents: number;
   applied_co_impact_cents: number;
   pending_co_impact_cents: number;
@@ -69,6 +81,8 @@ type AnyCoSummary = {
   flow_version: 1 | 2;
   applied_at: string | null;
   approved_at: string | null;
+  management_fee_override_rate: number | null;
+  management_fee_override_reason: string | null;
   revenue_kind: 'applied' | 'approved_legacy' | 'pending' | 'other';
 };
 
@@ -119,8 +133,18 @@ export function VarianceTab({
     actual_total_cents,
     margin_at_risk_cents,
     by_category,
+    mgmt_fee_rate,
+    mgmt_fee_breakdown,
   } = variance;
   const envelopeGapCents = estimated_cents - envelope_total_cents;
+  // Override map: applied COs with a per-CO rate set, keyed for badging
+  // the per-CO row + the breakdown audit panel.
+  const overrideByCoId = new Map(mgmt_fee_breakdown.co_overrides.map((o) => [o.co_id, o]));
+  const hasOverrides = mgmt_fee_breakdown.co_overrides.length > 0;
+  const projectRatePct = (mgmt_fee_rate * 100).toFixed(2).replace(/\.?0+$/, '');
+  const effectiveRatePct = (mgmt_fee_breakdown.effective_rate * 100)
+    .toFixed(2)
+    .replace(/\.?0+$/, '');
   // Original signed scope = current lines minus what applied COs added.
   // Negative would mean applied COs net-removed scope; we still show it
   // as the pre-CO baseline so the operator sees the layering.
@@ -215,16 +239,48 @@ export function VarianceTab({
             ...(originalLinesCents !== 0
               ? [{ label: 'Original line items', value: originalLinesCents }]
               : []),
-            ...appliedChangeOrders.map((c) => ({
-              label: `Applied CO: ${c.title}`,
-              value: c.cost_impact_cents,
-              href: projectId ? `/projects/${projectId}/change-orders/${c.id}` : undefined,
-              badge: { kind: 'applied' as const },
-            })),
-            ...(mgmt_fee_cents > 0 ? [{ label: 'Management fee', value: mgmt_fee_cents }] : []),
+            ...appliedChangeOrders.map((c) => {
+              const ov = overrideByCoId.get(c.id);
+              const overridePct = ov
+                ? (ov.override_rate * 100).toFixed(2).replace(/\.?0+$/, '')
+                : null;
+              return {
+                label: ov
+                  ? `Applied CO: ${c.title} (${overridePct}% fee)`
+                  : `Applied CO: ${c.title}`,
+                value: c.cost_impact_cents,
+                href: projectId ? `/projects/${projectId}/change-orders/${c.id}` : undefined,
+                badge: { kind: 'applied' as const },
+              };
+            }),
+            ...(mgmt_fee_cents > 0
+              ? hasOverrides
+                ? [
+                    {
+                      label: `Management fee on baseline (${projectRatePct}%)`,
+                      value: mgmt_fee_breakdown.baseline_fee_cents,
+                    },
+                    ...mgmt_fee_breakdown.co_overrides.map((o) => {
+                      const co = appliedChangeOrders.find((c) => c.id === o.co_id);
+                      const ratePct = (o.override_rate * 100).toFixed(2).replace(/\.?0+$/, '');
+                      return {
+                        label: `Management fee on ${co?.title ?? 'CO'} (${ratePct}% override)`,
+                        value: o.fee_cents,
+                      };
+                    }),
+                  ]
+                : [{ label: `Management fee (${projectRatePct}%)`, value: mgmt_fee_cents }]
+              : []),
           ]}
           total={{ label: 'Estimated revenue', value: estimated_cents }}
-          footer={null}
+          footer={
+            hasOverrides ? (
+              <p className="text-xs text-muted-foreground">
+                Effective management fee: <span className="font-medium">{effectiveRatePct}%</span>{' '}
+                (project default {projectRatePct}%).
+              </p>
+            ) : null
+          }
           extraSection={(() => {
             const legacy = allChangeOrders.filter((c) => c.revenue_kind === 'approved_legacy');
             const pending = allChangeOrders.filter((c) => c.revenue_kind === 'pending');

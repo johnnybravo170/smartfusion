@@ -51,9 +51,14 @@ export default async function NewChangeOrderPage({
           projectId={id}
           budgetCategories={project.budget_categories}
           existingLines={await listCostLines(id)}
+          defaultManagementFeeRate={project.management_fee_rate}
         />
       ) : (
-        <ChangeOrderForm projectId={id} budgetCategories={project.budget_categories} />
+        <ChangeOrderForm
+          projectId={id}
+          budgetCategories={project.budget_categories}
+          defaultManagementFeeRate={project.management_fee_rate}
+        />
       )}
     </div>
   );

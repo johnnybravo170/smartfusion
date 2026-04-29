@@ -211,6 +211,25 @@ export function ChangeOrderDetail({
         </div>
       </div>
 
+      {co.management_fee_override_rate !== null ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/20">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+              Management fee override
+            </p>
+            <p className="text-sm font-semibold tabular-nums text-amber-900 dark:text-amber-100">
+              {(co.management_fee_override_rate * 100).toFixed(2).replace(/\.?0+$/, '')}%{' = '}
+              {formatCurrency(Math.round(co.cost_impact_cents * co.management_fee_override_rate))}
+            </p>
+          </div>
+          {co.management_fee_override_reason ? (
+            <p className="mt-1 text-sm italic text-amber-900 dark:text-amber-100">
+              {co.management_fee_override_reason}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {co.flow_version === 2 && co.applied_at ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 text-sm">
           <p className="text-xs text-emerald-800">

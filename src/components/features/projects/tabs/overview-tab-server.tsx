@@ -1,25 +1,31 @@
 import { VarianceTab } from '@/components/features/projects/budget-summary';
 import { ProjectTimeline } from '@/components/features/projects/project-timeline';
+import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
 import { getVarianceReport } from '@/lib/db/queries/cost-lines';
 import { listProjectEvents } from '@/lib/db/queries/project-events';
 import { getProject } from '@/lib/db/queries/projects';
 
 export default async function OverviewTabServer({ projectId }: { projectId: string }) {
-  const [project, variance, projectEvents] = await Promise.all([
+  const [project, variance, projectEvents, coContributions] = await Promise.all([
     getProject(projectId),
     getVarianceReport(projectId),
     listProjectEvents(projectId),
+    getProjectChangeOrderContributions(projectId),
   ]);
   if (!project) return null;
 
   return (
     <div className="space-y-6">
       {/* Variance is the headline "are we on track?" view. Used to live on
-          its own tab — merged in 2026-04-27 to remove a redundant click. */}
+          its own tab — merged in 2026-04-27 to remove a redundant click.
+          CO contributions feed the per-CO fee breakdown on the Revenue
+          card so per-CO management fee overrides surface here. */}
       <VarianceTab
         variance={variance}
         lifecycleStage={project.lifecycle_stage}
         projectId={projectId}
+        appliedChangeOrders={coContributions.appliedOrder}
+        allChangeOrders={coContributions.all}
       />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

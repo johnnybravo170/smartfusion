@@ -52,10 +52,15 @@ export function ChangeOrderDiffForm({
   projectId,
   budgetCategories,
   existingLines,
+  defaultManagementFeeRate,
 }: {
   projectId: string;
   budgetCategories: BudgetCategorySummary[];
   existingLines: CostLineRow[];
+  /** Project-level mgmt fee rate (0..0.5). Pre-fills the per-CO override
+   *  field. The customer-visible fee on this CO is computed from this
+   *  rate × cost_impact unless the operator overrides it. */
+  defaultManagementFeeRate: number;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -65,6 +70,15 @@ export function ChangeOrderDiffForm({
   const [description, setDescription] = useState('');
   const [reason, setReason] = useState('');
   const [timelineDays, setTimelineDays] = useState('0');
+
+  // Per-CO management fee. Pre-filled with the project default; operator
+  // can scale back as the project grows. Reason is required when the
+  // value differs from the default.
+  const defaultRatePct = (defaultManagementFeeRate * 100).toFixed(2).replace(/\.?0+$/, '');
+  const [mgmtFeePct, setMgmtFeePct] = useState(defaultRatePct);
+  const [mgmtFeeReason, setMgmtFeeReason] = useState('');
+  const mgmtFeeRateNum = parseFloat(mgmtFeePct || '0') / 100;
+  const mgmtFeeChanged = Math.abs(mgmtFeeRateNum - defaultManagementFeeRate) > 0.00001;
 
   const [editsById, setEditsById] = useState<Record<string, LineEdit>>({});
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
@@ -318,6 +332,12 @@ export function ChangeOrderDiffForm({
       return;
     }
 
+    if (mgmtFeeChanged && mgmtFeeReason.trim().length === 0) {
+      setError('Please add a reason for the management fee adjustment so the change is auditable.');
+      setLoading(false);
+      return;
+    }
+
     const result = await createChangeOrderV2Action({
       project_id: projectId,
       title,
@@ -329,6 +349,8 @@ export function ChangeOrderDiffForm({
       category_notes: Object.entries(notesByCategory)
         .map(([id, note]) => ({ budget_category_id: id, note: note.trim() }))
         .filter((n) => n.note.length > 0),
+      management_fee_override_rate: mgmtFeeChanged ? mgmtFeeRateNum : null,
+      management_fee_override_reason: mgmtFeeChanged ? mgmtFeeReason.trim() : null,
     });
     if (!result.ok) {
       setError(result.error);
@@ -401,6 +423,50 @@ export function ChangeOrderDiffForm({
               className="w-full rounded-md border px-3 py-2 text-sm"
             />
           </div>
+        </div>
+
+        <div className="rounded-md border bg-muted/20 p-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <label className="block text-sm font-medium" htmlFor="cd-mgmt-fee">
+              Management fee
+            </label>
+            <p className="text-xs text-muted-foreground">Project default: {defaultRatePct}%</p>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              id="cd-mgmt-fee"
+              type="number"
+              step="0.01"
+              min="0"
+              max="50"
+              value={mgmtFeePct}
+              onChange={(e) => setMgmtFeePct(e.target.value)}
+              className="h-8 w-24 rounded-md border bg-background px-2 text-right text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <span className="text-sm">%</span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              = {formatCurrency(Math.round(Math.max(totalDelta, 0) * mgmtFeeRateNum))} on this CO
+            </span>
+          </div>
+          {mgmtFeeChanged ? (
+            <div className="mt-3">
+              <label className="mb-1 block text-xs font-medium" htmlFor="cd-mgmt-fee-reason">
+                Reason for adjustment
+                <span className="ml-1 text-amber-700">(required)</span>
+              </label>
+              <input
+                id="cd-mgmt-fee-reason"
+                type="text"
+                value={mgmtFeeReason}
+                onChange={(e) => setMgmtFeeReason(e.target.value)}
+                placeholder="e.g. Scaling back as project size grew past budget"
+                className="h-8 w-full rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Recorded on the project overview audit trail. Visible to admins, not the customer.
+              </p>
+            </div>
+          ) : null}
         </div>
       </div>
 

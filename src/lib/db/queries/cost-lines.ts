@@ -142,8 +142,28 @@ export async function getVarianceReport(projectId: string): Promise<{
   estimated_cents: number;
   /** Sum of cost_lines (the customer-visible line subtotal — pre mgmt fee). */
   lines_subtotal_cents: number;
-  /** Management fee applied on top of the line subtotal. */
+  /** Management fee applied on top of the line subtotal. Includes any
+   *  per-CO override deltas (see mgmt_fee_breakdown). */
   mgmt_fee_cents: number;
+  /** Project-level default management fee rate (0..0.5). */
+  mgmt_fee_rate: number;
+  /** Per-CO override breakdown — surfaced on the Overview revenue card so
+   *  operators can see the effective rate evolve as scaled-back COs land.
+   *  Empty when no applied CO has an override set. */
+  mgmt_fee_breakdown: {
+    /** Lines + applied COs at the project default rate. */
+    baseline_lines_cents: number;
+    baseline_fee_cents: number;
+    /** One row per applied CO with an override rate set. */
+    co_overrides: {
+      co_id: string;
+      cost_impact_cents: number;
+      override_rate: number;
+      fee_cents: number;
+    }[];
+    /** Effective blended rate = total_fee / lines_subtotal. */
+    effective_rate: number;
+  };
   /** Sum of operator-set per-category budget envelopes. May diverge from
    *  lines_subtotal when envelopes hold "squishy" budget headroom or when
    *  cost_lines exceed envelope. */
@@ -200,7 +220,9 @@ export async function getVarianceReport(projectId: string): Promise<{
     supabase.from('time_entries').select('hours, hourly_rate_cents').eq('project_id', projectId),
     supabase
       .from('change_orders')
-      .select('status, applied_at, cost_impact_cents, flow_version')
+      .select(
+        'id, status, applied_at, cost_impact_cents, flow_version, management_fee_override_rate',
+      )
       .eq('project_id', projectId),
     supabase
       .from('project_sub_quote_allocations')
@@ -219,10 +241,12 @@ export async function getVarianceReport(projectId: string): Promise<{
   const lineRows = (linesRes.data ?? []) as { line_price_cents: number }[];
   const timeRows = (timeRes.data ?? []) as { hours: number; hourly_rate_cents: number | null }[];
   const coRows = (cosRes.data ?? []) as {
+    id: string;
     status: string;
     applied_at: string | null;
     cost_impact_cents: number;
     flow_version: number;
+    management_fee_override_rate: number | null;
   }[];
   const subQuoteAllocs = (subQuotesRes.data ?? []) as { allocated_cents: number }[];
   const poItems = (poItemsRes.data ?? []) as { line_total_cents: number }[];
@@ -237,8 +261,45 @@ export async function getVarianceReport(projectId: string): Promise<{
 
   const lines_subtotal_cents = lineRows.reduce((s, l) => s + l.line_price_cents, 0);
   const mgmt_fee_rate = (projectRes.data?.management_fee_rate as number | null) ?? 0;
-  const mgmt_fee_cents = Math.round(lines_subtotal_cents * mgmt_fee_rate);
   const envelope_total_cents = budget.total_estimate_cents;
+
+  // Per-CO management fee overrides. Applied (v2) COs already added their
+  // cost_impact into lines_subtotal_cents, so the project rate would
+  // otherwise apply uniformly. To honor an override, peel out that CO's
+  // share of the subtotal and re-apply at its override rate.
+  //
+  // Math:
+  //   overridden_co_impact = Σ cost_impact for applied COs with an override
+  //   overridden_co_fee    = Σ (cost_impact × override_rate)
+  //   baseline_lines       = lines_subtotal − overridden_co_impact
+  //   mgmt_fee_cents       = baseline_lines × project_rate + overridden_co_fee
+  //
+  // Negative cost_impact (descope CO) naturally reduces the fee. v1 COs
+  // are not in lines_subtotal, so their override is ignored here (same
+  // as how their cost_impact is invisible to estimated_cents today).
+  const overrideRows = coRows.filter(
+    (c) =>
+      c.flow_version === 2 &&
+      c.applied_at !== null &&
+      c.management_fee_override_rate !== null &&
+      typeof c.management_fee_override_rate === 'number',
+  );
+  const co_overrides = overrideRows.map((c) => {
+    const rate = c.management_fee_override_rate as number;
+    return {
+      co_id: c.id,
+      cost_impact_cents: c.cost_impact_cents,
+      override_rate: rate,
+      fee_cents: Math.round(c.cost_impact_cents * rate),
+    };
+  });
+  const overridden_co_impact_cents = co_overrides.reduce((s, c) => s + c.cost_impact_cents, 0);
+  const overridden_co_fee_cents = co_overrides.reduce((s, c) => s + c.fee_cents, 0);
+  const baseline_lines_cents = lines_subtotal_cents - overridden_co_impact_cents;
+  const baseline_fee_cents = Math.round(baseline_lines_cents * mgmt_fee_rate);
+  const mgmt_fee_cents = baseline_fee_cents + overridden_co_fee_cents;
+  const effective_rate =
+    lines_subtotal_cents > 0 ? mgmt_fee_cents / lines_subtotal_cents : mgmt_fee_rate;
 
   // Customer-contract revenue. Matches the Estimate tab grand total.
   const estimated_cents = lines_subtotal_cents + mgmt_fee_cents;
@@ -270,6 +331,13 @@ export async function getVarianceReport(projectId: string): Promise<{
     estimated_cents,
     lines_subtotal_cents,
     mgmt_fee_cents,
+    mgmt_fee_rate,
+    mgmt_fee_breakdown: {
+      baseline_lines_cents,
+      baseline_fee_cents,
+      co_overrides,
+      effective_rate,
+    },
     envelope_total_cents,
     applied_co_impact_cents,
     pending_co_impact_cents,

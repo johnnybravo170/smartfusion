@@ -248,6 +248,9 @@ export async function createChangeOrderV2Action(input: {
   cost_impact_cents: number;
   diff: ChangeOrderDiffEntry[];
   category_notes?: { budget_category_id: string; note: string }[];
+  /** Per-CO management fee override. NULL = use project default. */
+  management_fee_override_rate?: number | null;
+  management_fee_override_reason?: string | null;
 }): Promise<ChangeOrderActionResult> {
   if (!input.title.trim()) return { ok: false, error: 'Title is required.' };
   if (!input.description.trim()) return { ok: false, error: 'Description is required.' };
@@ -281,6 +284,11 @@ export async function createChangeOrderV2Action(input: {
       ),
       category_notes: (input.category_notes ?? []).filter((n) => n.note.trim().length > 0),
       flow_version: 2,
+      management_fee_override_rate:
+        typeof input.management_fee_override_rate === 'number'
+          ? input.management_fee_override_rate
+          : null,
+      management_fee_override_reason: input.management_fee_override_reason?.trim() || null,
       status: 'draft',
       approval_code: approvalCode,
       created_by: tenant.member.id,
@@ -332,6 +340,9 @@ export async function createChangeOrderAction(input: {
   affected_buckets?: string[];
   cost_breakdown?: { budget_category_id: string; amount_cents: number }[];
   category_notes?: { budget_category_id: string; note: string }[];
+  /** Per-CO management fee override. NULL = use project default. */
+  management_fee_override_rate?: number | null;
+  management_fee_override_reason?: string | null;
 }): Promise<ChangeOrderActionResult> {
   const parsed = changeOrderCreateSchema.safeParse(input);
   if (!parsed.success) {
@@ -365,6 +376,11 @@ export async function createChangeOrderAction(input: {
       affected_buckets: parsed.data.affected_buckets,
       cost_breakdown: parsed.data.cost_breakdown.filter((r) => r.amount_cents !== 0),
       category_notes: parsed.data.category_notes.filter((n) => n.note.length > 0),
+      management_fee_override_rate:
+        typeof parsed.data.management_fee_override_rate === 'number'
+          ? parsed.data.management_fee_override_rate
+          : null,
+      management_fee_override_reason: parsed.data.management_fee_override_reason?.trim() || null,
       status: 'draft',
       approval_code: approvalCode,
       created_by: tenant.member.id,

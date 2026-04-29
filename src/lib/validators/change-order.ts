@@ -69,6 +69,24 @@ export const changeOrderCreateSchema = z
         }),
       )
       .default([]),
+    /**
+     * Per-CO management fee override. NULL = inherit projects.management_fee_rate
+     * (so existing flows keep working unchanged). Bounded to 0..0.5 to mirror
+     * the DB CHECK constraint. Reason is required by the UI when the rate
+     * differs from the project default; here we only enforce length.
+     */
+    management_fee_override_rate: z.coerce
+      .number()
+      .min(0, { message: 'Management fee cannot be negative.' })
+      .max(0.5, { message: 'Management fee cannot exceed 50%.' })
+      .nullable()
+      .optional(),
+    management_fee_override_reason: z
+      .string()
+      .trim()
+      .max(500, { message: 'Reason must be at most 500 characters.' })
+      .nullable()
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.cost_breakdown.length === 0) return;
