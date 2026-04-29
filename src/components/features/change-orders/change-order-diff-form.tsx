@@ -21,7 +21,7 @@
  * default until this is verified end-to-end.
  */
 
-import { Plus, RotateCcw, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, RotateCcw, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -30,7 +30,7 @@ import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { BudgetCategorySummary } from '@/lib/db/queries/projects';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
-import { createChangeOrderV2Action, sendChangeOrderAction } from '@/server/actions/change-orders';
+import { createChangeOrderV2Action } from '@/server/actions/change-orders';
 
 type LineEdit = {
   qty?: string;
@@ -75,6 +75,11 @@ export function ChangeOrderDiffForm({
   // cents in buildDiff). Empty string = not edited. Tracked as
   // 'modify_envelope' diff entries.
   const [envelopeEdits, setEnvelopeEdits] = useState<Record<string, string>>({});
+  // Manual collapse override per category. Categories with no lines / no
+  // edits / no note auto-collapse; clicking the chevron forces them open
+  // (so the operator can add a line or note). Categories with anything
+  // active stay forced open.
+  const [forceOpenCategories, setForceOpenCategories] = useState<Set<string>>(new Set());
 
   // Group lines by budget_category_id, keyed for stable rendering.
   const linesByCategory = useMemo(() => {
@@ -303,7 +308,7 @@ export function ChangeOrderDiffForm({
     return diff;
   }
 
-  async function handleSubmit(sendImmediately: boolean) {
+  async function handleSubmit(goToPreview: boolean) {
     setLoading(true);
     setError(null);
     const diff = buildDiff();
@@ -330,15 +335,14 @@ export function ChangeOrderDiffForm({
       setLoading(false);
       return;
     }
-    if (sendImmediately && result.id) {
-      const sendResult = await sendChangeOrderAction(result.id);
-      if (!sendResult.ok) {
-        setError(sendResult.error);
-        setLoading(false);
-        return;
-      }
+    // Always land on the CO detail page so the operator can review the
+    // full diff + customer-facing summary before clicking "Send for
+    // Approval". Customer-facing email/SMS only fire from there.
+    if (goToPreview && result.id) {
+      router.push(`/projects/${projectId}/change-orders/${result.id}`);
+    } else {
+      router.push(`/projects/${projectId}?tab=change-orders`);
     }
-    router.push(`/projects/${projectId}?tab=change-orders`);
     router.refresh();
   }
 
@@ -449,17 +453,50 @@ export function ChangeOrderDiffForm({
                     ? newEnvCents - category.estimate_cents
                     : 0;
                 const hasAnyEdit = hasAnyLineEdit || envDelta !== 0;
+                const hasNote = (notesByCategory[category.id]?.trim() ?? '').length > 0;
+                // Auto-expand any category with content/edits/note. Empty
+                // untouched categories stay collapsed unless the operator
+                // toggles them open via the chevron.
+                const isExpanded =
+                  forceOpenCategories.has(category.id) ||
+                  lines.length > 0 ||
+                  addedHere.length > 0 ||
+                  hasAnyEdit ||
+                  hasNote;
+                function toggleOpen() {
+                  setForceOpenCategories((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(category.id)) next.delete(category.id);
+                    else next.add(category.id);
+                    return next;
+                  });
+                }
                 return (
                   <div key={category.id} className="rounded-md border">
                     <div className="grid grid-cols-12 items-center gap-2 border-b bg-muted/30 px-3 py-2">
-                      <div className="col-span-7 min-w-0">
-                        <div className="text-sm font-medium">{category.name}</div>
-                        {category.description ? (
-                          <div className="mt-0.5 text-xs text-muted-foreground">
-                            {category.description}
-                          </div>
-                        ) : null}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={toggleOpen}
+                        className="col-span-7 min-w-0 flex items-start gap-1.5 text-left"
+                        aria-expanded={isExpanded}
+                        aria-label={isExpanded ? 'Collapse category' : 'Expand category'}
+                      >
+                        <span className="mt-0.5 text-muted-foreground">
+                          {isExpanded ? (
+                            <ChevronDown className="size-4" />
+                          ) : (
+                            <ChevronRight className="size-4" />
+                          )}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium">{category.name}</span>
+                          {category.description ? (
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              {category.description}
+                            </span>
+                          ) : null}
+                        </span>
+                      </button>
                       <div className="col-span-5 flex items-center justify-end gap-2">
                         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
                           Budget
@@ -496,221 +533,231 @@ export function ChangeOrderDiffForm({
                         ) : null}
                       </div>
                     </div>
-                    <div
-                      className={cn(
-                        'border-b px-3 py-2',
-                        hasAnyEdit ? 'bg-amber-50/30' : 'bg-background',
-                      )}
-                    >
-                      <input
-                        type="text"
-                        value={notesByCategory[category.id] ?? ''}
-                        onChange={(e) =>
-                          setNotesByCategory((prev) => ({
-                            ...prev,
-                            [category.id]: e.target.value,
-                          }))
-                        }
-                        placeholder="Note for this category (optional — shown to the customer)"
-                        className="h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                    </div>
-                    {lines.length === 0 && addedHere.length === 0 ? (
+                    {isExpanded ? (
+                      <div
+                        className={cn(
+                          'border-b px-3 py-2',
+                          hasAnyEdit ? 'bg-amber-50/30' : 'bg-background',
+                        )}
+                      >
+                        <input
+                          type="text"
+                          value={notesByCategory[category.id] ?? ''}
+                          onChange={(e) =>
+                            setNotesByCategory((prev) => ({
+                              ...prev,
+                              [category.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Note for this category (optional — shown to the customer)"
+                          className="h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                      </div>
+                    ) : null}
+                    {isExpanded && lines.length === 0 && addedHere.length === 0 ? (
                       <p className="px-3 py-2 text-xs text-muted-foreground">No lines yet.</p>
                     ) : null}
-                    {lines.map((line) => {
-                      const isRemoved = removedIds.has(line.id);
-                      const edit = editsById[line.id];
-                      const isModified = edit !== undefined;
-                      const newQty = edit?.qty !== undefined ? Number(edit.qty) : Number(line.qty);
-                      const newUnitPriceCents =
-                        edit?.unit_price_dollars !== undefined
-                          ? Math.round(Number(edit.unit_price_dollars) * 100)
-                          : line.unit_price_cents;
-                      const newLinePrice = Math.round(newQty * newUnitPriceCents);
-                      const delta = isRemoved
-                        ? -line.line_price_cents
-                        : isModified
-                          ? newLinePrice - line.line_price_cents
-                          : 0;
-                      return (
-                        <div
-                          key={line.id}
-                          className={cn(
-                            'border-b px-3 py-2 text-sm last:border-0',
-                            isRemoved && 'bg-red-50/40 opacity-60',
-                            !isRemoved && isModified && 'bg-amber-50/40',
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              'grid grid-cols-12 items-center gap-2',
-                              isRemoved && 'line-through',
-                            )}
-                          >
-                            <div className="col-span-5">{line.label}</div>
-                            <div className="col-span-2">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                disabled={isRemoved}
-                                defaultValue={String(line.qty)}
-                                onChange={(e) => setEdit(line.id, { qty: e.target.value })}
-                                className="h-8 text-right text-sm"
-                                placeholder={`${line.qty}`}
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                disabled={isRemoved}
-                                defaultValue={(line.unit_price_cents / 100).toFixed(2)}
-                                onChange={(e) =>
-                                  setEdit(line.id, { unit_price_dollars: e.target.value })
-                                }
-                                className="h-8 text-right text-sm"
-                              />
-                            </div>
-                            <div className="col-span-2 text-right tabular-nums">
-                              {delta !== 0 ? (
-                                <span
-                                  className={cn(
-                                    'font-medium',
-                                    delta < 0 ? 'text-emerald-700' : 'text-amber-700',
-                                  )}
-                                >
-                                  {delta >= 0 ? '+' : ''}
-                                  {formatCurrency(delta)}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">
-                                  {formatCurrency(line.line_price_cents)}
-                                </span>
+                    {isExpanded ? (
+                      <>
+                        {/* Existing + added line items + Add line footer
+                            stay grouped so they hide together when the
+                            category is collapsed. */}
+                        {lines.map((line) => {
+                          const isRemoved = removedIds.has(line.id);
+                          const edit = editsById[line.id];
+                          const isModified = edit !== undefined;
+                          const newQty =
+                            edit?.qty !== undefined ? Number(edit.qty) : Number(line.qty);
+                          const newUnitPriceCents =
+                            edit?.unit_price_dollars !== undefined
+                              ? Math.round(Number(edit.unit_price_dollars) * 100)
+                              : line.unit_price_cents;
+                          const newLinePrice = Math.round(newQty * newUnitPriceCents);
+                          const delta = isRemoved
+                            ? -line.line_price_cents
+                            : isModified
+                              ? newLinePrice - line.line_price_cents
+                              : 0;
+                          return (
+                            <div
+                              key={line.id}
+                              className={cn(
+                                'border-b px-3 py-2 text-sm last:border-0',
+                                isRemoved && 'bg-red-50/40 opacity-60',
+                                !isRemoved && isModified && 'bg-amber-50/40',
                               )}
-                            </div>
-                            <div className="col-span-1 text-right">
-                              {isRemoved ? (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleRemove(line.id)}
-                                  aria-label="Restore"
-                                  title="Restore"
-                                  className="rounded p-1 hover:bg-muted"
-                                >
-                                  <RotateCcw className="size-3.5" />
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (isModified) clearEdit(line.id);
-                                    else toggleRemove(line.id);
-                                  }}
-                                  aria-label={isModified ? 'Discard edit' : 'Remove line'}
-                                  title={isModified ? 'Discard edit' : 'Remove line'}
-                                  className="rounded p-1 hover:bg-muted"
-                                >
-                                  <X className="size-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          {isModified || isRemoved ? (
-                            <input
-                              type="text"
-                              value={editsById[line.id]?.notes ?? ''}
-                              onChange={(e) => setEdit(line.id, { notes: e.target.value })}
-                              placeholder="Line note (optional — explains this specific change)"
-                              className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs no-underline focus:outline-none focus:ring-2 focus:ring-primary"
-                            />
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                    {addedHere.map((a) => {
-                      const qty = Number(a.qty);
-                      const unitPriceCents = Math.round(Number(a.unit_price_dollars) * 100);
-                      const linePrice =
-                        Number.isFinite(qty) && Number.isFinite(unitPriceCents)
-                          ? Math.round(qty * unitPriceCents)
-                          : 0;
-                      return (
-                        <div
-                          key={a.tempId}
-                          className="border-b bg-emerald-50/40 px-3 py-2 text-sm last:border-0"
-                        >
-                          <div className="grid grid-cols-12 items-center gap-2">
-                            <div className="col-span-5 flex items-center gap-2">
-                              <span className="rounded-full bg-emerald-200/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-900">
-                                New
-                              </span>
-                              <Input
-                                type="text"
-                                value={a.label}
-                                onChange={(e) => setAdded_(a.tempId, { label: e.target.value })}
-                                placeholder="Description"
-                                className="h-8 text-sm"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={a.qty}
-                                onChange={(e) => setAdded_(a.tempId, { qty: e.target.value })}
-                                className="h-8 text-right text-sm"
-                                placeholder="Qty"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={a.unit_price_dollars}
-                                onChange={(e) =>
-                                  setAdded_(a.tempId, { unit_price_dollars: e.target.value })
-                                }
-                                className="h-8 text-right text-sm"
-                                placeholder="$"
-                              />
-                            </div>
-                            <div className="col-span-2 text-right font-medium tabular-nums text-emerald-700">
-                              +{formatCurrency(linePrice)}
-                            </div>
-                            <div className="col-span-1 text-right">
-                              <button
-                                type="button"
-                                onClick={() => removeAdded(a.tempId)}
-                                aria-label="Cancel add"
-                                title="Cancel add"
-                                className="rounded p-1 hover:bg-muted"
+                            >
+                              <div
+                                className={cn(
+                                  'grid grid-cols-12 items-center gap-2',
+                                  isRemoved && 'line-through',
+                                )}
                               >
-                                <X className="size-3.5" />
-                              </button>
+                                <div className="col-span-5">{line.label}</div>
+                                <div className="col-span-2">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    disabled={isRemoved}
+                                    defaultValue={String(line.qty)}
+                                    onChange={(e) => setEdit(line.id, { qty: e.target.value })}
+                                    className="h-8 text-right text-sm"
+                                    placeholder={`${line.qty}`}
+                                  />
+                                </div>
+                                <div className="col-span-2">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    disabled={isRemoved}
+                                    defaultValue={(line.unit_price_cents / 100).toFixed(2)}
+                                    onChange={(e) =>
+                                      setEdit(line.id, { unit_price_dollars: e.target.value })
+                                    }
+                                    className="h-8 text-right text-sm"
+                                  />
+                                </div>
+                                <div className="col-span-2 text-right tabular-nums">
+                                  {delta !== 0 ? (
+                                    <span
+                                      className={cn(
+                                        'font-medium',
+                                        delta < 0 ? 'text-emerald-700' : 'text-amber-700',
+                                      )}
+                                    >
+                                      {delta >= 0 ? '+' : ''}
+                                      {formatCurrency(delta)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground">
+                                      {formatCurrency(line.line_price_cents)}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="col-span-1 text-right">
+                                  {isRemoved ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleRemove(line.id)}
+                                      aria-label="Restore"
+                                      title="Restore"
+                                      className="rounded p-1 hover:bg-muted"
+                                    >
+                                      <RotateCcw className="size-3.5" />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isModified) clearEdit(line.id);
+                                        else toggleRemove(line.id);
+                                      }}
+                                      aria-label={isModified ? 'Discard edit' : 'Remove line'}
+                                      title={isModified ? 'Discard edit' : 'Remove line'}
+                                      className="rounded p-1 hover:bg-muted"
+                                    >
+                                      <X className="size-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              {isModified || isRemoved ? (
+                                <input
+                                  type="text"
+                                  value={editsById[line.id]?.notes ?? ''}
+                                  onChange={(e) => setEdit(line.id, { notes: e.target.value })}
+                                  placeholder="Line note (optional — explains this specific change)"
+                                  className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs no-underline focus:outline-none focus:ring-2 focus:ring-primary"
+                                />
+                              ) : null}
                             </div>
-                          </div>
-                          <input
-                            type="text"
-                            value={a.notes}
-                            onChange={(e) => setAdded_(a.tempId, { notes: e.target.value })}
-                            placeholder="Line note (optional — explains this specific addition)"
-                            className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
-                          />
+                          );
+                        })}
+                        {addedHere.map((a) => {
+                          const qty = Number(a.qty);
+                          const unitPriceCents = Math.round(Number(a.unit_price_dollars) * 100);
+                          const linePrice =
+                            Number.isFinite(qty) && Number.isFinite(unitPriceCents)
+                              ? Math.round(qty * unitPriceCents)
+                              : 0;
+                          return (
+                            <div
+                              key={a.tempId}
+                              className="border-b bg-emerald-50/40 px-3 py-2 text-sm last:border-0"
+                            >
+                              <div className="grid grid-cols-12 items-center gap-2">
+                                <div className="col-span-5 flex items-center gap-2">
+                                  <span className="rounded-full bg-emerald-200/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-900">
+                                    New
+                                  </span>
+                                  <Input
+                                    type="text"
+                                    value={a.label}
+                                    onChange={(e) => setAdded_(a.tempId, { label: e.target.value })}
+                                    placeholder="Description"
+                                    className="h-8 text-sm"
+                                  />
+                                </div>
+                                <div className="col-span-2">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={a.qty}
+                                    onChange={(e) => setAdded_(a.tempId, { qty: e.target.value })}
+                                    className="h-8 text-right text-sm"
+                                    placeholder="Qty"
+                                  />
+                                </div>
+                                <div className="col-span-2">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={a.unit_price_dollars}
+                                    onChange={(e) =>
+                                      setAdded_(a.tempId, { unit_price_dollars: e.target.value })
+                                    }
+                                    className="h-8 text-right text-sm"
+                                    placeholder="$"
+                                  />
+                                </div>
+                                <div className="col-span-2 text-right font-medium tabular-nums text-emerald-700">
+                                  +{formatCurrency(linePrice)}
+                                </div>
+                                <div className="col-span-1 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeAdded(a.tempId)}
+                                    aria-label="Cancel add"
+                                    title="Cancel add"
+                                    className="rounded p-1 hover:bg-muted"
+                                  >
+                                    <X className="size-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                              <input
+                                type="text"
+                                value={a.notes}
+                                onChange={(e) => setAdded_(a.tempId, { notes: e.target.value })}
+                                placeholder="Line note (optional — explains this specific addition)"
+                                className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                              />
+                            </div>
+                          );
+                        })}
+                        <div className="border-t bg-muted/10 px-3 py-2">
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="outline"
+                            onClick={() => addLine(category.id)}
+                          >
+                            <Plus className="size-3" />
+                            Add line to {category.name}
+                          </Button>
                         </div>
-                      );
-                    })}
-                    <div className="border-t bg-muted/10 px-3 py-2">
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="outline"
-                        onClick={() => addLine(category.id)}
-                      >
-                        <Plus className="size-3" />
-                        Add line to {category.name}
-                      </Button>
-                    </div>
+                      </>
+                    ) : null}
                   </div>
                 );
               })}
@@ -729,9 +776,13 @@ export function ChangeOrderDiffForm({
           {loading ? 'Saving…' : 'Save as Draft'}
         </Button>
         <Button type="button" disabled={loading} onClick={() => handleSubmit(true)}>
-          {loading ? 'Sending…' : 'Save & Send for Approval'}
+          {loading ? 'Saving…' : 'Save & Preview'}
         </Button>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Preview shows exactly what the customer will see. Nothing is sent until you click "Send for
+        Approval" on the next screen.
+      </p>
     </div>
   );
 }
