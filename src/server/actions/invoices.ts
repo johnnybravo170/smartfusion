@@ -883,8 +883,22 @@ export async function createMilestoneInvoiceAction(input: {
     unit_price_cents: li.unitPriceCents,
     total_cents: li.quantity * li.unitPriceCents,
   }));
-  const subtotalCents = items.reduce((s, li) => s + li.total_cents, 0);
-  const taxCents = Math.round(subtotalCents * 0.05);
+  const totalCents = items.reduce((s, li) => s + li.total_cents, 0);
+
+  // Milestone invoices on a project are draws — operator types the total
+  // they want the customer to pay and we back-compute the GST portion.
+  // Customer-facing copy reads "incl. $X GST" rather than "+ $X GST".
+  const { data: cust } = await supabase
+    .from('customers')
+    .select('tax_exempt')
+    .eq('id', project.customer_id)
+    .maybeSingle();
+  const taxExempt = Boolean(cust?.tax_exempt);
+  const { canadianTax } = await import('@/lib/providers/tax/canadian');
+  const taxCtx = await canadianTax.getContext(tenant.id);
+  const taxCents = taxExempt
+    ? 0
+    : Math.round((totalCents * taxCtx.totalRate) / (1 + taxCtx.totalRate));
 
   const { data, error } = await supabase
     .from('invoices')
@@ -893,7 +907,9 @@ export async function createMilestoneInvoiceAction(input: {
       project_id: input.projectId,
       customer_id: project.customer_id,
       status: 'draft',
-      amount_cents: subtotalCents,
+      doc_type: 'draw',
+      tax_inclusive: true,
+      amount_cents: totalCents,
       tax_cents: taxCents,
       line_items: items,
       customer_note: input.label,

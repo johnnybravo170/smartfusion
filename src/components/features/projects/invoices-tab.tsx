@@ -134,10 +134,10 @@ function MilestoneForm({
 
       {total > 0 && (
         <p className="text-sm">
-          <span className="text-muted-foreground">Subtotal: </span>
+          <span className="text-muted-foreground">Total: </span>
           <span className="font-medium">{formatCurrency(total)}</span>
           <span className="text-muted-foreground ml-2">
-            + {formatCurrency(Math.round(total * 0.05))} GST
+            (incl. {formatCurrency(Math.round((total * 0.05) / 1.05))} GST)
           </span>
         </p>
       )}
