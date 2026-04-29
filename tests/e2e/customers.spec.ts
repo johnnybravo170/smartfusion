@@ -40,8 +40,9 @@ test.describe
       await expect(page.getByRole('heading', { name: 'Contacts', exact: true })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Jane Homeowner' })).toBeVisible();
 
-      // Click the "Customers" kind chip to reveal the subtype row.
-      await page.getByRole('button', { name: 'Customers', exact: true }).click();
+      // Click the "Customer" kind chip to reveal the subtype row.
+      // The label is singular ('Customer') from contactKindLabels.
+      await page.getByRole('button', { name: 'Customer', exact: true }).click();
       await page.waitForURL(/kind=customer/);
 
       // Jane is residential — filtering to commercial hides her.
