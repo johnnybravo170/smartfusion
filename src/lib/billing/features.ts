@@ -45,6 +45,7 @@ const PLAN_RANK: Record<Plan, number> = {
 export const FEATURE_TIERS = {
   // ---- Growth (rank 2) ----
   'team.roles': 'growth',
+  'team.chat': 'growth',
   'sms.reminders': 'growth',
   'sms.review_requests': 'growth',
   'sms.two_way': 'growth',
