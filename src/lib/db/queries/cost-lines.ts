@@ -140,38 +140,122 @@ export async function getProjectProgress(projectId: string): Promise<ProjectProg
 
 export async function getVarianceReport(projectId: string): Promise<{
   estimated_cents: number;
+  /** Sum of cost_lines (the customer-visible line subtotal — pre mgmt fee). */
+  lines_subtotal_cents: number;
+  /** Management fee applied on top of the line subtotal. */
+  mgmt_fee_cents: number;
+  /** Sum of operator-set per-category budget envelopes. May diverge from
+   *  lines_subtotal when envelopes hold "squishy" budget headroom or when
+   *  cost_lines exceed envelope. */
+  envelope_total_cents: number;
+  /** Cumulative cost impact of applied (v2) COs, already baked into
+   *  lines_subtotal. Surfaced separately so Overview can show how much
+   *  of revenue came from change orders vs the original scope. */
+  applied_co_impact_cents: number;
+  /** Pending COs awaiting customer approval — not yet baked into
+   *  lines_subtotal. Surfaced as "if approved" projection. */
+  pending_co_impact_cents: number;
+  pending_co_count: number;
   committed_cents: number;
+  /** Committed split: accepted vendor quote allocations + active PO line items. */
+  committed_vendor_quotes_cents: number;
+  committed_pos_cents: number;
   actual_bills_cents: number;
   actual_expenses_cents: number;
+  actual_labour_cents: number;
   actual_total_cents: number;
   margin_at_risk_cents: number;
   by_category: VarianceRow[];
 }> {
-  // Sourced from getBudgetVsActual so Overview groups + numbers match the
-  // Budget tab exactly. Previously this function grouped by the cost_lines
-  // `category` enum (material/labour/sub/equipment/overhead) which lied
-  // about the project's actual category structure (operator-named
-  // budget_categories). Single source of truth now.
+  // Two semantically distinct totals to keep the Overview honest:
+  //
+  // - Customer contract revenue: sum(cost_lines.line_price_cents) + mgmt
+  //   fee. This matches what the homeowner signed and what the Estimate
+  //   tab grand total shows. Surfaced as "Estimated Revenue."
+  // - Operator envelope total: sum(budget_categories.estimate_cents).
+  //   Shown in the per-category breakdown — where the operator allocates
+  //   the contract dollars across buckets, with optional headroom.
+  //
+  // These can diverge legitimately (mgmt fee, squishy envelope, lines
+  // outside their envelope). Showing both side-by-side is the audit lens.
   const { getBudgetVsActual } = await import('./project-budget-categories');
   const supabase = await createClient();
 
-  const [budget, billsRes, expensesRes] = await Promise.all([
+  const [
+    budget,
+    billsRes,
+    expensesRes,
+    linesRes,
+    projectRes,
+    timeRes,
+    cosRes,
+    subQuotesRes,
+    poItemsRes,
+  ] = await Promise.all([
     getBudgetVsActual(projectId),
     supabase.from('project_bills').select('amount_cents').eq('project_id', projectId),
     supabase.from('expenses').select('amount_cents').eq('project_id', projectId),
+    supabase.from('project_cost_lines').select('line_price_cents').eq('project_id', projectId),
+    supabase.from('projects').select('management_fee_rate').eq('id', projectId).maybeSingle(),
+    supabase.from('time_entries').select('hours, hourly_rate_cents').eq('project_id', projectId),
+    supabase
+      .from('change_orders')
+      .select('status, applied_at, cost_impact_cents, flow_version')
+      .eq('project_id', projectId),
+    supabase
+      .from('project_sub_quote_allocations')
+      .select('allocated_cents, project_sub_quotes!inner(project_id, status)')
+      .eq('project_sub_quotes.project_id', projectId)
+      .eq('project_sub_quotes.status', 'accepted'),
+    supabase
+      .from('purchase_order_items')
+      .select('line_total_cents, purchase_orders!inner(project_id, status)')
+      .eq('purchase_orders.project_id', projectId)
+      .in('purchase_orders.status', ['sent', 'acknowledged', 'received']),
   ]);
 
   const bills = (billsRes.data ?? []) as { amount_cents: number }[];
   const expenseRows = (expensesRes.data ?? []) as { amount_cents: number }[];
+  const lineRows = (linesRes.data ?? []) as { line_price_cents: number }[];
+  const timeRows = (timeRes.data ?? []) as { hours: number; hourly_rate_cents: number | null }[];
+  const coRows = (cosRes.data ?? []) as {
+    status: string;
+    applied_at: string | null;
+    cost_impact_cents: number;
+    flow_version: number;
+  }[];
+  const subQuoteAllocs = (subQuotesRes.data ?? []) as { allocated_cents: number }[];
+  const poItems = (poItemsRes.data ?? []) as { line_total_cents: number }[];
 
   const actual_bills_cents = bills.reduce((s, b) => s + b.amount_cents, 0);
   const actual_expenses_cents = expenseRows.reduce((s, e) => s + e.amount_cents, 0);
-  const actual_total_cents = actual_bills_cents + actual_expenses_cents;
+  const actual_labour_cents = timeRows.reduce(
+    (s, e) => s + Math.round((e.hours ?? 0) * (e.hourly_rate_cents ?? 0)),
+    0,
+  );
+  const actual_total_cents = actual_bills_cents + actual_expenses_cents + actual_labour_cents;
 
-  const estimated_cents = budget.total_estimate_cents;
+  const lines_subtotal_cents = lineRows.reduce((s, l) => s + l.line_price_cents, 0);
+  const mgmt_fee_rate = (projectRes.data?.management_fee_rate as number | null) ?? 0;
+  const mgmt_fee_cents = Math.round(lines_subtotal_cents * mgmt_fee_rate);
+  const envelope_total_cents = budget.total_estimate_cents;
+
+  // Customer-contract revenue. Matches the Estimate tab grand total.
+  const estimated_cents = lines_subtotal_cents + mgmt_fee_cents;
+
+  const applied_co_impact_cents = coRows
+    .filter((c) => c.flow_version === 2 && c.applied_at !== null)
+    .reduce((s, c) => s + c.cost_impact_cents, 0);
+  const pendingCos = coRows.filter((c) => c.status === 'pending_approval');
+  const pending_co_impact_cents = pendingCos.reduce((s, c) => s + c.cost_impact_cents, 0);
+  const pending_co_count = pendingCos.length;
+
+  const committed_vendor_quotes_cents = subQuoteAllocs.reduce(
+    (s, a) => s + (a.allocated_cents ?? 0),
+    0,
+  );
+  const committed_pos_cents = poItems.reduce((s, p) => s + (p.line_total_cents ?? 0), 0);
   const committed_cents = budget.total_committed_cents;
-  // Margin at risk = what's left in the envelope minus what's already
-  // committed. Negative means we've over-committed before all work lands.
   const margin_at_risk_cents = estimated_cents - actual_total_cents - committed_cents;
 
   const by_category: VarianceRow[] = budget.lines.map((l) => ({
@@ -184,9 +268,18 @@ export async function getVarianceReport(projectId: string): Promise<{
 
   return {
     estimated_cents,
+    lines_subtotal_cents,
+    mgmt_fee_cents,
+    envelope_total_cents,
+    applied_co_impact_cents,
+    pending_co_impact_cents,
+    pending_co_count,
     committed_cents,
+    committed_vendor_quotes_cents,
+    committed_pos_cents,
     actual_bills_cents,
     actual_expenses_cents,
+    actual_labour_cents,
     actual_total_cents,
     margin_at_risk_cents,
     by_category,

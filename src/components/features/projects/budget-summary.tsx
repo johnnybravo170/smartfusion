@@ -7,9 +7,18 @@ import { formatCurrency } from '@/lib/pricing/calculator';
 
 type VarianceData = {
   estimated_cents: number;
+  lines_subtotal_cents: number;
+  mgmt_fee_cents: number;
+  envelope_total_cents: number;
+  applied_co_impact_cents: number;
+  pending_co_impact_cents: number;
+  pending_co_count: number;
   committed_cents: number;
+  committed_vendor_quotes_cents: number;
+  committed_pos_cents: number;
   actual_bills_cents: number;
   actual_expenses_cents: number;
+  actual_labour_cents: number;
   actual_total_cents: number;
   margin_at_risk_cents: number;
   by_category: {
@@ -79,13 +88,27 @@ export function VarianceTab({
 }) {
   const {
     estimated_cents,
+    lines_subtotal_cents,
+    mgmt_fee_cents,
+    envelope_total_cents,
+    applied_co_impact_cents,
+    pending_co_impact_cents,
+    pending_co_count,
     committed_cents,
+    committed_vendor_quotes_cents,
+    committed_pos_cents,
     actual_bills_cents,
     actual_expenses_cents,
+    actual_labour_cents,
     actual_total_cents,
     margin_at_risk_cents,
     by_category,
   } = variance;
+  const envelopeGapCents = estimated_cents - envelope_total_cents;
+  // Original signed scope = current lines minus what applied COs added.
+  // Negative would mean applied COs net-removed scope; we still show it
+  // as the pre-CO baseline so the operator sees the layering.
+  const originalLinesCents = lines_subtotal_cents - applied_co_impact_cents;
 
   const isComplete = lifecycleStage === 'complete';
 
@@ -104,14 +127,23 @@ export function VarianceTab({
   const marginLabel = isComplete ? 'Realized Margin' : 'Margin at Risk';
   const marginSubLabel = isComplete ? 'final margin' : 'remaining margin';
 
-  // Total cost impact from applied COs — surface in the Estimated stat
-  // sub-line so the operator sees how much of the current estimate came
-  // from change orders vs the original signed scope.
+  // Estimated stat sub-line shows the composition: lines subtotal + mgmt
+  // fee, plus CO contribution if any have been applied.
   const coImpactCents = appliedChangeOrders.reduce((s, c) => s + c.cost_impact_cents, 0);
   const coCount = appliedChangeOrders.length;
-  const estSub = coCount
-    ? `${coImpactCents >= 0 ? '+' : ''}${formatCurrency(coImpactCents)} from ${coCount} CO${coCount === 1 ? '' : 's'}`
-    : undefined;
+  const estSubParts: string[] = [];
+  if (lines_subtotal_cents > 0) {
+    estSubParts.push(`Lines ${formatCurrency(lines_subtotal_cents)}`);
+  }
+  if (mgmt_fee_cents > 0) {
+    estSubParts.push(`Mgmt fee ${formatCurrency(mgmt_fee_cents)}`);
+  }
+  if (coCount) {
+    estSubParts.push(
+      `${coImpactCents >= 0 ? '+' : ''}${formatCurrency(coImpactCents)} from ${coCount} CO${coCount === 1 ? '' : 's'}`,
+    );
+  }
+  const estSub = estSubParts.length > 0 ? estSubParts.join(' · ') : undefined;
 
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   function toggleRow(name: string) {
@@ -150,13 +182,125 @@ export function VarianceTab({
         </div>
       )}
 
+      {/* Full composition — every dollar of revenue / committed / spent
+          with its source. The top StatBoxes are the headlines; this is
+          the audit trail. */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <CompositionCard
+          title="Revenue"
+          tone="primary"
+          rows={[
+            ...(originalLinesCents !== 0
+              ? [{ label: 'Original line items', value: originalLinesCents }]
+              : []),
+            ...appliedChangeOrders.map((c) => ({
+              label: `Applied CO: ${c.title}`,
+              value: c.cost_impact_cents,
+              href: projectId ? `/projects/${projectId}/change-orders/${c.id}` : undefined,
+              muted: false as const,
+            })),
+            ...(mgmt_fee_cents > 0 ? [{ label: 'Management fee', value: mgmt_fee_cents }] : []),
+          ]}
+          total={{ label: 'Estimated revenue', value: estimated_cents }}
+          footer={
+            pending_co_count > 0 ? (
+              <p className="text-xs text-muted-foreground italic">
+                +{formatCurrency(pending_co_impact_cents)} from {pending_co_count} pending CO
+                {pending_co_count === 1 ? '' : 's'} (not yet approved).
+              </p>
+            ) : null
+          }
+        />
+        <CompositionCard
+          title="Committed"
+          rows={[
+            ...(committed_vendor_quotes_cents > 0
+              ? [
+                  {
+                    label: 'Accepted vendor quotes',
+                    value: committed_vendor_quotes_cents,
+                    href: projectId ? `/projects/${projectId}?tab=costs&sub=quotes` : undefined,
+                  },
+                ]
+              : []),
+            ...(committed_pos_cents > 0
+              ? [
+                  {
+                    label: 'Active purchase orders',
+                    value: committed_pos_cents,
+                    href: projectId ? `/projects/${projectId}?tab=costs&sub=pos` : undefined,
+                  },
+                ]
+              : []),
+          ]}
+          total={{ label: 'Total committed', value: committed_cents }}
+          footer={
+            committed_cents === 0 ? (
+              <p className="text-xs text-muted-foreground italic">
+                No vendor quotes accepted or active POs yet.
+              </p>
+            ) : null
+          }
+        />
+        <CompositionCard
+          title="Spent"
+          tone={isAtRisk ? 'danger' : undefined}
+          rows={[
+            ...(actual_labour_cents > 0
+              ? [
+                  {
+                    label: 'Labour (time entries)',
+                    value: actual_labour_cents,
+                    href: projectId ? `/projects/${projectId}?tab=time` : undefined,
+                  },
+                ]
+              : []),
+            ...(actual_bills_cents > 0
+              ? [
+                  {
+                    label: 'Bills',
+                    value: actual_bills_cents,
+                    href: projectId ? `/projects/${projectId}?tab=costs&sub=bills` : undefined,
+                  },
+                ]
+              : []),
+            ...(actual_expenses_cents > 0
+              ? [
+                  {
+                    label: 'Expenses',
+                    value: actual_expenses_cents,
+                    href: projectId ? `/projects/${projectId}?tab=costs&sub=expenses` : undefined,
+                  },
+                ]
+              : []),
+          ]}
+          total={{ label: 'Total spent', value: actual_total_cents }}
+          footer={
+            actual_total_cents === 0 ? (
+              <p className="text-xs text-muted-foreground italic">
+                No labour, bills, or expenses logged yet.
+              </p>
+            ) : null
+          }
+        />
+      </div>
+
       {/* By-category breakdown — read-only. Click a row to expand the
           bills/expenses/POs/quotes split that drove the actuals. */}
       {by_category.length > 0 && (
         <div>
           <div className="mb-3 flex items-baseline justify-between gap-3">
-            <h3 className="text-sm font-semibold">By Category</h3>
-            <span className="text-xs text-muted-foreground">Click a row for the breakdown</span>
+            <h3 className="text-sm font-semibold">By Category (operator budget envelope)</h3>
+            <span className="text-xs text-muted-foreground">
+              Sums to {formatCurrency(envelope_total_cents)}
+              {envelopeGapCents !== 0 ? (
+                <>
+                  {' '}
+                  · {envelopeGapCents > 0 ? '+' : ''}
+                  {formatCurrency(envelopeGapCents)} vs revenue
+                </>
+              ) : null}
+            </span>
           </div>
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full text-sm">
@@ -238,14 +382,14 @@ export function VarianceTab({
                 })}
                 <tr className="border-t bg-muted/30 font-semibold">
                   <td />
-                  <td className="px-3 py-2">Total</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(estimated_cents)}</td>
+                  <td className="px-3 py-2">Envelope Total</td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(envelope_total_cents)}</td>
                   <td className="px-3 py-2 text-right">{formatCurrency(committed_cents)}</td>
                   <td className="px-3 py-2 text-right">{formatCurrency(actual_total_cents)}</td>
                   <td
-                    className={`px-3 py-2 text-right ${margin_at_risk_cents < 0 ? 'text-destructive' : 'text-primary'}`}
+                    className={`px-3 py-2 text-right ${envelope_total_cents - actual_total_cents - committed_cents < 0 ? 'text-destructive' : 'text-primary'}`}
                   >
-                    {formatCurrency(margin_at_risk_cents)}
+                    {formatCurrency(envelope_total_cents - actual_total_cents - committed_cents)}
                   </td>
                 </tr>
               </tbody>
@@ -260,6 +404,77 @@ export function VarianceTab({
           Spend tab.
         </p>
       )}
+    </div>
+  );
+}
+
+type CompositionRow = {
+  label: string;
+  value: number;
+  href?: string;
+  muted?: boolean;
+};
+
+function CompositionCard({
+  title,
+  tone,
+  rows,
+  total,
+  footer,
+}: {
+  title: string;
+  tone?: 'primary' | 'danger';
+  rows: CompositionRow[];
+  total: { label: string; value: number };
+  footer?: React.ReactNode;
+}) {
+  const totalToneClass =
+    tone === 'danger' ? 'text-destructive' : tone === 'primary' ? 'text-primary' : '';
+  return (
+    <div className="rounded-lg border bg-background p-4">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+      </p>
+      {rows.length > 0 ? (
+        <ul className="space-y-1.5 text-sm">
+          {rows.map((r) => {
+            const content = (
+              <>
+                <span className={r.muted ? 'text-muted-foreground' : ''}>{r.label}</span>
+                <span
+                  className={`tabular-nums ${r.muted ? 'text-muted-foreground' : 'font-medium'}`}
+                >
+                  {r.value >= 0 ? '' : '−'}
+                  {formatCurrency(Math.abs(r.value))}
+                </span>
+              </>
+            );
+            return (
+              <li key={r.label} className="flex items-baseline justify-between gap-3">
+                {r.href ? (
+                  <a
+                    href={r.href}
+                    className="flex flex-1 items-baseline justify-between gap-3 hover:underline"
+                  >
+                    {content}
+                  </a>
+                ) : (
+                  content
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      <div
+        className={`${rows.length > 0 ? 'mt-3 border-t pt-2' : ''} flex items-baseline justify-between gap-3 text-sm`}
+      >
+        <span className="font-semibold">{total.label}</span>
+        <span className={`text-base font-semibold tabular-nums ${totalToneClass}`}>
+          {formatCurrency(total.value)}
+        </span>
+      </div>
+      {footer ? <div className="mt-2">{footer}</div> : null}
     </div>
   );
 }
