@@ -66,31 +66,72 @@ export async function GET(req: NextRequest) {
     limit: 50,
   });
 
-  if (inbox.length === 0) {
-    return NextResponse.json({ ok: true, triaged: 0, actions: [] });
-  }
-
-  // Pull existing todo cards once for dedup context.
-  const existingTodo = await listCards({
-    boardSlug: 'dev',
-    column: 'todo',
-    includeBlocked: true,
-    limit: 200,
-  });
-  const dedupCandidates = existingTodo.map((c) => ({
-    id: c.id as string,
-    title: c.title as string,
-  }));
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY not set' }, { status: 500 });
-  }
-  const ai = new GoogleGenAI({ apiKey });
-
   const actions: Array<{ id: string; verdict: Verdict | null; applied: string; error?: string }> =
     [];
 
+  if (inbox.length > 0) {
+    // Pull existing todo cards once for dedup context.
+    const existingTodo = await listCards({
+      boardSlug: 'dev',
+      column: 'todo',
+      includeBlocked: true,
+      limit: 200,
+    });
+    const dedupCandidates = existingTodo.map((c) => ({
+      id: c.id as string,
+      title: c.title as string,
+    }));
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: 'GEMINI_API_KEY not set' }, { status: 500 });
+    }
+    const ai = new GoogleGenAI({ apiKey });
+
+    await processInbox(ai, inbox, dedupCandidates, actions);
+  }
+
+  // Sentry incidents always run, even when feedback inbox is empty.
+  const incidentActions = await surfaceOpenIncidents();
+
+  const promoted = actions.filter((a) => a.applied === 'promoted').length;
+  const archivedCount = actions.filter((a) => a.applied === 'archived').length;
+  const dedupedCount = actions.filter((a) => a.applied === 'deduped').length;
+  const failed = actions.filter((a) => a.applied === 'failed' || a.applied === 'skipped').length;
+  const incidentsSpawned = incidentActions.filter((a) => a.applied === 'spawned').length;
+
+  // Only worklog when something happened — empty runs would spam the feed.
+  if (actions.length > 0 || incidentsSpawned > 0) {
+    const service = createServiceClient();
+    await service
+      .schema('ops')
+      .from('worklog_entries')
+      .insert({
+        actor_type: 'agent',
+        actor_name: 'feedback-triage',
+        title: `Triage: ${promoted} promoted, ${archivedCount} archived, ${dedupedCount} deduped, ${incidentsSpawned} incidents surfaced${failed ? `, ${failed} failed` : ''}`,
+        body: JSON.stringify({ actions, incidentActions }, null, 2),
+        category: 'ops',
+        site: 'ops',
+        tags: ['triage', 'feedback'],
+      });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    triaged: inbox.length,
+    actions,
+    incidents_surfaced: incidentsSpawned,
+    incident_actions: incidentActions,
+  });
+}
+
+async function processInbox(
+  ai: GoogleGenAI,
+  inbox: Awaited<ReturnType<typeof listCards>>,
+  dedupCandidates: Array<{ id: string; title: string }>,
+  actions: Array<{ id: string; verdict: Verdict | null; applied: string; error?: string }>,
+) {
   for (const card of inbox) {
     const cardId = card.id as string;
     let verdict: Verdict | null = null;
@@ -146,39 +187,6 @@ export async function GET(req: NextRequest) {
       });
     }
   }
-
-  // Sentry incidents: spawn a kanban card for each open incident that doesn't
-  // have one yet. No Gemini call — Sentry payload is already structured.
-  const incidentActions = await surfaceOpenIncidents();
-
-  // Worklog the run so Jonathan / Claude can see triage history.
-  const promoted = actions.filter((a) => a.applied === 'promoted').length;
-  const archivedCount = actions.filter((a) => a.applied === 'archived').length;
-  const dedupedCount = actions.filter((a) => a.applied === 'deduped').length;
-  const failed = actions.filter((a) => a.applied === 'failed' || a.applied === 'skipped').length;
-  const incidentsSpawned = incidentActions.filter((a) => a.applied === 'spawned').length;
-
-  const service = createServiceClient();
-  await service
-    .schema('ops')
-    .from('worklog_entries')
-    .insert({
-      actor_type: 'agent',
-      actor_name: 'feedback-triage',
-      title: `Triage: ${promoted} promoted, ${archivedCount} archived, ${dedupedCount} deduped, ${incidentsSpawned} incidents surfaced${failed ? `, ${failed} failed` : ''}`,
-      body: JSON.stringify({ actions, incidentActions }, null, 2),
-      category: 'ops',
-      site: 'ops',
-      tags: ['triage', 'feedback'],
-    });
-
-  return NextResponse.json({
-    ok: true,
-    triaged: inbox.length,
-    actions,
-    incidents_surfaced: incidentsSpawned,
-    incident_actions: incidentActions,
-  });
 }
 
 async function surfaceOpenIncidents(): Promise<
