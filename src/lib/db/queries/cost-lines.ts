@@ -210,52 +210,47 @@ export async function getVarianceReport(projectId: string): Promise<{
   const { getBudgetVsActual } = await import('./project-budget-categories');
   const supabase = await createClient();
 
-  const [
-    budget,
-    billsRes,
-    expensesRes,
-    linesRes,
-    projectRes,
-    timeRes,
-    cosRes,
-    subQuotesRes,
-    poItemsRes,
-  ] = await Promise.all([
+  // The RPC consolidates 8 project-level aggregations into a single
+  // round-trip (see supabase/migrations/0163_project_variance_rpc.sql).
+  // getBudgetVsActual still runs separately because the per-category
+  // breakdown is shared with the Budget tab + AI tools — keeping it
+  // separate avoids a wider refactor.
+  const [budget, aggResp] = await Promise.all([
     getBudgetVsActual(projectId),
-    supabase.from('project_bills').select('amount_cents').eq('project_id', projectId),
-    supabase.from('expenses').select('amount_cents').eq('project_id', projectId),
-    supabase
-      .from('project_cost_lines')
-      .select('line_price_cents, budget_category_id')
-      .eq('project_id', projectId),
-    supabase.from('projects').select('management_fee_rate').eq('id', projectId).maybeSingle(),
-    supabase.from('time_entries').select('hours, hourly_rate_cents').eq('project_id', projectId),
-    supabase
-      .from('change_orders')
-      .select(
-        'id, status, applied_at, cost_impact_cents, flow_version, management_fee_override_rate',
-      )
-      .eq('project_id', projectId),
-    supabase
-      .from('project_sub_quote_allocations')
-      .select('allocated_cents, project_sub_quotes!inner(project_id, status)')
-      .eq('project_sub_quotes.project_id', projectId)
-      .eq('project_sub_quotes.status', 'accepted'),
-    supabase
-      .from('purchase_order_items')
-      .select('line_total_cents, purchase_orders!inner(project_id, status)')
-      .eq('purchase_orders.project_id', projectId)
-      .in('purchase_orders.status', ['sent', 'acknowledged', 'received']),
+    supabase.rpc('get_project_variance_aggregates', { p_project_id: projectId }),
   ]);
 
-  const bills = (billsRes.data ?? []) as { amount_cents: number }[];
-  const expenseRows = (expensesRes.data ?? []) as { amount_cents: number }[];
-  const lineRows = (linesRes.data ?? []) as {
-    line_price_cents: number;
-    budget_category_id: string | null;
-  }[];
-  const timeRows = (timeRes.data ?? []) as { hours: number; hourly_rate_cents: number | null }[];
-  const coRows = (cosRes.data ?? []) as {
+  const agg = (aggResp.data ?? {}) as {
+    management_fee_rate?: number | null;
+    lines_subtotal_cents?: number | string | null;
+    lines_by_category?: Record<string, number | string> | null;
+    bills_total_cents?: number | string | null;
+    expenses_total_cents?: number | string | null;
+    labour_total_cents?: number | string | null;
+    committed_vendor_quotes_cents?: number | string | null;
+    committed_pos_cents?: number | string | null;
+    change_orders?: Array<{
+      id: string;
+      status: string;
+      applied_at: string | null;
+      cost_impact_cents: number;
+      flow_version: number;
+      management_fee_override_rate: number | null;
+    }> | null;
+  };
+
+  // Postgres bigint serialises to a string over PostgREST when it could
+  // exceed JS safe-integer range; coerce defensively.
+  const toNum = (v: number | string | null | undefined): number =>
+    typeof v === 'string' ? Number(v) : (v ?? 0);
+
+  const lines_subtotal_cents = toNum(agg.lines_subtotal_cents);
+  const actual_bills_cents = toNum(agg.bills_total_cents);
+  const actual_expenses_cents = toNum(agg.expenses_total_cents);
+  const actual_labour_cents = toNum(agg.labour_total_cents);
+  const committed_vendor_quotes_cents = toNum(agg.committed_vendor_quotes_cents);
+  const committed_pos_cents = toNum(agg.committed_pos_cents);
+  const coRows = (agg.change_orders ?? []) as {
     id: string;
     status: string;
     applied_at: string | null;
@@ -263,19 +258,10 @@ export async function getVarianceReport(projectId: string): Promise<{
     flow_version: number;
     management_fee_override_rate: number | null;
   }[];
-  const subQuoteAllocs = (subQuotesRes.data ?? []) as { allocated_cents: number }[];
-  const poItems = (poItemsRes.data ?? []) as { line_total_cents: number }[];
 
-  const actual_bills_cents = bills.reduce((s, b) => s + b.amount_cents, 0);
-  const actual_expenses_cents = expenseRows.reduce((s, e) => s + e.amount_cents, 0);
-  const actual_labour_cents = timeRows.reduce(
-    (s, e) => s + Math.round((e.hours ?? 0) * (e.hourly_rate_cents ?? 0)),
-    0,
-  );
   const actual_total_cents = actual_bills_cents + actual_expenses_cents + actual_labour_cents;
 
-  const lines_subtotal_cents = lineRows.reduce((s, l) => s + l.line_price_cents, 0);
-  const mgmt_fee_rate = (projectRes.data?.management_fee_rate as number | null) ?? 0;
+  const mgmt_fee_rate = (agg.management_fee_rate as number | null) ?? 0;
   const envelope_total_cents = budget.total_estimate_cents;
 
   // Customer scope = per category, lines if itemized, else the envelope.
@@ -283,10 +269,11 @@ export async function getVarianceReport(projectId: string): Promise<{
   // — in either case revenue reflects what was contracted. Also captures
   // CO `modify_envelope` rows that bump a category's budget without
   // adding a line, which would otherwise be invisible to revenue.
+  const linesByCategoryRaw = (agg.lines_by_category ?? {}) as Record<string, number | string>;
   const linesByCategory = new Map<string | null, number>();
-  for (const l of lineRows) {
-    const k = l.budget_category_id ?? null;
-    linesByCategory.set(k, (linesByCategory.get(k) ?? 0) + l.line_price_cents);
+  for (const [k, v] of Object.entries(linesByCategoryRaw)) {
+    const key = k === '__uncategorized__' ? null : k;
+    linesByCategory.set(key, toNum(v));
   }
   let scope_subtotal_cents = linesByCategory.get(null) ?? 0;
   for (const cat of budget.lines) {
@@ -342,11 +329,7 @@ export async function getVarianceReport(projectId: string): Promise<{
   const pending_co_impact_cents = pendingCos.reduce((s, c) => s + c.cost_impact_cents, 0);
   const pending_co_count = pendingCos.length;
 
-  const committed_vendor_quotes_cents = subQuoteAllocs.reduce(
-    (s, a) => s + (a.allocated_cents ?? 0),
-    0,
-  );
-  const committed_pos_cents = poItems.reduce((s, p) => s + (p.line_total_cents ?? 0), 0);
+  // committed_vendor_quotes_cents + committed_pos_cents come from the RPC.
   const committed_cents = budget.total_committed_cents;
   const margin_at_risk_cents = estimated_cents - actual_total_cents - committed_cents;
 

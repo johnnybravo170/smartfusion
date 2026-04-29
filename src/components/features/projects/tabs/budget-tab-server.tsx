@@ -1,3 +1,4 @@
+import { AppliedChangeOrdersBanner } from '@/components/features/change-orders/applied-co-banner';
 import { BudgetCategoriesTable } from '@/components/features/projects/budget-categories-table';
 import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
 import { listCostLines } from '@/lib/db/queries/cost-lines';
@@ -15,13 +16,19 @@ export default async function BudgetTabServer({ projectId }: { projectId: string
   ]);
 
   return (
-    <BudgetCategoriesTable
-      lines={budget.lines}
-      projectId={projectId}
-      costLines={costLines}
-      catalog={catalog}
-      estimateStatus={project?.estimate_status ?? 'draft'}
-      coContributionsByCategoryId={Object.fromEntries(coContributions.byCategoryId)}
-    />
+    <div className="flex flex-col gap-0">
+      <AppliedChangeOrdersBanner
+        appliedCount={coContributions.appliedOrder.length}
+        projectId={projectId}
+      />
+      <BudgetCategoriesTable
+        lines={budget.lines}
+        projectId={projectId}
+        costLines={costLines}
+        catalog={catalog}
+        estimateStatus={project?.estimate_status ?? 'draft'}
+        coContributionsByCategoryId={Object.fromEntries(coContributions.byCategoryId)}
+      />
+    </div>
   );
 }
