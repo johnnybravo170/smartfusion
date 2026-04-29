@@ -27,7 +27,7 @@ export default async function PublicInvoiceViewPage({
   const { data: invoice } = await supabase
     .from('invoices')
     .select(
-      'id, tenant_id, customer_id, status, doc_type, tax_inclusive, amount_cents, tax_cents, line_items, customer_note, pdf_url, sent_at, paid_at, created_at',
+      'id, tenant_id, customer_id, status, doc_type, tax_inclusive, percent_complete, amount_cents, tax_cents, line_items, customer_note, pdf_url, sent_at, paid_at, created_at',
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -97,6 +97,7 @@ export default async function PublicInvoiceViewPage({
   const paymentUrl = invoice.pdf_url;
   const isDraw = invoice.doc_type === 'draw';
   const docLabel = isDraw ? 'Draw Request' : 'Invoice';
+  const percentComplete = (invoice.percent_complete as number | null) ?? null;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:py-12">
@@ -109,8 +110,9 @@ export default async function PublicInvoiceViewPage({
         </p>
         {isDraw ? (
           <p className="mt-1 text-xs text-gray-500">
-            Progress payment against your accepted estimate. Will be reconciled against the final
-            invoice on completion.
+            Progress payment against your accepted estimate
+            {percentComplete !== null ? ` — ${percentComplete}% complete` : ''}. Will be reconciled
+            against the final invoice on completion.
           </p>
         ) : null}
       </div>

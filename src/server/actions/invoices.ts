@@ -858,6 +858,9 @@ export async function createMilestoneInvoiceAction(input: {
   projectId: string;
   label: string;
   lineItems: { description: string; quantity: number; unitPriceCents: number }[];
+  /** Optional operator-set milestone % shown to the customer alongside
+   *  the draw amount (e.g. "Draw #2 — 40% complete"). 0-100. */
+  percentComplete?: number | null;
 }): Promise<InvoiceActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
@@ -900,6 +903,13 @@ export async function createMilestoneInvoiceAction(input: {
     ? 0
     : Math.round((totalCents * taxCtx.totalRate) / (1 + taxCtx.totalRate));
 
+  const pct =
+    typeof input.percentComplete === 'number' &&
+    input.percentComplete >= 0 &&
+    input.percentComplete <= 100
+      ? Math.round(input.percentComplete)
+      : null;
+
   const { data, error } = await supabase
     .from('invoices')
     .insert({
@@ -913,6 +923,7 @@ export async function createMilestoneInvoiceAction(input: {
       tax_cents: taxCents,
       line_items: items,
       customer_note: input.label,
+      percent_complete: pct,
     })
     .select('id')
     .single();
