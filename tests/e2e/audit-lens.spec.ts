@@ -114,13 +114,16 @@ test.describe
       await expect(page.getByText(/\+\$1,500\.00/).first()).toBeVisible();
     });
 
-    test('Budget tab shows CO chip on the Cabinets category row', async ({ page }) => {
+    test('Budget tab shows CO chip linking to the applied CO', async ({ page }) => {
       await signInAsOwner(page, seed);
       await page.goto(`/projects/${seed.projectId}?tab=budget`);
 
-      // The chip lives in the Cabinets row alongside the category name.
-      const cabinetsRow = page.getByRole('row').filter({ hasText: 'Cabinets' });
-      await expect(cabinetsRow.getByText(`CO ${coShortId}`, { exact: false })).toBeVisible();
+      // The chip is an <a> linking to /projects/.../change-orders/<co.id>.
+      // Targeting by href is unambiguous — there's only one chip on the
+      // Budget tab in this scenario (one CO touching one category).
+      const chip = page.locator(`a[href="/projects/${seed.projectId}/change-orders/${coId}"]`);
+      await expect(chip).toBeVisible();
+      await expect(chip).toHaveText(new RegExp(`CO ${coShortId}`, 'i'));
     });
 
     test('Overview Revenue card lists the applied CO as its own row', async ({ page }) => {
