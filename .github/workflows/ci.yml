@@ -73,6 +73,13 @@ jobs:
         with:
           version: latest
 
+      - name: Reap leaked Supabase containers from prior job
+        # GitHub runners are reused across jobs. If a previous run on
+        # this runner didn't tear down cleanly, port 54324 (inbucket)
+        # or 54322 (Postgres) is still bound and supabase start fails
+        # with "address already in use". Belt-and-suspenders teardown.
+        run: supabase stop --no-backup || true
+
       - name: Start Supabase local stack
         # Boots Postgres + GoTrue + PostgREST + storage in Docker. All
         # migrations under supabase/migrations/ apply automatically.
