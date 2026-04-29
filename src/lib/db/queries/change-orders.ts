@@ -218,6 +218,26 @@ export type ProjectChangeOrderContributions = {
     applied_at: string;
     cost_impact_cents: number;
   }[];
+  /** Every CO on the project (any status, any flow version) so the
+   *  Revenue card can surface all of them with appropriate badges:
+   *  - applied: v2 + applied_at set; folded into cost_lines.
+   *  - approved_legacy: v1 approved, OR v2 approved but never applied
+   *    (mid-rollout state). Customer signed off but cost_lines may not
+   *    reflect it — operator needs to verify.
+   *  - pending: status='pending_approval' — projection only.
+   *  - other (draft, declined, voided): not shown in the card. */
+  all: {
+    id: string;
+    title: string;
+    short_id: string;
+    cost_impact_cents: number;
+    status: 'draft' | 'pending_approval' | 'approved' | 'declined' | 'voided';
+    flow_version: 1 | 2;
+    applied_at: string | null;
+    approved_at: string | null;
+    /** Synthesized: what bucket should the UI render this in? */
+    revenue_kind: 'applied' | 'approved_legacy' | 'pending' | 'other';
+  }[];
 };
 
 export async function getProjectChangeOrderContributions(
@@ -225,33 +245,65 @@ export async function getProjectChangeOrderContributions(
 ): Promise<ProjectChangeOrderContributions> {
   const supabase = await createClient();
 
-  const { data: cos } = await supabase
+  // Pull every CO on the project so we can surface all of them with
+  // appropriate badges. v1 / pending / approved-not-applied COs were
+  // previously invisible in the audit lens.
+  const { data: cosRaw } = await supabase
     .from('change_orders')
-    .select('id, title, applied_at, cost_impact_cents')
+    .select('id, title, status, flow_version, applied_at, approved_at, cost_impact_cents')
     .eq('project_id', projectId)
-    .eq('flow_version', 2)
-    .not('applied_at', 'is', null)
-    .order('applied_at', { ascending: true });
+    .order('created_at', { ascending: true });
 
-  const appliedOrder = (
-    (cos ?? []) as {
+  const all = (
+    (cosRaw ?? []) as {
       id: string;
       title: string;
-      applied_at: string;
+      status: 'draft' | 'pending_approval' | 'approved' | 'declined' | 'voided';
+      flow_version: 1 | 2;
+      applied_at: string | null;
+      approved_at: string | null;
       cost_impact_cents: number;
     }[]
-  ).map((c) => ({
-    id: c.id,
-    title: c.title,
-    short_id: c.id.slice(0, 8),
-    applied_at: c.applied_at,
-    cost_impact_cents: c.cost_impact_cents,
-  }));
+  ).map((c) => {
+    let revenue_kind: 'applied' | 'approved_legacy' | 'pending' | 'other';
+    if (c.status === 'approved' && c.applied_at !== null) {
+      revenue_kind = 'applied';
+    } else if (c.status === 'approved') {
+      revenue_kind = 'approved_legacy';
+    } else if (c.status === 'pending_approval') {
+      revenue_kind = 'pending';
+    } else {
+      revenue_kind = 'other';
+    }
+    return {
+      id: c.id,
+      title: c.title,
+      short_id: c.id.slice(0, 8),
+      cost_impact_cents: c.cost_impact_cents,
+      status: c.status,
+      flow_version: c.flow_version,
+      applied_at: c.applied_at,
+      approved_at: c.approved_at,
+      revenue_kind,
+    };
+  });
+
+  const appliedOrder = all
+    .filter((c) => c.revenue_kind === 'applied' && c.applied_at)
+    // biome-ignore lint/style/noNonNullAssertion: filter guarantees applied_at non-null
+    .sort((a, b) => a.applied_at!.localeCompare(b.applied_at!))
+    .map((c) => ({
+      id: c.id,
+      title: c.title,
+      short_id: c.short_id,
+      applied_at: c.applied_at as string,
+      cost_impact_cents: c.cost_impact_cents,
+    }));
 
   const byLineId = new Map<string, AppliedChangeOrderContribution[]>();
   const byCategoryId = new Map<string, AppliedChangeOrderContribution[]>();
 
-  if (appliedOrder.length === 0) return { byLineId, byCategoryId, appliedOrder };
+  if (appliedOrder.length === 0) return { byLineId, byCategoryId, appliedOrder, all };
 
   const coIds = appliedOrder.map((c) => c.id);
   const { data: lines } = await supabase
@@ -373,7 +425,7 @@ export async function getProjectChangeOrderContributions(
     }
   }
 
-  return { byLineId, byCategoryId, appliedOrder };
+  return { byLineId, byCategoryId, appliedOrder, all };
 }
 
 export async function getChangeOrderSummaryForJob(jobId: string): Promise<{

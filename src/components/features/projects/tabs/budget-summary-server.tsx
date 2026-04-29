@@ -24,6 +24,7 @@ export default async function VarianceTabServer({ projectId }: { projectId: stri
       lifecycleStage={project?.lifecycle_stage}
       projectId={projectId}
       appliedChangeOrders={coContributions.appliedOrder}
+      allChangeOrders={coContributions.all}
       coContributionsByCategoryId={Object.fromEntries(coContributions.byCategoryId)}
       categoryIdByName={categoryIdByName}
     />

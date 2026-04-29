@@ -60,11 +60,24 @@ function StatBox({
   );
 }
 
+type AnyCoSummary = {
+  id: string;
+  title: string;
+  short_id: string;
+  cost_impact_cents: number;
+  status: 'draft' | 'pending_approval' | 'approved' | 'declined' | 'voided';
+  flow_version: 1 | 2;
+  applied_at: string | null;
+  approved_at: string | null;
+  revenue_kind: 'applied' | 'approved_legacy' | 'pending' | 'other';
+};
+
 export function VarianceTab({
   variance,
   lifecycleStage,
   projectId,
   appliedChangeOrders = [],
+  allChangeOrders = [],
   coContributionsByCategoryId = {},
   categoryIdByName = {},
 }: {
@@ -81,6 +94,9 @@ export function VarianceTab({
     applied_at: string;
     cost_impact_cents: number;
   }[];
+  /** Every CO on the project so the Revenue card can show v1 / pending /
+   *  approved-not-applied COs alongside applied ones. */
+  allChangeOrders?: AnyCoSummary[];
   coContributionsByCategoryId?: Record<string, AppliedChangeOrderContribution[]>;
   /** Variance by_category groups by category *name* (operator-typed) but
    *  CO contributions are keyed by id. This map bridges the two. */
@@ -203,19 +219,74 @@ export function VarianceTab({
               label: `Applied CO: ${c.title}`,
               value: c.cost_impact_cents,
               href: projectId ? `/projects/${projectId}/change-orders/${c.id}` : undefined,
-              muted: false as const,
+              badge: { kind: 'applied' as const },
             })),
             ...(mgmt_fee_cents > 0 ? [{ label: 'Management fee', value: mgmt_fee_cents }] : []),
           ]}
           total={{ label: 'Estimated revenue', value: estimated_cents }}
-          footer={
-            pending_co_count > 0 ? (
-              <p className="text-xs text-muted-foreground italic">
-                +{formatCurrency(pending_co_impact_cents)} from {pending_co_count} pending CO
-                {pending_co_count === 1 ? '' : 's'} (not yet approved).
-              </p>
-            ) : null
-          }
+          footer={null}
+          extraSection={(() => {
+            const legacy = allChangeOrders.filter((c) => c.revenue_kind === 'approved_legacy');
+            const pending = allChangeOrders.filter((c) => c.revenue_kind === 'pending');
+            if (legacy.length === 0 && pending.length === 0) return null;
+            return (
+              <div className="mt-3 space-y-2 border-t pt-3 text-xs">
+                {legacy.length > 0 ? (
+                  <div>
+                    <p className="font-semibold text-amber-800">
+                      Approved but not applied to lines
+                    </p>
+                    <ul className="mt-1 space-y-1">
+                      {legacy.map((c) => (
+                        <li key={c.id} className="flex items-baseline justify-between gap-3">
+                          <a
+                            href={projectId ? `/projects/${projectId}/change-orders/${c.id}` : '#'}
+                            className="flex flex-1 items-baseline justify-between gap-2 hover:underline"
+                          >
+                            <span>
+                              <span className="mr-1.5 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-800">
+                                {c.flow_version === 1 ? 'v1' : 'unapplied'}
+                              </span>
+                              {c.title}
+                            </span>
+                            <span className="tabular-nums font-medium text-amber-900">
+                              {c.cost_impact_cents >= 0 ? '+' : ''}
+                              {formatCurrency(c.cost_impact_cents)}
+                            </span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 italic text-muted-foreground">
+                      Customer agreed to these but cost lines may not reflect them. Verify line
+                      items match the agreed scope.
+                    </p>
+                  </div>
+                ) : null}
+                {pending.length > 0 ? (
+                  <div>
+                    <p className="font-semibold text-muted-foreground">Pending customer approval</p>
+                    <ul className="mt-1 space-y-1">
+                      {pending.map((c) => (
+                        <li key={c.id} className="flex items-baseline justify-between gap-3">
+                          <a
+                            href={projectId ? `/projects/${projectId}/change-orders/${c.id}` : '#'}
+                            className="flex flex-1 items-baseline justify-between gap-2 italic hover:underline"
+                          >
+                            <span>{c.title}</span>
+                            <span className="tabular-nums">
+                              {c.cost_impact_cents >= 0 ? '+' : ''}
+                              {formatCurrency(c.cost_impact_cents)}
+                            </span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })()}
         />
         <CompositionCard
           title="Committed"
@@ -419,6 +490,7 @@ type CompositionRow = {
   value: number;
   href?: string;
   muted?: boolean;
+  badge?: { kind: 'applied' };
 };
 
 function CompositionCard({
@@ -427,12 +499,17 @@ function CompositionCard({
   rows,
   total,
   footer,
+  extraSection,
 }: {
   title: string;
   tone?: 'primary' | 'danger';
   rows: CompositionRow[];
   total: { label: string; value: number };
   footer?: React.ReactNode;
+  /** Optional extra block rendered between the total and the footer.
+   *  Used for surfacing approved-but-not-applied / pending COs in the
+   *  Revenue card without polluting the running total. */
+  extraSection?: React.ReactNode;
 }) {
   const totalToneClass =
     tone === 'danger' ? 'text-destructive' : tone === 'primary' ? 'text-primary' : '';
@@ -480,6 +557,7 @@ function CompositionCard({
           {formatCurrency(total.value)}
         </span>
       </div>
+      {extraSection}
       {footer ? <div className="mt-2">{footer}</div> : null}
     </div>
   );
