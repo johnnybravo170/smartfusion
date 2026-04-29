@@ -140,16 +140,53 @@ export async function deleteTimeEntryAction(id: string): Promise<TimeEntryAction
 }
 
 export async function listActiveProjectsAction(): Promise<
-  { ok: true; projects: { id: string; name: string }[] } | { ok: false; error: string }
+  | {
+      ok: true;
+      projects: {
+        id: string;
+        name: string;
+        buckets: { id: string; name: string; section: string }[];
+      }[];
+    }
+  | { ok: false; error: string }
 > {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('projects')
-    .select('id, name')
+    .select(
+      'id, name, project_budget_categories(id, name, section, display_order, is_visible_in_report)',
+    )
     .is('deleted_at', null)
     .in('lifecycle_stage', ['planning', 'awaiting_approval', 'active'])
     .order('created_at', { ascending: false })
     .limit(100);
   if (error) return { ok: false, error: error.message };
-  return { ok: true, projects: (data ?? []) as { id: string; name: string }[] };
+
+  const projects = (
+    (data ?? []) as Array<{
+      id: string;
+      name: string;
+      project_budget_categories:
+        | {
+            id: string;
+            name: string;
+            section: string;
+            display_order: number;
+            is_visible_in_report: boolean;
+          }[]
+        | null;
+    }>
+  ).map((p) => ({
+    id: p.id,
+    name: p.name,
+    buckets: (p.project_budget_categories ?? [])
+      .filter((c) => c.is_visible_in_report !== false)
+      .sort(
+        (a, b) =>
+          (a.section ?? '').localeCompare(b.section ?? '') || a.display_order - b.display_order,
+      )
+      .map((c) => ({ id: c.id, name: c.name, section: c.section })),
+  }));
+
+  return { ok: true, projects };
 }
