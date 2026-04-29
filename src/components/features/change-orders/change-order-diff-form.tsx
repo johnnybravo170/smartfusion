@@ -428,7 +428,7 @@ export function ChangeOrderDiffForm({
                 {section}
               </h3>
               <div className="text-xs tabular-nums text-muted-foreground">
-                Section envelope:{' '}
+                Section total:{' '}
                 <span className="font-semibold text-foreground">
                   {formatCurrency(sectionEnvTotal)}
                 </span>
@@ -462,7 +462,7 @@ export function ChangeOrderDiffForm({
                       </div>
                       <div className="col-span-5 flex items-center justify-end gap-2">
                         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          Envelope
+                          Budget
                         </span>
                         <span className="text-xs text-muted-foreground">$</span>
                         <input
@@ -478,8 +478,8 @@ export function ChangeOrderDiffForm({
                           }
                           title={
                             hasAnyLineEdit
-                              ? 'Editing line items already; envelope is implied by line totals'
-                              : 'Adjust envelope for this category'
+                              ? 'Editing line items already; budget is implied by line totals'
+                              : 'Adjust the budget for this category'
                           }
                           className="h-7 w-24 rounded-md border bg-background px-2 text-right text-sm tabular-nums disabled:opacity-50"
                         />
@@ -496,22 +496,25 @@ export function ChangeOrderDiffForm({
                         ) : null}
                       </div>
                     </div>
-                    {hasAnyEdit ? (
-                      <div className="border-b bg-amber-50/30 px-3 py-2">
-                        <input
-                          type="text"
-                          value={notesByCategory[category.id] ?? ''}
-                          onChange={(e) =>
-                            setNotesByCategory((prev) => ({
-                              ...prev,
-                              [category.id]: e.target.value,
-                            }))
-                          }
-                          placeholder="Why? (optional — shown to the customer alongside the change)"
-                          className="h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
-                      </div>
-                    ) : null}
+                    <div
+                      className={cn(
+                        'border-b px-3 py-2',
+                        hasAnyEdit ? 'bg-amber-50/30' : 'bg-background',
+                      )}
+                    >
+                      <input
+                        type="text"
+                        value={notesByCategory[category.id] ?? ''}
+                        onChange={(e) =>
+                          setNotesByCategory((prev) => ({
+                            ...prev,
+                            [category.id]: e.target.value,
+                          }))
+                        }
+                        placeholder="Note for this category (optional — shown to the customer)"
+                        className="h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
                     {lines.length === 0 && addedHere.length === 0 ? (
                       <p className="px-3 py-2 text-xs text-muted-foreground">No lines yet.</p>
                     ) : null}

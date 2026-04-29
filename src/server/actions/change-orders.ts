@@ -175,7 +175,7 @@ export async function applyV2ChangeOrderDiff(
         if (!existing) {
           warnings.push({
             code: 'envelope_missing',
-            message: `Budget category for "${d.label}" no longer exists — envelope change skipped.`,
+            message: `Budget category for "${d.label}" no longer exists — budget change skipped.`,
             affected_id: d.budget_category_id,
           });
           continue;
@@ -190,7 +190,7 @@ export async function applyV2ChangeOrderDiff(
         if (error) {
           warnings.push({
             code: 'state_diverged',
-            message: `Could not update envelope for "${d.label}": ${error.message}`,
+            message: `Could not update budget for "${d.label}": ${error.message}`,
             affected_id: d.budget_category_id,
           });
         }

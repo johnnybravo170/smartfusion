@@ -65,7 +65,7 @@ export function ChangeOrderDiffView({
                   const afterPrice = d.action === 'remove' ? 0 : (d.line_price_cents ?? 0);
                   const delta = afterPrice - beforePrice;
                   const label = isEnvelope
-                    ? `Envelope: ${d.label ?? '—'}`
+                    ? `Budget: ${d.label ?? '—'}`
                     : (d.label ?? before?.label ?? '—');
                   return (
                     <tr key={d.id} className="border-b last:border-0">
@@ -81,7 +81,7 @@ export function ChangeOrderDiffView({
                                   : 'bg-amber-100 text-amber-800'
                           }`}
                         >
-                          {d.action === 'modify_envelope' ? 'envelope' : d.action}
+                          {d.action === 'modify_envelope' ? 'budget' : d.action}
                         </span>
                       </td>
                       <td className="py-1.5 align-top">
