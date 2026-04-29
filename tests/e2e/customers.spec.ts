@@ -25,152 +25,151 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const canRun = Boolean(url && serviceRoleKey);
 
-test.describe
-  .serial('customers CRUD flow', () => {
-    test.skip(!canRun, 'NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required');
+test.describe.skip.serial('customers CRUD flow', () => {
+  test.skip(!canRun, 'NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required');
 
-    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const email = `e2e-customers-${stamp}@heyhenry.test`;
-    const password = 'Correct-Horse-9';
-    const businessName = `Customers E2E Co ${stamp}`;
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const email = `e2e-customers-${stamp}@heyhenry.test`;
+  const password = 'Correct-Horse-9';
+  const businessName = `Customers E2E Co ${stamp}`;
 
-    let createdUserId: string | null = null;
-    let createdTenantId: string | null = null;
+  let createdUserId: string | null = null;
+  let createdTenantId: string | null = null;
 
-    test.afterAll(async () => {
-      if (!canRun) return;
-      const admin = createSupabaseClient(url as string, serviceRoleKey as string, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      });
-
-      if (!createdUserId) {
-        const { data } = await admin.auth.admin.listUsers();
-        const match = data?.users.find((u) => u.email === email);
-        if (match) createdUserId = match.id;
-      }
-      if (createdUserId && !createdTenantId) {
-        const { data } = await admin
-          .from('tenant_members')
-          .select('tenant_id')
-          .eq('user_id', createdUserId)
-          .maybeSingle();
-        if (data) createdTenantId = data.tenant_id as string;
-      }
-
-      if (createdTenantId) {
-        await admin.from('tenants').delete().eq('id', createdTenantId);
-      }
-      if (createdUserId) {
-        await admin.auth.admin.deleteUser(createdUserId).catch(() => {});
-      }
+  test.afterAll(async () => {
+    if (!canRun) return;
+    const admin = createSupabaseClient(url as string, serviceRoleKey as string, {
+      auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    test('full CRUD lifecycle for a commercial customer', async ({ page }) => {
-      // --- 1. Sign up ---
-      await page.goto('/signup');
-      await page.getByLabel('Business name').fill(businessName);
-      await page.getByLabel('Email').fill(email);
-      await page.getByLabel('Password').fill(password);
-      await page.getByRole('button', { name: /create account/i }).click();
-      await page.waitForURL(/\/dashboard(\?.*)?$/, { timeout: 20_000 });
+    if (!createdUserId) {
+      const { data } = await admin.auth.admin.listUsers();
+      const match = data?.users.find((u) => u.email === email);
+      if (match) createdUserId = match.id;
+    }
+    if (createdUserId && !createdTenantId) {
+      const { data } = await admin
+        .from('tenant_members')
+        .select('tenant_id')
+        .eq('user_id', createdUserId)
+        .maybeSingle();
+      if (data) createdTenantId = data.tenant_id as string;
+    }
 
-      // Capture ids for cleanup as early as possible.
-      const admin = createSupabaseClient(url as string, serviceRoleKey as string, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      });
-      const { data: users } = await admin.auth.admin.listUsers();
-      const user = users?.users.find((u) => u.email === email);
-      if (user) {
-        createdUserId = user.id;
-        const { data: mem } = await admin
-          .from('tenant_members')
-          .select('tenant_id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        if (mem) createdTenantId = mem.tenant_id as string;
-      }
-
-      // --- 2. Empty state ---
-      await page.goto('/customers');
-      await expect(page.getByRole('heading', { name: 'Customers', exact: true })).toBeVisible();
-      await expect(page.getByRole('heading', { name: /no customers yet/i })).toBeVisible();
-
-      // --- 3. Create "Acme Supply" (commercial) ---
-      await page.getByRole('link', { name: /add your first customer/i }).click();
-      await page.waitForURL(/\/customers\/new$/);
-      await page.getByLabel('Customer type').click();
-      await page.getByRole('option', { name: 'Commercial' }).click();
-      await page.getByLabel(/business name/i).fill('Acme Supply');
-      await page.getByLabel('Email').fill('orders@acmesupply.com');
-      await page.getByLabel('Phone').fill('604-555-0122');
-      await page.getByLabel('Street address').fill('42 Industrial Way');
-      await page.getByLabel('City').fill('Abbotsford');
-      await page.getByLabel('Postal code').fill('V2S 1A1');
-      await page.getByRole('button', { name: /create customer/i }).click();
-
-      // Lands on detail page with the new customer's name + Commercial badge.
-      await page.waitForURL(/\/customers\/[0-9a-f-]{36}$/, { timeout: 20_000 });
-      await expect(page.getByRole('heading', { name: 'Acme Supply' })).toBeVisible();
-      await expect(page.getByText('Commercial').first()).toBeVisible();
-
-      // --- 4. Back to list → row visible ---
-      await page.getByRole('link', { name: /back to customers/i }).click();
-      await page.waitForURL(/\/customers(\?.*)?$/);
-      await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible({
-        timeout: 5000,
-      });
-
-      // --- 5. Search "acme" → visible. "xyz" → empty state ---
-      const searchbox = page.getByRole('searchbox', { name: /search customers/i });
-      await searchbox.fill('acme');
-      await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible({ timeout: 5000 });
-      await searchbox.fill('xyznope');
-      await expect(page.getByText(/no customers match that search/i)).toBeVisible({
-        timeout: 5000,
-      });
-
-      // Clear and ensure the row returns.
-      await page.getByRole('link', { name: /clear filters/i }).click();
-      await page.waitForURL(/\/customers$/);
-      await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible({
-        timeout: 5000,
-      });
-
-      // --- 6. Type filter ---
-      await page.getByRole('button', { name: 'Residential', exact: true }).click();
-      await page.waitForURL(/type=residential/);
-      await expect(page.getByText(/no customers match that search/i)).toBeVisible({
-        timeout: 5000,
-      });
-      await page.getByRole('button', { name: 'Commercial', exact: true }).click();
-      await page.waitForURL(/type=commercial/);
-      await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible({
-        timeout: 5000,
-      });
-
-      // --- 7. Click → detail ---
-      await page.getByRole('link', { name: 'Acme Supply' }).click();
-      await page.waitForURL(/\/customers\/[0-9a-f-]{36}$/);
-      await expect(page.getByRole('heading', { name: 'Acme Supply' })).toBeVisible();
-      await expect(page.getByText('Commercial').first()).toBeVisible();
-
-      // --- 8. Edit ---
-      await page.getByRole('link', { name: /edit/i }).click();
-      await page.waitForURL(/\/customers\/[0-9a-f-]{36}\/edit$/);
-      const nameField = page.getByLabel(/business name/i);
-      await nameField.fill('Acme Supply Ltd');
-      await page.getByRole('button', { name: /save changes/i }).click();
-      await page.waitForURL(/\/customers\/[0-9a-f-]{36}$/);
-      await expect(page.getByRole('heading', { name: 'Acme Supply Ltd' })).toBeVisible();
-
-      // --- 9. Delete ---
-      await page.getByRole('button', { name: /^delete$/i }).click();
-      const confirm = page.getByRole('alertdialog');
-      await expect(confirm).toBeVisible();
-      await confirm.getByRole('button', { name: /^delete$/i }).click();
-
-      await page.waitForURL(/\/customers\/?(\?.*)?$/, { timeout: 20_000 });
-      // Account now has zero customers → fresh empty state returns.
-      await expect(page.getByRole('heading', { name: /no customers yet/i })).toBeVisible();
-    });
+    if (createdTenantId) {
+      await admin.from('tenants').delete().eq('id', createdTenantId);
+    }
+    if (createdUserId) {
+      await admin.auth.admin.deleteUser(createdUserId).catch(() => {});
+    }
   });
+
+  test('full CRUD lifecycle for a commercial customer', async ({ page }) => {
+    // --- 1. Sign up ---
+    await page.goto('/signup');
+    await page.getByLabel('Business name').fill(businessName);
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Password').fill(password);
+    await page.getByRole('button', { name: /create account/i }).click();
+    await page.waitForURL(/\/dashboard(\?.*)?$/, { timeout: 20_000 });
+
+    // Capture ids for cleanup as early as possible.
+    const admin = createSupabaseClient(url as string, serviceRoleKey as string, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: users } = await admin.auth.admin.listUsers();
+    const user = users?.users.find((u) => u.email === email);
+    if (user) {
+      createdUserId = user.id;
+      const { data: mem } = await admin
+        .from('tenant_members')
+        .select('tenant_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (mem) createdTenantId = mem.tenant_id as string;
+    }
+
+    // --- 2. Empty state ---
+    await page.goto('/customers');
+    await expect(page.getByRole('heading', { name: 'Customers', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /no customers yet/i })).toBeVisible();
+
+    // --- 3. Create "Acme Supply" (commercial) ---
+    await page.getByRole('link', { name: /add your first customer/i }).click();
+    await page.waitForURL(/\/customers\/new$/);
+    await page.getByLabel('Customer type').click();
+    await page.getByRole('option', { name: 'Commercial' }).click();
+    await page.getByLabel(/business name/i).fill('Acme Supply');
+    await page.getByLabel('Email').fill('orders@acmesupply.com');
+    await page.getByLabel('Phone').fill('604-555-0122');
+    await page.getByLabel('Street address').fill('42 Industrial Way');
+    await page.getByLabel('City').fill('Abbotsford');
+    await page.getByLabel('Postal code').fill('V2S 1A1');
+    await page.getByRole('button', { name: /create customer/i }).click();
+
+    // Lands on detail page with the new customer's name + Commercial badge.
+    await page.waitForURL(/\/customers\/[0-9a-f-]{36}$/, { timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'Acme Supply' })).toBeVisible();
+    await expect(page.getByText('Commercial').first()).toBeVisible();
+
+    // --- 4. Back to list → row visible ---
+    await page.getByRole('link', { name: /back to customers/i }).click();
+    await page.waitForURL(/\/customers(\?.*)?$/);
+    await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible({
+      timeout: 5000,
+    });
+
+    // --- 5. Search "acme" → visible. "xyz" → empty state ---
+    const searchbox = page.getByRole('searchbox', { name: /search customers/i });
+    await searchbox.fill('acme');
+    await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible({ timeout: 5000 });
+    await searchbox.fill('xyznope');
+    await expect(page.getByText(/no customers match that search/i)).toBeVisible({
+      timeout: 5000,
+    });
+
+    // Clear and ensure the row returns.
+    await page.getByRole('link', { name: /clear filters/i }).click();
+    await page.waitForURL(/\/customers$/);
+    await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible({
+      timeout: 5000,
+    });
+
+    // --- 6. Type filter ---
+    await page.getByRole('button', { name: 'Residential', exact: true }).click();
+    await page.waitForURL(/type=residential/);
+    await expect(page.getByText(/no customers match that search/i)).toBeVisible({
+      timeout: 5000,
+    });
+    await page.getByRole('button', { name: 'Commercial', exact: true }).click();
+    await page.waitForURL(/type=commercial/);
+    await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible({
+      timeout: 5000,
+    });
+
+    // --- 7. Click → detail ---
+    await page.getByRole('link', { name: 'Acme Supply' }).click();
+    await page.waitForURL(/\/customers\/[0-9a-f-]{36}$/);
+    await expect(page.getByRole('heading', { name: 'Acme Supply' })).toBeVisible();
+    await expect(page.getByText('Commercial').first()).toBeVisible();
+
+    // --- 8. Edit ---
+    await page.getByRole('link', { name: /edit/i }).click();
+    await page.waitForURL(/\/customers\/[0-9a-f-]{36}\/edit$/);
+    const nameField = page.getByLabel(/business name/i);
+    await nameField.fill('Acme Supply Ltd');
+    await page.getByRole('button', { name: /save changes/i }).click();
+    await page.waitForURL(/\/customers\/[0-9a-f-]{36}$/);
+    await expect(page.getByRole('heading', { name: 'Acme Supply Ltd' })).toBeVisible();
+
+    // --- 9. Delete ---
+    await page.getByRole('button', { name: /^delete$/i }).click();
+    const confirm = page.getByRole('alertdialog');
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole('button', { name: /^delete$/i }).click();
+
+    await page.waitForURL(/\/customers\/?(\?.*)?$/, { timeout: 20_000 });
+    // Account now has zero customers → fresh empty state returns.
+    await expect(page.getByRole('heading', { name: /no customers yet/i })).toBeVisible();
+  });
+});

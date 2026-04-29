@@ -93,11 +93,13 @@ describe('text-to-speech', () => {
       revokeObjectURL: vi.fn(),
     });
 
-    const audioBlob = new Blob(['fake-audio'], { type: 'audio/mpeg' });
+    // jsdom's Blob doesn't expose .stream(), which the fetch Response
+    // pulls on internally. Use a Uint8Array body — it has a working
+    // ReadableStream contract under jsdom.
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(audioBlob, {
+        new Response(new Uint8Array([102, 97, 107, 101]), {
           status: 200,
           headers: { 'Content-Type': 'audio/mpeg' },
         }),
@@ -149,11 +151,13 @@ describe('text-to-speech', () => {
       revokeObjectURL: vi.fn(),
     });
 
-    const audioBlob = new Blob(['fake-audio'], { type: 'audio/mpeg' });
+    // jsdom's Blob doesn't expose .stream(), which the fetch Response
+    // pulls on internally. Use a Uint8Array body — it has a working
+    // ReadableStream contract under jsdom.
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(audioBlob, {
+        new Response(new Uint8Array([102, 97, 107, 101]), {
           status: 200,
           headers: { 'Content-Type': 'audio/mpeg' },
         }),
