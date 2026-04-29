@@ -1,15 +1,15 @@
 /**
- * Customers CRUD against the seeded fixture.
+ * Contacts (formerly "Customers") CRUD against the seeded fixture.
  *
- * The seed ships a residential customer ("Jane Homeowner"). This
- * spec exercises the operator-facing CRUD surface around adding,
- * filtering, editing, and deleting customers — the most foundational
- * data flow in the app.
+ * The seed ships a residential customer ("Jane Homeowner") with the
+ * default kind='customer'. This spec exercises the contacts surface
+ * — list/filter/search/create/edit/delete — under the new
+ * Contact-with-kind data model that replaced the standalone
+ * customers UI.
  *
- * Predecessor: tests/e2e/customers.spec.ts (skipped) walked through
- * signup-via-UI, which broke when we added the verification gate.
- * This rewrite uses the admin-client seed so it stays narrow about
- * what's actually being verified.
+ * Routes:  /contacts, /contacts/new, /contacts/[id], /contacts/[id]/edit
+ * Filter:  ?kind=customer&type=residential|commercial (subtype chips
+ *          appear only when the customer kind is active).
  */
 
 import { expect, test } from '@playwright/test';
@@ -20,7 +20,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const canRun = Boolean(url && serviceRoleKey);
 
 test.describe
-  .serial('customers CRUD', () => {
+  .serial('contacts (customers) CRUD', () => {
     test.skip(!canRun, 'requires NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY');
 
     let seed: SeededDemo;
@@ -33,20 +33,23 @@ test.describe
       if (seed) await tearDownDemo(seed);
     });
 
-    test('list shows seeded customer + filtering by type works', async ({ page }) => {
+    test('list shows seeded customer + subtype filter narrows correctly', async ({ page }) => {
       await signInAsOwner(page, seed);
-      await page.goto('/customers');
+      await page.goto('/contacts');
 
-      await expect(page.getByRole('heading', { name: 'Customers', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Contacts', exact: true })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Jane Homeowner' })).toBeVisible();
 
-      // Type filter — Jane is residential, so filtering to commercial
-      // should hide her.
+      // Click the "Customers" kind chip to reveal the subtype row.
+      await page.getByRole('button', { name: 'Customers', exact: true }).click();
+      await page.waitForURL(/kind=customer/);
+
+      // Jane is residential — filtering to commercial hides her.
       await page.getByRole('button', { name: 'Commercial', exact: true }).click();
       await page.waitForURL(/type=commercial/);
-      await expect(page.getByText(/no customers match that search/i)).toBeVisible();
+      await expect(page.getByText(/no contacts match/i)).toBeVisible();
 
-      // Back to residential — Jane reappears.
+      // Switch to Residential — Jane reappears.
       await page.getByRole('button', { name: 'Residential', exact: true }).click();
       await page.waitForURL(/type=residential/);
       await expect(page.getByRole('link', { name: 'Jane Homeowner' })).toBeVisible();
@@ -54,7 +57,7 @@ test.describe
 
     test('create commercial customer → detail page reflects it', async ({ page }) => {
       await signInAsOwner(page, seed);
-      await page.goto('/customers/new');
+      await page.goto('/contacts/new');
 
       // Customer type select → Commercial.
       await page.getByLabel('Customer type').click();
@@ -67,7 +70,7 @@ test.describe
       await page.getByLabel('Postal code').fill('V2S 1A1');
       await page.getByRole('button', { name: /create customer/i }).click();
 
-      await page.waitForURL(/\/customers\/[0-9a-f-]{36}$/, { timeout: 20_000 });
+      await page.waitForURL(/\/contacts\/[0-9a-f-]{36}$/, { timeout: 20_000 });
       await expect(page.getByRole('heading', { name: 'Acme Supply' })).toBeVisible();
       await expect(page.getByText('Commercial').first()).toBeVisible();
 
@@ -84,9 +87,9 @@ test.describe
 
     test('search narrows the list correctly', async ({ page }) => {
       await signInAsOwner(page, seed);
-      await page.goto('/customers');
+      await page.goto('/contacts');
 
-      const searchbox = page.getByRole('searchbox', { name: /search customers/i });
+      const searchbox = page.getByRole('searchbox', { name: /search contacts/i });
       await searchbox.fill('acme');
       await expect(page.getByRole('link', { name: 'Acme Supply' })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Jane Homeowner' })).not.toBeVisible();
@@ -96,7 +99,7 @@ test.describe
       await expect(page.getByRole('link', { name: 'Acme Supply' })).not.toBeVisible();
 
       await searchbox.fill('xyznope');
-      await expect(page.getByText(/no customers match that search/i)).toBeVisible();
+      await expect(page.getByText(/no contacts match/i)).toBeVisible();
     });
 
     test('edit + delete the commercial customer', async ({ page }) => {
@@ -112,10 +115,10 @@ test.describe
       const acmeId = acme?.id as string;
 
       // Edit.
-      await page.goto(`/customers/${acmeId}/edit`);
+      await page.goto(`/contacts/${acmeId}/edit`);
       await page.getByLabel(/business name/i).fill('Acme Supply Ltd');
       await page.getByRole('button', { name: /save changes/i }).click();
-      await page.waitForURL(/\/customers\/[0-9a-f-]{36}$/);
+      await page.waitForURL(/\/contacts\/[0-9a-f-]{36}$/);
       await expect(page.getByRole('heading', { name: 'Acme Supply Ltd' })).toBeVisible();
 
       // Delete via the confirm dialog.
@@ -124,7 +127,7 @@ test.describe
       await expect(confirm).toBeVisible();
       await confirm.getByRole('button', { name: /^delete$/i }).click();
 
-      await page.waitForURL(/\/customers\/?(\?.*)?$/, { timeout: 20_000 });
+      await page.waitForURL(/\/contacts\/?(\?.*)?$/, { timeout: 20_000 });
 
       // Acme is gone — but the seeded Jane survives.
       await expect(page.getByRole('link', { name: 'Acme Supply Ltd' })).not.toBeVisible();
