@@ -1,0 +1,71 @@
+name: Privacy Drift Check
+
+on:
+  schedule:
+    # Mondays at 9am UTC (~2am Pacific). Cheap weekly sniff test.
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  drift:
+    name: Gemini drift check on /privacy ↔ vendors.yaml
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need history for "recent commits" query in the agent.
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run drift agent
+        id: drift
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "${GEMINI_API_KEY}" ]; then
+            echo "::warning::GEMINI_API_KEY not set; skipping drift check (workflow exits 0)."
+            echo "report=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          report=$(pnpm exec tsx scripts/privacy-drift-agent.ts 2>/dev/null)
+          echo "Report:"
+          echo "${report}"
+          {
+            echo "report<<EOF"
+            echo "${report}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Notify on drift via Resend
+        # Only fire when the agent produced an actual finding.
+        if: ${{ steps.drift.outputs.report != '' && !contains(steps.drift.outputs.report, 'No drift detected.') }}
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          OPS_ALERTS_TO_EMAIL: ${{ secrets.OPS_ALERTS_TO_EMAIL }}
+          OPS_ALERTS_FROM_EMAIL: ${{ secrets.OPS_ALERTS_FROM_EMAIL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPORT: ${{ steps.drift.outputs.report }}
+        run: |
+          if [ -z "${RESEND_API_KEY}" ]; then
+            echo "::warning::RESEND_API_KEY not set; report below."
+            echo "${REPORT}"
+            exit 0
+          fi
+          # Escape report for JSON.
+          escaped=$(printf '%s' "$REPORT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])')
+          curl -fsSL -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer ${RESEND_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{\"from\":\"${OPS_ALERTS_FROM_EMAIL:-ops@mail.heyhenry.io}\",\"to\":[\"${OPS_ALERTS_TO_EMAIL:-riffninjavideos@gmail.com}\"],\"subject\":\"[HeyHenry] Privacy policy drift detected\",\"text\":\"Run: ${RUN_URL}\\n\\nFindings:\\n${escaped}\"}"

@@ -33,6 +33,13 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Vendor coverage (privacy policy ↔ codebase)
+        # Asserts every third-party SDK / vendor env var in the
+        # codebase has an entry in docs/legal/vendors.yaml. The
+        # /privacy page renders from that file; missing entries =
+        # public privacy policy lying. See scripts/check-vendor-coverage.ts.
+        run: pnpm exec tsx scripts/check-vendor-coverage.ts
+
       - name: Unit tests
         run: pnpm test
 

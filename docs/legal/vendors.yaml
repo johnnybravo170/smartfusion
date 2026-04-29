@@ -1,0 +1,181 @@
+# Vendor inventory — single source of truth for sub-processors and
+# data flows. The /privacy page renders directly from this file at
+# build time so the public policy can never lie about reality.
+#
+# Every third-party service that processes customer data needs an
+# entry here. CI gate (scripts/check-vendor-coverage.ts) fails any PR
+# that introduces a new vendor signature in package.json or env vars
+# without a matching entry.
+#
+# Field guide:
+#   slug:           URL-safe identifier (kebab-case, stable forever)
+#   name:           display name on the privacy page
+#   purpose:        one-sentence reason this vendor exists in our stack
+#   url:            vendor homepage
+#   region:         where customer data physically lives (be precise)
+#   data_types:     enumerated PII categories sent to this vendor
+#   subprocessor_url: link to vendor's own sub-processor list (optional)
+#   detection:      patterns used by the CI lint to auto-detect usage
+#     packages:     npm package name patterns (regex strings)
+#     env:          env var name patterns (regex strings)
+#   notes:          anything material the policy page should disclose
+
+vendors:
+  - slug: supabase
+    name: Supabase
+    purpose: Primary database, authentication, file storage.
+    url: https://supabase.com
+    region: ca-central-1 (Montreal, Canada)
+    data_types:
+      - account credentials
+      - customer + project data
+      - uploaded photos / documents
+      - audit logs
+    subprocessor_url: https://supabase.com/legal/subprocessors
+    detection:
+      packages: ['^@supabase/']
+      env: ['^NEXT_PUBLIC_SUPABASE_', '^SUPABASE_']
+
+  - slug: vercel
+    name: Vercel
+    purpose: Application hosting + edge runtime + serverless functions.
+    url: https://vercel.com
+    region: US (multi-region; closest to user)
+    data_types:
+      - request/response logs
+      - operator session cookies
+    subprocessor_url: https://vercel.com/legal/subprocessors
+    detection:
+      packages: ['^@vercel/']
+      env: ['^VERCEL_']
+    notes: |
+      Vercel hosts the Next.js app. Customer data at rest stays in
+      Supabase ca-central-1; Vercel processes data in transit only
+      (request/response, logs). PIPEDA cross-border disclosure applies.
+
+  - slug: resend
+    name: Resend
+    purpose: Transactional + marketing email delivery.
+    url: https://resend.com
+    region: US
+    data_types:
+      - recipient email + name
+      - email body (estimate, invoice, change order content)
+    subprocessor_url: https://resend.com/legal/dpa
+    detection:
+      packages: ['^resend$']
+      env: ['^RESEND_']
+
+  - slug: twilio
+    name: Twilio
+    purpose: SMS delivery (estimate / change-order notifications, MFA).
+    url: https://www.twilio.com
+    region: US
+    data_types:
+      - recipient phone number
+      - SMS body content
+    subprocessor_url: https://www.twilio.com/en-us/legal/sub-processors
+    detection:
+      packages: ['^twilio$']
+      env: ['^TWILIO_']
+
+  - slug: stripe
+    name: Stripe
+    purpose: Subscription billing for HeyHenry operators.
+    url: https://stripe.com
+    region: US (with Canadian banking integrations)
+    data_types:
+      - operator billing email
+      - card data (handled directly by Stripe; never touches our servers)
+      - subscription status
+    subprocessor_url: https://stripe.com/privacy-center/legal
+    detection:
+      packages: ['^stripe$']
+      env: ['^STRIPE_']
+
+  - slug: sentry
+    name: Sentry
+    purpose: Application error tracking + performance monitoring.
+    url: https://sentry.io
+    region: US (default org region)
+    data_types:
+      - error stacks + request metadata (PII scrubbed where possible)
+    subprocessor_url: https://sentry.io/legal/subprocessors/
+    detection:
+      packages: ['^@sentry/']
+      env: ['^SENTRY_', '^NEXT_PUBLIC_SENTRY_']
+    notes: |
+      Stack traces are scrubbed for known PII fields (email, phone)
+      via Sentry's beforeSend hook in next.config. Spot-audit
+      quarterly.
+
+  - slug: anthropic
+    name: Anthropic (Claude API)
+    purpose: AI assistant — operator chat, summarization, structured extraction.
+    url: https://www.anthropic.com
+    region: US
+    data_types:
+      - prompt content (operator-typed messages, attached project context)
+      - generated responses
+    subprocessor_url: https://www.anthropic.com/legal/subprocessors
+    detection:
+      packages: ['^@anthropic-ai/']
+      env: ['^ANTHROPIC_']
+    notes: |
+      Anthropic's API does not retain inputs for model training.
+
+  - slug: google-genai
+    name: Google AI (Gemini API)
+    purpose: AI extraction (inbound email classification, photo memos, vendor quote parsing).
+    url: https://ai.google.dev
+    region: US (Gemini API uses global routing; data residency not guaranteed)
+    data_types:
+      - inbound email content + attachments
+      - photo bytes for classification
+    subprocessor_url: https://cloud.google.com/terms/subprocessors
+    detection:
+      packages: ['^@google/genai$', '^@google/generative-ai$']
+      env: ['^GEMINI_API_KEY$', '^GOOGLE_API_KEY$']
+
+  - slug: openai
+    name: OpenAI
+    purpose: Receipt extraction + intake augmentation + classification fallbacks.
+    url: https://openai.com
+    region: US
+    data_types:
+      - receipt images
+      - intake form free-text
+    subprocessor_url: https://openai.com/policies/subprocessor-list/
+    detection:
+      packages: ['^openai$']
+      env: ['^OPENAI_']
+    notes: |
+      OpenAI API does not retain inputs for model training under
+      enterprise/business terms.
+
+  - slug: google-maps
+    name: Google Maps (Places + Geocoding)
+    purpose: Customer + project address autocomplete on operator forms.
+    url: https://developers.google.com/maps
+    region: US (frontend SDK; no server-side data egress)
+    data_types:
+      - operator-typed address fragments (no stored PII)
+    subprocessor_url: https://cloud.google.com/terms/subprocessors
+    detection:
+      packages: ['^@react-google-maps/']
+      env: ['^NEXT_PUBLIC_GOOGLE_MAPS_']
+
+  - slug: cloudflare-r2-or-aws-s3
+    name: Object storage (encrypted backups)
+    purpose: Off-site encrypted Postgres backups for disaster recovery.
+    url: https://aws.amazon.com/s3/
+    region: ca-central-1 (planned — Montreal, Canada)
+    data_types:
+      - encrypted database dumps (AES-256-CBC, key held only by us)
+    subprocessor_url: ''
+    detection:
+      packages: []
+      env: ['^R2_', '^BACKUP_DATABASE_URL$', '^BACKUP_ENCRYPTION_KEY$']
+    notes: |
+      Dumps are encrypted client-side before upload. The provider
+      sees only ciphertext.
