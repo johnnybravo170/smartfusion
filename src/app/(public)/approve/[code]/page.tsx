@@ -19,7 +19,8 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
       `id, project_id, title, description, reason, cost_impact_cents, timeline_impact_days,
        status, approved_by_name, approved_at, declined_at, declined_reason, approval_code,
        flow_version, category_notes,
-       projects:project_id (name, customers:customer_id (name)),
+       management_fee_override_rate,
+       projects:project_id (name, management_fee_rate, customers:customer_id (name)),
        tenants:tenant_id (name)`,
     )
     .eq('approval_code', code)
@@ -114,22 +115,41 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
   }).format(Math.abs(costCents) / 100);
   const costSign = costCents >= 0 ? '+' : '-';
 
+  // Management fee on this CO. Mirrors the customer-facing estimate page
+  // (which breaks out "Management fee (X%)" as a separate line) so the
+  // customer sees the same shape for change orders. Operator may override
+  // the rate per CO — the customer sees that rate, not the project default.
+  const projectFeeRate = (project?.management_fee_rate as number | null) ?? 0;
+  const overrideFeeRate = coData.management_fee_override_rate as number | null;
+  const coFeeRate = overrideFeeRate ?? projectFeeRate;
+  const coFeeCents = Math.round(costCents * coFeeRate);
+  const totalImpactCents = costCents + coFeeCents;
+
+  const fmtCurrency = (cents: number) =>
+    new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(
+      Math.abs(cents) / 100,
+    );
+  const formatPct = (rate: number) => (rate * 100).toFixed(2).replace(/\.?0+$/, '');
+
   const timelineDays = coData.timeline_impact_days as number;
 
-  // Running project total — sum of current cost_lines (already includes
-  // prior applied COs) gives "before this CO". Adding this CO's cost
-  // impact gives "after". Customer sees "+$X · new total $Y" so they
-  // understand the running impact, not just the delta.
+  // Running project total — current cost_lines + the same project-rate
+  // management fee the customer signed off on at estimate-approval time.
+  // Adding this CO's cost + its (possibly-overridden) fee gives the new
+  // running total. Customer sees the full running revenue, not just the
+  // line subtotal.
   const projectIdForTotal = coData.project_id as string;
   const { data: linesForTotal } = await admin
     .from('project_cost_lines')
     .select('line_price_cents')
     .eq('project_id', projectIdForTotal);
-  const currentProjectTotalCents = ((linesForTotal ?? []) as { line_price_cents: number }[]).reduce(
+  const currentLinesCents = ((linesForTotal ?? []) as { line_price_cents: number }[]).reduce(
     (s, l) => s + l.line_price_cents,
     0,
   );
-  const newProjectTotalCents = currentProjectTotalCents + costCents;
+  const currentFeeCents = Math.round(currentLinesCents * projectFeeRate);
+  const currentProjectTotalCents = currentLinesCents + currentFeeCents;
+  const newProjectTotalCents = currentProjectTotalCents + totalImpactCents;
 
   // For v2 COs, surface the line-level diff + per-category notes so the
   // homeowner sees exactly what changed before signing. v1 stays text-only.
@@ -181,40 +201,61 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
           ) : null}
         </div>
 
-        <div className="grid grid-cols-2 gap-4 rounded-md bg-muted/50 p-4">
-          <div>
-            <p className="text-xs text-muted-foreground">Cost Impact</p>
-            <p className="text-xl font-semibold">
-              {costSign}
-              {costFormatted}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              New total{' '}
-              <span className="font-medium text-foreground tabular-nums">
-                {new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(
-                  newProjectTotalCents / 100,
-                )}
-              </span>
-              {currentProjectTotalCents > 0 ? (
-                <>
-                  {' '}
-                  (was{' '}
-                  {new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(
-                    currentProjectTotalCents / 100,
-                  )}
-                  )
-                </>
-              ) : null}
-            </p>
+        <div className="rounded-md bg-muted/50 p-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Total Cost Impact</p>
+              <p className="text-xl font-semibold">
+                {totalImpactCents >= 0 ? '+' : '-'}
+                {fmtCurrency(totalImpactCents)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                New project total{' '}
+                <span className="font-medium text-foreground tabular-nums">
+                  {fmtCurrency(newProjectTotalCents)}
+                </span>
+                {currentProjectTotalCents > 0 ? (
+                  <> (was {fmtCurrency(currentProjectTotalCents)})</>
+                ) : null}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Timeline Impact</p>
+              <p className="text-xl font-semibold">
+                {timelineDays === 0
+                  ? 'None'
+                  : `${timelineDays > 0 ? '+' : ''}${timelineDays} day${Math.abs(timelineDays) === 1 ? '' : 's'}`}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Timeline Impact</p>
-            <p className="text-xl font-semibold">
-              {timelineDays === 0
-                ? 'None'
-                : `${timelineDays > 0 ? '+' : ''}${timelineDays} day${Math.abs(timelineDays) === 1 ? '' : 's'}`}
-            </p>
-          </div>
+
+          {coFeeCents !== 0 ? (
+            <div className="mt-3 space-y-1 border-t pt-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Cost of work</span>
+                <span className="tabular-nums">
+                  {costSign}
+                  {costFormatted}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">
+                  Management fee ({formatPct(coFeeRate)}%)
+                </span>
+                <span className="tabular-nums">
+                  {coFeeCents >= 0 ? '+' : '-'}
+                  {fmtCurrency(coFeeCents)}
+                </span>
+              </div>
+              <div className="flex justify-between border-t pt-1.5 font-medium">
+                <span>Total</span>
+                <span className="tabular-nums">
+                  {totalImpactCents >= 0 ? '+' : '-'}
+                  {fmtCurrency(totalImpactCents)}
+                </span>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {showDiff ? (

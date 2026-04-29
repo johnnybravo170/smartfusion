@@ -7,6 +7,9 @@ export function changeOrderApprovalEmailHtml({
   changeOrderTitle,
   description,
   costImpactFormatted,
+  managementFeeFormatted,
+  managementFeePct,
+  totalImpactFormatted,
   timelineImpactDays,
   approveUrl,
 }: {
@@ -15,7 +18,14 @@ export function changeOrderApprovalEmailHtml({
   projectName: string;
   changeOrderTitle: string;
   description: string;
+  /** Pre-fee cost impact (signed). */
   costImpactFormatted: string;
+  /** Management fee dollar amount (signed). Empty string when fee is 0. */
+  managementFeeFormatted: string;
+  /** Management fee rate as a display string, e.g. "12" or "8.5". */
+  managementFeePct: string;
+  /** cost + fee, signed. Headline number the customer sees. */
+  totalImpactFormatted: string;
   timelineImpactDays: number;
   approveUrl: string;
 }): string {
@@ -39,14 +49,33 @@ export function changeOrderApprovalEmailHtml({
 
     <div style="display: flex; gap: 24px; margin-top: 16px;">
       <div>
-        <p style="font-size: 12px; color: #666; margin: 0;">Cost Impact</p>
-        <p style="font-size: 18px; font-weight: 600; margin: 4px 0 0;">${costImpactFormatted}</p>
+        <p style="font-size: 12px; color: #666; margin: 0;">Total Cost Impact</p>
+        <p style="font-size: 18px; font-weight: 600; margin: 4px 0 0;">${totalImpactFormatted}</p>
       </div>
       <div>
         <p style="font-size: 12px; color: #666; margin: 0;">Timeline Impact</p>
         <p style="font-size: 18px; font-weight: 600; margin: 4px 0 0;">${timelineText}</p>
       </div>
     </div>
+
+    ${
+      managementFeeFormatted
+        ? `<table style="width: 100%; margin-top: 16px; border-top: 1px solid #e5e7eb; padding-top: 12px; font-size: 13px;">
+      <tr>
+        <td style="color: #666; padding: 2px 0;">Cost of work</td>
+        <td style="text-align: right; padding: 2px 0;">${costImpactFormatted}</td>
+      </tr>
+      <tr>
+        <td style="color: #666; padding: 2px 0;">Management fee (${managementFeePct}%)</td>
+        <td style="text-align: right; padding: 2px 0;">${managementFeeFormatted}</td>
+      </tr>
+      <tr>
+        <td style="font-weight: 600; padding: 4px 0 0; border-top: 1px solid #e5e7eb;">Total</td>
+        <td style="text-align: right; font-weight: 600; padding: 4px 0 0; border-top: 1px solid #e5e7eb;">${totalImpactFormatted}</td>
+      </tr>
+    </table>`
+        : ''
+    }
   </div>
 
   <p style="font-size: 14px;">Please review and approve or decline this change order:</p>

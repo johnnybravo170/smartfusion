@@ -413,11 +413,13 @@ export async function sendChangeOrderAction(
 
   // Load the change order with project OR job context. Pull phone too
   // so Slice 7 can fire SMS alongside the email — the urgency lives in
-  // the SMS, not the inbox.
+  // the SMS, not the inbox. Pull the project's management fee rate so the
+  // approval email can break out the fee on a CO (mirrors the customer-
+  // facing estimate page, which always shows fee as a separate line).
   const { data: co, error: coErr } = await supabase
     .from('change_orders')
     .select(
-      '*, projects:project_id (id, name, customer_id, customers:customer_id (name, email, phone)), jobs:job_id (id, customer_id, customers:customer_id (name, email, phone))',
+      '*, projects:project_id (id, name, customer_id, management_fee_rate, customers:customer_id (name, email, phone)), jobs:job_id (id, customer_id, customers:customer_id (name, email, phone))',
     )
     .eq('id', changeOrderId)
     .single();
@@ -452,13 +454,22 @@ export async function sendChangeOrderAction(
     return { ok: false, error: `Failed to update status: ${updateErr.message}` };
   }
 
+  // Per-CO fee: override > project default. Email mirrors the approval
+  // page so the headline number the customer sees matches click-through.
+  const projectFeeRate = (project?.management_fee_rate as number | null) ?? 0;
+  const overrideFeeRate = coData.management_fee_override_rate as number | null;
+  const coFeeRate = overrideFeeRate ?? projectFeeRate;
+  const fmtSigned = (n: number) =>
+    n >= 0 ? `+${formatCurrency(n)}` : `-${formatCurrency(Math.abs(n))}`;
+  const fmtPct = (rate: number) => (rate * 100).toFixed(2).replace(/\.?0+$/, '');
+
   // Send email if customer has email
   if (customerEmail) {
     const approvalCode = coData.approval_code as string;
     const approveUrl = `https://app.heyhenry.io/approve/${approvalCode}`;
     const costCents = coData.cost_impact_cents as number;
-    const costFormatted =
-      costCents >= 0 ? `+${formatCurrency(costCents)}` : `-${formatCurrency(Math.abs(costCents))}`;
+    const feeCents = Math.round(costCents * coFeeRate);
+    const totalCents = costCents + feeCents;
 
     const branding = await getEmailBrandingForTenant(tenant.id);
     const html = changeOrderApprovalEmailHtml({
@@ -467,7 +478,10 @@ export async function sendChangeOrderAction(
       projectName,
       changeOrderTitle: coData.title as string,
       description: coData.description as string,
-      costImpactFormatted: costFormatted,
+      costImpactFormatted: fmtSigned(costCents),
+      managementFeeFormatted: feeCents !== 0 ? fmtSigned(feeCents) : '',
+      managementFeePct: fmtPct(coFeeRate),
+      totalImpactFormatted: fmtSigned(totalCents),
       timelineImpactDays: coData.timeline_impact_days as number,
       approveUrl,
     });
@@ -486,13 +500,15 @@ export async function sendChangeOrderAction(
 
   // Slice 7 — SMS urgency. Email lands in an inbox; the SMS is what
   // pulls a homeowner's attention so the floor crew can start Friday.
-  // Best-effort: failures here don't break the flow.
+  // Best-effort: failures here don't break the flow. Show the total
+  // (cost + fee) so the headline number matches the approval page —
+  // the breakdown lives there.
   if (customerPhone) {
     const approvalCode = coData.approval_code as string;
     const approveUrl = `https://app.heyhenry.io/approve/${approvalCode}`;
     const costCents = coData.cost_impact_cents as number;
-    const costDelta =
-      costCents >= 0 ? `+${formatCurrency(costCents)}` : `-${formatCurrency(Math.abs(costCents))}`;
+    const totalCents = costCents + Math.round(costCents * coFeeRate);
+    const costDelta = fmtSigned(totalCents);
     // Plain-language, ≤ 160 chars where possible — Twilio splits longer
     // messages into segments and they cost more.
     const body = `Hi ${customerFirstName}, quick approval needed on ${projectName}: ${coData.title} (${costDelta}). Tap to review: ${approveUrl}`;
