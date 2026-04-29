@@ -110,6 +110,28 @@ const RLS_TABLE_CASES: RlsCase[] = [
     }),
   },
   {
+    table: 'project_checklist_items',
+    seed: async ({ admin, tenant, stamp }) => {
+      const { data, error } = await admin
+        .from('project_checklist_items')
+        .insert({
+          tenant_id: tenant.tenantId,
+          project_id: tenant.projectId,
+          title: `pci-${stamp}`,
+        })
+        .select('id')
+        .single();
+      if (error || !data) throw new Error(error?.message ?? 'pci seed failed');
+      return data.id as string;
+    },
+    updatePayload: { title: 'cross-tenant tamper' },
+    insertAcrossTenants: ({ tenant, stamp }) => ({
+      tenant_id: tenant.tenantId,
+      project_id: tenant.projectId,
+      title: `pci-inject-${stamp}`,
+    }),
+  },
+  {
     table: 'quotes',
     seed: async ({ tenant }) => tenant.quoteId,
     updatePayload: { notes: 'cross-tenant tamper' },

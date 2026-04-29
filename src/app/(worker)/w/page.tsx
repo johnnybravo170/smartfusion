@@ -1,17 +1,25 @@
 import { Clock } from 'lucide-react';
 import Link from 'next/link';
+import { SiteSwitcher } from '@/components/features/checklist/site-switcher';
+import { TeamChecklist } from '@/components/features/checklist/team-checklist';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireWorker } from '@/lib/auth/helpers';
 import { listProjectsForWorker } from '@/lib/db/queries/project-assignments';
+import { getLastBilledProjectForWorker } from '@/lib/db/queries/project-checklist';
 import { getOrCreateWorkerProfile } from '@/lib/db/queries/worker-profiles';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
-export default async function WorkerTodayPage() {
-  const { tenant } = await requireWorker();
+export default async function WorkerTodayPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ project?: string }>;
+}) {
+  const { user, tenant } = await requireWorker();
   const profile = await getOrCreateWorkerProfile(tenant.id, tenant.member.id);
+  const params = (await searchParams) ?? {};
 
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
   const todayLabel = new Date(`${today}T00:00`).toLocaleDateString('en-CA', {
@@ -57,6 +65,61 @@ export default async function WorkerTodayPage() {
   todaysProjects.sort((a, b) => Number(b.scheduled) - Number(a.scheduled));
 
   const allProjects = await listProjectsForWorker(tenant.id, profile.id);
+
+  // Pick the project for the team checklist widget. Priority:
+  //   1. ?project= URL param (explicit switch)
+  //   2. Most recent project the worker logged time against
+  //   3. Today's first scheduled/ongoing project
+  // Whatever we land on must still be in the worker's assigned set.
+  const assignedIds = new Set(allProjects.map((p) => p.project_id));
+  let activeSite: {
+    project_id: string;
+    project_name: string;
+    customer_name: string | null;
+  } | null = null;
+
+  if (params.project && assignedIds.has(params.project)) {
+    const match = allProjects.find((p) => p.project_id === params.project);
+    if (match) {
+      activeSite = {
+        project_id: match.project_id,
+        project_name: match.project_name,
+        customer_name: match.customer_name,
+      };
+    }
+  }
+
+  if (!activeSite) {
+    const last = await getLastBilledProjectForWorker(user.id);
+    if (last && assignedIds.has(last.project_id)) {
+      const match = allProjects.find((p) => p.project_id === last.project_id);
+      if (match) {
+        activeSite = {
+          project_id: match.project_id,
+          project_name: match.project_name,
+          customer_name: match.customer_name,
+        };
+      }
+    }
+  }
+
+  if (!activeSite && todaysProjects.length > 0) {
+    const first = todaysProjects[0];
+    const match = allProjects.find((p) => p.project_id === first.project_id);
+    if (match) {
+      activeSite = {
+        project_id: match.project_id,
+        project_name: match.project_name,
+        customer_name: match.customer_name,
+      };
+    }
+  }
+
+  const switcherOptions = allProjects.map((p) => ({
+    project_id: p.project_id,
+    project_name: p.project_name,
+    customer_name: p.customer_name,
+  }));
 
   return (
     <div className="flex flex-col gap-4">
@@ -132,6 +195,25 @@ export default async function WorkerTodayPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      {activeSite ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <CardTitle className="text-base">Team checklist</CardTitle>
+              <SiteSwitcher current={activeSite} options={switcherOptions} basePath="/w" />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <TeamChecklist
+              key={activeSite.project_id}
+              projectId={activeSite.project_id}
+              projectName={activeSite.project_name}
+              chrome="bare"
+            />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

@@ -213,7 +213,27 @@ Spec rule: gated features are **visible but locked**, never hidden. `past_due` a
 
 ---
 
-## 14. Duplicate-detection dialogs
+## 14. Per-project team checklist (parallel to tasks)
+
+The `project_checklist_items` table is a deliberately lightweight, collaborative-by-default surface for field-level notes ("need 2 pancake boxes for the electrical panel"). It sits next to the heavier `tasks` table — tasks owns PM-level workflow (statuses, assignees, verification, photo requirements); the checklist owns crew-level "stuff we need" notes.
+
+When a feature blurs the line between the two, ask: does this need an assignee, a status beyond done/not-done, or verification? If yes, it's a task. If it's just a checkbox somebody on site jotted down, it's a checklist item.
+
+- `src/lib/db/schema/project-checklist-items.ts` — schema. RLS is open within the tenant (any member can CRUD).
+- `src/server/actions/project-checklist.ts` — add / toggle / rename / attach-photo / remove-photo / delete / set-hide-window.
+- `src/lib/db/queries/project-checklist.ts` — list-for-project (applies hide window), distinct categories per project, tenant-wide rollup, last-billed-project lookup.
+- `src/lib/storage/project-checklist.ts` — separate `project-checklist` storage bucket so ephemeral field snapshots don't pollute the main photo gallery.
+- `src/components/features/checklist/team-checklist.tsx` — server entry. Pre-signs photo URLs.
+- `src/components/features/checklist/team-checklist-client.tsx` — interactive surface with optimistic state. `chrome="card"` (default) wraps in a titled Card; `chrome="bare"` renders just the add row + list when the host page already supplies title + chrome.
+- `src/components/features/checklist/site-switcher.tsx` — popover used on the worker dashboard to switch between assigned projects when the auto-default isn't right.
+
+The hide-completed-after-N-hours setting lives in `tenant_prefs(namespace='checklist').data.hide_completed_after_hours` — `null` means never hide. Default 48h on first read.
+
+Photo lifecycle: attachments are auto-expired ~90 days after the parent project's `completed_at` by a scheduled task (separate concern; the table just stores the path).
+
+---
+
+## 15. Duplicate-detection dialogs
 
 When a server action returns a `{ duplicate: { existing_id, vendor, amount_cents, expense_date } }` shape (overhead expenses today, possibly other entities later), every caller renders the same shared dialog so the user gets a consistent View existing / Cancel / Save anyway flow regardless of entry point.
 

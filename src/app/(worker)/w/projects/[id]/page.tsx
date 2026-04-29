@@ -1,6 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { TeamChecklist } from '@/components/features/checklist/team-checklist';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireWorker } from '@/lib/auth/helpers';
 import {
@@ -124,6 +125,8 @@ export default async function WorkerProjectDetailPage({
           )}
         </CardContent>
       </Card>
+
+      <TeamChecklist projectId={id} projectName={project.name as string} />
     </div>
   );
 }

@@ -17,6 +17,7 @@ export * from './photo-albums';
 export * from './photo-pairs';
 export * from './photo-share-links';
 export * from './photos';
+export * from './project-checklist-items';
 export * from './project-sub-quotes';
 export * from './quote-line-items';
 export * from './quote-surfaces';
