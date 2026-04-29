@@ -571,11 +571,29 @@ export function CostsTab({
     if (raw === 'pos' || raw === 'bills' || raw === 'expenses') return raw;
     return 'quotes';
   })();
+  // Drill-down filter: Budget tab links here with `?focus=<budget_category_id>`
+  // so the operator lands on Spend already filtered to the category they
+  // wanted to inspect. Bills, expenses, and sub-quote allocations carry
+  // budget_category_id directly. POs don't (FK lives on PO line items via
+  // cost_line_id) — left unfiltered for now with a note. Follow-up card.
+  const focusCategoryId = searchParams.get('focus');
+  const filteredBills = focusCategoryId
+    ? bills.filter((b) => b.budget_category_id === focusCategoryId)
+    : bills;
+  const filteredExpenses = focusCategoryId
+    ? expenses.filter((e) => e.budget_category_id === focusCategoryId)
+    : expenses;
+  const filteredSubQuotes = focusCategoryId
+    ? subQuotes.filter((q) => q.allocations.some((a) => a.budget_category_id === focusCategoryId))
+    : subQuotes;
+  const focusCategoryName = focusCategoryId
+    ? buckets.find((b) => b.id === focusCategoryId)?.name
+    : null;
   const subtabCounts: Record<CostsSubtabKey, number> = {
-    quotes: subQuotes.length,
+    quotes: filteredSubQuotes.length,
     pos: purchaseOrders.length,
-    bills: bills.length,
-    expenses: expenses.length,
+    bills: filteredBills.length,
+    expenses: filteredExpenses.length,
   };
 
   return (
@@ -607,15 +625,34 @@ export function CostsTab({
 
       <CostsSubtabs counts={subtabCounts} />
 
+      {focusCategoryId && focusCategoryName ? (
+        <div className="flex items-center justify-between rounded-md border border-amber-300/60 bg-amber-50/50 px-3 py-2 text-xs">
+          <span>
+            Filtered to <span className="font-semibold">{focusCategoryName}</span>
+            {sub === 'pos' ? (
+              <span className="ml-2 text-muted-foreground italic">
+                (POs not filtered by category — coming soon)
+              </span>
+            ) : null}
+          </span>
+          <a
+            href={`/projects/${projectId}?tab=costs&sub=${sub}`}
+            className="text-primary hover:underline"
+          >
+            Clear filter
+          </a>
+        </div>
+      ) : null}
+
       {sub === 'quotes' ? (
-        <SubQuotesSection projectId={projectId} subQuotes={subQuotes} buckets={buckets} />
+        <SubQuotesSection projectId={projectId} subQuotes={filteredSubQuotes} buckets={buckets} />
       ) : null}
 
       {sub === 'expenses' ? (
         <ExpensesSection
           projectId={projectId}
           buckets={buckets.map((b) => ({ id: b.id, name: b.name }))}
-          expenses={expenses}
+          expenses={filteredExpenses}
         />
       ) : null}
 
@@ -723,8 +760,10 @@ export function CostsTab({
             </div>
           )}
 
-          {bills.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No bills logged yet.</p>
+          {filteredBills.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {focusCategoryName ? `No bills in ${focusCategoryName}.` : 'No bills logged yet.'}
+            </p>
           ) : (
             <div className="overflow-x-auto rounded-md border">
               <table className="w-full text-sm">
@@ -742,7 +781,7 @@ export function CostsTab({
                   </tr>
                 </thead>
                 <tbody>
-                  {bills.map((bill) => (
+                  {filteredBills.map((bill) => (
                     <tr key={bill.id} className="border-b last:border-0">
                       <td className="px-3 py-2 font-medium">
                         <div className="flex items-center gap-1.5">
