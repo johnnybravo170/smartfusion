@@ -33,6 +33,19 @@ export type BudgetLine = {
   expense_cents: number;
   bills_cents: number;
   actual_cents: number;
+  /**
+   * Committed = money promised but not yet realized: PO line items in
+   * sent/acknowledged/received status, + accepted vendor quote
+   * allocations. Spent counts WITH committed when computing remaining,
+   * since committed money is already reserved.
+   *
+   * Known caveat: when a PO becomes a Bill, both may briefly show
+   * concurrently (PO not yet closed, bill filed). Real
+   * double-count-avoidance needs `bills.po_id` + `pos.sub_quote_id` FKs;
+   * tracked separately. For now treat committed as a leading indicator.
+   */
+  committed_cents: number;
+  spent_committed_cents: number;
   remaining_cents: number;
   is_visible_in_report: boolean;
 };
@@ -41,6 +54,7 @@ export type BudgetSummary = {
   lines: BudgetLine[];
   total_estimate_cents: number;
   total_actual_cents: number;
+  total_committed_cents: number;
   total_remaining_cents: number;
 };
 
@@ -97,6 +111,23 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
     throw new Error(`Failed to load bills: ${billErr.message}`);
   }
 
+  // 5. Committed: accepted vendor quote allocations + active PO line items.
+  // Vendor quotes have direct budget_category_id on allocations. POs have
+  // it indirectly via PO line items → cost_lines.budget_category_id.
+  const { data: subQuoteAllocs } = await supabase
+    .from('project_sub_quote_allocations')
+    .select('allocated_cents, budget_category_id, project_sub_quotes!inner(project_id, status)')
+    .eq('project_sub_quotes.project_id', projectId)
+    .eq('project_sub_quotes.status', 'accepted');
+
+  const { data: poItems } = await supabase
+    .from('purchase_order_items')
+    .select(
+      'line_total_cents, project_cost_lines(budget_category_id), purchase_orders!inner(project_id, status)',
+    )
+    .eq('purchase_orders.project_id', projectId)
+    .in('purchase_orders.status', ['sent', 'acknowledged', 'received']);
+
   // Aggregate labor by budget_category_id
   const laborByBudgetCategory = new Map<string, number>();
   for (const entry of timeData ?? []) {
@@ -135,12 +166,47 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
     );
   }
 
+  // Aggregate accepted-quote allocations by budget_category_id
+  const committedByBudgetCategory = new Map<string, number>();
+  for (const entry of subQuoteAllocs ?? []) {
+    const e = entry as { allocated_cents: number; budget_category_id: string | null };
+    if (!e.budget_category_id) continue;
+    committedByBudgetCategory.set(
+      e.budget_category_id,
+      (committedByBudgetCategory.get(e.budget_category_id) ?? 0) + (e.allocated_cents ?? 0),
+    );
+  }
+  // Aggregate active PO line items by budget_category_id (via cost_line).
+  // PostgREST returns the joined relation as an array even on a 1:1 FK,
+  // so we read [0]. Skips PO items without a linked cost_line (free-text
+  // ad-hoc PO items aren't attributable to a budget category today).
+  for (const entry of poItems ?? []) {
+    const e = entry as unknown as {
+      line_total_cents: number;
+      project_cost_lines:
+        | { budget_category_id: string | null }
+        | { budget_category_id: string | null }[]
+        | null;
+    };
+    const linked = Array.isArray(e.project_cost_lines)
+      ? e.project_cost_lines[0]
+      : e.project_cost_lines;
+    const cat = linked?.budget_category_id;
+    if (!cat) continue;
+    committedByBudgetCategory.set(
+      cat,
+      (committedByBudgetCategory.get(cat) ?? 0) + (e.line_total_cents ?? 0),
+    );
+  }
+
   // Build budget lines
   const lines: BudgetLine[] = buckets.map((b) => {
     const labor_cents = laborByBudgetCategory.get(b.id) ?? 0;
     const expense_cents = expenseByBudgetCategory.get(b.id) ?? 0;
     const bills_cents = billsByBudgetCategory.get(b.id) ?? 0;
     const actual_cents = labor_cents + expense_cents + bills_cents;
+    const committed_cents = committedByBudgetCategory.get(b.id) ?? 0;
+    const spent_committed_cents = actual_cents + committed_cents;
     return {
       budget_category_id: b.id,
       budget_category_name: b.name,
@@ -151,18 +217,24 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
       expense_cents,
       bills_cents,
       actual_cents,
-      remaining_cents: b.estimate_cents - actual_cents,
+      committed_cents,
+      spent_committed_cents,
+      // Remaining now subtracts both spent AND committed — committed money
+      // is effectively reserved against the envelope.
+      remaining_cents: b.estimate_cents - spent_committed_cents,
       is_visible_in_report: b.is_visible_in_report,
     };
   });
 
   const total_estimate_cents = lines.reduce((sum, l) => sum + l.estimate_cents, 0);
   const total_actual_cents = lines.reduce((sum, l) => sum + l.actual_cents, 0);
+  const total_committed_cents = lines.reduce((sum, l) => sum + l.committed_cents, 0);
 
   return {
     lines,
     total_estimate_cents,
     total_actual_cents,
-    total_remaining_cents: total_estimate_cents - total_actual_cents,
+    total_committed_cents,
+    total_remaining_cents: total_estimate_cents - total_actual_cents - total_committed_cents,
   };
 }

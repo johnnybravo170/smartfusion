@@ -196,6 +196,7 @@ export function BudgetCategoriesTable({
       {Array.from(sections.entries()).map(([section, sectionLines]) => {
         const sectionTotal = sectionLines.reduce((s, l) => s + l.estimate_cents, 0);
         const sectionActual = sectionLines.reduce((s, l) => s + l.actual_cents, 0);
+        const sectionCommitted = sectionLines.reduce((s, l) => s + l.committed_cents, 0);
 
         return (
           <div key={section}>
@@ -207,9 +208,10 @@ export function BudgetCategoriesTable({
                 <colgroup>
                   <col className="w-8" />
                   <col />
-                  <col className="w-44" />
-                  <col className="w-28" />
                   <col className="w-32" />
+                  <col className="w-28" />
+                  <col className="w-28" />
+                  <col className="w-28" />
                   <col className="w-32" />
                   <col className="w-10" />
                 </colgroup>
@@ -218,8 +220,24 @@ export function BudgetCategoriesTable({
                     <th className="px-2 py-2" />
                     <th className="px-3 py-2 text-left font-medium">Category</th>
                     <th className="px-3 py-2 text-right font-medium">Estimate</th>
-                    <th className="px-3 py-2 text-right font-medium">Actual</th>
-                    <th className="px-3 py-2 text-right font-medium">Remaining</th>
+                    <th
+                      className="px-3 py-2 text-right font-medium"
+                      title="Realized cost: labour + bills + expenses"
+                    >
+                      Spent
+                    </th>
+                    <th
+                      className="px-3 py-2 text-right font-medium"
+                      title="Promised but not yet realized: accepted vendor quotes + active POs"
+                    >
+                      Committed
+                    </th>
+                    <th
+                      className="px-3 py-2 text-right font-medium"
+                      title="Estimate − Spent − Committed. Negative = over budget."
+                    >
+                      Remaining
+                    </th>
                     <th className="px-3 py-2 text-right font-medium">Progress</th>
                     <th className="px-2 py-2" />
                   </tr>
@@ -278,9 +296,12 @@ export function BudgetCategoriesTable({
                     </td>
                     <td className="px-3 py-2 text-right">{formatCurrency(sectionTotal)}</td>
                     <td className="px-3 py-2 text-right">{formatCurrency(sectionActual)}</td>
+                    <td className="px-3 py-2 text-right text-muted-foreground">
+                      {sectionCommitted > 0 ? formatCurrency(sectionCommitted) : '—'}
+                    </td>
                     <td className="px-3 py-2 text-right">
-                      {formatCurrency(Math.abs(sectionTotal - sectionActual))}
-                      {sectionTotal - sectionActual < 0 ? ' over' : ''}
+                      {formatCurrency(Math.abs(sectionTotal - sectionActual - sectionCommitted))}
+                      {sectionTotal - sectionActual - sectionCommitted < 0 ? ' over' : ''}
                     </td>
                     <td />
                     <td />
@@ -492,6 +513,9 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
           )}
         </td>
         <td className="px-3 py-2 text-right">{formatCurrency(line.actual_cents)}</td>
+        <td className="px-3 py-2 text-right text-muted-foreground">
+          {line.committed_cents > 0 ? formatCurrency(line.committed_cents) : '—'}
+        </td>
         <td className={cn('px-3 py-2 text-right', isOver && 'font-medium text-red-600')}>
           {formatCurrency(Math.abs(line.remaining_cents))}
           {isOver ? ' over' : ''}
