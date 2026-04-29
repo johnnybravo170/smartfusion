@@ -7,6 +7,7 @@ import { formatCurrency } from '@/lib/pricing/calculator';
 
 type VarianceData = {
   estimated_cents: number;
+  scope_subtotal_cents: number;
   lines_subtotal_cents: number;
   mgmt_fee_cents: number;
   mgmt_fee_rate: number;
@@ -118,7 +119,7 @@ export function VarianceTab({
 }) {
   const {
     estimated_cents,
-    lines_subtotal_cents,
+    scope_subtotal_cents,
     mgmt_fee_cents,
     envelope_total_cents,
     applied_co_impact_cents,
@@ -145,10 +146,12 @@ export function VarianceTab({
   const effectiveRatePct = (mgmt_fee_breakdown.effective_rate * 100)
     .toFixed(2)
     .replace(/\.?0+$/, '');
-  // Original signed scope = current lines minus what applied COs added.
-  // Negative would mean applied COs net-removed scope; we still show it
-  // as the pre-CO baseline so the operator sees the layering.
-  const originalLinesCents = lines_subtotal_cents - applied_co_impact_cents;
+  // Original signed scope = current scope minus what applied COs added.
+  // "Scope" = lines if a category itemizes, else its envelope, so this
+  // captures envelope-only categories the customer signed for. Negative
+  // would mean applied COs net-removed scope; we still show it as the
+  // pre-CO baseline so the operator sees the layering.
+  const originalLinesCents = scope_subtotal_cents - applied_co_impact_cents;
 
   const isComplete = lifecycleStage === 'complete';
 
@@ -167,13 +170,15 @@ export function VarianceTab({
   const marginLabel = isComplete ? 'Realized Margin' : 'Margin at Risk';
   const marginSubLabel = isComplete ? 'final margin' : 'remaining margin';
 
-  // Estimated stat sub-line shows the composition: lines subtotal + mgmt
-  // fee, plus CO contribution if any have been applied.
+  // Estimated stat sub-line shows the composition: scope subtotal + mgmt
+  // fee, plus CO contribution if any have been applied. Uses scope
+  // (lines-or-envelope) so the parts reconcile to the headline number
+  // even when a category is priced at the envelope level.
   const coImpactCents = appliedChangeOrders.reduce((s, c) => s + c.cost_impact_cents, 0);
   const coCount = appliedChangeOrders.length;
   const estSubParts: string[] = [];
-  if (lines_subtotal_cents > 0) {
-    estSubParts.push(`Lines ${formatCurrency(lines_subtotal_cents)}`);
+  if (scope_subtotal_cents > 0) {
+    estSubParts.push(`Scope ${formatCurrency(scope_subtotal_cents)}`);
   }
   if (mgmt_fee_cents > 0) {
     estSubParts.push(`Mgmt fee ${formatCurrency(mgmt_fee_cents)}`);
@@ -237,7 +242,7 @@ export function VarianceTab({
           tone="primary"
           rows={[
             ...(originalLinesCents !== 0
-              ? [{ label: 'Original line items', value: originalLinesCents }]
+              ? [{ label: 'Original scope', value: originalLinesCents }]
               : []),
             ...appliedChangeOrders.map((c) => {
               const ov = overrideByCoId.get(c.id);
