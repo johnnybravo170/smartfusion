@@ -23,8 +23,10 @@ import SelectionsTabServer from '@/components/features/projects/tabs/selections-
 import { TabSkeleton } from '@/components/features/projects/tabs/tab-skeleton';
 import TimeTabServer from '@/components/features/projects/tabs/time-tab-server';
 import { getProjectProgress } from '@/lib/db/queries/cost-lines';
+import { getProjectDrawSummary } from '@/lib/db/queries/invoices';
 import { listBudgetCategoriesForProject } from '@/lib/db/queries/project-budget-categories';
 import { getProject } from '@/lib/db/queries/projects';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import type { LifecycleStage } from '@/lib/validators/project';
 
 // Audio transcription of voice memos can take up to ~30s — bump the
@@ -84,10 +86,11 @@ export default async function ProjectDetailPage({
   // Shell-only queries. getProject is React.cache-wrapped, so generateMetadata
   // + the shell + any inner tab that also calls it (e.g. OverviewTab) dedupe
   // to a single DB hit per request.
-  const [project, projectBuckets, progress] = await Promise.all([
+  const [project, projectBuckets, progress, draws] = await Promise.all([
     getProject(id),
     listBudgetCategoriesForProject(id),
     getProjectProgress(id),
+    getProjectDrawSummary(id),
   ]);
   if (!project) notFound();
 
@@ -150,6 +153,22 @@ export default async function ProjectDetailPage({
               costBurnPct={progress.costBurnPct}
             />
           </div>
+          {draws.has_any ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Draws</span>{' '}
+              {formatCurrency(draws.sent_cents)} sent
+              <span className="mx-1">·</span>
+              {formatCurrency(draws.paid_cents)} paid
+              {draws.outstanding_cents > 0 ? (
+                <>
+                  <span className="mx-1">·</span>
+                  <span className="font-medium text-amber-700">
+                    {formatCurrency(draws.outstanding_cents)} outstanding
+                  </span>
+                </>
+              ) : null}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-1">
           {secondaryTabs.map((s) => {

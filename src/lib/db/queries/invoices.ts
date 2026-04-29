@@ -154,3 +154,58 @@ export async function getInvoiceByJob(jobId: string): Promise<InvoiceRow | null>
 
   return (data as InvoiceRow) ?? null;
 }
+
+/**
+ * Sum of draws ($X sent · $Y paid · $Z outstanding) for the project header.
+ * Includes only invoices with doc_type='draw'. Outstanding = sent (not paid)
+ * + paid... wait — outstanding = sent_total − paid_total, where sent_total
+ * is everything that has gone out (status in 'sent' or 'paid'), and
+ * paid_total is just status='paid'. Drafts and voids excluded.
+ */
+export type ProjectDrawSummary = {
+  sent_cents: number;
+  paid_cents: number;
+  outstanding_cents: number;
+  has_any: boolean;
+};
+
+export async function getProjectDrawSummary(projectId: string): Promise<ProjectDrawSummary> {
+  const supabase = await createClient();
+  // Draws are tied to jobs (via job_id) and jobs to projects. Pull all
+  // draws under any job linked to this project.
+  const { data: jobs } = await supabase.from('jobs').select('id').eq('project_id', projectId);
+  const jobIds = (jobs ?? []).map((j) => j.id as string);
+  if (jobIds.length === 0) {
+    return { sent_cents: 0, paid_cents: 0, outstanding_cents: 0, has_any: false };
+  }
+  const { data: rows } = await supabase
+    .from('invoices')
+    .select('amount_cents, tax_cents, tax_inclusive, status, doc_type')
+    .in('job_id', jobIds)
+    .eq('doc_type', 'draw')
+    .is('deleted_at', null)
+    .in('status', ['sent', 'paid']);
+
+  let sent = 0;
+  let paid = 0;
+  for (const r of rows ?? []) {
+    const row = r as {
+      amount_cents: number;
+      tax_cents: number;
+      tax_inclusive: boolean;
+      status: string;
+    };
+    // tax_inclusive: amount_cents IS the total. Otherwise add tax on top.
+    const total = row.tax_inclusive
+      ? (row.amount_cents ?? 0)
+      : (row.amount_cents ?? 0) + (row.tax_cents ?? 0);
+    sent += total;
+    if (row.status === 'paid') paid += total;
+  }
+  return {
+    sent_cents: sent,
+    paid_cents: paid,
+    outstanding_cents: sent - paid,
+    has_any: (rows ?? []).length > 0,
+  };
+}
