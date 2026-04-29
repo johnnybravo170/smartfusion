@@ -80,14 +80,15 @@ jobs:
 
       - name: Export Supabase env
         # Remap the local stack's URLs / keys to the env names the app
-        # expects (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        # SUPABASE_SERVICE_ROLE_KEY) and pipe into GITHUB_ENV so
-        # subsequent steps + the dev server Playwright launches see them.
+        # expects, then strip the wrapping double quotes the CLI emits
+        # (GITHUB_ENV treats quotes as literal value characters, which
+        # breaks the URL parser in @supabase/supabase-js).
         run: |
           supabase status -o env \
             --override-name api.url=NEXT_PUBLIC_SUPABASE_URL \
             --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_ANON_KEY \
             --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY \
+            | sed -E 's/^([A-Z_]+)="(.*)"$/\1=\2/' \
             >> "$GITHUB_ENV"
 
       - name: Run E2E tests
