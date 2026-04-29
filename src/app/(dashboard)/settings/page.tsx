@@ -16,6 +16,7 @@ import {
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { CalendarFeedCard } from '@/components/features/settings/calendar-feed-card';
+import { ChecklistSettingsCard } from '@/components/features/settings/checklist-settings-card';
 import { DataExportCard } from '@/components/features/settings/data-export-card';
 import { PublicQuoteLinkCard } from '@/components/features/settings/public-quote-link-card';
 import { QuoteSettingsCard } from '@/components/features/settings/quote-settings-card';
@@ -41,6 +42,14 @@ async function StripeSection() {
       stripeOnboardedAt={(data?.stripe_onboarded_at as string) ?? null}
     />
   );
+}
+
+async function ChecklistSettingsSection() {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return null;
+  const { getChecklistHideHours } = await import('@/lib/db/queries/project-checklist');
+  const hours = await getChecklistHideHours(tenant.id);
+  return <ChecklistSettingsCard currentHours={hours} />;
 }
 
 async function QuoteSettingsSection() {
@@ -193,6 +202,10 @@ export default function SettingsPage() {
           </CardHeader>
         </Card>
       </Link>
+
+      <Suspense fallback={<div className="h-48 animate-pulse rounded-xl border bg-card" />}>
+        <ChecklistSettingsSection />
+      </Suspense>
 
       <Suspense fallback={<div className="h-48 animate-pulse rounded-xl border bg-card" />}>
         <StripeSection />

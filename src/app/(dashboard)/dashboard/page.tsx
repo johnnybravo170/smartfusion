@@ -1,3 +1,4 @@
+import { ChecklistDashboardChip } from '@/components/features/checklist/dashboard-chip';
 import { CommandCenter, PersonalTasksCard } from '@/components/features/dashboard/command-center';
 import { EstimateCelebrationCard } from '@/components/features/dashboard/estimate-celebration-card';
 import { KeyMetrics } from '@/components/features/dashboard/key-metrics';
@@ -118,6 +119,8 @@ export default async function DashboardPage() {
       </div>
 
       {celebration ? <EstimateCelebrationCard celebration={celebration} /> : null}
+
+      <ChecklistDashboardChip />
 
       <CommandCenter
         buckets={taskBuckets}
