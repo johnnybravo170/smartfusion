@@ -79,7 +79,7 @@ export default async function ProjectDetailPage({
   const resolvedSearchParams = await searchParams;
   // Alias: old `?tab=buckets` bookmarks → `budget`. Renamed 2026-04-28.
   const rawTab = resolvedSearchParams.tab;
-  const tab = (rawTab === 'buckets' ? 'budget' : (rawTab as Tab)) || 'overview';
+  const explicitTab = rawTab === 'buckets' ? 'budget' : (rawTab as Tab | undefined);
 
   // Shell-only queries. getProject is React.cache-wrapped, so generateMetadata
   // + the shell + any inner tab that also calls it (e.g. OverviewTab) dedupe
@@ -91,18 +91,26 @@ export default async function ProjectDetailPage({
   ]);
   if (!project) notFound();
 
-  // Tab labels are user-facing; the URL slugs match. `?tab=buckets` is
-  // aliased to `budget` above for old bookmarks (renamed 2026-04-28).
-  // `Spend` (was Costs) keeps the `costs` slug for the same reason.
-  // Variance was merged into Overview (2026-04-27).
+  // Stage-aware default tab when the operator hits /projects/[id] without a
+  // ?tab=... query. Planning lands on Budget (the work to do); active and
+  // beyond land on Overview (the running status). Explicit ?tab=... wins.
+  const stage = project.lifecycle_stage as LifecycleStage;
+  const defaultTab: Tab =
+    stage === 'planning' || stage === 'awaiting_approval' ? 'budget' : 'overview';
+  const tab: Tab = explicitTab ?? defaultTab;
+
+  // Tab order follows the project lifecycle: plan (Budget, Estimate) → do
+  // (Spend, Time, Changes, Customer Billing) → review (Overview). Slugs
+  // stay as-is to avoid breaking deep links + worker-app references; only
+  // labels are user-facing.
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'overview', label: 'Overview' },
     { key: 'budget', label: 'Budget' },
     { key: 'estimate', label: 'Estimate' },
     { key: 'costs', label: 'Spend' },
-    { key: 'change-orders', label: 'Change Orders' },
     { key: 'time', label: 'Time' },
-    { key: 'invoices', label: 'Invoices' },
+    { key: 'change-orders', label: 'Changes' },
+    { key: 'invoices', label: 'Customer Billing' },
+    { key: 'overview', label: 'Overview' },
   ];
   const secondaryTabs: {
     key: Tab;
