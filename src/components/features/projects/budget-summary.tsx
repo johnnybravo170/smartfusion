@@ -91,7 +91,7 @@ export function VarianceTab({
       {/* Top-level summary */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatBox label="Estimated Revenue" value={formatCurrency(estimated_cents)} highlight />
-        <StatBox label="Committed (Open POs)" value={formatCurrency(committed_cents)} />
+        <StatBox label="Committed" value={formatCurrency(committed_cents)} />
         <StatBox
           label="Actual Cost"
           value={formatCurrency(actual_total_cents)}
