@@ -85,7 +85,7 @@ export default async function InboundEmailInboxPage({
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">Email Inbox</h1>
         <p className="text-sm text-muted-foreground">
-          Forward sub quotes and vendor bills to your tenant address — we classify, extract, and
+          Forward vendor quotes and vendor bills to your tenant address — we classify, extract, and
           auto-apply to the right project.
         </p>
         <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">

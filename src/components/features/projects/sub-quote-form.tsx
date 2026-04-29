@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Form for creating a new sub quote, including the multi-bucket
+ * Form for creating a new vendor quote, including the multi-bucket
  * allocation editor and inline bucket creation. Phase 1 of
  * SUB_QUOTES_PLAN.md — manual entry only. Upload/AI parsing is Phase 2.
  *
@@ -56,7 +56,7 @@ export type SubQuoteInitialValues = {
   /**
    * The original file that was parsed. Passed straight through to
    * createSubQuoteAction as the attachment so we don't re-upload/
-   * re-parse it. Omitted for a blank "New sub quote" form.
+   * re-parse it. Omitted for a blank "New vendor quote" form.
    */
   attachment?: File;
   /**
@@ -207,7 +207,7 @@ export function SubQuoteForm({
           toast.error(result.error);
           return;
         }
-        toast.success('Sub quote updated.');
+        toast.success('Vendor quote updated.');
         onDone();
         return;
       }
@@ -231,7 +231,7 @@ export function SubQuoteForm({
         toast.error(result.error);
         return;
       }
-      toast.success('Sub quote saved.');
+      toast.success('Vendor quote saved.');
       onDone();
     });
   }
@@ -451,7 +451,7 @@ export function SubQuoteForm({
 
         <div className="flex gap-2">
           <Button type="submit" disabled={pending}>
-            {pending ? 'Saving…' : editingQuoteId ? 'Save changes' : 'Save sub quote'}
+            {pending ? 'Saving…' : editingQuoteId ? 'Save changes' : 'Save vendor quote'}
           </Button>
           <Button type="button" variant="ghost" onClick={onDone} disabled={pending}>
             Cancel

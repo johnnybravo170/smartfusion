@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Secondary sub-tabs inside the project Costs tab — Sub quotes / POs /
+ * Secondary sub-tabs inside the project Costs tab — Vendor quotes / POs /
  * Bills. Without this, the three sections stack vertically and the page
  * gets unwieldy once any of them has real volume.
  *
@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 const TABS = [
-  { key: 'quotes', label: 'Sub quotes' },
+  { key: 'quotes', label: 'Vendor quotes' },
   { key: 'pos', label: 'POs' },
   { key: 'bills', label: 'Bills' },
   { key: 'expenses', label: 'Expenses' },

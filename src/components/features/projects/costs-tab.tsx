@@ -15,6 +15,7 @@ import {
   updatePurchaseOrderStatusAction,
   upsertBillWithAttachmentAction,
 } from '@/server/actions/project-cost-control';
+import { CostsByCategoryView } from './costs-by-category-view';
 import { type CostsSubtabKey, CostsSubtabs } from './costs-subtabs';
 import { type ExpenseItem, ExpensesSection } from './expenses-section';
 import { SubQuotesSection } from './sub-quotes-section';
@@ -571,11 +572,12 @@ export function CostsTab({
     if (raw === 'pos' || raw === 'bills' || raw === 'expenses') return raw;
     return 'quotes';
   })();
+  const groupByCategory = searchParams.get('view') === 'category';
   // Drill-down filter: Budget tab links here with `?focus=<budget_category_id>`
   // so the operator lands on Spend already filtered to the category they
-  // wanted to inspect. Bills, expenses, and sub-quote allocations carry
-  // budget_category_id directly. POs don't (FK lives on PO line items via
-  // cost_line_id) — left unfiltered for now with a note. Follow-up card.
+  // wanted to inspect. Bills, expenses, and vendor-quote allocations carry
+  // budget_category_id directly. POs match through their line items'
+  // cost_line.budget_category_id (resolved in listPurchaseOrders).
   const focusCategoryId = searchParams.get('focus');
   const filteredBills = focusCategoryId
     ? bills.filter((b) => b.budget_category_id === focusCategoryId)
@@ -586,12 +588,17 @@ export function CostsTab({
   const filteredSubQuotes = focusCategoryId
     ? subQuotes.filter((q) => q.allocations.some((a) => a.budget_category_id === focusCategoryId))
     : subQuotes;
+  const filteredPurchaseOrders = focusCategoryId
+    ? purchaseOrders.filter((po) =>
+        po.items.some((it) => it.budget_category_id === focusCategoryId),
+      )
+    : purchaseOrders;
   const focusCategoryName = focusCategoryId
     ? buckets.find((b) => b.id === focusCategoryId)?.name
     : null;
   const subtabCounts: Record<CostsSubtabKey, number> = {
     quotes: filteredSubQuotes.length,
-    pos: purchaseOrders.length,
+    pos: filteredPurchaseOrders.length,
     bills: filteredBills.length,
     expenses: filteredExpenses.length,
   };
@@ -623,17 +630,29 @@ export function CostsTab({
         </div>
       </div>
 
-      <CostsSubtabs counts={subtabCounts} />
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex rounded-md border bg-muted/30 p-0.5 text-xs">
+          <a
+            href={`/projects/${projectId}?tab=costs${focusCategoryId ? `&focus=${focusCategoryId}` : ''}`}
+            className={`rounded px-2 py-1 ${!groupByCategory ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            By type
+          </a>
+          <a
+            href={`/projects/${projectId}?tab=costs&view=category${focusCategoryId ? `&focus=${focusCategoryId}` : ''}`}
+            className={`rounded px-2 py-1 ${groupByCategory ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            By category
+          </a>
+        </div>
+      </div>
+
+      {!groupByCategory ? <CostsSubtabs counts={subtabCounts} /> : null}
 
       {focusCategoryId && focusCategoryName ? (
         <div className="flex items-center justify-between rounded-md border border-amber-300/60 bg-amber-50/50 px-3 py-2 text-xs">
           <span>
             Filtered to <span className="font-semibold">{focusCategoryName}</span>
-            {sub === 'pos' ? (
-              <span className="ml-2 text-muted-foreground italic">
-                (POs not filtered by category — coming soon)
-              </span>
-            ) : null}
           </span>
           <a
             href={`/projects/${projectId}?tab=costs&sub=${sub}`}
@@ -644,11 +663,21 @@ export function CostsTab({
         </div>
       ) : null}
 
-      {sub === 'quotes' ? (
+      {groupByCategory ? (
+        <CostsByCategoryView
+          buckets={buckets}
+          bills={filteredBills}
+          expenses={filteredExpenses}
+          subQuotes={filteredSubQuotes}
+          purchaseOrders={filteredPurchaseOrders}
+        />
+      ) : null}
+
+      {!groupByCategory && sub === 'quotes' ? (
         <SubQuotesSection projectId={projectId} subQuotes={filteredSubQuotes} buckets={buckets} />
       ) : null}
 
-      {sub === 'expenses' ? (
+      {!groupByCategory && sub === 'expenses' ? (
         <ExpensesSection
           projectId={projectId}
           buckets={buckets.map((b) => ({ id: b.id, name: b.name }))}
@@ -656,7 +685,7 @@ export function CostsTab({
         />
       ) : null}
 
-      {sub === 'pos' ? (
+      {!groupByCategory && sub === 'pos' ? (
         /* Purchase Orders */
         <section>
           <div className="mb-3 flex items-center justify-between">
@@ -674,11 +703,15 @@ export function CostsTab({
             </div>
           )}
 
-          {purchaseOrders.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No purchase orders yet.</p>
+          {filteredPurchaseOrders.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {focusCategoryName
+                ? `No purchase orders in ${focusCategoryName}.`
+                : 'No purchase orders yet.'}
+            </p>
           ) : (
             <div className="space-y-3">
-              {purchaseOrders.map((po) => {
+              {filteredPurchaseOrders.map((po) => {
                 const next = STATUS_NEXT[po.status];
                 return (
                   <div key={po.id} className="rounded-md border">
@@ -734,7 +767,7 @@ export function CostsTab({
         </section>
       ) : null}
 
-      {sub === 'bills' ? (
+      {!groupByCategory && sub === 'bills' ? (
         /* Bills */
         <section>
           <div className="mb-3 flex items-center justify-between">

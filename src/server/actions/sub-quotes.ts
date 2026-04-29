@@ -1,7 +1,7 @@
 'use server';
 
 /**
- * Sub quote server actions — the "committed" layer of cost control.
+ * Vendor quote server actions — the "committed" layer of cost control.
  *
  * Phase 1 of SUB_QUOTES_PLAN.md. No AI upload yet; operator enters the
  * quote manually (or uploads an attachment that we just store; parsing
@@ -60,7 +60,7 @@ function extFromContentType(contentType: string): string {
 }
 
 /**
- * Create a new sub quote with its allocations. Takes a FormData so we
+ * Create a new vendor quote with its allocations. Takes a FormData so we
  * can receive the attachment file alongside the JSON fields. Allocations
  * are passed as a JSON string in `allocations`.
  *
@@ -198,7 +198,7 @@ const subQuoteUpdateSchema = subQuoteCreateSchema.extend({
 });
 
 /**
- * Edit an existing sub quote's fields + allocations. Status is preserved
+ * Edit an existing vendor quote's fields + allocations. Status is preserved
  * (edit is allowed on any status so operators can rebucket an already-
  * accepted quote). Allocations are wipe+reinsert, same as
  * setSubQuoteAllocationsAction. Balance invariant is only enforced on
@@ -273,7 +273,7 @@ export async function updateSubQuoteAction(input: {
 }
 
 /**
- * Replace a sub quote's allocation set. Used when the operator edits
+ * Replace a vendor quote's allocation set. Used when the operator edits
  * allocations in the editor. Takes the full new set; we wipe+reinsert
  * because the math is clearer than diffing. Doesn't change quote status.
  */
@@ -325,7 +325,7 @@ export async function setSubQuoteAllocationsAction(input: {
 }
 
 /**
- * Accept a sub quote. Enforces the invariant: sum of allocations must
+ * Accept a vendor quote. Enforces the invariant: sum of allocations must
  * equal total_cents. If a prior accepted quote from the same vendor
  * exists on this project AND shares a bucket, that prior quote is
  * superseded (its status flips, `superseded_by_id` points at this one).
@@ -351,7 +351,7 @@ export async function acceptSubQuoteAction(input: {
     .select('id, vendor_name, total_cents, status, project_id')
     .eq('id', input.subQuoteId)
     .single();
-  if (qErr || !quote) return { ok: false, error: 'Sub quote not found.' };
+  if (qErr || !quote) return { ok: false, error: 'Vendor quote not found.' };
 
   const { data: allocations, error: aErr } = await supabase
     .from('project_sub_quote_allocations')

@@ -106,7 +106,7 @@ export function InboundEmailCard({
 
   const classifyLabel =
     email.classification === 'sub_quote'
-      ? 'Sub Quote'
+      ? 'Vendor Quote'
       : email.classification === 'vendor_bill'
         ? 'Vendor Bill'
         : email.classification === 'other'

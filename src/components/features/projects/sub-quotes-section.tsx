@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * Sub quotes section on the project Costs tab. Lists existing quotes
+ * Vendor quotes section on the project Costs tab. Lists existing quotes
  * grouped by status, with accept/reject/delete affordances and the
  * create-new form.
  *
  * Accept button requires the allocation invariant (sum === total); the
  * server action re-checks and returns an error if they drift. If no
- * buckets exist on the project yet, the "New sub quote" button shows
+ * buckets exist on the project yet, the "New vendor quote" button shows
  * a gentle "create a bucket first" hint rather than erroring later.
  */
 
@@ -66,7 +66,7 @@ export function SubQuotesSection({
     <section>
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold">Sub quotes</h3>
+          <h3 className="text-sm font-semibold">Vendor quotes</h3>
           <p className="text-xs text-muted-foreground">
             {formatCurrency(acceptedTotal)} committed
             {pendingTotal > 0 ? ` · ${formatCurrency(pendingTotal)} pending` : ''}
@@ -81,7 +81,7 @@ export function SubQuotesSection({
               disabled={buckets.length === 0}
               title={buckets.length === 0 ? 'Create at least one cost bucket first.' : undefined}
             >
-              + New sub quote
+              + New vendor quote
             </Button>
           </div>
         )}
@@ -99,11 +99,11 @@ export function SubQuotesSection({
             <FileStack className="size-6 text-muted-foreground" />
           </div>
           <div className="max-w-md space-y-1">
-            <p className="font-medium">No sub quotes yet.</p>
+            <p className="font-medium">No vendor quotes yet.</p>
             <p className="text-sm text-muted-foreground">
-              Sub quotes are quotes you&apos;ve received from trades or suppliers for parts of this
-              project. Logging them gives you a live view of what you&apos;ve committed so your cost
-              control stays accurate.
+              Vendor quotes are quotes you&apos;ve received from trades or suppliers for parts of
+              this project. Logging them gives you a live view of what you&apos;ve committed so your
+              cost control stays accurate.
             </p>
           </div>
           {buckets.length === 0 ? (
@@ -161,12 +161,12 @@ function SubQuoteRowView({
         toast.error(result.error);
         return;
       }
-      toast.success('Sub quote accepted.');
+      toast.success('Vendor quote accepted.');
     });
   }
 
   function handleReject() {
-    if (!confirm('Reject this sub quote?')) return;
+    if (!confirm('Reject this vendor quote?')) return;
     startTransition(async () => {
       const result = await rejectSubQuoteAction({ subQuoteId: quote.id, projectId });
       if (!result.ok) toast.error(result.error);
@@ -174,7 +174,7 @@ function SubQuoteRowView({
   }
 
   function handleDelete() {
-    if (!confirm('Delete this sub quote permanently?')) return;
+    if (!confirm('Delete this vendor quote permanently?')) return;
     startTransition(async () => {
       const result = await deleteSubQuoteAction({ subQuoteId: quote.id, projectId });
       if (!result.ok) toast.error(result.error);

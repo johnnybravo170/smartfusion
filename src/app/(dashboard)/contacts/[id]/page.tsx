@@ -195,8 +195,8 @@ function KindPlaceholderSection({
       body: "Vendor bill history will aggregate here once we start linking bills to contact records. For now, bills you've entered live under their projects.",
     },
     sub: {
-      title: 'Sub-quotes and jobs',
-      body: "Sub-trade quote history and linked projects will show here once we start linking sub-quotes to contact records. For now, they're scoped to individual projects.",
+      title: 'Vendor quotes and jobs',
+      body: "Vendor quote history and linked projects will show here once we start linking vendor quotes to contact records. For now, they're scoped to individual projects.",
     },
     agent: {
       title: 'Referrals',

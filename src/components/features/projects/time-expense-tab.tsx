@@ -1,5 +1,6 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -428,6 +429,14 @@ export function TimeExpenseTab({
   const [workerFilter, setWorkerFilter] = useState<string>('all');
   const [, startTransition] = useTransition();
 
+  // Deep-link from Budget tab's "Spent on this category" panel:
+  // `?tab=time&focus=<budget_category_id>` lands the operator pre-filtered.
+  const searchParams = useSearchParams();
+  const focusCategoryId = searchParams.get('focus');
+  const focusCategoryName = focusCategoryId
+    ? (buckets.find((b) => b.id === focusCategoryId)?.name ?? null)
+    : null;
+
   const workerOptions = Array.from(
     new Map(
       timeEntries
@@ -435,12 +444,15 @@ export function TimeExpenseTab({
         .map((e) => [e.worker_profile_id as string, e.worker_name ?? 'Worker']),
     ).entries(),
   );
-  const filteredTime =
+  const workerFiltered =
     workerFilter === 'all'
       ? timeEntries
       : workerFilter === 'owner'
         ? timeEntries.filter((e) => !e.worker_profile_id)
         : timeEntries.filter((e) => e.worker_profile_id === workerFilter);
+  const filteredTime = focusCategoryId
+    ? workerFiltered.filter((e) => e.budget_category_id === focusCategoryId)
+    : workerFiltered;
 
   const totalHours = filteredTime.reduce((s, e) => s + Number(e.hours), 0);
   const totalExpenses = expenses.reduce((s, e) => s + e.amount_cents, 0);
@@ -461,6 +473,17 @@ export function TimeExpenseTab({
 
   return (
     <div className="space-y-8">
+      {focusCategoryId && focusCategoryName ? (
+        <div className="flex items-center justify-between rounded-md border border-amber-300/60 bg-amber-50/50 px-3 py-2 text-xs">
+          <span>
+            Filtered to <span className="font-semibold">{focusCategoryName}</span>
+          </span>
+          <a href={`/projects/${projectId}?tab=time`} className="text-primary hover:underline">
+            Clear filter
+          </a>
+        </div>
+      ) : null}
+
       {/* Time */}
       <section>
         <div className="mb-3 flex items-center justify-between">

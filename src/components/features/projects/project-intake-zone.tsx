@@ -148,7 +148,7 @@ export function ProjectIntakeZone({
   // Indices of new_sub_quotes that have already been saved via the review
   // dialog — removed from the list so the operator doesn't double-save.
   const [savedSubQuoteIndexes, setSavedSubQuoteIndexes] = useState<Set<number>>(new Set());
-  // The sub quote currently being reviewed (index into suggestions.new_sub_quotes).
+  // The vendor quote currently being reviewed (index into suggestions.new_sub_quotes).
   const [reviewingSubQuoteIndex, setReviewingSubQuoteIndex] = useState<number | null>(null);
 
   const reset = useCallback(() => {
@@ -371,7 +371,7 @@ export function ProjectIntakeZone({
       <DialogTrigger asChild>
         {/* Primary + bolder than the surrounding small action chips on
             purpose. This is the universal drop zone for anything related
-            to this project — photos, bills, sub quotes, sketches — and
+            to this project — photos, bills, vendor quotes, sketches — and
             it has to be impossible to miss. */}
         <Button className="gap-2 px-4 py-2 shadow-sm">
           <Sparkles className="size-4" />
@@ -595,7 +595,7 @@ export function ProjectIntakeZone({
             {suggestions.new_sub_quotes && suggestions.new_sub_quotes.length > 0 ? (
               <div className="rounded-md border">
                 <p className="border-b bg-emerald-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-                  Sub quotes ({suggestions.new_sub_quotes.length}) — each opens its own review
+                  Vendor quotes ({suggestions.new_sub_quotes.length}) — each opens its own review
                 </p>
                 <div className="divide-y">
                   {suggestions.new_sub_quotes.map((sq, i) => {
@@ -933,7 +933,7 @@ export function ProjectIntakeZone({
         )}
       </DialogContent>
 
-      {/* Nested sub quote review dialog. Maps AI-suggested bucket names
+      {/* Nested vendor quote review dialog. Maps AI-suggested bucket names
           back to real bucket IDs before handing to SubQuoteForm. */}
       {reviewingSubQuoteIndex !== null && suggestions?.new_sub_quotes ? (
         <SubQuoteReviewDialog
@@ -1005,7 +1005,7 @@ function SubQuoteReviewDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="size-4" /> Review sub quote
+            <Sparkles className="size-4" /> Review vendor quote
           </DialogTitle>
         </DialogHeader>
         <SubQuoteForm

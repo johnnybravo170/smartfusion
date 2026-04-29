@@ -1,8 +1,8 @@
 /**
- * Sub quote queries — listings + committed totals by bucket.
+ * Vendor quote queries — listings + committed totals by bucket.
  *
- * `committed` = sum of allocations across all `accepted` sub quotes on a
- * project, grouped by bucket. Feeds the Costs tab's "Sub quotes" section
+ * `committed` = sum of allocations across all `accepted` vendor quotes on a
+ * project, grouped by bucket. Feeds the Costs tab's "Vendor quotes" section
  * and (later) the Job Cost Control V1 variance view.
  */
 

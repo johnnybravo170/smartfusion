@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * "Upload sub quote" flow: operator picks a PDF or image → we call the
+ * "Upload vendor quote" flow: operator picks a PDF or image → we call the
  * AI parser → surface results + any AI warnings → hand off to
  * SubQuoteForm pre-filled with extracted data and matched bucket
  * allocations. The same File is passed through as the attachment so we
@@ -63,7 +63,7 @@ export function SubQuoteUploadButton({
         // the operator so they can double-check.
         setWarning(
           result.reasonIfNot ??
-            "This doesn't look like a sub quote. Review the details carefully before saving.",
+            "This doesn't look like a vendor quote. Review the details carefully before saving.",
         );
       }
 
@@ -144,7 +144,7 @@ export function SubQuoteUploadButton({
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="size-4" /> Review sub quote
+              <Sparkles className="size-4" /> Review vendor quote
             </DialogTitle>
             <DialogDescription>
               Henry read the document and filled in what he could. Adjust anything that looks off,
@@ -155,7 +155,7 @@ export function SubQuoteUploadButton({
             <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
               <AlertTriangle className="mt-0.5 size-4 flex-shrink-0" />
               <div>
-                <p className="font-medium">This might not be a sub quote.</p>
+                <p className="font-medium">This might not be a vendor quote.</p>
                 <p>{warning}</p>
               </div>
             </div>
