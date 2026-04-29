@@ -522,7 +522,70 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         <tr className="border-b bg-muted/20">
           <td />
           <td colSpan={6} className="px-3 py-3">
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {/* Actuals breakdown by source — synthesized from time_entries,
+                  expenses, project_bills. Each row deep-links to the tab
+                  where the underlying records live. */}
+              {(line.labor_cents > 0 || line.bills_cents > 0 || line.expense_cents > 0) && (
+                <div className="rounded border bg-background">
+                  <div className="border-b bg-muted/30 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Spent on this category
+                  </div>
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {line.labor_cents > 0 ? (
+                        <tr className="border-t first:border-0">
+                          <td className="px-2 py-1.5">Labour</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {formatCurrencyCompact(line.labor_cents)}
+                          </td>
+                          <td className="w-16 px-2 py-1.5 text-right">
+                            <a
+                              href={`/projects/${projectId}?tab=time&focus=${line.budget_category_id}`}
+                              className="text-primary hover:underline"
+                            >
+                              View
+                            </a>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {line.bills_cents > 0 ? (
+                        <tr className="border-t">
+                          <td className="px-2 py-1.5">Bills</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {formatCurrencyCompact(line.bills_cents)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right">
+                            <a
+                              href={`/projects/${projectId}?tab=costs&focus=${line.budget_category_id}`}
+                              className="text-primary hover:underline"
+                            >
+                              View
+                            </a>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {line.expense_cents > 0 ? (
+                        <tr className="border-t">
+                          <td className="px-2 py-1.5">Expenses</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {formatCurrencyCompact(line.expense_cents)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right">
+                            <a
+                              href={`/projects/${projectId}?tab=costs&focus=${line.budget_category_id}`}
+                              className="text-primary hover:underline"
+                            >
+                              View
+                            </a>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               {bucketLines.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No line items in this category yet.</p>
               ) : (
