@@ -2,12 +2,14 @@ import { BudgetCategoriesTable } from '@/components/features/projects/budget-cat
 import { listCostLines } from '@/lib/db/queries/cost-lines';
 import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
 import { getBudgetVsActual } from '@/lib/db/queries/project-budget-categories';
+import { getProject } from '@/lib/db/queries/projects';
 
 export default async function BudgetTabServer({ projectId }: { projectId: string }) {
-  const [budget, costLines, catalog] = await Promise.all([
+  const [budget, costLines, catalog, project] = await Promise.all([
     getBudgetVsActual(projectId),
     listCostLines(projectId),
     listMaterialsCatalog(),
+    getProject(projectId),
   ]);
 
   return (
@@ -16,6 +18,7 @@ export default async function BudgetTabServer({ projectId }: { projectId: string
       projectId={projectId}
       costLines={costLines}
       catalog={catalog}
+      estimateStatus={project?.estimate_status ?? 'draft'}
     />
   );
 }
