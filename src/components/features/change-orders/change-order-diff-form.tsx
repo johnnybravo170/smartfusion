@@ -22,6 +22,7 @@
  */
 
 import { ChevronDown, ChevronRight, Plus, RotateCcw, X } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -30,7 +31,10 @@ import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { BudgetCategorySummary } from '@/lib/db/queries/projects';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
-import { createChangeOrderV2Action } from '@/server/actions/change-orders';
+import {
+  createChangeOrderV2Action,
+  updateChangeOrderV2Action,
+} from '@/server/actions/change-orders';
 
 type LineEdit = {
   qty?: string;
@@ -48,11 +52,34 @@ type AddedLine = {
   notes: string;
 };
 
+/** Pre-filled state for edit mode — reverse-mapped from a draft CO + its
+ * change_order_lines by the parent page. The parent owns the reconstruction
+ * so the form stays presentational. */
+export type ChangeOrderFormInitialState = {
+  title: string;
+  description: string;
+  reason: string;
+  timelineDays: string;
+  /** Pct as a string (e.g. "12") or null when no override is set. */
+  mgmtFeePct: string | null;
+  mgmtFeeReason: string;
+  editsById: Record<string, LineEdit>;
+  removedIds: string[];
+  added: AddedLine[];
+  notesByCategory: Record<string, string>;
+  envelopeEdits: Record<string, string>;
+};
+
+export type ChangeOrderFormMode =
+  | { kind: 'create' }
+  | { kind: 'edit'; changeOrderId: string; initialState: ChangeOrderFormInitialState };
+
 export function ChangeOrderDiffForm({
   projectId,
   budgetCategories,
   existingLines,
   defaultManagementFeeRate,
+  mode = { kind: 'create' },
 }: {
   projectId: string;
   budgetCategories: BudgetCategorySummary[];
@@ -61,34 +88,43 @@ export function ChangeOrderDiffForm({
    *  field. The customer-visible fee on this CO is computed from this
    *  rate × cost_impact unless the operator overrides it. */
   defaultManagementFeeRate: number;
+  mode?: ChangeOrderFormMode;
 }) {
+  const isEdit = mode.kind === 'edit';
+  const initial = mode.kind === 'edit' ? mode.initialState : null;
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [reason, setReason] = useState('');
-  const [timelineDays, setTimelineDays] = useState('0');
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
+  const [reason, setReason] = useState(initial?.reason ?? '');
+  const [timelineDays, setTimelineDays] = useState(initial?.timelineDays ?? '0');
 
   // Per-CO management fee. Pre-filled with the project default; operator
   // can scale back as the project grows. Reason is required when the
   // value differs from the default.
   const defaultRatePct = (defaultManagementFeeRate * 100).toFixed(2).replace(/\.?0+$/, '');
-  const [mgmtFeePct, setMgmtFeePct] = useState(defaultRatePct);
-  const [mgmtFeeReason, setMgmtFeeReason] = useState('');
+  const [mgmtFeePct, setMgmtFeePct] = useState(initial?.mgmtFeePct ?? defaultRatePct);
+  const [mgmtFeeReason, setMgmtFeeReason] = useState(initial?.mgmtFeeReason ?? '');
   const mgmtFeeRateNum = parseFloat(mgmtFeePct || '0') / 100;
   const mgmtFeeChanged = Math.abs(mgmtFeeRateNum - defaultManagementFeeRate) > 0.00001;
 
-  const [editsById, setEditsById] = useState<Record<string, LineEdit>>({});
-  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
-  const [added, setAdded] = useState<AddedLine[]>([]);
+  const [editsById, setEditsById] = useState<Record<string, LineEdit>>(initial?.editsById ?? {});
+  const [removedIds, setRemovedIds] = useState<Set<string>>(
+    () => new Set(initial?.removedIds ?? []),
+  );
+  const [added, setAdded] = useState<AddedLine[]>(initial?.added ?? []);
   // Per-category narrative notes — surfaces under each affected category.
-  const [notesByCategory, setNotesByCategory] = useState<Record<string, string>>({});
+  const [notesByCategory, setNotesByCategory] = useState<Record<string, string>>(
+    initial?.notesByCategory ?? {},
+  );
   // Envelope amount edits per category (string for the input; converted to
   // cents in buildDiff). Empty string = not edited. Tracked as
   // 'modify_envelope' diff entries.
-  const [envelopeEdits, setEnvelopeEdits] = useState<Record<string, string>>({});
+  const [envelopeEdits, setEnvelopeEdits] = useState<Record<string, string>>(
+    initial?.envelopeEdits ?? {},
+  );
   // Manual collapse override per category. Categories with no lines / no
   // edits / no note auto-collapse; clicking the chevron forces them open
   // (so the operator can add a line or note). Categories with anything
@@ -338,7 +374,7 @@ export function ChangeOrderDiffForm({
       return;
     }
 
-    const result = await createChangeOrderV2Action({
+    const payload = {
       project_id: projectId,
       title,
       description,
@@ -351,7 +387,13 @@ export function ChangeOrderDiffForm({
         .filter((n) => n.note.length > 0),
       management_fee_override_rate: mgmtFeeChanged ? mgmtFeeRateNum : null,
       management_fee_override_reason: mgmtFeeChanged ? mgmtFeeReason.trim() : null,
-    });
+    };
+
+    const result =
+      mode.kind === 'edit'
+        ? await updateChangeOrderV2Action({ ...payload, id: mode.changeOrderId })
+        : await createChangeOrderV2Action(payload);
+
     if (!result.ok) {
       setError(result.error);
       setLoading(false);
@@ -833,16 +875,25 @@ export function ChangeOrderDiffForm({
       })}
 
       <div className="flex gap-3 border-t pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={loading}
-          onClick={() => handleSubmit(false)}
-        >
-          {loading ? 'Saving…' : 'Save as Draft'}
-        </Button>
+        {isEdit && mode.kind === 'edit' ? (
+          <Link
+            href={`/projects/${projectId}/change-orders/${mode.changeOrderId}`}
+            className="inline-flex items-center rounded-md border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
+          >
+            Cancel
+          </Link>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading}
+            onClick={() => handleSubmit(false)}
+          >
+            {loading ? 'Saving…' : 'Save as Draft'}
+          </Button>
+        )}
         <Button type="button" disabled={loading} onClick={() => handleSubmit(true)}>
-          {loading ? 'Saving…' : 'Save & Preview'}
+          {loading ? 'Saving…' : isEdit ? 'Save changes' : 'Save & Preview'}
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">

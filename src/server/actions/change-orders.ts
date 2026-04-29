@@ -217,7 +217,7 @@ export async function applyV2ChangeOrderDiff(
   return { applied: true, warnings };
 }
 
-type ChangeOrderDiffEntry = {
+export type ChangeOrderDiffEntry = {
   action: 'add' | 'modify' | 'remove' | 'modify_envelope';
   original_line_id?: string;
   budget_category_id?: string;
@@ -327,6 +327,120 @@ export async function createChangeOrderV2Action(input: {
 
   revalidatePath(`/projects/${input.project_id}`);
   return { ok: true, id: co.id };
+}
+
+/**
+ * Re-save a draft v2 change order. Replaces the parent row's editable fields
+ * and rewrites every `change_order_lines` row from the supplied diff.
+ *
+ * Hard-restricted to drafts: once a CO is sent / approved / declined / applied,
+ * its diff is part of the audit trail and must not be mutated. Use the void
+ * + recreate path if a sent CO needs changes.
+ */
+export async function updateChangeOrderV2Action(input: {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  reason?: string;
+  timeline_impact_days: number;
+  cost_impact_cents: number;
+  diff: ChangeOrderDiffEntry[];
+  category_notes?: { budget_category_id: string; note: string }[];
+  management_fee_override_rate?: number | null;
+  management_fee_override_reason?: string | null;
+}): Promise<ChangeOrderActionResult> {
+  if (!input.title.trim()) return { ok: false, error: 'Title is required.' };
+  if (!input.description.trim()) return { ok: false, error: 'Description is required.' };
+  if (input.diff.length === 0) {
+    return { ok: false, error: 'At least one staged change is required.' };
+  }
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+
+  // Verify the CO belongs to this tenant + is still editable.
+  const { data: existing, error: existErr } = await supabase
+    .from('change_orders')
+    .select('id, project_id, status, flow_version')
+    .eq('id', input.id)
+    .eq('tenant_id', tenant.id)
+    .maybeSingle();
+  if (existErr) return { ok: false, error: existErr.message };
+  if (!existing) return { ok: false, error: 'Change order not found.' };
+  if (existing.status !== 'draft') {
+    return { ok: false, error: 'Only draft change orders can be edited.' };
+  }
+  if (existing.flow_version !== 2) {
+    return {
+      ok: false,
+      error: 'This change order uses the legacy format and is not editable.',
+    };
+  }
+
+  const affectedBuckets = Array.from(
+    new Set(
+      input.diff
+        .map((d) => d.budget_category_id ?? d.before_snapshot?.budget_category_id)
+        .filter((id): id is string => typeof id === 'string'),
+    ),
+  );
+
+  const { error: updErr } = await supabase
+    .from('change_orders')
+    .update({
+      title: input.title.trim(),
+      description: input.description.trim(),
+      reason: input.reason?.trim() || null,
+      cost_impact_cents: input.cost_impact_cents,
+      timeline_impact_days: input.timeline_impact_days,
+      affected_buckets: affectedBuckets,
+      category_notes: (input.category_notes ?? []).filter((n) => n.note.trim().length > 0),
+      management_fee_override_rate:
+        typeof input.management_fee_override_rate === 'number'
+          ? input.management_fee_override_rate
+          : null,
+      management_fee_override_reason: input.management_fee_override_reason?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.id);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  // Replace the staged diff: delete all old lines, insert the new set.
+  const { error: delErr } = await supabase
+    .from('change_order_lines')
+    .delete()
+    .eq('change_order_id', input.id);
+  if (delErr) return { ok: false, error: `Failed to clear old diff: ${delErr.message}` };
+
+  const lineRows = input.diff.map((d) => ({
+    change_order_id: input.id,
+    tenant_id: tenant.id,
+    action: d.action,
+    original_line_id: d.original_line_id ?? null,
+    budget_category_id: d.budget_category_id ?? null,
+    category: d.category ?? null,
+    label: d.label ?? null,
+    qty: d.qty ?? null,
+    unit: d.unit ?? null,
+    unit_cost_cents: d.unit_cost_cents ?? null,
+    unit_price_cents: d.unit_price_cents ?? null,
+    line_cost_cents: d.line_cost_cents ?? null,
+    line_price_cents: d.line_price_cents ?? null,
+    notes: d.notes?.trim() || null,
+    before_snapshot: d.before_snapshot ?? null,
+  }));
+
+  const { error: linesErr } = await supabase.from('change_order_lines').insert(lineRows);
+  if (linesErr) {
+    return { ok: false, error: `Failed to save diff: ${linesErr.message}` };
+  }
+
+  revalidatePath(`/projects/${input.project_id}`);
+  revalidatePath(`/projects/${input.project_id}/change-orders/${input.id}`);
+  return { ok: true, id: input.id };
 }
 
 export async function createChangeOrderAction(input: {

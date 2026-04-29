@@ -1,6 +1,8 @@
 'use client';
 
 import { createBrowserClient } from '@supabase/ssr';
+import { Pencil } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -111,7 +113,16 @@ export function ChangeOrderDetail({
             <ChangeOrderStatusBadge status={co.status as ChangeOrderStatus} />
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {co.status === 'draft' && co.flow_version === 2 ? (
+            <Link
+              href={`/projects/${projectId}/change-orders/${co.id}/edit`}
+              className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+            >
+              <Pencil className="size-3.5" />
+              Edit
+            </Link>
+          ) : null}
           {co.status === 'draft' ? (
             <button
               type="button"
