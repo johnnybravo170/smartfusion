@@ -1,6 +1,7 @@
 import { EstimateTab } from '@/components/features/projects/estimate-tab';
 import { EstimateTermsEditor } from '@/components/features/projects/estimate-terms-editor';
 import { ProjectDocumentTypeToggle } from '@/components/features/projects/project-document-type-toggle';
+import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
 import { listCostLines } from '@/lib/db/queries/cost-lines';
 import { listEstimateSnippets } from '@/lib/db/queries/estimate-snippets';
 import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
@@ -11,15 +12,23 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function EstimateTabServer({ projectId }: { projectId: string }) {
-  const [project, costLines, catalog, projectBuckets, estimateViewStats, snippets] =
-    await Promise.all([
-      getProject(projectId),
-      listCostLines(projectId),
-      listMaterialsCatalog(),
-      listBudgetCategoriesForProject(projectId),
-      getEstimateViewStats(projectId),
-      listEstimateSnippets(),
-    ]);
+  const [
+    project,
+    costLines,
+    catalog,
+    projectBuckets,
+    estimateViewStats,
+    snippets,
+    coContributions,
+  ] = await Promise.all([
+    getProject(projectId),
+    listCostLines(projectId),
+    listMaterialsCatalog(),
+    listBudgetCategoriesForProject(projectId),
+    getEstimateViewStats(projectId),
+    listEstimateSnippets(),
+    getProjectChangeOrderContributions(projectId),
+  ]);
   if (!project) return null;
 
   // Sign any manual-override proof files so the tab can link to them.
@@ -87,6 +96,8 @@ export default async function EstimateTabServer({ projectId }: { projectId: stri
         managementFeeRate={project.management_fee_rate}
         feedback={feedbackRows}
         bucketsById={bucketsById}
+        coContributionsByLineId={Object.fromEntries(coContributions.byLineId)}
+        appliedChangeOrders={coContributions.appliedOrder}
         approval={{
           status: project.estimate_status,
           approval_code: project.estimate_approval_code,

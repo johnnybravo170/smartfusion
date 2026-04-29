@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-orders';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import type { BudgetLine } from '@/lib/db/queries/project-budget-categories';
@@ -41,6 +42,8 @@ type BudgetCategoriesTableProps = {
    *  steering financial edits toward a Change Order. Direct edits stay
    *  free; the banner just makes the recommended path visible. */
   estimateStatus: 'draft' | 'pending_approval' | 'approved' | 'declined';
+  /** Audit lens — categories touched by applied COs get a chip. */
+  coContributionsByCategoryId?: Record<string, AppliedChangeOrderContribution[]>;
 };
 
 export function BudgetCategoriesTable({
@@ -49,6 +52,7 @@ export function BudgetCategoriesTable({
   costLines,
   catalog,
   estimateStatus,
+  coContributionsByCategoryId = {},
 }: BudgetCategoriesTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -308,6 +312,7 @@ export function BudgetCategoriesTable({
                         setEditingDescId={setEditingDescId}
                         saveEditDesc={saveEditDesc}
                         startEditDesc={startEditDesc}
+                        coContributions={coContributionsByCategoryId[line.budget_category_id] ?? []}
                       />
                     );
                   })}
@@ -370,6 +375,7 @@ type BudgetCategoryRowProps = {
   setEditingDescId: (v: string | null) => void;
   saveEditDesc: (id: string) => void;
   startEditDesc: (line: BudgetLine) => void;
+  coContributions: AppliedChangeOrderContribution[];
 };
 
 function BudgetCategoryRow(props: BudgetCategoryRowProps) {
@@ -403,7 +409,11 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
     setEditingDescId,
     saveEditDesc,
     startEditDesc,
+    coContributions,
   } = props;
+  // Distinct CO chip per CO (a CO may have multiple lines in this category;
+  // we still want one chip per CO).
+  const coChips = Array.from(new Map(coContributions.map((c) => [c.co_id, c])).values());
 
   // Callback ref — fires once when the focused row mounts; scroll into
   // view smoothly so the user lands on it without scrolling manually.
@@ -433,13 +443,23 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
           </button>
         </td>
         <td className="px-3 py-2">
-          <div>
-            {line.budget_category_name}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span>{line.budget_category_name}</span>
             {bucketLines.length > 0 && (
-              <span className="ml-2 text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 ({bucketLines.length} line{bucketLines.length === 1 ? '' : 's'})
               </span>
             )}
+            {coChips.map((c) => (
+              <a
+                key={c.co_id}
+                href={`/projects/${projectId}/change-orders/${c.co_id}`}
+                title={`Touched by CO: ${c.co_title}`}
+                className="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-800 hover:bg-blue-200"
+              >
+                CO {c.co_short_id}
+              </a>
+            ))}
           </div>
           {editingDescId === line.budget_category_id ? (
             <div className="mt-1 flex items-start gap-1">

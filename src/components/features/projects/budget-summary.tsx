@@ -1,5 +1,8 @@
-import { ArrowRight } from 'lucide-react';
-import Link from 'next/link';
+'use client';
+
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Fragment, useState } from 'react';
+import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-orders';
 import { formatCurrency } from '@/lib/pricing/calculator';
 
 type VarianceData = {
@@ -52,12 +55,27 @@ export function VarianceTab({
   variance,
   lifecycleStage,
   projectId,
+  appliedChangeOrders = [],
+  coContributionsByCategoryId = {},
+  categoryIdByName = {},
 }: {
   variance: VarianceData;
   lifecycleStage?: string;
-  /** Optional — when provided, category rows + section heading deep-link
-   *  to the Budget tab so users can edit estimates from this view. */
   projectId?: string;
+  /** Audit lens — applied COs on this project. Used to (a) layer the
+   *  total CO contribution into the Estimated Revenue stat, and (b)
+   *  attach chips to category rows that were touched. */
+  appliedChangeOrders?: {
+    id: string;
+    title: string;
+    short_id: string;
+    applied_at: string;
+    cost_impact_cents: number;
+  }[];
+  coContributionsByCategoryId?: Record<string, AppliedChangeOrderContribution[]>;
+  /** Variance by_category groups by category *name* (operator-typed) but
+   *  CO contributions are keyed by id. This map bridges the two. */
+  categoryIdByName?: Record<string, string>;
 }) {
   const {
     estimated_cents,
@@ -86,11 +104,30 @@ export function VarianceTab({
   const marginLabel = isComplete ? 'Realized Margin' : 'Margin at Risk';
   const marginSubLabel = isComplete ? 'final margin' : 'remaining margin';
 
+  // Total cost impact from applied COs — surface in the Estimated stat
+  // sub-line so the operator sees how much of the current estimate came
+  // from change orders vs the original signed scope.
+  const coImpactCents = appliedChangeOrders.reduce((s, c) => s + c.cost_impact_cents, 0);
+  const coCount = appliedChangeOrders.length;
+  const estSub = coCount
+    ? `${coImpactCents >= 0 ? '+' : ''}${formatCurrency(coImpactCents)} from ${coCount} CO${coCount === 1 ? '' : 's'}`
+    : undefined;
+
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  function toggleRow(name: string) {
+    setExpandedRow((cur) => (cur === name ? null : name));
+  }
+
   return (
     <div className="space-y-6">
       {/* Top-level summary */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatBox label="Estimated Revenue" value={formatCurrency(estimated_cents)} highlight />
+        <StatBox
+          label="Estimated Revenue"
+          value={formatCurrency(estimated_cents)}
+          sub={estSub}
+          highlight
+        />
         <StatBox label="Committed" value={formatCurrency(committed_cents)} />
         <StatBox
           label="Actual Cost"
@@ -113,26 +150,19 @@ export function VarianceTab({
         </div>
       )}
 
-      {/* By-category breakdown */}
+      {/* By-category breakdown — read-only. Click a row to expand the
+          bills/expenses/POs/quotes split that drove the actuals. */}
       {by_category.length > 0 && (
         <div>
           <div className="mb-3 flex items-baseline justify-between gap-3">
             <h3 className="text-sm font-semibold">By Category</h3>
-            {projectId ? (
-              <Link
-                href={`/projects/${projectId}?tab=budget`}
-                prefetch={false}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
-              >
-                Edit in Budget
-                <ArrowRight className="size-3" />
-              </Link>
-            ) : null}
+            <span className="text-xs text-muted-foreground">Click a row for the breakdown</span>
           </div>
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
+                  <th className="w-8 px-2 py-2" />
                   <th className="px-3 py-2 text-left font-medium">Category</th>
                   <th className="px-3 py-2 text-right font-medium">Estimated</th>
                   <th className="px-3 py-2 text-right font-medium">Committed</th>
@@ -141,36 +171,73 @@ export function VarianceTab({
                 </tr>
               </thead>
               <tbody>
-                {by_category.map((row) => (
-                  <tr key={row.category} className="border-b last:border-0">
-                    <td className="px-3 py-2 capitalize font-medium">
-                      {projectId ? (
-                        <Link
-                          href={`/projects/${projectId}?tab=budget&focus=${encodeURIComponent(row.category)}`}
-                          prefetch={false}
-                          className="hover:underline"
+                {by_category.map((row) => {
+                  const isOpen = expandedRow === row.category;
+                  const catId = categoryIdByName[row.category];
+                  const contribs = catId ? (coContributionsByCategoryId[catId] ?? []) : [];
+                  const coChips = Array.from(new Map(contribs.map((c) => [c.co_id, c])).values());
+                  return (
+                    <Fragment key={row.category}>
+                      <tr
+                        className="cursor-pointer border-b last:border-0 hover:bg-muted/30"
+                        onClick={() => toggleRow(row.category)}
+                      >
+                        <td className="px-2 py-2 align-top text-muted-foreground">
+                          {isOpen ? (
+                            <ChevronDown className="size-4" />
+                          ) : (
+                            <ChevronRight className="size-4" />
+                          )}
+                        </td>
+                        <td className="px-3 py-2 capitalize font-medium">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span>{row.category}</span>
+                            {coChips.map((c) => (
+                              <a
+                                key={c.co_id}
+                                href={`/projects/${projectId}/change-orders/${c.co_id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                title={`Touched by CO: ${c.co_title}`}
+                                className="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-800 hover:bg-blue-200"
+                              >
+                                CO {c.co_short_id}
+                              </a>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {formatCurrency(row.estimated_cents)}
+                        </td>
+                        <td className="px-3 py-2 text-right text-muted-foreground">
+                          {formatCurrency(row.committed_cents)}
+                        </td>
+                        <td className="px-3 py-2 text-right text-muted-foreground">
+                          {formatCurrency(row.actual_cents)}
+                        </td>
+                        <td
+                          className={`px-3 py-2 text-right font-medium ${row.margin_at_risk_cents < 0 ? 'text-destructive' : ''}`}
                         >
-                          {row.category}
-                        </Link>
-                      ) : (
-                        row.category
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right">{formatCurrency(row.estimated_cents)}</td>
-                    <td className="px-3 py-2 text-right text-muted-foreground">
-                      {formatCurrency(row.committed_cents)}
-                    </td>
-                    <td className="px-3 py-2 text-right text-muted-foreground">
-                      {formatCurrency(row.actual_cents)}
-                    </td>
-                    <td
-                      className={`px-3 py-2 text-right font-medium ${row.margin_at_risk_cents < 0 ? 'text-destructive' : ''}`}
-                    >
-                      {formatCurrency(row.margin_at_risk_cents)}
-                    </td>
-                  </tr>
-                ))}
+                          {formatCurrency(row.margin_at_risk_cents)}
+                        </td>
+                      </tr>
+                      {isOpen ? (
+                        <tr className="border-b bg-muted/20 last:border-0">
+                          <td />
+                          <td colSpan={5} className="px-3 py-3 text-xs">
+                            <CategoryBreakdown
+                              row={row}
+                              projectId={projectId}
+                              budgetCategoryId={catId}
+                              coContributions={contribs}
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
                 <tr className="border-t bg-muted/30 font-semibold">
+                  <td />
                   <td className="px-3 py-2">Total</td>
                   <td className="px-3 py-2 text-right">{formatCurrency(estimated_cents)}</td>
                   <td className="px-3 py-2 text-right">{formatCurrency(committed_cents)}</td>
@@ -193,6 +260,110 @@ export function VarianceTab({
           Spend tab.
         </p>
       )}
+    </div>
+  );
+}
+
+function CategoryBreakdown({
+  row,
+  projectId,
+  budgetCategoryId,
+  coContributions,
+}: {
+  row: VarianceData['by_category'][number];
+  projectId?: string;
+  budgetCategoryId?: string;
+  coContributions: AppliedChangeOrderContribution[];
+}) {
+  const linkBase = projectId ? `/projects/${projectId}` : null;
+  const focus = budgetCategoryId ? `&focus=${budgetCategoryId}` : '';
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <BreakdownStat label="Estimated" value={formatCurrency(row.estimated_cents)} />
+        <BreakdownStat label="Committed" value={formatCurrency(row.committed_cents)} />
+        <BreakdownStat label="Actual" value={formatCurrency(row.actual_cents)} />
+        <BreakdownStat
+          label="Margin Left"
+          value={formatCurrency(row.margin_at_risk_cents)}
+          danger={row.margin_at_risk_cents < 0}
+        />
+      </div>
+      {coContributions.length > 0 ? (
+        <div>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Change Orders affecting this category
+          </p>
+          <ul className="space-y-1">
+            {Array.from(new Map(coContributions.map((c) => [c.co_id, c])).values()).map((c) => (
+              <li key={c.co_id} className="flex items-baseline justify-between gap-2">
+                <a
+                  href={linkBase ? `${linkBase}/change-orders/${c.co_id}` : '#'}
+                  className="hover:underline"
+                >
+                  <span className="mr-1.5 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-800">
+                    CO {c.co_short_id}
+                  </span>
+                  {c.co_title}
+                </a>
+                <span className="text-muted-foreground tabular-nums">
+                  {new Date(c.applied_at).toLocaleDateString('en-CA', {
+                    month: 'short',
+                    day: 'numeric',
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {linkBase ? (
+        <div className="flex flex-wrap gap-3 pt-1 text-[11px]">
+          <a className="text-primary hover:underline" href={`${linkBase}?tab=budget${focus}`}>
+            Open in Budget →
+          </a>
+          <a
+            className="text-primary hover:underline"
+            href={`${linkBase}?tab=costs&sub=bills${focus}`}
+          >
+            Bills →
+          </a>
+          <a
+            className="text-primary hover:underline"
+            href={`${linkBase}?tab=costs&sub=expenses${focus}`}
+          >
+            Expenses →
+          </a>
+          <a
+            className="text-primary hover:underline"
+            href={`${linkBase}?tab=costs&sub=pos${focus}`}
+          >
+            POs →
+          </a>
+          <a className="text-primary hover:underline" href={`${linkBase}?tab=time${focus}`}>
+            Time →
+          </a>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BreakdownStat({
+  label,
+  value,
+  danger,
+}: {
+  label: string;
+  value: string;
+  danger?: boolean;
+}) {
+  return (
+    <div className="rounded border bg-background px-2 py-1.5">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className={`text-sm font-medium tabular-nums ${danger ? 'text-destructive' : ''}`}>
+        {value}
+      </p>
     </div>
   );
 }

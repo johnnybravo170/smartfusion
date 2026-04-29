@@ -183,6 +183,199 @@ export async function getChangeOrderSummaryForProject(projectId: string): Promis
   };
 }
 
+/**
+ * Per-line / per-category contribution map for applied (v2) change orders.
+ *
+ * v2 COs apply directly to project_cost_lines + project_budget_categories
+ * on approval, so the Estimate / Budget views show the rolled-up state
+ * by default. This query layers an audit lens on top: which CO each
+ * applied line came from, and the cumulative budget delta per category.
+ *
+ * Only walks v2 COs with applied_at set. Pending or v1 COs aren't here.
+ */
+export type AppliedChangeOrderContribution = {
+  co_id: string;
+  co_title: string;
+  co_short_id: string;
+  applied_at: string;
+  action: 'add' | 'modify' | 'remove' | 'modify_envelope';
+  delta_cents: number;
+};
+
+export type ProjectChangeOrderContributions = {
+  /** keyed by project_cost_lines.id (only `add` + `modify` rows; removed
+   *  lines no longer exist in cost_lines so they don't surface here). */
+  byLineId: Map<string, AppliedChangeOrderContribution[]>;
+  /** keyed by budget_category_id — every CO touching the category lands
+   *  here, including line-level adds/modifies and modify_envelope entries. */
+  byCategoryId: Map<string, AppliedChangeOrderContribution[]>;
+  /** Applied COs in apply-time order (oldest first). Used for the
+   *  "Change Order history" panel on the Estimate tab. */
+  appliedOrder: {
+    id: string;
+    title: string;
+    short_id: string;
+    applied_at: string;
+    cost_impact_cents: number;
+  }[];
+};
+
+export async function getProjectChangeOrderContributions(
+  projectId: string,
+): Promise<ProjectChangeOrderContributions> {
+  const supabase = await createClient();
+
+  const { data: cos } = await supabase
+    .from('change_orders')
+    .select('id, title, applied_at, cost_impact_cents')
+    .eq('project_id', projectId)
+    .eq('flow_version', 2)
+    .not('applied_at', 'is', null)
+    .order('applied_at', { ascending: true });
+
+  const appliedOrder = (
+    (cos ?? []) as {
+      id: string;
+      title: string;
+      applied_at: string;
+      cost_impact_cents: number;
+    }[]
+  ).map((c) => ({
+    id: c.id,
+    title: c.title,
+    short_id: c.id.slice(0, 8),
+    applied_at: c.applied_at,
+    cost_impact_cents: c.cost_impact_cents,
+  }));
+
+  const byLineId = new Map<string, AppliedChangeOrderContribution[]>();
+  const byCategoryId = new Map<string, AppliedChangeOrderContribution[]>();
+
+  if (appliedOrder.length === 0) return { byLineId, byCategoryId, appliedOrder };
+
+  const coIds = appliedOrder.map((c) => c.id);
+  const { data: lines } = await supabase
+    .from('change_order_lines')
+    .select(
+      'id, change_order_id, action, original_line_id, budget_category_id, line_price_cents, before_snapshot',
+    )
+    .in('change_order_id', coIds);
+
+  const coById = new Map(appliedOrder.map((c) => [c.id, c]));
+
+  for (const raw of lines ?? []) {
+    const r = raw as {
+      action: 'add' | 'modify' | 'remove' | 'modify_envelope';
+      change_order_id: string;
+      original_line_id: string | null;
+      budget_category_id: string | null;
+      line_price_cents: number | null;
+      before_snapshot: Record<string, unknown> | null;
+    };
+    const co = coById.get(r.change_order_id);
+    if (!co) continue;
+
+    const before = r.before_snapshot as {
+      line_price_cents?: number;
+      estimate_cents?: number;
+    } | null;
+    const isEnvelope = r.action === 'modify_envelope';
+    const beforePrice = isEnvelope
+      ? (before?.estimate_cents ?? 0)
+      : (before?.line_price_cents ?? 0);
+    const afterPrice = r.action === 'remove' ? 0 : (r.line_price_cents ?? 0);
+    const delta = afterPrice - beforePrice;
+
+    const contrib: AppliedChangeOrderContribution = {
+      co_id: co.id,
+      co_title: co.title,
+      co_short_id: co.short_id,
+      applied_at: co.applied_at,
+      action: r.action,
+      delta_cents: delta,
+    };
+
+    // Line-level: applied 'add' rows leave a new project_cost_lines row;
+    // 'modify' rows mutate the original_line_id row in place. 'remove'
+    // deletes the row so we can't anchor a chip to it.
+    if (r.action === 'add' || r.action === 'modify') {
+      const lineId = r.action === 'modify' ? r.original_line_id : null;
+      if (lineId) {
+        const arr = byLineId.get(lineId) ?? [];
+        arr.push(contrib);
+        byLineId.set(lineId, arr);
+      }
+    }
+
+    // Category-level: every entry contributes to its category if present.
+    if (r.budget_category_id) {
+      const arr = byCategoryId.get(r.budget_category_id) ?? [];
+      arr.push(contrib);
+      byCategoryId.set(r.budget_category_id, arr);
+    }
+  }
+
+  // 'add' rows don't have an original_line_id, but the inserted
+  // project_cost_lines row gets the same label/qty/budget_category_id.
+  // Look those up by matching budget_category_id + label so we can
+  // attach chips to the new line. This is a best-effort match — if two
+  // CO 'add' rows in the same category share a label, we'll hit both.
+  const addRows = (
+    (lines ?? []) as Array<{
+      action: string;
+      change_order_id: string;
+      budget_category_id: string | null;
+      label?: string | null;
+      line_price_cents: number | null;
+    }>
+  ).filter((r) => r.action === 'add');
+
+  if (addRows.length > 0) {
+    const cats = Array.from(
+      new Set(addRows.map((r) => r.budget_category_id).filter(Boolean)),
+    ) as string[];
+    if (cats.length > 0) {
+      const { data: insertedLines } = await supabase
+        .from('project_cost_lines')
+        .select('id, label, budget_category_id, line_price_cents')
+        .eq('project_id', projectId)
+        .in('budget_category_id', cats);
+
+      for (const r of addRows) {
+        const co = coById.get(r.change_order_id);
+        if (!co || !r.budget_category_id) continue;
+        const matches = (
+          (insertedLines ?? []) as Array<{
+            id: string;
+            label: string;
+            budget_category_id: string;
+            line_price_cents: number;
+          }>
+        ).filter(
+          (l) =>
+            l.budget_category_id === r.budget_category_id &&
+            l.label === ((r as { label?: string | null }).label ?? null),
+        );
+        for (const m of matches) {
+          const contrib: AppliedChangeOrderContribution = {
+            co_id: co.id,
+            co_title: co.title,
+            co_short_id: co.short_id,
+            applied_at: co.applied_at,
+            action: 'add',
+            delta_cents: m.line_price_cents,
+          };
+          const arr = byLineId.get(m.id) ?? [];
+          arr.push(contrib);
+          byLineId.set(m.id, arr);
+        }
+      }
+    }
+  }
+
+  return { byLineId, byCategoryId, appliedOrder };
+}
+
 export async function getChangeOrderSummaryForJob(jobId: string): Promise<{
   approved_cost_cents: number;
   pending_cost_cents: number;

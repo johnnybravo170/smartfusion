@@ -116,6 +116,21 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
 
   const timelineDays = coData.timeline_impact_days as number;
 
+  // Running project total — sum of current cost_lines (already includes
+  // prior applied COs) gives "before this CO". Adding this CO's cost
+  // impact gives "after". Customer sees "+$X · new total $Y" so they
+  // understand the running impact, not just the delta.
+  const projectIdForTotal = coData.project_id as string;
+  const { data: linesForTotal } = await admin
+    .from('project_cost_lines')
+    .select('line_price_cents')
+    .eq('project_id', projectIdForTotal);
+  const currentProjectTotalCents = ((linesForTotal ?? []) as { line_price_cents: number }[]).reduce(
+    (s, l) => s + l.line_price_cents,
+    0,
+  );
+  const newProjectTotalCents = currentProjectTotalCents + costCents;
+
   // For v2 COs, surface the line-level diff + per-category notes so the
   // homeowner sees exactly what changed before signing. v1 stays text-only.
   const flowVersion = (coData.flow_version as number | null) ?? 1;
@@ -173,7 +188,24 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
               {costSign}
               {costFormatted}
             </p>
-            <p className="text-xs text-muted-foreground">to project total</p>
+            <p className="text-xs text-muted-foreground">
+              New total{' '}
+              <span className="font-medium text-foreground tabular-nums">
+                {new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(
+                  newProjectTotalCents / 100,
+                )}
+              </span>
+              {currentProjectTotalCents > 0 ? (
+                <>
+                  {' '}
+                  (was{' '}
+                  {new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(
+                    currentProjectTotalCents / 100,
+                  )}
+                  )
+                </>
+              ) : null}
+            </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Timeline Impact</p>

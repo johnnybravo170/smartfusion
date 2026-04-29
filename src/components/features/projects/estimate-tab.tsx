@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Fragment, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-orders';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import { formatCurrency } from '@/lib/pricing/calculator';
@@ -44,6 +45,8 @@ export function EstimateTab({
   costLinePhotoUrls,
   feedback,
   bucketsById,
+  coContributionsByLineId = {},
+  appliedChangeOrders = [],
 }: {
   projectId: string;
   costLines: CostLineRow[];
@@ -58,6 +61,16 @@ export function EstimateTab({
   costLinePhotoUrls: Record<string, string>;
   feedback: FeedbackRow[];
   bucketsById: Record<string, { name: string; section: string | null; order: number }>;
+  /** Audit lens: which applied COs touched each line. Empty by default
+   *  for projects with no v2 COs. */
+  coContributionsByLineId?: Record<string, AppliedChangeOrderContribution[]>;
+  appliedChangeOrders?: {
+    id: string;
+    title: string;
+    short_id: string;
+    applied_at: string;
+    cost_impact_cents: number;
+  }[];
 }) {
   const [manualDialog, setManualDialog] = useState<{
     open: boolean;
@@ -101,6 +114,13 @@ export function EstimateTab({
   const totalPrice = costLines.reduce((s, l) => s + l.line_price_cents, 0);
   const mgmtFeeCents = Math.round(totalPrice * managementFeeRate);
   const grandTotal = totalPrice + mgmtFeeCents;
+
+  // Running total impact from applied COs (already baked into cost_lines /
+  // budget_categories — surfaced as audit context only).
+  const totalAppliedCoImpactCents = appliedChangeOrders.reduce(
+    (s, c) => s + c.cost_impact_cents,
+    0,
+  );
 
   // Group by bucket, then nest buckets under their section so the section
   // label is rendered once as a top-level header rather than repeated on
@@ -347,6 +367,60 @@ export function EstimateTab({
         </Button>
       </div>
 
+      {appliedChangeOrders.length > 0 ? (
+        <div className="rounded-lg border bg-blue-50/40 px-4 py-3 dark:bg-blue-950/20">
+          <div className="mb-2 flex items-baseline justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-blue-900 dark:text-blue-200">
+              Change Order history
+            </h3>
+            <span className="text-xs text-blue-900/80 dark:text-blue-200/80 tabular-nums">
+              {appliedChangeOrders.length} applied
+              {totalAppliedCoImpactCents !== 0 ? (
+                <>
+                  {' · '}
+                  {totalAppliedCoImpactCents >= 0 ? '+' : ''}
+                  {formatCurrency(totalAppliedCoImpactCents)}
+                </>
+              ) : null}
+            </span>
+          </div>
+          <ul className="space-y-1 text-sm">
+            {appliedChangeOrders.map((c) => (
+              <li
+                key={c.id}
+                className="flex items-baseline justify-between gap-3 rounded border border-blue-100 bg-background/60 px-2 py-1.5 dark:border-blue-900"
+              >
+                <Link
+                  href={`/projects/${projectId}/change-orders/${c.id}`}
+                  className="flex-1 truncate hover:underline"
+                >
+                  <span className="mr-2 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-blue-800">
+                    CO {c.short_id}
+                  </span>
+                  {c.title}
+                </Link>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {new Date(c.applied_at).toLocaleDateString('en-CA', {
+                    month: 'short',
+                    day: 'numeric',
+                  })}
+                </span>
+                <span
+                  className={`shrink-0 text-sm font-medium tabular-nums ${c.cost_impact_cents < 0 ? 'text-emerald-700' : ''}`}
+                >
+                  {c.cost_impact_cents >= 0 ? '+' : ''}
+                  {formatCurrency(c.cost_impact_cents)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            CO changes are folded into the line items and category budgets above. Tap a CO chip on
+            any line to jump to that change order.
+          </p>
+        </div>
+      ) : null}
+
       {costLines.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No line items yet.{' '}
@@ -394,11 +468,24 @@ export function EstimateTab({
                             url: costLinePhotoUrls[path] ?? '',
                           }))
                           .filter((p) => p.url);
+                        const lineContribs = coContributionsByLineId[line.id] ?? [];
                         return (
                           <Fragment key={line.id}>
                             <tr className="align-top border-b last:border-0">
                               <td className="px-3 py-2">
-                                <p className="font-medium">{line.label}</p>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <p className="font-medium">{line.label}</p>
+                                  {lineContribs.map((c) => (
+                                    <Link
+                                      key={`${c.co_id}:${c.action}`}
+                                      href={`/projects/${projectId}/change-orders/${c.co_id}`}
+                                      title={`${c.action === 'add' ? 'Added' : 'Modified'} by CO: ${c.co_title}`}
+                                      className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-800 hover:bg-blue-200"
+                                    >
+                                      CO {c.co_short_id}
+                                    </Link>
+                                  ))}
+                                </div>
                                 {line.notes ? (
                                   <p className="mt-0.5 whitespace-pre-wrap text-xs text-muted-foreground">
                                     {line.notes}
