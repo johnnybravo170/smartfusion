@@ -8,7 +8,16 @@ import { type TaskStatus, taskStatusLabels } from '@/lib/validators/task';
  * addition to the shared neutral/info/warning/etc.) lives in
  * `taskStatusClass` in status-tokens.ts.
  */
-export function TaskStatusBadge({ status, className }: { status: TaskStatus; className?: string }) {
+export function TaskStatusBadge({
+  status,
+  className,
+  hideLabelOnMobile = false,
+}: {
+  status: TaskStatus;
+  className?: string;
+  /** Hide the status label below the `sm` breakpoint, leaving just the icon. */
+  hideLabelOnMobile?: boolean;
+}) {
   const Icon = taskStatusIcon[status];
   return (
     <Badge
@@ -18,7 +27,9 @@ export function TaskStatusBadge({ status, className }: { status: TaskStatus; cla
       className={cn('gap-1 font-medium border', taskStatusClass[status], className)}
     >
       {Icon ? <Icon aria-hidden="true" className="size-3" /> : null}
-      {taskStatusLabels[status]}
+      <span className={hideLabelOnMobile ? 'hidden sm:inline' : undefined}>
+        {taskStatusLabels[status]}
+      </span>
     </Badge>
   );
 }

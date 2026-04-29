@@ -26,7 +26,7 @@ function TaskLine({ task }: { task: TaskRow }) {
       <Link href={href} className="min-w-0 flex-1 truncate hover:underline">
         {task.title}
       </Link>
-      <TaskStatusBadge status={task.status} className="shrink-0" />
+      <TaskStatusBadge status={task.status} className="shrink-0" hideLabelOnMobile />
       {task.due_date ? (
         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{task.due_date}</span>
       ) : null}
@@ -143,10 +143,13 @@ export function CommandCenter({
             </p>
             <ul className="divide-y">
               {tasksToVerify.slice(0, 6).map((t) => (
-                <li key={t.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                <li
+                  key={t.id}
+                  className="flex min-w-0 items-center justify-between gap-3 py-1.5 text-sm"
+                >
                   <Link
                     href={t.job_id ? `/jobs/${t.job_id}/tasks` : '/todos'}
-                    className="flex-1 truncate hover:underline"
+                    className="min-w-0 flex-1 truncate hover:underline"
                   >
                     {t.title}
                   </Link>
@@ -163,10 +166,13 @@ export function CommandCenter({
             </p>
             <ul className="divide-y">
               {changeOrdersPending.slice(0, 6).map((co) => (
-                <li key={co.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                <li
+                  key={co.id}
+                  className="flex min-w-0 items-center justify-between gap-3 py-1.5 text-sm"
+                >
                   <Link
                     href={co.job_id ? `/jobs/${co.job_id}` : '#'}
-                    className="flex-1 truncate hover:underline"
+                    className="min-w-0 flex-1 truncate hover:underline"
                   >
                     {co.customer_name ?? 'Change order'} ·{' '}
                     <span className="text-muted-foreground">
@@ -240,8 +246,8 @@ export function PersonalTasksCard({ tasks }: { tasks: TaskRow[] }) {
       ) : (
         <ul className="divide-y">
           {tasks.map((t) => (
-            <li key={t.id} className="flex items-center gap-2 py-1.5 text-sm">
-              <span className="truncate">{t.title}</span>
+            <li key={t.id} className="flex min-w-0 items-center gap-2 py-1.5 text-sm">
+              <span className="min-w-0 flex-1 truncate">{t.title}</span>
               {t.due_date ? (
                 <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
                   {t.due_date}

@@ -83,18 +83,18 @@ export function MoneyAtRiskCard({ rows }: { rows: MoneyAtRiskRow[] }) {
                 {r.contactPhone ? (
                   <a
                     href={`tel:${r.contactPhone}`}
-                    className="inline-flex items-center gap-1 hover:text-foreground"
+                    className="inline-flex min-w-0 items-center gap-1 break-all hover:text-foreground"
                   >
-                    <Phone className="size-3" aria-hidden />
+                    <Phone className="size-3 shrink-0" aria-hidden />
                     {r.contactPhone}
                   </a>
                 ) : null}
                 {r.contactEmail ? (
                   <a
                     href={`mailto:${r.contactEmail}`}
-                    className="inline-flex items-center gap-1 hover:text-foreground"
+                    className="inline-flex min-w-0 items-center gap-1 break-all hover:text-foreground"
                   >
-                    <Mail className="size-3" aria-hidden />
+                    <Mail className="size-3 shrink-0" aria-hidden />
                     {r.contactEmail}
                   </a>
                 ) : null}

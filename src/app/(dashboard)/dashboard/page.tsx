@@ -109,8 +109,10 @@ export default async function DashboardPage() {
             className="h-14 w-auto max-w-[160px] shrink-0 rounded-md border bg-white object-contain p-1"
           />
         ) : null}
-        <div>
-          <h1 className="text-2xl font-semibold">{profile?.name ?? tenant.name}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="break-words text-xl font-semibold sm:text-2xl">
+            {profile?.name ?? tenant.name}
+          </h1>
           <p className="text-sm text-muted-foreground">
             {firstName ? `${greeting}, ${firstName}.` : `${greeting}.`} Here&apos;s your business at
             a glance.
