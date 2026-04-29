@@ -61,9 +61,20 @@ test.describe
     test('create commercial customer → detail page reflects it', async ({ page }) => {
       await signInAsOwner(page, seed);
       await page.goto('/contacts/new');
+      await page.waitForLoadState('networkidle');
 
-      // Customer type select → Commercial.
-      await page.getByLabel('Customer type').click();
+      // The form has two Radix selects — top-level "Kind" (defaults
+      // to 'customer') and "Customer type" (only visible when kind
+      // is 'customer'). Just set the subtype to Commercial.
+      const customerTypeTrigger = page
+        .getByRole('combobox')
+        .filter({
+          has: page.locator(
+            ':text-is("Pick a type"), :text-is("Residential"), :text-is("Commercial")',
+          ),
+        })
+        .first();
+      await customerTypeTrigger.click();
       await page.getByRole('option', { name: 'Commercial' }).click();
       await page.getByLabel(/business name/i).fill('Acme Supply');
       await page.getByLabel('Email').fill('orders@acmesupply.test');
