@@ -40,7 +40,7 @@ const CO_COLUMNS =
 export type ChangeOrderLineRow = {
   id: string;
   change_order_id: string;
-  action: 'add' | 'modify' | 'remove';
+  action: 'add' | 'modify' | 'remove' | 'modify_envelope';
   original_line_id: string | null;
   budget_category_id: string | null;
   category: string | null;

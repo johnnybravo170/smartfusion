@@ -71,6 +71,10 @@ export function ChangeOrderDiffForm({
   const [added, setAdded] = useState<AddedLine[]>([]);
   // Per-category narrative notes — surfaces under each affected category.
   const [notesByCategory, setNotesByCategory] = useState<Record<string, string>>({});
+  // Envelope amount edits per category (string for the input; converted to
+  // cents in buildDiff). Empty string = not edited. Tracked as
+  // 'modify_envelope' diff entries.
+  const [envelopeEdits, setEnvelopeEdits] = useState<Record<string, string>>({});
 
   // Group lines by budget_category_id, keyed for stable rendering.
   const linesByCategory = useMemo(() => {
@@ -122,8 +126,26 @@ export function ChangeOrderDiffForm({
       if (Number.isNaN(qty) || Number.isNaN(unitPriceCents)) continue;
       total += Math.round(qty * unitPriceCents);
     }
+    // Envelope edits: (new envelope - old envelope) when category has no
+    // line-level diffs (otherwise the line edits cover the cost impact).
+    // Skip envelope delta when the category has any line edits to avoid
+    // double-counting — the operator chose to express the change via
+    // lines instead.
+    for (const cat of budgetCategories) {
+      const newRaw = envelopeEdits[cat.id];
+      if (newRaw === undefined || newRaw === '') continue;
+      const newCents = Math.round(Number(newRaw) * 100);
+      if (Number.isNaN(newCents)) continue;
+      const linesForCat = existingLines.filter((l) => l.budget_category_id === cat.id);
+      const linesEdited = linesForCat.some(
+        (l) => removedIds.has(l.id) || editsById[l.id] !== undefined,
+      );
+      const addedToCat = added.some((a) => a.budget_category_id === cat.id);
+      if (linesEdited || addedToCat) continue;
+      total += newCents - cat.estimate_cents;
+    }
     return total;
-  }, [editsById, removedIds, added, existingLines]);
+  }, [editsById, removedIds, added, envelopeEdits, existingLines, budgetCategories]);
 
   function setEdit(lineId: string, patch: Partial<LineEdit>) {
     setEditsById((prev) => ({
@@ -174,7 +196,7 @@ export function ChangeOrderDiffForm({
 
   function buildDiff() {
     const diff: Array<{
-      action: 'modify' | 'remove' | 'add';
+      action: 'modify' | 'remove' | 'add' | 'modify_envelope';
       original_line_id?: string;
       budget_category_id?: string;
       category?: string;
@@ -248,6 +270,33 @@ export function ChangeOrderDiffForm({
         line_cost_cents: 0,
         line_price_cents: Math.round(qty * unitPriceCents),
         notes: a.notes.trim() || undefined,
+      });
+    }
+
+    // Envelope-level diffs (modify_envelope). Only emit when the
+    // category has no line edits — otherwise the lines already
+    // represent the change.
+    for (const cat of budgetCategories) {
+      const newRaw = envelopeEdits[cat.id];
+      if (newRaw === undefined || newRaw === '') continue;
+      const newCents = Math.round(Number(newRaw) * 100);
+      if (Number.isNaN(newCents) || newCents === cat.estimate_cents) continue;
+      const linesForCat = existingLines.filter((l) => l.budget_category_id === cat.id);
+      const linesEdited = linesForCat.some(
+        (l) => removedIds.has(l.id) || editsById[l.id] !== undefined,
+      );
+      const addedToCat = added.some((a) => a.budget_category_id === cat.id);
+      if (linesEdited || addedToCat) continue;
+      diff.push({
+        action: 'modify_envelope',
+        budget_category_id: cat.id,
+        label: cat.name,
+        line_price_cents: newCents,
+        notes: notesByCategory[cat.id]?.trim() || undefined,
+        before_snapshot: {
+          kind: 'envelope',
+          estimate_cents: cat.estimate_cents,
+        },
       });
     }
 
@@ -370,241 +419,308 @@ export function ChangeOrderDiffForm({
         </p>
       </div>
 
-      {Array.from(categoriesBySection.entries()).map(([section, categories]) => (
-        <div key={section}>
-          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            {section}
-          </h3>
-          <div className="space-y-4">
-            {categories.map((category) => {
-              const lines = linesByCategory.get(category.id) ?? [];
-              const addedHere = added.filter((a) => a.budget_category_id === category.id);
-              const hasAnyEdit =
-                lines.some((l) => removedIds.has(l.id) || editsById[l.id] !== undefined) ||
-                addedHere.length > 0;
-              return (
-                <div key={category.id} className="rounded-md border">
-                  <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-2">
-                    <div className="text-sm font-medium">{category.name}</div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => addLine(category.id)}
-                    >
-                      <Plus className="size-3" />
-                      Add line
-                    </Button>
-                  </div>
-                  {hasAnyEdit ? (
-                    <div className="border-b bg-amber-50/30 px-3 py-2">
-                      <input
-                        type="text"
-                        value={notesByCategory[category.id] ?? ''}
-                        onChange={(e) =>
-                          setNotesByCategory((prev) => ({
-                            ...prev,
-                            [category.id]: e.target.value,
-                          }))
-                        }
-                        placeholder="Why? (optional — shown to the customer alongside the change)"
-                        className="h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                    </div>
-                  ) : null}
-                  {lines.length === 0 && addedHere.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-muted-foreground">
-                      No lines yet — click "+ Add line" to add one.
-                    </p>
-                  ) : null}
-                  {lines.map((line) => {
-                    const isRemoved = removedIds.has(line.id);
-                    const edit = editsById[line.id];
-                    const isModified = edit !== undefined;
-                    const newQty = edit?.qty !== undefined ? Number(edit.qty) : Number(line.qty);
-                    const newUnitPriceCents =
-                      edit?.unit_price_dollars !== undefined
-                        ? Math.round(Number(edit.unit_price_dollars) * 100)
-                        : line.unit_price_cents;
-                    const newLinePrice = Math.round(newQty * newUnitPriceCents);
-                    const delta = isRemoved
-                      ? -line.line_price_cents
-                      : isModified
-                        ? newLinePrice - line.line_price_cents
-                        : 0;
-                    return (
-                      <div
-                        key={line.id}
-                        className={cn(
-                          'border-b px-3 py-2 text-sm last:border-0',
-                          isRemoved && 'bg-red-50/40 opacity-60',
-                          !isRemoved && isModified && 'bg-amber-50/40',
-                        )}
-                      >
-                        <div
-                          className={cn(
-                            'grid grid-cols-12 items-center gap-2',
-                            isRemoved && 'line-through',
-                          )}
-                        >
-                          <div className="col-span-5">{line.label}</div>
-                          <div className="col-span-2">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              disabled={isRemoved}
-                              defaultValue={String(line.qty)}
-                              onChange={(e) => setEdit(line.id, { qty: e.target.value })}
-                              className="h-8 text-right text-sm"
-                              placeholder={`${line.qty}`}
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              disabled={isRemoved}
-                              defaultValue={(line.unit_price_cents / 100).toFixed(2)}
-                              onChange={(e) =>
-                                setEdit(line.id, { unit_price_dollars: e.target.value })
-                              }
-                              className="h-8 text-right text-sm"
-                            />
-                          </div>
-                          <div className="col-span-2 text-right tabular-nums">
-                            {delta !== 0 ? (
-                              <span
+      {Array.from(categoriesBySection.entries()).map(([section, categories]) => {
+        const sectionEnvTotal = categories.reduce((s, c) => s + c.estimate_cents, 0);
+        return (
+          <div key={section}>
+            <div className="mb-2 flex items-baseline justify-between">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                {section}
+              </h3>
+              <div className="text-xs tabular-nums text-muted-foreground">
+                Section envelope:{' '}
+                <span className="font-semibold text-foreground">
+                  {formatCurrency(sectionEnvTotal)}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-4">
+              {categories.map((category) => {
+                const lines = linesByCategory.get(category.id) ?? [];
+                const addedHere = added.filter((a) => a.budget_category_id === category.id);
+                const hasAnyLineEdit =
+                  lines.some((l) => removedIds.has(l.id) || editsById[l.id] !== undefined) ||
+                  addedHere.length > 0;
+                const envRaw = envelopeEdits[category.id];
+                const newEnvCents =
+                  envRaw !== undefined && envRaw !== '' ? Math.round(Number(envRaw) * 100) : null;
+                const envDelta =
+                  !hasAnyLineEdit && newEnvCents !== null && !Number.isNaN(newEnvCents)
+                    ? newEnvCents - category.estimate_cents
+                    : 0;
+                const hasAnyEdit = hasAnyLineEdit || envDelta !== 0;
+                return (
+                  <div key={category.id} className="rounded-md border">
+                    <div className="space-y-1 border-b bg-muted/30 px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium">{category.name}</div>
+                          {category.description ? (
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {category.description}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-right">
+                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                              Envelope
+                            </div>
+                            <div className="flex items-center justify-end gap-1">
+                              <span className="text-xs text-muted-foreground">$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                defaultValue={(category.estimate_cents / 100).toFixed(2)}
+                                disabled={hasAnyLineEdit}
+                                onChange={(e) =>
+                                  setEnvelopeEdits((prev) => ({
+                                    ...prev,
+                                    [category.id]: e.target.value,
+                                  }))
+                                }
+                                title={
+                                  hasAnyLineEdit
+                                    ? 'Editing line items already; envelope is implied by line totals'
+                                    : 'Adjust envelope for this category'
+                                }
+                                className="h-7 w-24 rounded-md border bg-background px-2 text-right text-sm tabular-nums disabled:opacity-50"
+                              />
+                            </div>
+                            {envDelta !== 0 ? (
+                              <div
                                 className={cn(
-                                  'font-medium',
-                                  delta < 0 ? 'text-emerald-700' : 'text-amber-700',
+                                  'mt-0.5 text-xs font-medium tabular-nums',
+                                  envDelta < 0 ? 'text-emerald-700' : 'text-amber-700',
                                 )}
                               >
-                                {delta >= 0 ? '+' : ''}
-                                {formatCurrency(delta)}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">
-                                {formatCurrency(line.line_price_cents)}
-                              </span>
-                            )}
+                                {envDelta >= 0 ? '+' : ''}
+                                {formatCurrency(envDelta)}
+                              </div>
+                            ) : null}
                           </div>
-                          <div className="col-span-1 text-right">
-                            {isRemoved ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => addLine(category.id)}
+                          >
+                            <Plus className="size-3" />
+                            Add line
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    {hasAnyEdit ? (
+                      <div className="border-b bg-amber-50/30 px-3 py-2">
+                        <input
+                          type="text"
+                          value={notesByCategory[category.id] ?? ''}
+                          onChange={(e) =>
+                            setNotesByCategory((prev) => ({
+                              ...prev,
+                              [category.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Why? (optional — shown to the customer alongside the change)"
+                          className="h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                      </div>
+                    ) : null}
+                    {lines.length === 0 && addedHere.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">
+                        No lines yet — click "+ Add line" to add one.
+                      </p>
+                    ) : null}
+                    {lines.map((line) => {
+                      const isRemoved = removedIds.has(line.id);
+                      const edit = editsById[line.id];
+                      const isModified = edit !== undefined;
+                      const newQty = edit?.qty !== undefined ? Number(edit.qty) : Number(line.qty);
+                      const newUnitPriceCents =
+                        edit?.unit_price_dollars !== undefined
+                          ? Math.round(Number(edit.unit_price_dollars) * 100)
+                          : line.unit_price_cents;
+                      const newLinePrice = Math.round(newQty * newUnitPriceCents);
+                      const delta = isRemoved
+                        ? -line.line_price_cents
+                        : isModified
+                          ? newLinePrice - line.line_price_cents
+                          : 0;
+                      return (
+                        <div
+                          key={line.id}
+                          className={cn(
+                            'border-b px-3 py-2 text-sm last:border-0',
+                            isRemoved && 'bg-red-50/40 opacity-60',
+                            !isRemoved && isModified && 'bg-amber-50/40',
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              'grid grid-cols-12 items-center gap-2',
+                              isRemoved && 'line-through',
+                            )}
+                          >
+                            <div className="col-span-5">{line.label}</div>
+                            <div className="col-span-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                disabled={isRemoved}
+                                defaultValue={String(line.qty)}
+                                onChange={(e) => setEdit(line.id, { qty: e.target.value })}
+                                className="h-8 text-right text-sm"
+                                placeholder={`${line.qty}`}
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                disabled={isRemoved}
+                                defaultValue={(line.unit_price_cents / 100).toFixed(2)}
+                                onChange={(e) =>
+                                  setEdit(line.id, { unit_price_dollars: e.target.value })
+                                }
+                                className="h-8 text-right text-sm"
+                              />
+                            </div>
+                            <div className="col-span-2 text-right tabular-nums">
+                              {delta !== 0 ? (
+                                <span
+                                  className={cn(
+                                    'font-medium',
+                                    delta < 0 ? 'text-emerald-700' : 'text-amber-700',
+                                  )}
+                                >
+                                  {delta >= 0 ? '+' : ''}
+                                  {formatCurrency(delta)}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">
+                                  {formatCurrency(line.line_price_cents)}
+                                </span>
+                              )}
+                            </div>
+                            <div className="col-span-1 text-right">
+                              {isRemoved ? (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleRemove(line.id)}
+                                  aria-label="Restore"
+                                  title="Restore"
+                                  className="rounded p-1 hover:bg-muted"
+                                >
+                                  <RotateCcw className="size-3.5" />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isModified) clearEdit(line.id);
+                                    else toggleRemove(line.id);
+                                  }}
+                                  aria-label={isModified ? 'Discard edit' : 'Remove line'}
+                                  title={isModified ? 'Discard edit' : 'Remove line'}
+                                  className="rounded p-1 hover:bg-muted"
+                                >
+                                  <X className="size-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {isModified || isRemoved ? (
+                            <input
+                              type="text"
+                              value={editsById[line.id]?.notes ?? ''}
+                              onChange={(e) => setEdit(line.id, { notes: e.target.value })}
+                              placeholder="Line note (optional — explains this specific change)"
+                              className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs no-underline focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                    {addedHere.map((a) => {
+                      const qty = Number(a.qty);
+                      const unitPriceCents = Math.round(Number(a.unit_price_dollars) * 100);
+                      const linePrice =
+                        Number.isFinite(qty) && Number.isFinite(unitPriceCents)
+                          ? Math.round(qty * unitPriceCents)
+                          : 0;
+                      return (
+                        <div
+                          key={a.tempId}
+                          className="border-b bg-emerald-50/40 px-3 py-2 text-sm last:border-0"
+                        >
+                          <div className="grid grid-cols-12 items-center gap-2">
+                            <div className="col-span-5 flex items-center gap-2">
+                              <span className="rounded-full bg-emerald-200/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-900">
+                                New
+                              </span>
+                              <Input
+                                type="text"
+                                value={a.label}
+                                onChange={(e) => setAdded_(a.tempId, { label: e.target.value })}
+                                placeholder="Description"
+                                className="h-8 text-sm"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={a.qty}
+                                onChange={(e) => setAdded_(a.tempId, { qty: e.target.value })}
+                                className="h-8 text-right text-sm"
+                                placeholder="Qty"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={a.unit_price_dollars}
+                                onChange={(e) =>
+                                  setAdded_(a.tempId, { unit_price_dollars: e.target.value })
+                                }
+                                className="h-8 text-right text-sm"
+                                placeholder="$"
+                              />
+                            </div>
+                            <div className="col-span-2 text-right font-medium tabular-nums text-emerald-700">
+                              +{formatCurrency(linePrice)}
+                            </div>
+                            <div className="col-span-1 text-right">
                               <button
                                 type="button"
-                                onClick={() => toggleRemove(line.id)}
-                                aria-label="Restore"
-                                title="Restore"
-                                className="rounded p-1 hover:bg-muted"
-                              >
-                                <RotateCcw className="size-3.5" />
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (isModified) clearEdit(line.id);
-                                  else toggleRemove(line.id);
-                                }}
-                                aria-label={isModified ? 'Discard edit' : 'Remove line'}
-                                title={isModified ? 'Discard edit' : 'Remove line'}
+                                onClick={() => removeAdded(a.tempId)}
+                                aria-label="Cancel add"
+                                title="Cancel add"
                                 className="rounded p-1 hover:bg-muted"
                               >
                                 <X className="size-3.5" />
                               </button>
-                            )}
+                            </div>
                           </div>
-                        </div>
-                        {isModified || isRemoved ? (
                           <input
                             type="text"
-                            value={editsById[line.id]?.notes ?? ''}
-                            onChange={(e) => setEdit(line.id, { notes: e.target.value })}
-                            placeholder="Line note (optional — explains this specific change)"
-                            className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs no-underline focus:outline-none focus:ring-2 focus:ring-primary"
+                            value={a.notes}
+                            onChange={(e) => setAdded_(a.tempId, { notes: e.target.value })}
+                            placeholder="Line note (optional — explains this specific addition)"
+                            className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
                           />
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                  {addedHere.map((a) => {
-                    const qty = Number(a.qty);
-                    const unitPriceCents = Math.round(Number(a.unit_price_dollars) * 100);
-                    const linePrice =
-                      Number.isFinite(qty) && Number.isFinite(unitPriceCents)
-                        ? Math.round(qty * unitPriceCents)
-                        : 0;
-                    return (
-                      <div
-                        key={a.tempId}
-                        className="border-b bg-emerald-50/40 px-3 py-2 text-sm last:border-0"
-                      >
-                        <div className="grid grid-cols-12 items-center gap-2">
-                          <div className="col-span-5 flex items-center gap-2">
-                            <span className="rounded-full bg-emerald-200/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-900">
-                              New
-                            </span>
-                            <Input
-                              type="text"
-                              value={a.label}
-                              onChange={(e) => setAdded_(a.tempId, { label: e.target.value })}
-                              placeholder="Description"
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={a.qty}
-                              onChange={(e) => setAdded_(a.tempId, { qty: e.target.value })}
-                              className="h-8 text-right text-sm"
-                              placeholder="Qty"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={a.unit_price_dollars}
-                              onChange={(e) =>
-                                setAdded_(a.tempId, { unit_price_dollars: e.target.value })
-                              }
-                              className="h-8 text-right text-sm"
-                              placeholder="$"
-                            />
-                          </div>
-                          <div className="col-span-2 text-right font-medium tabular-nums text-emerald-700">
-                            +{formatCurrency(linePrice)}
-                          </div>
-                          <div className="col-span-1 text-right">
-                            <button
-                              type="button"
-                              onClick={() => removeAdded(a.tempId)}
-                              aria-label="Cancel add"
-                              title="Cancel add"
-                              className="rounded p-1 hover:bg-muted"
-                            >
-                              <X className="size-3.5" />
-                            </button>
-                          </div>
                         </div>
-                        <input
-                          type="text"
-                          value={a.notes}
-                          onChange={(e) => setAdded_(a.tempId, { notes: e.target.value })}
-                          placeholder="Line note (optional — explains this specific addition)"
-                          className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       <div className="flex gap-3 border-t pt-4">
         <Button

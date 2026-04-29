@@ -29,7 +29,7 @@ function generateApprovalCode(): string {
 }
 
 type ChangeOrderDiffEntry = {
-  action: 'add' | 'modify' | 'remove';
+  action: 'add' | 'modify' | 'remove' | 'modify_envelope';
   original_line_id?: string;
   budget_category_id?: string;
   category?: string;

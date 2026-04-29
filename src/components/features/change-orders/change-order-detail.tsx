@@ -246,11 +246,19 @@ export function ChangeOrderDetail({
                   label?: string;
                   qty?: number;
                   line_price_cents?: number;
+                  // 'modify_envelope' rows store the prior bucket envelope here
+                  estimate_cents?: number;
+                  kind?: string;
                 } | null;
-                const beforePrice = before?.line_price_cents ?? 0;
+                const isEnvelope = d.action === 'modify_envelope';
+                const beforePrice = isEnvelope
+                  ? (before?.estimate_cents ?? 0)
+                  : (before?.line_price_cents ?? 0);
                 const afterPrice = d.action === 'remove' ? 0 : (d.line_price_cents ?? 0);
                 const delta = afterPrice - beforePrice;
-                const label = d.label ?? before?.label ?? '—';
+                const label = isEnvelope
+                  ? `Envelope: ${d.label ?? '—'}`
+                  : (d.label ?? before?.label ?? '—');
                 return (
                   <tr key={d.id} className="border-b last:border-0">
                     <td className="py-1.5 align-top">
@@ -260,10 +268,12 @@ export function ChangeOrderDetail({
                             ? 'bg-emerald-100 text-emerald-800'
                             : d.action === 'remove'
                               ? 'bg-red-100 text-red-800'
-                              : 'bg-amber-100 text-amber-800'
+                              : d.action === 'modify_envelope'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-amber-100 text-amber-800'
                         }`}
                       >
-                        {d.action}
+                        {d.action === 'modify_envelope' ? 'envelope' : d.action}
                       </span>
                     </td>
                     <td className="py-1.5 align-top">
