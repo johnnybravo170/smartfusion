@@ -71,6 +71,7 @@ test.describe
       const cabinetsCatId = seed.budgetCategoryIdsByName.Cabinets;
 
       await seed.admin.from('change_order_lines').insert({
+        tenant_id: seed.tenantId,
         change_order_id: coId,
         action: 'modify',
         original_line_id: cabinetsLineId,
