@@ -35,6 +35,7 @@ import {
   createChangeOrderV2Action,
   updateChangeOrderV2Action,
 } from '@/server/actions/change-orders';
+import { addBudgetCategoryAction } from '@/server/actions/project-budget-categories';
 
 type LineEdit = {
   qty?: string;
@@ -92,6 +93,86 @@ export function ChangeOrderDiffForm({
 }) {
   const isEdit = mode.kind === 'edit';
   const initial = mode.kind === 'edit' ? mode.initialState : null;
+
+  // Local copy of the project's buckets so newly-created ones from this CO
+  // form show up immediately without a full page refresh. Persisted server-
+  // side at the moment of creation (not staged), per the design call to
+  // keep abandoned drafts harmless.
+  const [localCategories, setLocalCategories] = useState(budgetCategories);
+  const [creatingCategory, setCreatingCategory] = useState<string | null>(null); // section name being added to, or '__new_section__'
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newSectionName, setNewSectionName] = useState('');
+  const [creatingPending, setCreatingPending] = useState(false);
+
+  async function commitNewCategory(targetSection: string) {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    setCreatingPending(true);
+    const res = await addBudgetCategoryAction({
+      project_id: projectId,
+      name,
+      section: targetSection,
+      estimate_cents: 0,
+    });
+    setCreatingPending(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    // Optimistically push the new category into local state so the form
+    // re-renders with it immediately. display_order from server is what we
+    // approximate here — fine for client-side ordering.
+    setLocalCategories((prev) => [
+      ...prev,
+      {
+        id: res.id,
+        name,
+        section: targetSection,
+        description: null,
+        estimate_cents: 0,
+        display_order: prev.length,
+        is_visible_in_report: true,
+      },
+    ]);
+    setNewCategoryName('');
+    setCreatingCategory(null);
+    // Auto-open the new category so the operator can add a line right away.
+    setForceOpenCategories((prev) => new Set(prev).add(res.id));
+  }
+
+  async function commitNewSection() {
+    const sectionName = newSectionName.trim();
+    const name = newCategoryName.trim();
+    if (!sectionName || !name) return;
+    setCreatingPending(true);
+    const res = await addBudgetCategoryAction({
+      project_id: projectId,
+      name,
+      section: sectionName,
+      estimate_cents: 0,
+    });
+    setCreatingPending(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setLocalCategories((prev) => [
+      ...prev,
+      {
+        id: res.id,
+        name,
+        section: sectionName,
+        description: null,
+        estimate_cents: 0,
+        display_order: prev.length,
+        is_visible_in_report: true,
+      },
+    ]);
+    setNewCategoryName('');
+    setNewSectionName('');
+    setCreatingCategory(null);
+    setForceOpenCategories((prev) => new Set(prev).add(res.id));
+  }
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,16 +224,16 @@ export function ChangeOrderDiffForm({
     return map;
   }, [existingLines]);
 
-  // Sections come from budgetCategories; group categories under sections.
+  // Sections come from localCategories; group categories under sections.
   const categoriesBySection = useMemo(() => {
     const map = new Map<string, BudgetCategorySummary[]>();
-    for (const c of budgetCategories) {
+    for (const c of localCategories) {
       const arr = map.get(c.section) ?? [];
       arr.push(c);
       map.set(c.section, arr);
     }
     return map;
-  }, [budgetCategories]);
+  }, [localCategories]);
 
   // Compute total delta across every modification.
   const totalDelta = useMemo(() => {
@@ -186,7 +267,7 @@ export function ChangeOrderDiffForm({
     // Skip envelope delta when the category has any line edits to avoid
     // double-counting — the operator chose to express the change via
     // lines instead.
-    for (const cat of budgetCategories) {
+    for (const cat of localCategories) {
       const newRaw = envelopeEdits[cat.id];
       if (newRaw === undefined || newRaw === '') continue;
       const newCents = Math.round(Number(newRaw) * 100);
@@ -200,7 +281,7 @@ export function ChangeOrderDiffForm({
       total += newCents - cat.estimate_cents;
     }
     return total;
-  }, [editsById, removedIds, added, envelopeEdits, existingLines, budgetCategories]);
+  }, [editsById, removedIds, added, envelopeEdits, existingLines, localCategories]);
 
   function setEdit(lineId: string, patch: Partial<LineEdit>) {
     setEditsById((prev) => ({
@@ -331,7 +412,7 @@ export function ChangeOrderDiffForm({
     // Envelope-level diffs (modify_envelope). Only emit when the
     // category has no line edits — otherwise the lines already
     // represent the change.
-    for (const cat of budgetCategories) {
+    for (const cat of localCategories) {
       const newRaw = envelopeEdits[cat.id];
       if (newRaw === undefined || newRaw === '') continue;
       const newCents = Math.round(Number(newRaw) * 100);
@@ -869,10 +950,140 @@ export function ChangeOrderDiffForm({
                   </div>
                 );
               })}
+
+              {creatingCategory === section ? (
+                <div className="rounded-md border border-dashed p-3">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    New bucket in {section}
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newCategoryName}
+                      autoFocus
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          commitNewCategory(section);
+                        } else if (e.key === 'Escape') {
+                          setCreatingCategory(null);
+                          setNewCategoryName('');
+                        }
+                      }}
+                      placeholder="e.g. Basement waterproofing"
+                      className="h-8 flex-1 text-sm"
+                      disabled={creatingPending}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => commitNewCategory(section)}
+                      disabled={creatingPending || !newCategoryName.trim()}
+                    >
+                      Add
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setCreatingCategory(null);
+                        setNewCategoryName('');
+                      }}
+                      disabled={creatingPending}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreatingCategory(section);
+                    setNewCategoryName('');
+                  }}
+                  className="self-start rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <Plus className="mr-1 inline size-3" />
+                  New bucket in {section}
+                </button>
+              )}
             </div>
           </div>
         );
       })}
+
+      {/* Add a brand-new section (with its first bucket). Sections are
+          free-form per project — see migration 0072. */}
+      {creatingCategory === '__new_section__' ? (
+        <div className="rounded-md border border-dashed p-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            New section
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              value={newSectionName}
+              autoFocus
+              onChange={(e) => setNewSectionName(e.target.value)}
+              placeholder="Section name (e.g. Basement)"
+              className="h-8 flex-1 text-sm"
+              disabled={creatingPending}
+            />
+            <Input
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitNewSection();
+                } else if (e.key === 'Escape') {
+                  setCreatingCategory(null);
+                  setNewCategoryName('');
+                  setNewSectionName('');
+                }
+              }}
+              placeholder="First bucket (e.g. Waterproofing)"
+              className="h-8 flex-1 text-sm"
+              disabled={creatingPending}
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => commitNewSection()}
+              disabled={creatingPending || !newSectionName.trim() || !newCategoryName.trim()}
+            >
+              Add
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setCreatingCategory(null);
+                setNewCategoryName('');
+                setNewSectionName('');
+              }}
+              disabled={creatingPending}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setCreatingCategory('__new_section__');
+            setNewCategoryName('');
+            setNewSectionName('');
+          }}
+          className="self-start rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <Plus className="mr-1 inline size-3" />
+          New section
+        </button>
+      )}
 
       <div className="flex gap-3 border-t pt-4">
         {isEdit && mode.kind === 'edit' ? (
