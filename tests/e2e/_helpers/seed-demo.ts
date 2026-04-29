@@ -82,6 +82,10 @@ export async function seedDemo(opts: { label?: string } = {}): Promise<SeededDem
     role: 'owner',
     phone: '+15551234567',
     phone_verified_at: new Date().toISOString(),
+    // Default false — this is the user's only membership, so make it
+    // active. Otherwise getCurrentTenant() returns null and project
+    // pages render with no auth context.
+    is_active_for_user: true,
   });
   if (memberErr) {
     await admin.from('tenants').delete().eq('id', tenantId);
