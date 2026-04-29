@@ -65,10 +65,18 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Install Supabase CLI
+        # The supabase npm dep is a thin wrapper that doesn't always
+        # install a usable binary in CI. setup-cli is the canonical
+        # path and matches what supabase docs recommend.
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
       - name: Start Supabase local stack
         # Boots Postgres + GoTrue + PostgREST + storage in Docker. All
         # migrations under supabase/migrations/ apply automatically.
-        run: pnpm exec supabase start
+        run: supabase start
 
       - name: Export Supabase env
         # Remap the local stack's URLs / keys to the env names the app
@@ -76,7 +84,7 @@ jobs:
         # SUPABASE_SERVICE_ROLE_KEY) and pipe into GITHUB_ENV so
         # subsequent steps + the dev server Playwright launches see them.
         run: |
-          pnpm exec supabase status -o env \
+          supabase status -o env \
             --override-name api.url=NEXT_PUBLIC_SUPABASE_URL \
             --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_ANON_KEY \
             --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY \
@@ -87,7 +95,7 @@ jobs:
 
       - name: Stop Supabase local stack
         if: always()
-        run: pnpm exec supabase stop --no-backup
+        run: supabase stop --no-backup
 
       - name: Upload Playwright report
         if: always()
