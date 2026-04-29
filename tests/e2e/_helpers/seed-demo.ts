@@ -165,7 +165,6 @@ export async function seedDemo(opts: { label?: string } = {}): Promise<SeededDem
     .from('project_cost_lines')
     .insert([
       {
-        tenant_id: tenantId,
         project_id: projectId,
         budget_category_id: budgetCategoryIdsByName.Cabinets,
         category: 'material',
@@ -180,7 +179,6 @@ export async function seedDemo(opts: { label?: string } = {}): Promise<SeededDem
         sort_order: 1,
       },
       {
-        tenant_id: tenantId,
         project_id: projectId,
         budget_category_id: budgetCategoryIdsByName.Plumbing,
         category: 'sub',
