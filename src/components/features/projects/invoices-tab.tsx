@@ -191,7 +191,7 @@ export function InvoicesTab({
       <div className="flex flex-wrap gap-2">
         {!showMilestoneForm && (
           <Button size="sm" onClick={() => setShowMilestoneForm(true)}>
-            + Milestone invoice
+            + New draw
           </Button>
         )}
         <Button size="sm" variant="outline" onClick={handleFinalInvoice} disabled={finalPending}>
