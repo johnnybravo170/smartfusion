@@ -102,9 +102,17 @@ export async function createInvoiceAction(input: {
     .eq('id', job.customer_id)
     .maybeSingle();
   const taxExempt = Boolean(cust?.tax_exempt);
-  const amountCents = quoteTotalCents;
   const taxCtx = await canadianTax.getContext(tenant.id);
-  const taxCents = taxExempt ? 0 : Math.round(amountCents * taxCtx.totalRate);
+  // Draws default to tax-inclusive: operator types ONE total ($12,500) and
+  // we back-compute the GST portion. Invoices keep add-tax-on-top.
+  const docType = input.docType === 'draw' ? 'draw' : 'invoice';
+  const taxInclusive = docType === 'draw';
+  const amountCents = quoteTotalCents;
+  const taxCents = taxExempt
+    ? 0
+    : taxInclusive
+      ? Math.round((amountCents * taxCtx.totalRate) / (1 + taxCtx.totalRate))
+      : Math.round(amountCents * taxCtx.totalRate);
 
   // Validate.
   const parsed = invoiceCreateSchema.safeParse({
@@ -120,7 +128,6 @@ export async function createInvoiceAction(input: {
     };
   }
 
-  const docType = input.docType === 'draw' ? 'draw' : 'invoice';
   const { data, error } = await supabase
     .from('invoices')
     .insert({
@@ -131,6 +138,7 @@ export async function createInvoiceAction(input: {
       amount_cents: parsed.data.amount_cents,
       tax_cents: parsed.data.tax_cents,
       doc_type: docType,
+      tax_inclusive: taxInclusive,
     })
     .select('id')
     .single();

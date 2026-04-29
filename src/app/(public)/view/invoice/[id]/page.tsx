@@ -27,7 +27,7 @@ export default async function PublicInvoiceViewPage({
   const { data: invoice } = await supabase
     .from('invoices')
     .select(
-      'id, tenant_id, customer_id, status, doc_type, amount_cents, tax_cents, line_items, customer_note, pdf_url, sent_at, paid_at, created_at',
+      'id, tenant_id, customer_id, status, doc_type, tax_inclusive, amount_cents, tax_cents, line_items, customer_note, pdf_url, sent_at, paid_at, created_at',
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -69,7 +69,16 @@ export default async function PublicInvoiceViewPage({
   ].filter(Boolean);
   const lineItems = ((invoice.line_items as LineItem[] | null) ?? []) as LineItem[];
   const lineItemsTotal = lineItems.reduce((sum, li) => sum + li.total_cents, 0);
-  const totalCents = invoice.amount_cents + lineItemsTotal + invoice.tax_cents;
+  // tax_inclusive: amount_cents IS the total (tax_cents is the embedded
+  // GST portion, shown for transparency but not added). Otherwise the
+  // legacy add-on-top math.
+  const taxInclusive = Boolean(invoice.tax_inclusive);
+  const totalCents = taxInclusive
+    ? invoice.amount_cents + lineItemsTotal
+    : invoice.amount_cents + lineItemsTotal + invoice.tax_cents;
+  const subtotalCents = taxInclusive
+    ? invoice.amount_cents - invoice.tax_cents
+    : invoice.amount_cents;
 
   const invoiceDate = invoice.sent_at
     ? new Date(invoice.sent_at).toLocaleDateString('en-CA', {
@@ -163,7 +172,7 @@ export default async function PublicInvoiceViewPage({
         <div className="px-5 py-3">
           <div className="flex justify-between text-sm text-gray-600">
             <span>Subtotal</span>
-            <span>{formatCurrency(invoice.amount_cents)}</span>
+            <span>{formatCurrency(subtotalCents)}</span>
           </div>
 
           {/* Line items */}
@@ -177,7 +186,7 @@ export default async function PublicInvoiceViewPage({
           ))}
 
           <div className="mt-1 flex justify-between text-sm text-gray-600">
-            <span>GST (5%)</span>
+            <span>{taxInclusive ? 'GST (5%, included)' : 'GST (5%)'}</span>
             <span>{formatCurrency(invoice.tax_cents)}</span>
           </div>
           <div className="mt-2 flex justify-between border-t pt-2 text-base font-semibold text-gray-900">
