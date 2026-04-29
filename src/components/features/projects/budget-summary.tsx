@@ -164,7 +164,13 @@ export function VarianceTab({
         <StatBox
           label="Actual Cost"
           value={formatCurrency(actual_total_cents)}
-          sub={`Bills ${formatCurrency(actual_bills_cents)} · Expenses ${formatCurrency(actual_expenses_cents)}`}
+          sub={[
+            actual_labour_cents > 0 ? `Labour ${formatCurrency(actual_labour_cents)}` : null,
+            actual_bills_cents > 0 ? `Bills ${formatCurrency(actual_bills_cents)}` : null,
+            actual_expenses_cents > 0 ? `Expenses ${formatCurrency(actual_expenses_cents)}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
           danger={isAtRisk}
         />
         <StatBox
