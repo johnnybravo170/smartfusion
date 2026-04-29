@@ -69,8 +69,8 @@ test.describe('auth flow', () => {
 
   test('unauthenticated dashboard redirects to /login', async ({ page }) => {
     await page.goto('/dashboard');
-    await page.waitForURL(/\/login$/);
-    expect(page.url()).toMatch(/\/login$/);
+    await page.waitForURL(/\/login(\?|$)/);
+    expect(page.url()).toMatch(/\/login(\?|$)/);
   });
 
   test('signup creates tenant + member and lands on dashboard', async ({ page }) => {
@@ -124,8 +124,8 @@ test.describe('auth flow', () => {
     // clear cookies — functionally equivalent for the middleware check.
     await page.context().clearCookies();
     await page.goto('/dashboard');
-    await page.waitForURL(/\/login$/);
-    expect(page.url()).toMatch(/\/login$/);
+    await page.waitForURL(/\/login(\?|$)/);
+    expect(page.url()).toMatch(/\/login(\?|$)/);
 
     // Sign in again.
     await page.getByLabel('Email').fill(email);
