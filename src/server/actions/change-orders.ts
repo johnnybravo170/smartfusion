@@ -28,6 +28,195 @@ function generateApprovalCode(): string {
   return crypto.randomBytes(12).toString('base64url').slice(0, 16);
 }
 
+type ApplyWarning = {
+  code: 'orphaned_line' | 'envelope_missing' | 'state_diverged';
+  message: string;
+  affected_id?: string;
+};
+
+/**
+ * Apply a v2 line-diff change order to the underlying baseline. Idempotent:
+ * skipped when applied_at is already set. Best-effort: missing rows
+ * (deleted between CO creation and approval) are logged as warnings rather
+ * than failing the apply, since the customer has already approved and
+ * unapproving isn't an option.
+ *
+ * Caller should already have flipped the parent CO to status='approved'
+ * before calling this. The function:
+ *   - reads change_order_lines for the CO
+ *   - applies each row's action to project_cost_lines / project_budget_categories
+ *   - writes applied_at + apply_warnings on the parent CO
+ *
+ * Returns the warnings array for the caller to surface in worklog/UI.
+ *
+ * No-op for v1 COs (flow_version=1) — they keep the legacy
+ * even-distribute behavior in the calling action.
+ */
+export async function applyV2ChangeOrderDiff(
+  admin: ReturnType<typeof createAdminClient>,
+  changeOrderId: string,
+): Promise<{ applied: boolean; warnings: ApplyWarning[]; error?: string }> {
+  const { data: co, error: coErr } = await admin
+    .from('change_orders')
+    .select('id, project_id, flow_version, applied_at')
+    .eq('id', changeOrderId)
+    .single();
+  if (coErr || !co) return { applied: false, warnings: [], error: coErr?.message };
+
+  if (co.flow_version !== 2) return { applied: false, warnings: [] };
+  if (co.applied_at) return { applied: true, warnings: [] }; // idempotent
+
+  const { data: lines, error: linesErr } = await admin
+    .from('change_order_lines')
+    .select(
+      'id, action, original_line_id, budget_category_id, category, label, qty, unit, unit_cost_cents, unit_price_cents, line_cost_cents, line_price_cents, notes, before_snapshot',
+    )
+    .eq('change_order_id', changeOrderId);
+  if (linesErr) return { applied: false, warnings: [], error: linesErr.message };
+
+  const warnings: ApplyWarning[] = [];
+  const projectId = co.project_id as string;
+  const now = new Date().toISOString();
+
+  for (const raw of lines ?? []) {
+    const d = raw as {
+      action: 'add' | 'modify' | 'remove' | 'modify_envelope';
+      original_line_id: string | null;
+      budget_category_id: string | null;
+      category: string | null;
+      label: string | null;
+      qty: number | null;
+      unit: string | null;
+      unit_cost_cents: number | null;
+      unit_price_cents: number | null;
+      line_cost_cents: number | null;
+      line_price_cents: number | null;
+      notes: string | null;
+      before_snapshot: Record<string, unknown> | null;
+    };
+
+    try {
+      if (d.action === 'add') {
+        // Insert new cost line. Only known-required fields; others use DB defaults.
+        const { error } = await admin.from('project_cost_lines').insert({
+          project_id: projectId,
+          budget_category_id: d.budget_category_id,
+          category: d.category ?? 'material',
+          label: d.label ?? '(unlabeled)',
+          qty: d.qty ?? 1,
+          unit: d.unit ?? 'item',
+          unit_cost_cents: d.unit_cost_cents ?? 0,
+          unit_price_cents: d.unit_price_cents ?? 0,
+          line_cost_cents: d.line_cost_cents ?? 0,
+          line_price_cents: d.line_price_cents ?? 0,
+          notes: d.notes,
+        });
+        if (error) {
+          warnings.push({
+            code: 'state_diverged',
+            message: `Could not add line "${d.label}": ${error.message}`,
+            affected_id: d.budget_category_id ?? undefined,
+          });
+        }
+      } else if (d.action === 'modify') {
+        if (!d.original_line_id) continue;
+        // Try update; if 0 rows affected, the original was deleted.
+        const { data: existing } = await admin
+          .from('project_cost_lines')
+          .select('id')
+          .eq('id', d.original_line_id)
+          .maybeSingle();
+        if (!existing) {
+          warnings.push({
+            code: 'orphaned_line',
+            message: `Original line for "${d.label}" no longer exists — modify skipped.`,
+            affected_id: d.original_line_id,
+          });
+          continue;
+        }
+        const { error } = await admin
+          .from('project_cost_lines')
+          .update({
+            qty: d.qty,
+            unit_cost_cents: d.unit_cost_cents,
+            unit_price_cents: d.unit_price_cents,
+            line_cost_cents: d.line_cost_cents,
+            line_price_cents: d.line_price_cents,
+            updated_at: now,
+          })
+          .eq('id', d.original_line_id);
+        if (error) {
+          warnings.push({
+            code: 'state_diverged',
+            message: `Could not modify "${d.label}": ${error.message}`,
+            affected_id: d.original_line_id,
+          });
+        }
+      } else if (d.action === 'remove') {
+        if (!d.original_line_id) continue;
+        const { error } = await admin
+          .from('project_cost_lines')
+          .delete()
+          .eq('id', d.original_line_id);
+        if (error) {
+          warnings.push({
+            code: 'state_diverged',
+            message: `Could not remove line: ${error.message}`,
+            affected_id: d.original_line_id,
+          });
+        }
+      } else if (d.action === 'modify_envelope') {
+        if (!d.budget_category_id || d.line_price_cents == null) continue;
+        const { data: existing } = await admin
+          .from('project_budget_categories')
+          .select('id')
+          .eq('id', d.budget_category_id)
+          .maybeSingle();
+        if (!existing) {
+          warnings.push({
+            code: 'envelope_missing',
+            message: `Budget category for "${d.label}" no longer exists — envelope change skipped.`,
+            affected_id: d.budget_category_id,
+          });
+          continue;
+        }
+        const { error } = await admin
+          .from('project_budget_categories')
+          .update({
+            estimate_cents: d.line_price_cents,
+            updated_at: now,
+          })
+          .eq('id', d.budget_category_id);
+        if (error) {
+          warnings.push({
+            code: 'state_diverged',
+            message: `Could not update envelope for "${d.label}": ${error.message}`,
+            affected_id: d.budget_category_id,
+          });
+        }
+      }
+    } catch (e) {
+      warnings.push({
+        code: 'state_diverged',
+        message: `Unexpected error applying ${d.action} on "${d.label}": ${e instanceof Error ? e.message : String(e)}`,
+      });
+    }
+  }
+
+  // Mark applied. Even with warnings — partial-apply is recorded so the
+  // operator can reconcile.
+  await admin
+    .from('change_orders')
+    .update({
+      applied_at: now,
+      apply_warnings: warnings,
+      updated_at: now,
+    })
+    .eq('id', changeOrderId);
+
+  return { applied: true, warnings };
+}
+
 type ChangeOrderDiffEntry = {
   action: 'add' | 'modify' | 'remove' | 'modify_envelope';
   original_line_id?: string;
@@ -354,7 +543,9 @@ export async function approveChangeOrderAction(
   // Look up change order
   const { data: co, error: coErr } = await admin
     .from('change_orders')
-    .select('id, project_id, tenant_id, title, status, cost_impact_cents, affected_buckets')
+    .select(
+      'id, project_id, tenant_id, title, status, cost_impact_cents, affected_buckets, flow_version',
+    )
     .eq('approval_code', approvalCode)
     .single();
 
@@ -386,28 +577,37 @@ export async function approveChangeOrderAction(
     return { ok: false, error: `Failed to approve: ${updateErr.message}` };
   }
 
-  // Update project budget: add cost delta to affected buckets
-  const affectedBuckets = (coData.affected_buckets ?? []) as string[];
-  const costDelta = coData.cost_impact_cents as number;
+  // Apply the diff to the underlying baseline.
+  // - v2 (line-diff) → apply each row of change_order_lines: add/modify/remove
+  //   cost_lines + modify_envelope on budget_categories. The CO IS the
+  //   declarative diff; this is its execution.
+  // - v1 (legacy cost_breakdown) → keep the existing even-distribute over
+  //   affected_buckets so legacy COs continue to behave the same.
+  const flowVersion = (coData.flow_version as number | null) ?? 1;
+  const applyResult =
+    flowVersion === 2 ? await applyV2ChangeOrderDiff(admin, coData.id as string) : null;
 
-  if (affectedBuckets.length > 0 && costDelta !== 0) {
-    // Distribute cost evenly across affected buckets
-    const perBucket = Math.round(costDelta / affectedBuckets.length);
-    for (const bucketId of affectedBuckets) {
-      const { data: bucket } = await admin
-        .from('project_budget_categories')
-        .select('estimate_cents')
-        .eq('id', bucketId)
-        .single();
-
-      if (bucket) {
-        await admin
+  if (flowVersion !== 2) {
+    const affectedBuckets = (coData.affected_buckets ?? []) as string[];
+    const costDelta = coData.cost_impact_cents as number;
+    if (affectedBuckets.length > 0 && costDelta !== 0) {
+      const perBucket = Math.round(costDelta / affectedBuckets.length);
+      for (const bucketId of affectedBuckets) {
+        const { data: bucket } = await admin
           .from('project_budget_categories')
-          .update({
-            estimate_cents: (bucket.estimate_cents as number) + perBucket,
-            updated_at: now,
-          })
-          .eq('id', bucketId);
+          .select('estimate_cents')
+          .eq('id', bucketId)
+          .single();
+
+        if (bucket) {
+          await admin
+            .from('project_budget_categories')
+            .update({
+              estimate_cents: (bucket.estimate_cents as number) + perBucket,
+              updated_at: now,
+            })
+            .eq('id', bucketId);
+        }
       }
     }
   }
@@ -418,7 +618,11 @@ export async function approveChangeOrderAction(
     tenant_id: tenantId,
     type: 'system',
     title: 'Change order approved',
-    body: `"${coData.title}" approved by ${nameParsed.data.approved_by_name}.`,
+    body: `"${coData.title}" approved by ${nameParsed.data.approved_by_name}.${
+      applyResult && applyResult.warnings.length > 0
+        ? ` (${applyResult.warnings.length} apply warning${applyResult.warnings.length === 1 ? '' : 's'} recorded — operator review)`
+        : ''
+    }`,
   });
 
   // Worklog

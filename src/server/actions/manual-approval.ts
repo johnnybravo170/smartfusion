@@ -32,6 +32,7 @@ import {
   MANUAL_APPROVAL_METHODS,
   manualApprovalMethodLabels,
 } from '@/lib/validators/manual-approval';
+import { applyV2ChangeOrderDiff } from '@/server/actions/change-orders';
 
 const PROOFS_BUCKET = 'approval-proofs';
 const MAX_PROOF_BYTES = 10 * 1024 * 1024;
@@ -313,7 +314,9 @@ export async function manuallyApproveChangeOrderAction(
   const admin = createAdminClient();
   const { data: co, error: coErr } = await admin
     .from('change_orders')
-    .select('id, project_id, tenant_id, title, status, cost_impact_cents, affected_buckets')
+    .select(
+      'id, project_id, tenant_id, title, status, cost_impact_cents, affected_buckets, flow_version',
+    )
     .eq('id', changeOrderId)
     .eq('tenant_id', tenant.id)
     .single();
@@ -346,26 +349,31 @@ export async function manuallyApproveChangeOrderAction(
     .eq('id', changeOrderId);
   if (updErr) return { ok: false, error: updErr.message };
 
-  // Mirror the digital approve path: redistribute the cost delta across
-  // the affected cost buckets so project estimates stay consistent.
-  const affectedBuckets = (co.affected_buckets ?? []) as string[];
-  const costDelta = (co.cost_impact_cents as number) ?? 0;
-  if (affectedBuckets.length > 0 && costDelta !== 0) {
-    const perBucket = Math.round(costDelta / affectedBuckets.length);
-    for (const bucketId of affectedBuckets) {
-      const { data: bucket } = await admin
-        .from('project_budget_categories')
-        .select('estimate_cents')
-        .eq('id', bucketId)
-        .single();
-      if (bucket) {
-        await admin
+  // Mirror the digital approve path. v2 line-diff COs apply the diff to
+  // cost_lines + budget_categories; v1 keeps legacy even-distribute.
+  const flowVersion = ((co as { flow_version?: number | null }).flow_version ?? 1) as number;
+  if (flowVersion === 2) {
+    await applyV2ChangeOrderDiff(admin, changeOrderId);
+  } else {
+    const affectedBuckets = (co.affected_buckets ?? []) as string[];
+    const costDelta = (co.cost_impact_cents as number) ?? 0;
+    if (affectedBuckets.length > 0 && costDelta !== 0) {
+      const perBucket = Math.round(costDelta / affectedBuckets.length);
+      for (const bucketId of affectedBuckets) {
+        const { data: bucket } = await admin
           .from('project_budget_categories')
-          .update({
-            estimate_cents: (bucket.estimate_cents as number) + perBucket,
-            updated_at: now,
-          })
-          .eq('id', bucketId);
+          .select('estimate_cents')
+          .eq('id', bucketId)
+          .single();
+        if (bucket) {
+          await admin
+            .from('project_budget_categories')
+            .update({
+              estimate_cents: (bucket.estimate_cents as number) + perBucket,
+              updated_at: now,
+            })
+            .eq('id', bucketId);
+        }
       }
     }
   }

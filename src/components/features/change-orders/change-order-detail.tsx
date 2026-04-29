@@ -210,6 +210,30 @@ export function ChangeOrderDetail({
         </div>
       </div>
 
+      {co.flow_version === 2 && co.applied_at ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 text-sm">
+          <p className="text-xs text-emerald-800">
+            <span className="font-semibold">Applied to estimate</span> ·{' '}
+            {new Date(co.applied_at).toLocaleDateString('en-CA', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+            {co.apply_warnings && co.apply_warnings.length > 0
+              ? ` · ${co.apply_warnings.length} warning${co.apply_warnings.length === 1 ? '' : 's'}`
+              : ''}
+          </p>
+          {co.apply_warnings && co.apply_warnings.length > 0 ? (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-800">
+              {co.apply_warnings.map((w, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: warnings array order is stable for this CO
+                <li key={i}>{w.message}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+
       {co.flow_version === 2 && co.category_notes && co.category_notes.length > 0 ? (
         <div className="rounded-lg border p-4">
           <p className="text-xs text-muted-foreground mb-3">Notes by Category</p>

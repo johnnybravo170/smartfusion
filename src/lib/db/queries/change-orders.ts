@@ -18,6 +18,8 @@ export type ChangeOrderRow = {
   affected_buckets: string[];
   cost_breakdown: { budget_category_id: string; amount_cents: number }[];
   category_notes: { budget_category_id: string; note: string }[];
+  applied_at: string | null;
+  apply_warnings: { code: string; message: string; affected_id?: string }[];
   flow_version: 1 | 2;
   status: ChangeOrderStatus;
   approval_code: string | null;
@@ -35,7 +37,7 @@ export type ChangeOrderRow = {
 };
 
 const CO_COLUMNS =
-  'id, project_id, job_id, tenant_id, title, description, reason, cost_impact_cents, timeline_impact_days, affected_buckets, cost_breakdown, category_notes, flow_version, status, approval_code, approved_by_name, approved_at, declined_at, declined_reason, approval_method, approved_by_member_id, approval_proof_paths, approval_notes, created_by, created_at, updated_at';
+  'id, project_id, job_id, tenant_id, title, description, reason, cost_impact_cents, timeline_impact_days, affected_buckets, cost_breakdown, category_notes, applied_at, apply_warnings, flow_version, status, approval_code, approved_by_name, approved_at, declined_at, declined_reason, approval_method, approved_by_member_id, approval_proof_paths, approval_notes, created_by, created_at, updated_at';
 
 export type ChangeOrderLineRow = {
   id: string;
