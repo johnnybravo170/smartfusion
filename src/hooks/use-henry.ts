@@ -248,6 +248,13 @@ export function useHenry(): UseHenryReturn {
   const playAudioChunk = useCallback((b64: string) => {
     const ctx = outputAudioCtxRef.current;
     if (!ctx) return;
+    // iOS Safari (and some Android browsers) keep AudioContext in 'suspended'
+    // state until you explicitly resume() — even when it was created during
+    // a user gesture. Without this, the response audio is generated and
+    // scheduled but you hear nothing.
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch((e) => console.warn('[Henry] outputAudioCtx.resume failed:', e));
+    }
     const pcm = pcm16Base64ToFloat32(b64);
     const buffer = ctx.createBuffer(1, pcm.length, SAMPLE_RATE);
     buffer.copyToChannel(pcm, 0);
@@ -265,6 +272,10 @@ export function useHenry(): UseHenryReturn {
     if (!ctx) return;
     ctx.close().catch(() => {});
     const fresh = new AudioContext({ sampleRate: SAMPLE_RATE });
+    // Eagerly resume — iOS Safari creates fresh contexts in 'suspended' state
+    // when not inside a user gesture (this codepath runs from a WS message
+    // handler, which iOS does NOT count as a gesture).
+    fresh.resume().catch(() => {});
     outputAudioCtxRef.current = fresh;
     playbackCursorRef.current = 0;
     setVoiceState('idle');
@@ -588,7 +599,12 @@ export function useHenry(): UseHenryReturn {
 
     wsRef.current = ws;
 
-    outputAudioCtxRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
+    const out = new AudioContext({ sampleRate: SAMPLE_RATE });
+    // iOS Safari starts AudioContexts suspended; resume() during the user
+    // gesture chain (toggleVoice → connect) is the only reliable moment to
+    // unlock playback. Without this, all assistant audio is silent.
+    out.resume().catch((e) => console.warn('[Henry] outputAudioCtx.resume failed:', e));
+    outputAudioCtxRef.current = out;
     playbackCursorRef.current = 0;
   }, [handleServerEvent, stopMicCapture]);
 
