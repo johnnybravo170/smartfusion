@@ -24,6 +24,7 @@ import SelectionsTabServer from '@/components/features/projects/tabs/selections-
 import { TabSkeleton } from '@/components/features/projects/tabs/tab-skeleton';
 import TimeTabServer from '@/components/features/projects/tabs/time-tab-server';
 import { UnsentChangesChip } from '@/components/features/projects/unsent-changes-chip';
+import { VersionsDropdown } from '@/components/features/projects/versions-dropdown';
 import { getProjectProgress } from '@/lib/db/queries/cost-lines';
 import { getProjectDrawSummary } from '@/lib/db/queries/invoices';
 import { listBudgetCategoriesForProject } from '@/lib/db/queries/project-budget-categories';
@@ -138,6 +139,9 @@ export default async function ProjectDetailPage({
           <div className="flex items-center gap-3">
             <ProjectNameEditor projectId={project.id} name={project.name} />
             <ProjectStatusBadge stage={project.lifecycle_stage as LifecycleStage} />
+            <Suspense fallback={null}>
+              <VersionsDropdown projectId={id} />
+            </Suspense>
           </div>
           {project.customer ? (
             <p className="mt-1 text-sm text-muted-foreground">
