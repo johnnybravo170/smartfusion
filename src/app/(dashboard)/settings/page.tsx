@@ -18,6 +18,7 @@ import { Suspense } from 'react';
 import { CalendarFeedCard } from '@/components/features/settings/calendar-feed-card';
 import { ChecklistSettingsCard } from '@/components/features/settings/checklist-settings-card';
 import { DataExportCard } from '@/components/features/settings/data-export-card';
+import { EstimatingDetailLevelCard } from '@/components/features/settings/estimating-detail-level-card';
 import { PublicQuoteLinkCard } from '@/components/features/settings/public-quote-link-card';
 import { QuoteSettingsCard } from '@/components/features/settings/quote-settings-card';
 import { StripeConnectCard } from '@/components/features/settings/stripe-connect-card';
@@ -50,6 +51,12 @@ async function ChecklistSettingsSection() {
   const { getChecklistHideHours } = await import('@/lib/db/queries/project-checklist');
   const hours = await getChecklistHideHours(tenant.id);
   return <ChecklistSettingsCard currentHours={hours} />;
+}
+
+async function EstimatingDetailLevelSection() {
+  const { getEstimatingDetailLevel } = await import('@/server/actions/estimating-prefs');
+  const level = await getEstimatingDetailLevel();
+  return <EstimatingDetailLevelCard currentLevel={level} />;
 }
 
 async function QuoteSettingsSection() {
@@ -202,6 +209,10 @@ export default function SettingsPage() {
           </CardHeader>
         </Card>
       </Link>
+
+      <Suspense fallback={<div className="h-48 animate-pulse rounded-xl border bg-card" />}>
+        <EstimatingDetailLevelSection />
+      </Suspense>
 
       <Suspense fallback={<div className="h-48 animate-pulse rounded-xl border bg-card" />}>
         <ChecklistSettingsSection />
