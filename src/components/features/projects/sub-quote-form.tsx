@@ -138,6 +138,22 @@ export function SubQuoteForm({
   const diff = totalCents - allocatedCents;
   const balanced = totalCents > 0 && diff === 0;
 
+  // The DB enforces (sub_quote_id, bucket_id) uniqueness — i.e. a quote
+  // can only have one allocation per bucket. Surface that as a clear UX
+  // signal here instead of letting the operator hit a constraint error.
+  const duplicateBucketId = (() => {
+    const seen = new Set<string>();
+    for (const r of rows) {
+      if (!r.budget_category_id) continue;
+      if (seen.has(r.budget_category_id)) return r.budget_category_id;
+      seen.add(r.budget_category_id);
+    }
+    return null;
+  })();
+  const duplicateBucketName = duplicateBucketId
+    ? buckets.find((b) => b.id === duplicateBucketId)?.name
+    : null;
+
   // Sync the single-row allocation with the total when we have exactly
   // one row that's still empty. Spares the operator from retyping
   // "$288.14" in the allocation field after typing it as the total.
@@ -200,6 +216,12 @@ export function SubQuoteForm({
     }
     if (totalCents <= 0) {
       setError('Enter the quote total.');
+      return;
+    }
+    if (duplicateBucketId) {
+      setError(
+        'Two splits point to the same bucket. Combine them into a single split, or pick a different bucket.',
+      );
       return;
     }
     // Drop empty rows; server validates the rest.
@@ -356,50 +378,70 @@ export function SubQuoteForm({
               balanced={balanced}
             />
           </div>
+          {duplicateBucketId ? (
+            <p className="mb-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+              Two splits point to{' '}
+              <span className="font-medium">{duplicateBucketName ?? 'the same bucket'}</span>. Each
+              bucket can only have one allocation per quote — combine the amounts into a single
+              split, or pick a different bucket.
+            </p>
+          ) : null}
           <div className="space-y-2">
-            {rows.map((row) => (
-              <div key={row.key} className="grid grid-cols-12 gap-2">
-                <div className="col-span-12 sm:col-span-6">
-                  <select
-                    value={row.budget_category_id}
-                    onChange={(e) => handleBucketChange(row.key, e.target.value)}
-                    disabled={pending}
-                    className="block w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">— Pick a bucket —</option>
-                    {buckets.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name} ({b.section})
-                      </option>
-                    ))}
-                    <option value="__new__">+ New bucket…</option>
-                  </select>
+            {rows.map((row) => {
+              // Hide buckets already chosen in *other* rows so the
+              // operator can't repeat a selection. Keep the row's own
+              // selection visible so it doesn't disappear out from under
+              // them as they edit.
+              const usedByOthers = new Set(
+                rows
+                  .filter((r) => r.key !== row.key && r.budget_category_id)
+                  .map((r) => r.budget_category_id),
+              );
+              const availableBuckets = buckets.filter((b) => !usedByOthers.has(b.id));
+              return (
+                <div key={row.key} className="grid grid-cols-12 gap-2">
+                  <div className="col-span-12 sm:col-span-6">
+                    <select
+                      value={row.budget_category_id}
+                      onChange={(e) => handleBucketChange(row.key, e.target.value)}
+                      disabled={pending}
+                      className="block w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">— Pick a bucket —</option>
+                      {availableBuckets.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name} ({b.section})
+                        </option>
+                      ))}
+                      <option value="__new__">+ New bucket…</option>
+                    </select>
+                  </div>
+                  <div className="col-span-8 sm:col-span-4">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={row.amount_raw}
+                      onChange={(e) => updateRow(row.key, 'amount_raw', e.target.value)}
+                      placeholder="0.00"
+                      disabled={pending}
+                    />
+                  </div>
+                  <div className="col-span-4 flex items-center justify-end gap-1 sm:col-span-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeRow(row.key)}
+                      disabled={pending || rows.length === 1}
+                      aria-label="Remove row"
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="col-span-8 sm:col-span-4">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={row.amount_raw}
-                    onChange={(e) => updateRow(row.key, 'amount_raw', e.target.value)}
-                    placeholder="0.00"
-                    disabled={pending}
-                  />
-                </div>
-                <div className="col-span-4 flex items-center justify-end gap-1 sm:col-span-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => removeRow(row.key)}
-                    disabled={pending || rows.length === 1}
-                    aria-label="Remove row"
-                  >
-                    <X className="size-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <Button
             type="button"
