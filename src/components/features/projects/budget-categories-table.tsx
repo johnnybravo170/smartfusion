@@ -311,10 +311,22 @@ export function BudgetCategoriesTable({
               {section}
             </h3>
             <div className="overflow-x-auto rounded-md border">
-              <table className="w-full table-fixed text-sm">
+              {/* In Executing mode the fixed cols (Estimate + Spent + */}
+              {/* Committed + Remaining + Progress + actions) sum to ~664px. */}
+              {/* On a ~390px mobile viewport that crushes the auto-width */}
+              {/* Category col into negative space → header text overlaps */}
+              {/* and the cell content jumbles. min-w-[820px] keeps the */}
+              {/* table at least wide enough for a sensible Category */}
+              {/* column; the parent's overflow-x-auto handles horizontal */}
+              {/* scroll on narrow screens (Jonathan: "I don't mind */}
+              {/* scrolling for now"). Editing mode has only 4 cols and */}
+              {/* fits mobile natively, so no min-w there. */}
+              <table
+                className={`table-fixed text-sm ${mode === 'executing' ? 'w-full min-w-[820px]' : 'w-full'}`}
+              >
                 <colgroup>
                   <col className="w-8" />
-                  <col />
+                  <col className={mode === 'executing' ? 'w-56' : ''} />
                   <col className="w-32" />
                   {mode === 'executing' ? <col className="w-28" /> : null}
                   {mode === 'executing' ? <col className="w-28" /> : null}
