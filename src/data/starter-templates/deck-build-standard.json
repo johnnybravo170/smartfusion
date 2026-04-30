@@ -1,0 +1,91 @@
+{
+  "slug": "deck-build-standard",
+  "label": "Deck Build (Standard)",
+  "description": "Pressure-treated frame, composite or PT deck boards, railings, stairs. ~12x16 footprint.",
+  "buckets": [
+    {
+      "name": "Permits & Layout",
+      "section": "exterior",
+      "lines": [
+        { "label": "Permits + drawings", "category": "overhead", "qty": 1, "unit": "lot" },
+        {
+          "label": "Layout + excavation for footings",
+          "category": "labour",
+          "qty": 1,
+          "unit": "lot"
+        }
+      ]
+    },
+    {
+      "name": "Footings & Posts",
+      "section": "exterior",
+      "lines": [
+        {
+          "label": "Sonotubes + concrete + brackets",
+          "category": "material",
+          "qty": 6,
+          "unit": "ea"
+        },
+        {
+          "label": "Footing labour (pour + set posts)",
+          "category": "labour",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Posts (PT 6x6)", "category": "material", "qty": 6, "unit": "ea" }
+      ]
+    },
+    {
+      "name": "Frame",
+      "section": "exterior",
+      "lines": [
+        {
+          "label": "Beams, joists, blocking, hangers (PT)",
+          "category": "material",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Frame labour", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Decking",
+      "section": "exterior",
+      "lines": [
+        {
+          "label": "Deck boards (composite or PT)",
+          "category": "material",
+          "qty": 192,
+          "unit": "sqft"
+        },
+        {
+          "label": "Decking install (incl. fasteners)",
+          "category": "labour",
+          "qty": 1,
+          "unit": "lot"
+        }
+      ]
+    },
+    {
+      "name": "Railings",
+      "section": "exterior",
+      "lines": [
+        {
+          "label": "Railing system (posts, top/bottom rails, balusters)",
+          "category": "material",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Railing install", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Stairs",
+      "section": "exterior",
+      "lines": [
+        { "label": "Stringers, treads, risers", "category": "material", "qty": 1, "unit": "lot" },
+        { "label": "Stair install + railings", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "slug": "bathroom-reno-standard",
+  "label": "Bathroom Renovation (Standard)",
+  "description": "Full bathroom reno: demo, plumbing rough, electrical rough, drywall, tile, vanity, fixtures, paint. ~5x8 footprint.",
+  "buckets": [
+    {
+      "name": "Demo & Disposal",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Demo existing fixtures, flooring & drywall",
+          "category": "labour",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Disposal bin + dump fees", "category": "material", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Plumbing Rough",
+      "section": "interior",
+      "lines": [
+        { "label": "Move drain & supply for vanity", "category": "sub", "qty": 1, "unit": "lot" },
+        { "label": "Toilet rough-in", "category": "sub", "qty": 1, "unit": "ea" },
+        { "label": "Tub / shower rough-in", "category": "sub", "qty": 1, "unit": "ea" }
+      ]
+    },
+    {
+      "name": "Electrical Rough",
+      "section": "interior",
+      "lines": [
+        { "label": "GFCI outlet relocation / addition", "category": "sub", "qty": 2, "unit": "ea" },
+        {
+          "label": "Vanity light + ceiling fixture rough-in",
+          "category": "sub",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Fan / heat lamp wiring", "category": "sub", "qty": 1, "unit": "ea" }
+      ]
+    },
+    {
+      "name": "Drywall",
+      "section": "interior",
+      "lines": [
+        { "label": "Cement board behind tile", "category": "material", "qty": 1, "unit": "lot" },
+        { "label": "Drywall + tape + mud", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Tile",
+      "section": "interior",
+      "lines": [
+        { "label": "Floor tile (incl. waste)", "category": "material", "qty": 50, "unit": "sqft" },
+        {
+          "label": "Wall tile (tub/shower surround)",
+          "category": "material",
+          "qty": 80,
+          "unit": "sqft"
+        },
+        { "label": "Thinset, grout, sealer", "category": "material", "qty": 1, "unit": "lot" },
+        { "label": "Tile install (floor + walls)", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Vanity & Counter",
+      "section": "interior",
+      "lines": [
+        { "label": "Vanity (pre-built)", "category": "material", "qty": 1, "unit": "ea" },
+        { "label": "Counter top + sink", "category": "material", "qty": 1, "unit": "ea" },
+        { "label": "Vanity install", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Fixtures & Final",
+      "section": "interior",
+      "lines": [
+        { "label": "Toilet", "category": "material", "qty": 1, "unit": "ea" },
+        {
+          "label": "Faucet, shower trim, towel bars",
+          "category": "material",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Mirror", "category": "material", "qty": 1, "unit": "ea" },
+        { "label": "Plumbing fixture install (final)", "category": "sub", "qty": 1, "unit": "lot" },
+        { "label": "Electrical trim out", "category": "sub", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Paint",
+      "section": "interior",
+      "lines": [
+        { "label": "Primer + 2 coats finish", "category": "labour", "qty": 1, "unit": "lot" },
+        { "label": "Paint + supplies", "category": "material", "qty": 1, "unit": "lot" }
+      ]
+    }
+  ]
+}

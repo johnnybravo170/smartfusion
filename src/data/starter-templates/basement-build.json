@@ -1,0 +1,101 @@
+{
+  "slug": "basement-build",
+  "label": "Basement Build-Out",
+  "description": "Unfinished → finished basement: framing, insulation, drywall, electrical, plumbing (if bath), flooring, trim.",
+  "buckets": [
+    {
+      "name": "Layout & Framing",
+      "section": "interior",
+      "lines": [
+        { "label": "Layout + permits", "category": "labour", "qty": 1, "unit": "lot" },
+        {
+          "label": "Framing materials (studs, plates, fasteners)",
+          "category": "material",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Framing labour", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Insulation & Vapour",
+      "section": "interior",
+      "lines": [
+        { "label": "Spray foam / batts", "category": "material", "qty": 1, "unit": "lot" },
+        { "label": "Vapour barrier + tape", "category": "material", "qty": 1, "unit": "lot" },
+        { "label": "Insulation install", "category": "sub", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Plumbing (if bath)",
+      "section": "interior",
+      "lines": [
+        { "label": "Drain line rough-in", "category": "sub", "qty": 1, "unit": "lot" },
+        { "label": "Supply lines + fixtures rough", "category": "sub", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Electrical",
+      "section": "interior",
+      "lines": [
+        { "label": "Sub panel / circuit additions", "category": "sub", "qty": 1, "unit": "lot" },
+        {
+          "label": "Outlets, switches, lighting rough",
+          "category": "sub",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Smoke / CO detectors", "category": "material", "qty": 2, "unit": "ea" }
+      ]
+    },
+    {
+      "name": "Drywall",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Drywall sheets + corners + tape + mud",
+          "category": "material",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Drywall hang + finish", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Flooring",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Subfloor (DRIcore or equivalent)",
+          "category": "material",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Finish flooring material", "category": "material", "qty": 1, "unit": "lot" },
+        { "label": "Flooring install", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Trim & Doors",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Doors (interior, slab + frame)",
+          "category": "material",
+          "qty": 3,
+          "unit": "ea"
+        },
+        { "label": "Baseboard + casing material", "category": "material", "qty": 1, "unit": "lot" },
+        { "label": "Trim install", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Paint",
+      "section": "interior",
+      "lines": [
+        { "label": "Primer + 2 coats finish", "category": "labour", "qty": 1, "unit": "lot" },
+        { "label": "Paint + supplies", "category": "material", "qty": 1, "unit": "lot" }
+      ]
+    }
+  ]
+}

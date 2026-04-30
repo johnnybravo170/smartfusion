@@ -1,0 +1,135 @@
+{
+  "slug": "whole-home-reno",
+  "label": "Whole-Home Renovation (High-Level)",
+  "description": "Top-line buckets for a whole-home reno. Add line items per scope as estimating progresses; this seeds the sections so you don't start from a blank page.",
+  "buckets": [
+    {
+      "name": "General Conditions",
+      "section": "general",
+      "lines": [
+        { "label": "Permits + inspections", "category": "overhead", "qty": 1, "unit": "lot" },
+        {
+          "label": "Site protection + dust control",
+          "category": "labour",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Disposal bins + dump fees", "category": "material", "qty": 1, "unit": "lot" },
+        {
+          "label": "Project management + supervision",
+          "category": "overhead",
+          "qty": 1,
+          "unit": "lot"
+        }
+      ]
+    },
+    {
+      "name": "Demo & Structural",
+      "section": "interior",
+      "lines": [
+        { "label": "Selective demo", "category": "labour", "qty": 1, "unit": "lot" },
+        {
+          "label": "Structural mods + engineering (if required)",
+          "category": "sub",
+          "qty": 1,
+          "unit": "lot"
+        }
+      ]
+    },
+    {
+      "name": "Plumbing",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Plumbing rough + finish (whole-home)",
+          "category": "sub",
+          "qty": 1,
+          "unit": "lot"
+        }
+      ]
+    },
+    {
+      "name": "Electrical",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Electrical rough + finish (whole-home)",
+          "category": "sub",
+          "qty": 1,
+          "unit": "lot"
+        }
+      ]
+    },
+    {
+      "name": "HVAC",
+      "section": "interior",
+      "lines": [{ "label": "HVAC modifications", "category": "sub", "qty": 1, "unit": "lot" }]
+    },
+    {
+      "name": "Drywall",
+      "section": "interior",
+      "lines": [
+        { "label": "Drywall hang + finish", "category": "labour", "qty": 1, "unit": "lot" },
+        { "label": "Drywall material", "category": "material", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Flooring",
+      "section": "interior",
+      "lines": [
+        { "label": "Flooring (material + install)", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Kitchen",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Kitchen (cabinets, counters, install)",
+          "category": "labour",
+          "qty": 1,
+          "unit": "lot"
+        }
+      ]
+    },
+    {
+      "name": "Bathrooms",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Bathroom rough + finish (per bath)",
+          "category": "labour",
+          "qty": 1,
+          "unit": "lot"
+        }
+      ]
+    },
+    {
+      "name": "Paint & Trim",
+      "section": "interior",
+      "lines": [
+        { "label": "Paint (whole-home)", "category": "labour", "qty": 1, "unit": "lot" },
+        { "label": "Trim, doors, hardware", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Exterior",
+      "section": "exterior",
+      "lines": [
+        {
+          "label": "Exterior work (siding, trim, etc.)",
+          "category": "labour",
+          "qty": 1,
+          "unit": "lot"
+        }
+      ]
+    },
+    {
+      "name": "Contingency",
+      "section": "general",
+      "lines": [
+        { "label": "Contingency (5-10% of scope)", "category": "overhead", "qty": 1, "unit": "lot" }
+      ]
+    }
+  ]
+}

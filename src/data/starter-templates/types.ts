@@ -1,0 +1,36 @@
+/**
+ * Type for hand-authored renovation starter templates.
+ *
+ * Templates are JSON files in this folder, applied to fresh projects
+ * via `applyStarterTemplateAction`. The action seeds
+ * `project_budget_categories` (one per bucket) and `project_cost_lines`
+ * (one per line) under the chosen project — no schema migration
+ * needed.
+ *
+ * Pricing convention: ship without prices (no `unit_price_cents`,
+ * no `unit_cost_cents`). Per the rollup, prices drift quickly and the
+ * operator should fill them in per project. Templates are about
+ * *structure* — what scope is in this kind of job.
+ */
+
+export type StarterTemplateLine = {
+  label: string;
+  category: 'material' | 'labour' | 'sub' | 'equipment' | 'overhead';
+  qty: number;
+  unit: string;
+  notes?: string;
+};
+
+export type StarterTemplateBucket = {
+  name: string;
+  section: string;
+  description?: string;
+  lines: StarterTemplateLine[];
+};
+
+export type StarterTemplate = {
+  slug: string;
+  label: string;
+  description: string;
+  buckets: StarterTemplateBucket[];
+};

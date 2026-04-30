@@ -1,0 +1,131 @@
+{
+  "slug": "kitchen-reno-standard",
+  "label": "Kitchen Renovation (Standard)",
+  "description": "Mid-size kitchen reno: demo, cabinets, counters, plumbing, electrical, backsplash, appliance install. Existing footprint.",
+  "buckets": [
+    {
+      "name": "Demo & Disposal",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Demo cabinets, counters, backsplash, flooring",
+          "category": "labour",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Disposal bin + dump fees", "category": "material", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Plumbing",
+      "section": "interior",
+      "lines": [
+        { "label": "Sink relocation / supply rework", "category": "sub", "qty": 1, "unit": "lot" },
+        { "label": "Dishwasher rough-in", "category": "sub", "qty": 1, "unit": "ea" },
+        { "label": "Gas line for range (if applicable)", "category": "sub", "qty": 1, "unit": "ea" }
+      ]
+    },
+    {
+      "name": "Electrical",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Counter outlets (GFCI, code-spaced)",
+          "category": "sub",
+          "qty": 6,
+          "unit": "ea"
+        },
+        {
+          "label": "Range + dishwasher dedicated circuits",
+          "category": "sub",
+          "qty": 2,
+          "unit": "ea"
+        },
+        {
+          "label": "Under-cabinet + pendant lighting rough",
+          "category": "sub",
+          "qty": 1,
+          "unit": "lot"
+        }
+      ]
+    },
+    {
+      "name": "Drywall & Paint",
+      "section": "interior",
+      "lines": [
+        { "label": "Drywall patch / repair", "category": "labour", "qty": 1, "unit": "lot" },
+        { "label": "Primer + 2 coats finish", "category": "labour", "qty": 1, "unit": "lot" },
+        { "label": "Paint + supplies", "category": "material", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Cabinets",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Cabinets (lower + upper, semi-custom)",
+          "category": "material",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Cabinet install", "category": "labour", "qty": 1, "unit": "lot" },
+        {
+          "label": "Cabinet hardware (pulls/handles)",
+          "category": "material",
+          "qty": 1,
+          "unit": "lot"
+        }
+      ]
+    },
+    {
+      "name": "Counters",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Counter material (quartz / granite)",
+          "category": "material",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Counter template + install (sub)", "category": "sub", "qty": 1, "unit": "lot" },
+        { "label": "Sink (undermount)", "category": "material", "qty": 1, "unit": "ea" }
+      ]
+    },
+    {
+      "name": "Backsplash",
+      "section": "interior",
+      "lines": [
+        { "label": "Backsplash tile", "category": "material", "qty": 30, "unit": "sqft" },
+        { "label": "Thinset, grout, sealer", "category": "material", "qty": 1, "unit": "lot" },
+        { "label": "Backsplash install", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Flooring",
+      "section": "interior",
+      "lines": [
+        { "label": "Flooring material", "category": "material", "qty": 1, "unit": "lot" },
+        { "label": "Flooring install", "category": "labour", "qty": 1, "unit": "lot" }
+      ]
+    },
+    {
+      "name": "Appliances & Final",
+      "section": "interior",
+      "lines": [
+        {
+          "label": "Appliance install (range, DW, fridge cutout)",
+          "category": "labour",
+          "qty": 1,
+          "unit": "lot"
+        },
+        {
+          "label": "Plumbing trim (faucet, garburator, DW hookup)",
+          "category": "sub",
+          "qty": 1,
+          "unit": "lot"
+        },
+        { "label": "Electrical trim out", "category": "sub", "qty": 1, "unit": "lot" }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import {
   BudgetModeToggle,
 } from '@/components/features/projects/budget-mode-toggle';
 import { EstimateSentBanner } from '@/components/features/projects/estimate-sent-banner';
+import { StarterTemplatePicker } from '@/components/features/projects/starter-template-picker';
 import { Button } from '@/components/ui/button';
 import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
 import { listCostLines } from '@/lib/db/queries/cost-lines';
@@ -49,6 +50,11 @@ export default async function BudgetTabServer({
   const estimateStatus = project?.estimate_status ?? 'draft';
   const sendable = estimateStatus === 'draft' || estimateStatus === 'declined' || isPreApproval;
 
+  // Show the starter-template picker only when the project is empty
+  // and we're in editing posture. Once seeded, the picker disappears.
+  const isEmptyScope = costLines.length === 0 && budget.lines.length === 0;
+  const showStarterPicker = mode === 'editing' && isEmptyScope && isPreApproval;
+
   return (
     <div className="flex flex-col gap-3">
       <EstimateSentBanner
@@ -80,6 +86,8 @@ export default async function BudgetTabServer({
           </Button>
         ) : null}
       </div>
+
+      {showStarterPicker ? <StarterTemplatePicker projectId={projectId} /> : null}
 
       <BudgetCategoriesTable
         lines={budget.lines}
