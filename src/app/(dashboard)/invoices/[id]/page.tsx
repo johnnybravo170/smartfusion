@@ -1,4 +1,4 @@
-import { ArrowLeft, Briefcase, Copy, User } from 'lucide-react';
+import { Briefcase, Copy, User } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { InvoiceActions } from '@/components/features/invoices/invoice-actions';
@@ -6,6 +6,7 @@ import { InvoiceLineItems } from '@/components/features/invoices/invoice-line-it
 import { InvoiceNote } from '@/components/features/invoices/invoice-note';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
 import { PrintButton } from '@/components/features/shared/print-button';
+import { DetailPageNav } from '@/components/layout/detail-page-nav';
 import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime } from '@/lib/date/format';
@@ -63,15 +64,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <div>
-        <Link
-          href="/invoices"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" />
-          Back to invoices
-        </Link>
-      </div>
+      <DetailPageNav homeHref="/invoices" homeLabel="All invoices" />
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">

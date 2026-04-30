@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy, FileText, Pencil } from 'lucide-react';
+import { Copy, FileText, Pencil } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -14,6 +14,7 @@ import {
 import { QuoteStatusBadge } from '@/components/features/quotes/quote-status-badge';
 import { SurfaceList } from '@/components/features/quotes/surface-list';
 import { PrintButton } from '@/components/features/shared/print-button';
+import { DetailPageNav } from '@/components/layout/detail-page-nav';
 import { Button } from '@/components/ui/button';
 import { resolveTenantAutoFollowupEnabled } from '@/lib/ar/system-sequences';
 import { getCurrentTenant } from '@/lib/auth/helpers';
@@ -59,15 +60,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <div>
-        <Link
-          href="/quotes"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" />
-          Back to quotes
-        </Link>
-      </div>
+      <DetailPageNav homeHref="/quotes" homeLabel="All quotes" />
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">

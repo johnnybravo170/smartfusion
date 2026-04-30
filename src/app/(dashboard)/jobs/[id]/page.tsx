@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   CalendarClock,
   Camera,
   ClipboardList,
@@ -23,6 +22,7 @@ import { PhotoUpload } from '@/components/features/photos/photo-upload';
 import { QuoteStatusBadge } from '@/components/features/quotes/quote-status-badge';
 import { SocialPostSection } from '@/components/features/social/social-post-section';
 import { JobTabs } from '@/components/features/tasks/job-tabs';
+import { DetailPageNav } from '@/components/layout/detail-page-nav';
 import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime, formatRelativeTime } from '@/lib/date/format';
@@ -56,15 +56,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <div>
-        <Link
-          href="/jobs"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" />
-          Back to jobs
-        </Link>
-      </div>
+      <DetailPageNav homeHref="/jobs" homeLabel="All jobs" />
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">

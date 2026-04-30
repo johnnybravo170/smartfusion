@@ -5,6 +5,7 @@ import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { withFrom } from '@/lib/nav/from-link';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import {
   createMilestoneInvoiceAction,
@@ -72,7 +73,13 @@ function DrawForm({
       });
       if (res.ok) {
         toast.success('Draw created.');
-        router.push(`/invoices/${res.id}`);
+        router.push(
+          withFrom(
+            `/invoices/${res.id}`,
+            `/projects/${projectId}?tab=invoices`,
+            'Customer Billing',
+          ),
+        );
       } else {
         setError(res.error);
       }
@@ -207,7 +214,13 @@ export function InvoicesTab({
       const res = await generateFinalInvoiceAction({ projectId });
       if (res.ok) {
         toast.success('Final invoice created.');
-        router.push(`/invoices/${res.id}`);
+        router.push(
+          withFrom(
+            `/invoices/${res.id}`,
+            `/projects/${projectId}?tab=invoices`,
+            'Customer Billing',
+          ),
+        );
       } else {
         toast.error(res.error);
       }
@@ -333,7 +346,15 @@ export function InvoicesTab({
                         <Button
                           size="xs"
                           variant="ghost"
-                          onClick={() => router.push(`/invoices/${inv.id}`)}
+                          onClick={() =>
+                            router.push(
+                              withFrom(
+                                `/invoices/${inv.id}`,
+                                `/projects/${projectId}?tab=invoices`,
+                                'Customer Billing',
+                              ),
+                            )
+                          }
                         >
                           View
                         </Button>
@@ -388,7 +409,15 @@ export function InvoicesTab({
                       <Button
                         size="xs"
                         variant="ghost"
-                        onClick={() => router.push(`/invoices/${inv.id}`)}
+                        onClick={() =>
+                          router.push(
+                            withFrom(
+                              `/invoices/${inv.id}`,
+                              `/projects/${projectId}?tab=invoices`,
+                              'Customer Billing',
+                            ),
+                          )
+                        }
                       >
                         View
                       </Button>

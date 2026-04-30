@@ -1,4 +1,4 @@
-import { ArrowLeft, Calendar, FileText, Mail, MapPin, Pencil, Phone, Receipt } from 'lucide-react';
+import { Calendar, FileText, Mail, MapPin, Pencil, Phone, Receipt } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ContactNotesFeed } from '@/components/features/contacts/contact-notes-feed';
@@ -9,6 +9,7 @@ import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-statu
 import { JobStatusBadge } from '@/components/features/jobs/job-status-badge';
 import { QuoteStatusBadge } from '@/components/features/quotes/quote-status-badge';
 import { LeadTasksSection } from '@/components/features/tasks/lead-tasks-section';
+import { DetailPageNav } from '@/components/layout/detail-page-nav';
 import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDate as formatDateUtil } from '@/lib/date/format';
@@ -100,15 +101,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <div>
-        <Link
-          href="/contacts"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" />
-          Back to contacts
-        </Link>
-      </div>
+      <DetailPageNav homeHref="/contacts" homeLabel="All contacts" />
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
