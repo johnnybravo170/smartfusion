@@ -10,8 +10,13 @@
  *
  * Read-only summary view — full edit affordances stay on the per-type
  * subtabs. Toggle is in CostsTab.
+ *
+ * Honors `?focus=<bucket-name>` in the URL — used by the Budget tab's
+ * "Spend →" drill-link to scroll + highlight a specific bucket.
  */
 
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 import type { ProjectBillRow } from '@/lib/db/queries/project-bills';
 import type { SubQuoteRow } from '@/lib/db/queries/project-sub-quotes';
 import type { PurchaseOrderRow } from '@/lib/db/queries/purchase-orders';
@@ -112,6 +117,19 @@ export function CostsByCategoryView({
   }
   const unallocated = rowsByCategory.get('') ?? [];
 
+  const searchParams = useSearchParams();
+  const focusName = (searchParams.get('focus') ?? '').toLowerCase().trim();
+  const focusedBucketRef = useRef<HTMLDivElement | null>(null);
+
+  // Scroll to the focused bucket on mount / focus change. Stays subtle
+  // — no jarring jumps if the user is already scrolled.
+  useEffect(() => {
+    if (!focusName) return;
+    const el = focusedBucketRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusName]);
+
   return (
     <div className="space-y-6">
       {unallocated.length > 0 ? (
@@ -127,7 +145,12 @@ export function CostsByCategoryView({
             {sectionBuckets.map((b) => {
               const rows = rowsByCategory.get(b.id) ?? [];
               if (rows.length === 0) return null;
-              return <CategoryBlock key={b.id} name={b.name} rows={rows} />;
+              const isFocused = focusName.length > 0 && b.name.toLowerCase().trim() === focusName;
+              return (
+                <div key={b.id} ref={isFocused ? focusedBucketRef : undefined}>
+                  <CategoryBlock name={b.name} rows={rows} highlight={isFocused} />
+                </div>
+              );
             })}
           </div>
         </div>
