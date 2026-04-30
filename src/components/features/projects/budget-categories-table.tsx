@@ -44,6 +44,10 @@ type BudgetCategoriesTableProps = {
   estimateStatus: 'draft' | 'pending_approval' | 'approved' | 'declined';
   /** Audit lens — categories touched by applied COs get a chip. */
   coContributionsByCategoryId?: Record<string, AppliedChangeOrderContribution[]>;
+  /** Editing/Executing posture (decision 6790ef2b). Editing expands
+   * sections by default; Executing collapses them. Defaults to 'editing'
+   * so the prop is optional for legacy callers. */
+  mode?: 'editing' | 'executing';
 };
 
 export function BudgetCategoriesTable({
@@ -53,12 +57,19 @@ export function BudgetCategoriesTable({
   catalog,
   estimateStatus,
   coContributionsByCategoryId = {},
+  mode = 'editing',
 }: BudgetCategoriesTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editingDescId, setEditingDescId] = useState<string | null>(null);
   const [editDescValue, setEditDescValue] = useState('');
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // In Executing mode, sections start collapsed (operator is in
+  // status-tracking posture; line-level detail is on-demand). In
+  // Editing mode the default UX is fully visible — the operator is
+  // authoring scope.
+  const [expanded, setExpanded] = useState<Set<string>>(() =>
+    mode === 'editing' ? new Set(lines.map((l) => l.budget_category_id)) : new Set(),
+  );
   const [addingLineFor, setAddingLineFor] = useState<string | null>(null);
   const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
   const [showAddBucket, setShowAddBucket] = useState(false);

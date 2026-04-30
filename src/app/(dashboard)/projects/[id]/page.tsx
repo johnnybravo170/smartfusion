@@ -10,11 +10,9 @@ import { ProjectStatusBadge } from '@/components/features/projects/project-statu
 import { ProjectTabSelect } from '@/components/features/projects/project-tab-select';
 import { ScopeDiffReview } from '@/components/features/projects/scope-diff-review';
 import BudgetTabServer from '@/components/features/projects/tabs/budget-tab-server';
-import ChangeOrdersTabServer from '@/components/features/projects/tabs/change-orders-tab-server';
 import CostsTabServer from '@/components/features/projects/tabs/costs-tab-server';
 import CrewTabServer from '@/components/features/projects/tabs/crew-tab-server';
 import DocumentsTabServer from '@/components/features/projects/tabs/documents-tab-server';
-import EstimateTabServer from '@/components/features/projects/tabs/estimate-tab-server';
 import GalleryTabServer from '@/components/features/projects/tabs/gallery-tab-server';
 import InvoicesTabServer from '@/components/features/projects/tabs/invoices-tab-server';
 import MemosTabServer from '@/components/features/projects/tabs/memos-tab-server';
@@ -82,9 +80,20 @@ export default async function ProjectDetailPage({
 }) {
   const { id } = await params;
   const resolvedSearchParams = await searchParams;
-  // Alias: old `?tab=buckets` bookmarks → `budget`. Renamed 2026-04-28.
+  // Tab aliases — old separate Estimate / Change Orders tabs fold into
+  // Budget under the unified-Budget design (decision 6790ef2b). Old
+  // ?tab=buckets bookmarks also remap. Anything else passes through.
   const rawTab = resolvedSearchParams.tab;
-  const explicitTab = rawTab === 'buckets' ? 'budget' : (rawTab as Tab | undefined);
+  const explicitTab =
+    rawTab === 'buckets' || rawTab === 'estimate' || rawTab === 'change-orders'
+      ? 'budget'
+      : (rawTab as Tab | undefined);
+
+  // Editing / Executing mode for the unified Budget tab. Defaulted by
+  // lifecycle stage, overridable via ?mode=. Read once at the page
+  // shell so server components downstream can use it.
+  const rawMode = resolvedSearchParams.mode;
+  const explicitMode = rawMode === 'editing' || rawMode === 'executing' ? rawMode : null;
 
   // Shell-only queries. getProject is React.cache-wrapped, so generateMetadata
   // + the shell + any inner tab that also calls it (e.g. OverviewTab) dedupe
@@ -105,16 +114,21 @@ export default async function ProjectDetailPage({
     stage === 'planning' || stage === 'awaiting_approval' ? 'budget' : 'overview';
   const tab: Tab = explicitTab ?? defaultTab;
 
-  // Tab order follows the project lifecycle: plan (Budget, Estimate) → do
-  // (Spend, Time, Changes, Customer Billing) → review (Overview). Slugs
-  // stay as-is to avoid breaking deep links + worker-app references; only
-  // labels are user-facing.
+  // Default Budget mode by lifecycle. Operator can override via ?mode=.
+  // Editing for pre-approval (authoring); Executing for active and
+  // beyond (status tracking + diff-tracked changes).
+  const budgetMode: 'editing' | 'executing' =
+    explicitMode ??
+    (stage === 'planning' || stage === 'awaiting_approval' ? 'editing' : 'executing');
+
+  // Tab order follows the project lifecycle. Estimate + Change Orders
+  // folded into Budget under the unified-Budget design — kept as
+  // route aliases above for backward compatibility, but no longer
+  // rendered as separate tab pills.
   const tabs: { key: Tab; label: string }[] = [
     { key: 'budget', label: 'Budget' },
-    { key: 'estimate', label: 'Estimate' },
     { key: 'costs', label: 'Spend' },
     { key: 'time', label: 'Time' },
-    { key: 'change-orders', label: 'Changes' },
     { key: 'invoices', label: 'Customer Billing' },
     { key: 'overview', label: 'Overview' },
   ];
@@ -261,8 +275,7 @@ export default async function ProjectDetailPage({
       {/* Tab content — each tab streams independently. */}
       <Suspense key={tab} fallback={<TabSkeleton />}>
         {tab === 'overview' ? <OverviewTabServer projectId={id} /> : null}
-        {tab === 'budget' ? <BudgetTabServer projectId={id} /> : null}
-        {tab === 'estimate' ? <EstimateTabServer projectId={id} /> : null}
+        {tab === 'budget' ? <BudgetTabServer projectId={id} mode={budgetMode} /> : null}
         {tab === 'costs' ? <CostsTabServer projectId={id} /> : null}
         {/* Variance merged into Overview — keep route alive for old bookmarks
             but render Overview content. Drop entirely in a future cleanup. */}
@@ -271,7 +284,6 @@ export default async function ProjectDetailPage({
         {tab === 'time' ? <TimeTabServer projectId={id} /> : null}
         {tab === 'memos' ? <MemosTabServer projectId={id} /> : null}
         {tab === 'gallery' ? <GalleryTabServer projectId={id} /> : null}
-        {tab === 'change-orders' ? <ChangeOrdersTabServer projectId={id} /> : null}
         {tab === 'portal' ? <PortalTabServer projectId={id} /> : null}
         {tab === 'selections' ? <SelectionsTabServer projectId={id} /> : null}
         {tab === 'documents' ? <DocumentsTabServer projectId={id} /> : null}
