@@ -8,6 +8,7 @@ import {
 import { EstimateSentBanner } from '@/components/features/projects/estimate-sent-banner';
 import { HenryInsightStrip } from '@/components/features/projects/henry-insight-strip';
 import { SaveAsTemplateButton } from '@/components/features/projects/save-as-template-button';
+import { ScopeScaffoldGenerator } from '@/components/features/projects/scope-scaffold-generator';
 import { StarterTemplatePicker } from '@/components/features/projects/starter-template-picker';
 import { Button } from '@/components/ui/button';
 import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
@@ -94,7 +95,12 @@ export default async function BudgetTabServer({
         </div>
       </div>
 
-      {showStarterPicker ? <StarterTemplatePicker projectId={projectId} /> : null}
+      {showStarterPicker ? (
+        <>
+          <ScopeScaffoldGenerator projectId={projectId} />
+          <StarterTemplatePicker projectId={projectId} />
+        </>
+      ) : null}
 
       {/* Henry insight strip — Executing mode only. Reads variance +
           diff signals, surfaces up to 2 actionable observations as
