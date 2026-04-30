@@ -40,38 +40,63 @@ function elementSelector(el: Element): string {
 export function OverflowProbe() {
   const [offenders, setOffenders] = useState<Offender[]>([]);
   const [vw, setVw] = useState(0);
+  const [docScroll, setDocScroll] = useState(0);
 
   useEffect(() => {
+    function isClippedByAncestor(el: Element): boolean {
+      let cur: Element | null = el.parentElement;
+      while (cur && cur !== document.documentElement) {
+        const cs = window.getComputedStyle(cur);
+        const ovx = cs.overflowX;
+        const ov = cs.overflow;
+        // Anything that contains horizontal overflow visually counts.
+        if (
+          ovx === 'hidden' ||
+          ovx === 'clip' ||
+          ovx === 'scroll' ||
+          ovx === 'auto' ||
+          ov === 'hidden' ||
+          ov === 'clip'
+        ) {
+          return true;
+        }
+        cur = cur.parentElement;
+      }
+      return false;
+    }
+
     function probe() {
       const viewportWidth = window.innerWidth;
+      const docScrollWidth = document.documentElement.scrollWidth;
       const tolerance = 1;
       const found: Offender[] = [];
       const all = document.querySelectorAll('body *');
       for (const el of all) {
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) continue;
-        if (rect.right > viewportWidth + tolerance) {
-          const classes =
-            typeof el.className === 'string'
-              ? el.className
-              : ((el as Element & { className?: { baseVal?: string } }).className?.baseVal ?? '');
-          found.push({
-            tag: el.tagName.toLowerCase(),
-            classes: classes.toString().slice(0, 100),
-            text: (el.textContent ?? '').trim().slice(0, 40),
-            right: Math.round(rect.right),
-            left: Math.round(rect.left),
-            width: Math.round(rect.width),
-            selector: elementSelector(el),
-          });
-        }
+        if (rect.right <= viewportWidth + tolerance) continue;
+        // Skip elements visually contained by an ancestor — those are
+        // truncated/hidden in practice and not what's pushing the page wide.
+        if (isClippedByAncestor(el)) continue;
+        const classes =
+          typeof el.className === 'string'
+            ? el.className
+            : ((el as Element & { className?: { baseVal?: string } }).className?.baseVal ?? '');
+        found.push({
+          tag: el.tagName.toLowerCase(),
+          classes: classes.toString().slice(0, 100),
+          text: (el.textContent ?? '').trim().slice(0, 40),
+          right: Math.round(rect.right),
+          left: Math.round(rect.left),
+          width: Math.round(rect.width),
+          selector: elementSelector(el),
+        });
       }
-      // Sort by furthest-overflowing first.
       found.sort((a, b) => b.right - a.right);
       setVw(viewportWidth);
+      setDocScroll(Math.max(0, docScrollWidth - viewportWidth));
       setOffenders(found.slice(0, 8));
     }
-    // Wait a tick for layout to settle.
     const t = setTimeout(probe, 250);
     window.addEventListener('resize', probe);
     return () => {
@@ -83,7 +108,7 @@ export function OverflowProbe() {
   if (offenders.length === 0) {
     return (
       <div className="fixed bottom-2 left-2 z-[9999] rounded-md bg-emerald-600 px-2 py-1 text-[10px] text-white shadow-lg">
-        no overflow @ {vw}px ✓
+        no overflow @ {vw}px (doc +{docScroll}px) ✓
       </div>
     );
   }
@@ -91,7 +116,7 @@ export function OverflowProbe() {
   return (
     <div className="fixed bottom-2 left-2 right-2 z-[9999] max-h-[60vh] overflow-y-auto rounded-md bg-red-600 p-2 text-[10px] text-white shadow-lg">
       <div className="mb-1 font-bold">
-        OVERFLOW @ {vw}px — {offenders.length} offenders
+        OVERFLOW @ {vw}px — {offenders.length} offenders (doc +{docScroll}px)
       </div>
       {offenders.map((o, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: temporary debug output, ranks by overflow
