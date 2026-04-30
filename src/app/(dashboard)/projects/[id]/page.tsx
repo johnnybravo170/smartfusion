@@ -8,6 +8,7 @@ import { ProjectIntakeZone } from '@/components/features/projects/project-intake
 import { ProjectNameEditor } from '@/components/features/projects/project-name-editor';
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
 import { ProjectTabSelect } from '@/components/features/projects/project-tab-select';
+import { ScopeDiffReview } from '@/components/features/projects/scope-diff-review';
 import BudgetTabServer from '@/components/features/projects/tabs/budget-tab-server';
 import ChangeOrdersTabServer from '@/components/features/projects/tabs/change-orders-tab-server';
 import CostsTabServer from '@/components/features/projects/tabs/costs-tab-server';
@@ -220,6 +221,11 @@ export default async function ProjectDetailPage({
           never blocks the tab nav. */}
       <Suspense fallback={null}>
         <UnsentChangesChip projectId={id} />
+      </Suspense>
+
+      {/* Diff review modal — opens when ?review=diff is in the URL. */}
+      <Suspense fallback={null}>
+        <ScopeDiffReview projectId={id} />
       </Suspense>
 
       {/* Tab navigation: <select> dropdown on narrow screens, full row above
