@@ -378,7 +378,7 @@ export function ProjectIntakeZone({
           Add to project
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl lg:max-w-4xl xl:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Add to project</DialogTitle>
         </DialogHeader>

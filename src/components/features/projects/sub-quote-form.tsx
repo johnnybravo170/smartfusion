@@ -11,7 +11,7 @@
  */
 
 import { CheckCircle2, Paperclip, Plus, X } from 'lucide-react';
-import { useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -114,7 +114,15 @@ export function SubQuoteForm({
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<AllocationDraft[]>(() => {
     const prefilled = initialValues?.allocations ?? [];
-    if (prefilled.length === 0) return [newRow()];
+    if (prefilled.length === 0) {
+      // Default the single row to the full quote total when we know it
+      // (AI extraction case). Operator can split via "Add another split"
+      // — `addRow()` auto-fills the new row with the remainder.
+      const row = newRow();
+      const cents = initialValues?.total_cents ?? 0;
+      if (cents > 0) row.amount_raw = (cents / 100).toFixed(2);
+      return [row];
+    }
     return prefilled.map((a) => ({
       key: crypto.randomUUID(),
       budget_category_id: a.budget_category_id,
@@ -129,6 +137,22 @@ export function SubQuoteForm({
   const allocatedCents = rows.reduce((s, r) => s + toCents(r.amount_raw), 0);
   const diff = totalCents - allocatedCents;
   const balanced = totalCents > 0 && diff === 0;
+
+  // Sync the single-row allocation with the total when we have exactly
+  // one row that's still empty. Spares the operator from retyping
+  // "$288.14" in the allocation field after typing it as the total.
+  // Once they add a second split or manually edit the row, the row
+  // is no longer empty and this becomes a no-op. Reading rows via the
+  // setter callback keeps the dep list at [totalCents] only, so this
+  // doesn't refire on every keystroke inside the row.
+  useEffect(() => {
+    if (totalCents <= 0) return;
+    setRows((prev) => {
+      if (prev.length !== 1) return prev;
+      if (prev[0].amount_raw !== '' && toCents(prev[0].amount_raw) !== 0) return prev;
+      return [{ ...prev[0], amount_raw: (totalCents / 100).toFixed(2) }];
+    });
+  }, [totalCents]);
 
   function updateRow(
     key: string,

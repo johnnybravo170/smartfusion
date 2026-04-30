@@ -44,14 +44,31 @@ export const projectTools: AiTool[] = [
     },
     handler: async (input) => {
       try {
+        const nameFilter = input.name as string | undefined;
         const rows = await listProjects({
           stage: input.stage as import('@/lib/validators/project').LifecycleStage | undefined,
           customer_id: input.customer_id as string | undefined,
-          name: input.name as string | undefined,
+          name: nameFilter,
           limit: Math.min((input.limit as number) || 20, 100),
         });
 
         if (rows.length === 0) {
+          // Voice transcription often mangles project names (Glenwood ↦ Glennwood).
+          // On a name miss, surface candidates so the model can self-correct
+          // instead of bouncing back to the operator for a respelling.
+          if (nameFilter) {
+            const candidates = await listProjects({ limit: 15 });
+            if (candidates.length > 0) {
+              let out = `No projects matched "${nameFilter}". Here are recent projects — pick the closest match by name and call this tool again or use its id:\n\n`;
+              for (let i = 0; i < candidates.length; i++) {
+                const p = candidates[i];
+                out += `${i + 1}. ${p.name}`;
+                if (p.customer) out += ` (${p.customer.name})`;
+                out += ` · ${p.lifecycle_stage}\n   ID: ${p.id}\n`;
+              }
+              return out;
+            }
+          }
           return 'No projects found matching your criteria.';
         }
 
