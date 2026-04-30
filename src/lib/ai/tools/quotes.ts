@@ -14,18 +14,28 @@ export const quoteTools: AiTool[] = [
     definition: {
       name: 'list_quotes',
       description:
-        'List quotes. Filter by status (draft/sent/accepted/rejected/expired) or customer.',
+        'List quotes. Filter by status (draft/sent/accepted/rejected/expired), customer, or use filter="overdue" for sent quotes with no response in 3+ days.',
       input_schema: {
         type: 'object',
         properties: {
+          filter: {
+            type: 'string',
+            enum: ['overdue'],
+            description:
+              'Preset filter. "overdue" = sent quotes awaiting response (use days_old to tune the threshold; default 3).',
+          },
           status: {
             type: 'string',
             enum: ['draft', 'sent', 'accepted', 'rejected', 'expired'],
-            description: 'Filter by status',
+            description: 'Filter by status (ignored when filter is set)',
           },
           customer_id: {
             type: 'string',
-            description: 'Filter by customer UUID',
+            description: 'Filter by customer UUID (ignored when filter is set)',
+          },
+          days_old: {
+            type: 'number',
+            description: 'For filter="overdue": days since sent to consider overdue (default 3)',
           },
           limit: {
             type: 'number',
@@ -36,6 +46,48 @@ export const quoteTools: AiTool[] = [
     },
     handler: async (input) => {
       try {
+        if (input.filter === 'overdue') {
+          const tenant = await getCurrentTenant();
+          if (!tenant) return 'Not authenticated.';
+
+          const daysOld = (input.days_old as number) ?? 3;
+          const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+
+          const supabase = await createClient();
+          const { data, error } = await supabase
+            .from('quotes')
+            .select('id, sent_at, total_cents, customers:customer_id (name)')
+            .eq('status', 'sent')
+            .lte('sent_at', cutoff)
+            .is('deleted_at', null)
+            .order('sent_at', { ascending: true });
+
+          if (error) {
+            return `Failed to fetch overdue quotes: ${error.message}`;
+          }
+
+          if (!data || data.length === 0) {
+            return `No quotes have been waiting more than ${daysOld} day(s) without a response.`;
+          }
+
+          const now = Date.now();
+          let output = `Found ${data.length} overdue quote(s):\n\n`;
+          for (let i = 0; i < data.length; i++) {
+            const q = data[i];
+            const customerRaw = q.customers;
+            const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
+            const sentAt = q.sent_at ? new Date(q.sent_at) : null;
+            const daysSince = sentAt ? Math.floor((now - sentAt.getTime()) / 86400000) : null;
+            output += `${i + 1}. ${(customer as { name?: string })?.name ?? 'No customer'}\n`;
+            output += `   Sent: ${sentAt ? formatDate(sentAt.toISOString()) : 'unknown'}`;
+            if (daysSince !== null) output += ` (${daysSince} days ago)`;
+            output += `\n   Total: ${formatCad(q.total_cents as number)}\n`;
+            output += `   ID: ${(q.id as string).slice(0, 8)}\n\n`;
+          }
+
+          return output;
+        }
+
         const rows = await listQuotes({
           status: input.status as
             | 'draft'
@@ -338,66 +390,6 @@ export const quoteTools: AiTool[] = [
         );
       } catch (e) {
         return `Failed to send quote: ${e instanceof Error ? e.message : String(e)}`;
-      }
-    },
-  },
-  {
-    definition: {
-      name: 'get_overdue_quotes',
-      description: "Get quotes that were sent but haven't received a response in 3+ days",
-      input_schema: {
-        type: 'object',
-        properties: {
-          days_old: {
-            type: 'number',
-            description: 'How many days since sent to consider overdue (default 3)',
-          },
-        },
-      },
-    },
-    handler: async (input) => {
-      try {
-        const tenant = await getCurrentTenant();
-        if (!tenant) return 'Not authenticated.';
-
-        const daysOld = (input.days_old as number) ?? 3;
-        const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
-
-        const supabase = await createClient();
-        const { data, error } = await supabase
-          .from('quotes')
-          .select('id, sent_at, total_cents, customers:customer_id (name)')
-          .eq('status', 'sent')
-          .lte('sent_at', cutoff)
-          .is('deleted_at', null)
-          .order('sent_at', { ascending: true });
-
-        if (error) {
-          return `Failed to fetch overdue quotes: ${error.message}`;
-        }
-
-        if (!data || data.length === 0) {
-          return `No quotes have been waiting more than ${daysOld} day(s) without a response.`;
-        }
-
-        const now = Date.now();
-        let output = `Found ${data.length} overdue quote(s):\n\n`;
-        for (let i = 0; i < data.length; i++) {
-          const q = data[i];
-          const customerRaw = q.customers;
-          const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
-          const sentAt = q.sent_at ? new Date(q.sent_at) : null;
-          const daysSince = sentAt ? Math.floor((now - sentAt.getTime()) / 86400000) : null;
-          output += `${i + 1}. ${(customer as { name?: string })?.name ?? 'No customer'}\n`;
-          output += `   Sent: ${sentAt ? formatDate(sentAt.toISOString()) : 'unknown'}`;
-          if (daysSince !== null) output += ` (${daysSince} days ago)`;
-          output += `\n   Total: ${formatCad(q.total_cents as number)}\n`;
-          output += `   ID: ${(q.id as string).slice(0, 8)}\n\n`;
-        }
-
-        return output;
-      } catch (e) {
-        return `Failed to get overdue quotes: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
   },

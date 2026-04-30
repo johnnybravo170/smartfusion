@@ -19,18 +19,28 @@ export const jobTools: AiTool[] = [
     definition: {
       name: 'list_jobs',
       description:
-        'List jobs. Filter by status (booked/in_progress/complete/cancelled) or customer.',
+        'List jobs. Filter by status (booked/in_progress/complete/cancelled), customer, or use filter="uninvoiced" (completed jobs without an invoice) or filter="upcoming" (booked jobs scheduled in the next 7 days).',
       input_schema: {
         type: 'object',
         properties: {
+          filter: {
+            type: 'string',
+            enum: ['uninvoiced', 'upcoming'],
+            description:
+              'Preset filter. "uninvoiced" = completed jobs without an invoice. "upcoming" = booked jobs scheduled in the next N days (use days_ahead; default 7).',
+          },
           status: {
             type: 'string',
             enum: ['booked', 'in_progress', 'complete', 'cancelled'],
-            description: 'Filter by job status',
+            description: 'Filter by job status (ignored when filter is set)',
           },
           customer_id: {
             type: 'string',
-            description: 'Filter by customer UUID',
+            description: 'Filter by customer UUID (ignored when filter is set)',
+          },
+          days_ahead: {
+            type: 'number',
+            description: 'For filter="upcoming": days ahead to look (default 7)',
           },
           limit: {
             type: 'number',
@@ -41,6 +51,103 @@ export const jobTools: AiTool[] = [
     },
     handler: async (input) => {
       try {
+        if (input.filter === 'uninvoiced') {
+          const tenant = await getCurrentTenant();
+          if (!tenant) return 'Not authenticated.';
+
+          const supabase = await createClient();
+
+          const { data: invoicedJobIds, error: invErr } = await supabase
+            .from('invoices')
+            .select('job_id')
+            .not('job_id', 'is', null)
+            .is('deleted_at', null);
+
+          if (invErr) {
+            return `Failed to check invoices: ${invErr.message}`;
+          }
+
+          const invoicedSet = new Set(
+            (invoicedJobIds ?? []).map((r) => (r as { job_id: string }).job_id),
+          );
+
+          const { data: jobs, error: jobErr } = await supabase
+            .from('jobs')
+            .select(
+              'id, completed_at, notes, customers:customer_id (name), quotes:quote_id (total_cents)',
+            )
+            .eq('status', 'complete')
+            .is('deleted_at', null)
+            .order('completed_at', { ascending: false });
+
+          if (jobErr) {
+            return `Failed to fetch completed jobs: ${jobErr.message}`;
+          }
+
+          const uninvoiced = (jobs ?? []).filter((j) => !invoicedSet.has(j.id));
+
+          if (uninvoiced.length === 0) {
+            return 'All completed jobs have been invoiced.';
+          }
+
+          let output = `Found ${uninvoiced.length} completed job(s) without an invoice:\n\n`;
+          for (let i = 0; i < uninvoiced.length; i++) {
+            const j = uninvoiced[i];
+            const customerRaw = j.customers;
+            const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
+            const quoteRaw = j.quotes;
+            const quote = Array.isArray(quoteRaw) ? quoteRaw[0] : quoteRaw;
+            output += `${i + 1}. ${(customer as { name?: string })?.name ?? 'No customer'}\n`;
+            if (j.completed_at) output += `   Completed: ${formatDate(j.completed_at)}\n`;
+            if (quote)
+              output += `   Quote total: ${formatCad((quote as { total_cents: number }).total_cents)}\n`;
+            if (j.notes) output += `   Notes: ${j.notes}\n`;
+            output += `   ID: ${j.id.slice(0, 8)}\n\n`;
+          }
+
+          return output;
+        }
+
+        if (input.filter === 'upcoming') {
+          const tenant = await getCurrentTenant();
+          if (!tenant) return 'Not authenticated.';
+
+          const daysAhead = (input.days_ahead as number) ?? 7;
+          const now = new Date().toISOString();
+          const future = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString();
+
+          const supabase = await createClient();
+          const { data, error } = await supabase
+            .from('jobs')
+            .select('id, scheduled_at, notes, customers:customer_id (name)')
+            .eq('status', 'booked')
+            .gte('scheduled_at', now)
+            .lte('scheduled_at', future)
+            .is('deleted_at', null)
+            .order('scheduled_at', { ascending: true });
+
+          if (error) {
+            return `Failed to fetch upcoming jobs: ${error.message}`;
+          }
+
+          if (!data || data.length === 0) {
+            return `No jobs scheduled in the next ${daysAhead} day(s).`;
+          }
+
+          let output = `Upcoming jobs (next ${daysAhead} day(s)):\n\n`;
+          for (let i = 0; i < data.length; i++) {
+            const j = data[i];
+            const customerRaw = j.customers;
+            const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
+            output += `${i + 1}. ${(customer as { name?: string })?.name ?? 'No customer'}\n`;
+            if (j.scheduled_at) output += `   Scheduled: ${formatDateTime(j.scheduled_at)}\n`;
+            if (j.notes) output += `   Notes: ${j.notes}\n`;
+            output += `   ID: ${j.id.slice(0, 8)}\n\n`;
+          }
+
+          return output;
+        }
+
         const rows = await listJobs({
           status: input.status as 'booked' | 'in_progress' | 'complete' | 'cancelled' | undefined,
           customer_id: input.customer_id as string | undefined,
@@ -378,76 +485,6 @@ export const jobTools: AiTool[] = [
   },
   {
     definition: {
-      name: 'get_uninvoiced_jobs',
-      description: "Get completed jobs that don't have an invoice yet",
-      input_schema: {
-        type: 'object',
-        properties: {},
-      },
-    },
-    handler: async () => {
-      try {
-        const tenant = await getCurrentTenant();
-        if (!tenant) return 'Not authenticated.';
-
-        const supabase = await createClient();
-
-        const { data: invoicedJobIds, error: invErr } = await supabase
-          .from('invoices')
-          .select('job_id')
-          .not('job_id', 'is', null)
-          .is('deleted_at', null);
-
-        if (invErr) {
-          return `Failed to check invoices: ${invErr.message}`;
-        }
-
-        const invoicedSet = new Set(
-          (invoicedJobIds ?? []).map((r) => (r as { job_id: string }).job_id),
-        );
-
-        const { data: jobs, error: jobErr } = await supabase
-          .from('jobs')
-          .select(
-            'id, completed_at, notes, customers:customer_id (name), quotes:quote_id (total_cents)',
-          )
-          .eq('status', 'complete')
-          .is('deleted_at', null)
-          .order('completed_at', { ascending: false });
-
-        if (jobErr) {
-          return `Failed to fetch completed jobs: ${jobErr.message}`;
-        }
-
-        const uninvoiced = (jobs ?? []).filter((j) => !invoicedSet.has(j.id));
-
-        if (uninvoiced.length === 0) {
-          return 'All completed jobs have been invoiced.';
-        }
-
-        let output = `Found ${uninvoiced.length} completed job(s) without an invoice:\n\n`;
-        for (let i = 0; i < uninvoiced.length; i++) {
-          const j = uninvoiced[i];
-          const customerRaw = j.customers;
-          const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
-          const quoteRaw = j.quotes;
-          const quote = Array.isArray(quoteRaw) ? quoteRaw[0] : quoteRaw;
-          output += `${i + 1}. ${(customer as { name?: string })?.name ?? 'No customer'}\n`;
-          if (j.completed_at) output += `   Completed: ${formatDate(j.completed_at)}\n`;
-          if (quote)
-            output += `   Quote total: ${formatCad((quote as { total_cents: number }).total_cents)}\n`;
-          if (j.notes) output += `   Notes: ${j.notes}\n`;
-          output += `   ID: ${j.id.slice(0, 8)}\n\n`;
-        }
-
-        return output;
-      } catch (e) {
-        return `Failed to get uninvoiced jobs: ${e instanceof Error ? e.message : String(e)}`;
-      }
-    },
-  },
-  {
-    definition: {
       name: 'create_review_request',
       description: 'Send a review request SMS to a customer after job completion',
       input_schema: {
@@ -525,64 +562,6 @@ export const jobTools: AiTool[] = [
         return `Review request sent to ${customer.name} at ${customer.phone}.`;
       } catch (e) {
         return `Failed to send review request: ${e instanceof Error ? e.message : String(e)}`;
-      }
-    },
-  },
-  {
-    definition: {
-      name: 'get_upcoming_jobs',
-      description: 'Get upcoming scheduled jobs for the next 7 days',
-      input_schema: {
-        type: 'object',
-        properties: {
-          days_ahead: {
-            type: 'number',
-            description: 'How many days ahead to look (default 7)',
-          },
-        },
-      },
-    },
-    handler: async (input) => {
-      try {
-        const tenant = await getCurrentTenant();
-        if (!tenant) return 'Not authenticated.';
-
-        const daysAhead = (input.days_ahead as number) ?? 7;
-        const now = new Date().toISOString();
-        const future = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString();
-
-        const supabase = await createClient();
-        const { data, error } = await supabase
-          .from('jobs')
-          .select('id, scheduled_at, notes, customers:customer_id (name)')
-          .eq('status', 'booked')
-          .gte('scheduled_at', now)
-          .lte('scheduled_at', future)
-          .is('deleted_at', null)
-          .order('scheduled_at', { ascending: true });
-
-        if (error) {
-          return `Failed to fetch upcoming jobs: ${error.message}`;
-        }
-
-        if (!data || data.length === 0) {
-          return `No jobs scheduled in the next ${daysAhead} day(s).`;
-        }
-
-        let output = `Upcoming jobs (next ${daysAhead} day(s)):\n\n`;
-        for (let i = 0; i < data.length; i++) {
-          const j = data[i];
-          const customerRaw = j.customers;
-          const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
-          output += `${i + 1}. ${(customer as { name?: string })?.name ?? 'No customer'}\n`;
-          if (j.scheduled_at) output += `   Scheduled: ${formatDateTime(j.scheduled_at)}\n`;
-          if (j.notes) output += `   Notes: ${j.notes}\n`;
-          output += `   ID: ${j.id.slice(0, 8)}\n\n`;
-        }
-
-        return output;
-      } catch (e) {
-        return `Failed to get upcoming jobs: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
   },
