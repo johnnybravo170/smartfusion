@@ -100,9 +100,21 @@ export function OverflowProbe() {
         }
 
         // Pass 2 — content-clipping: element's own content overflows its visible
-        // box (scrollWidth > clientWidth). Visually clipped, but the user
-        // perceives it as "too wide / cut off". HTMLElement check excludes SVG.
+        // box (scrollWidth > clientWidth). Skip intentional truncate / line-clamp
+        // (those produce ellipsis on purpose) and overflow:auto/scroll containers
+        // (intentional scrolling). Only flag *unintentional* clipping.
         if (el instanceof HTMLElement) {
+          const cs = window.getComputedStyle(el);
+          const isIntentional =
+            cs.textOverflow === 'ellipsis' ||
+            cs.overflowX === 'scroll' ||
+            cs.overflowX === 'auto' ||
+            cs.overflow === 'scroll' ||
+            cs.overflow === 'auto' ||
+            (cs as CSSStyleDeclaration & { webkitLineClamp?: string }).webkitLineClamp !== '' ||
+            classes.toString().includes('truncate') ||
+            classes.toString().includes('line-clamp');
+          if (isIntentional) continue;
           const overflow = el.scrollWidth - el.clientWidth;
           if (overflow > tolerance && el.clientWidth > 0) {
             if (!seen.has(el)) {
