@@ -20,7 +20,7 @@ export function AppliedChangeOrdersBanner({
   if (appliedCount <= 0) return null;
   return (
     <Link
-      href={`/projects/${projectId}?tab=change-orders`}
+      href={`/projects/${projectId}?tab=budget&versions=open`}
       className="mb-4 flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs text-blue-900 hover:bg-blue-100/80 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100"
     >
       <Info className="size-3.5 shrink-0" />

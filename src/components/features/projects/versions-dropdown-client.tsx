@@ -14,7 +14,8 @@
 
 import { ChevronDown, History, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useTransition } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -40,6 +41,21 @@ export function VersionsDropdownClient({
   const [snapshot, setSnapshot] = useState<ProjectScopeSnapshot | null>(null);
   const [pending, startTransition] = useTransition();
 
+  // Auto-open the dropdown when navigated with ?versions=open. Used by
+  // the "See history" link on the applied-COs banner. Once consumed,
+  // strip the param so the dropdown doesn't re-fire on tab switches.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  useEffect(() => {
+    if (searchParams.get('versions') === 'open') {
+      setPopoverOpen(true);
+      const sp = new URLSearchParams(searchParams.toString());
+      sp.delete('versions');
+      router.replace(sp.toString() ? `?${sp.toString()}` : '?', { scroll: false });
+    }
+  }, [searchParams, router]);
+
   function openVersion(v: ProjectVersionListItem) {
     setActiveVersion(v);
     setSnapshot(null);
@@ -55,7 +71,7 @@ export function VersionsDropdownClient({
 
   return (
     <>
-      <Popover>
+      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"

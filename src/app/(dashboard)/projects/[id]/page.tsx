@@ -260,7 +260,11 @@ export default async function ProjectDetailPage({
           <Link
             key={t.key}
             href={`/projects/${id}?tab=${t.key}`}
-            prefetch={false}
+            // Default Next.js behaviour: prefetch on hover for app-router
+            // pages. Cuts perceived tab-switch latency since the data is
+            // warm by the time the operator clicks. Explicit `true` here
+            // documents intent vs the prior `false`.
+            prefetch
             className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
               tab === t.key
                 ? 'border-primary text-primary'
