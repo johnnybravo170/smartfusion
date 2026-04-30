@@ -112,18 +112,21 @@ export const workerInvoiceStatusTone = {
 } as const satisfies Record<string, StatusTone>;
 
 /** Project lifecycle stage. Each stage gets a distinct tone so the list
- *  view reads at a glance:
- *    planning           — neutral gray, internal draft, nothing sent
+ *  view reads at a glance — no two stages share a colour:
+ *    planning           — neutral muted gray, internal draft, nothing sent
  *    awaiting_approval  — info blue, sent and waiting on the customer
  *    active             — success green, money flowing and work happening
  *    on_hold            — warning amber, paused (not failed, just stopped)
- *    declined           — danger red
- *    complete           — done dark slate, shipped
- *    cancelled          — neutral gray, dropped before start
+ *    declined           — danger red, customer said no
+ *    complete           — done dark slate filled, shipped
+ *    cancelled          — hold light slate, filed away (dropped before/after)
  *
- *  Note: `active` reads success (green) rather than warning (amber) — Jonathan
- *  flagged the amber as a false alarm, since an active job is the *healthy*
- *  state for a contractor. Amber is reserved for paused/at-risk states.
+ *  Notes:
+ *  - `active` reads success (green) rather than warning (amber) — an active
+ *    job is the *healthy* state for a contractor. Amber is reserved for
+ *    paused/at-risk states.
+ *  - `cancelled` and `planning` are both quiet/dim by intent, but use
+ *    different tones so they don't visually collide on the list.
  */
 export const projectStageTone = {
   planning: 'neutral',
@@ -132,7 +135,7 @@ export const projectStageTone = {
   on_hold: 'warning',
   declined: 'danger',
   complete: 'done',
-  cancelled: 'neutral',
+  cancelled: 'hold',
 } as const satisfies Record<string, StatusTone>;
 
 /** Change order lifecycle. */
