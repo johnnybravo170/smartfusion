@@ -269,6 +269,88 @@ export const projectTools: AiTool[] = [
       }
     },
   },
+  {
+    definition: {
+      name: 'upsert_project_budget_category',
+      description:
+        'Add a new cost bucket to a project, or update an existing one. Use this when the operator asks to add a scope item to a project (e.g. "add a $10K steam room to the ensuite") or to bump an existing bucket\'s estimate. Pass `id` to update an existing bucket; omit `id` to create a new one. Adding a bucket only changes the internal budget — it does NOT bill the customer. After calling this, offer to create a Change Order via create_change_order if the addition is customer-billable scope.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          project_id: { type: 'string', description: 'Project UUID. Required.' },
+          id: {
+            type: 'string',
+            description:
+              'Cost bucket UUID. Provide to update an existing bucket; omit to create a new one.',
+          },
+          name: {
+            type: 'string',
+            description:
+              'Bucket name (e.g. "Steam Room", "Heated Floors"). Required when creating; ignored when updating.',
+          },
+          section: {
+            type: 'string',
+            description:
+              'Bucket section. Common values are "interior" or "exterior". Required when creating; ignored when updating. Default to "interior" for indoor scope additions like ensuites/kitchens/baths.',
+          },
+          estimate_cents: {
+            type: 'number',
+            description:
+              'Estimate in cents (e.g. 1000000 for $10,000). Required when creating; optional when updating.',
+          },
+          description: {
+            type: 'string',
+            description: 'Optional free-text note about the bucket.',
+          },
+        },
+        required: ['project_id'],
+      },
+    },
+    handler: async (input) => {
+      try {
+        const projectId = input.project_id as string | undefined;
+        if (!projectId) return 'project_id is required.';
+
+        const id = input.id as string | undefined;
+        if (id) {
+          const { updateBudgetCategoryAction } = await import(
+            '@/server/actions/project-budget-categories'
+          );
+          const result = await updateBudgetCategoryAction({
+            id,
+            project_id: projectId,
+            estimate_cents: input.estimate_cents as number | undefined,
+            description: input.description as string | undefined,
+          });
+          if (!result.ok) return `Failed to update bucket: ${result.error}`;
+          return `Updated cost bucket ${id}.`;
+        }
+
+        const name = input.name as string | undefined;
+        const section = (input.section as string | undefined) ?? 'interior';
+        if (!name) return 'name is required when creating a new cost bucket.';
+        const estimateCents = input.estimate_cents as number | undefined;
+        if (estimateCents === undefined) {
+          return 'estimate_cents is required when creating a new cost bucket.';
+        }
+
+        const { addBudgetCategoryAction } = await import(
+          '@/server/actions/project-budget-categories'
+        );
+        const result = await addBudgetCategoryAction({
+          project_id: projectId,
+          name,
+          section,
+          description: input.description as string | undefined,
+          estimate_cents: estimateCents,
+        });
+        if (!result.ok) return `Failed to add bucket: ${result.error}`;
+        return `Added "${name}" (${section}) to the project budget at ${formatCad(estimateCents)}. Bucket id: ${result.id}. This is an internal budget change — if the customer is being billed for this scope, follow up by creating a Change Order.`;
+      } catch (e) {
+        return `Failed to upsert bucket: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
 ];
 
 async function renderProjectBudgetDetail(projectId: string): Promise<string> {
