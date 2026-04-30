@@ -15,6 +15,7 @@ import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orde
 import { listCostLines } from '@/lib/db/queries/cost-lines';
 import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
 import { getBudgetVsActual } from '@/lib/db/queries/project-budget-categories';
+import { listProjectVersions } from '@/lib/db/queries/project-versions';
 import { getProject } from '@/lib/db/queries/projects';
 import type { LifecycleStage } from '@/lib/validators/project';
 
@@ -40,12 +41,13 @@ export default async function BudgetTabServer({
   projectId: string;
   mode: BudgetMode;
 }) {
-  const [budget, costLines, catalog, project, coContributions] = await Promise.all([
+  const [budget, costLines, catalog, project, coContributions, versions] = await Promise.all([
     getBudgetVsActual(projectId),
     listCostLines(projectId),
     listMaterialsCatalog(),
     getProject(projectId),
     getProjectChangeOrderContributions(projectId),
+    listProjectVersions(projectId),
   ]);
 
   const stage = (project?.lifecycle_stage ?? 'planning') as LifecycleStage;
@@ -69,6 +71,7 @@ export default async function BudgetTabServer({
       <AppliedChangeOrdersBanner
         appliedCount={coContributions.appliedOrder.length}
         projectId={projectId}
+        versions={versions}
       />
 
       {/* Mode toggle — large, prominent, anchored at the top of the
