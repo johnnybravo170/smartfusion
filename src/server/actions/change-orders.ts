@@ -214,6 +214,31 @@ export async function applyV2ChangeOrderDiff(
     })
     .eq('id', changeOrderId);
 
+  // Capture the post-CO scope snapshot — establishes the new baseline
+  // against which subsequent edits are diffed (decision 6790ef2b).
+  // Best-effort: snapshot failure shouldn't unwind the apply.
+  const { data: tenantRow } = await admin
+    .from('projects')
+    .select('tenant_id')
+    .eq('id', projectId)
+    .maybeSingle();
+  const { data: coDetail } = await admin
+    .from('change_orders')
+    .select('title, approved_by_name')
+    .eq('id', changeOrderId)
+    .maybeSingle();
+  if (tenantRow?.tenant_id) {
+    const { snapshotProjectScope } = await import('@/lib/db/queries/project-scope-snapshots');
+    await snapshotProjectScope({
+      projectId,
+      tenantId: tenantRow.tenant_id as string,
+      label: `CO — ${(coDetail?.title as string | undefined) ?? 'Untitled'}`,
+      signedAt: now,
+      signedByName: (coDetail?.approved_by_name as string | undefined) ?? null,
+      changeOrderId,
+    });
+  }
+
   return { applied: true, warnings };
 }
 

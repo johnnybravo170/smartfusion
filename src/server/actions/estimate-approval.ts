@@ -294,6 +294,17 @@ export async function approveEstimateAction(
   const { onEstimateApproved } = await import('@/server/ai/triggers');
   await onEstimateApproved(p.id as string);
 
+  // Capture the v1 scope snapshot — baseline for the diff-tracked +
+  // intentional-send post-approval edit flow (decision 6790ef2b).
+  const { snapshotProjectScope } = await import('@/lib/db/queries/project-scope-snapshots');
+  await snapshotProjectScope({
+    projectId: p.id as string,
+    tenantId: p.tenant_id as string,
+    label: 'Original estimate',
+    signedAt: now,
+    signedByName: name,
+  });
+
   return { ok: true, id: p.id as string };
 }
 

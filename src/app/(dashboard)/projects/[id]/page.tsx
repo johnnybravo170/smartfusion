@@ -22,6 +22,7 @@ import PortalTabServer from '@/components/features/projects/tabs/portal-tab-serv
 import SelectionsTabServer from '@/components/features/projects/tabs/selections-tab-server';
 import { TabSkeleton } from '@/components/features/projects/tabs/tab-skeleton';
 import TimeTabServer from '@/components/features/projects/tabs/time-tab-server';
+import { UnsentChangesChip } from '@/components/features/projects/unsent-changes-chip';
 import { getProjectProgress } from '@/lib/db/queries/cost-lines';
 import { getProjectDrawSummary } from '@/lib/db/queries/invoices';
 import { listBudgetCategoriesForProject } from '@/lib/db/queries/project-budget-categories';
@@ -212,6 +213,14 @@ export default async function ProjectDetailPage({
           <DeleteProjectButton projectId={project.id} projectName={project.name} />
         </div>
       </header>
+
+      {/* Unsent changes chip — surfaces when working state has diverged
+          from the latest signed snapshot. Hidden on legacy / planning
+          projects (no snapshot). Streams in its own Suspense so it
+          never blocks the tab nav. */}
+      <Suspense fallback={null}>
+        <UnsentChangesChip projectId={id} />
+      </Suspense>
 
       {/* Tab navigation: <select> dropdown on narrow screens, full row above
           the lg breakpoint. */}

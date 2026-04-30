@@ -195,6 +195,17 @@ export async function manuallyApproveEstimateAction(
     related_id: projectId,
   });
 
+  // Capture the v1 scope snapshot — baseline for the diff-tracked +
+  // intentional-send post-approval edit flow (decision 6790ef2b).
+  const { snapshotProjectScope } = await import('@/lib/db/queries/project-scope-snapshots');
+  await snapshotProjectScope({
+    projectId,
+    tenantId: tenant.id,
+    label: 'Original estimate',
+    signedAt: now,
+    signedByName: parsed.data.customer_name,
+  });
+
   revalidatePath(`/projects/${projectId}`);
   return { ok: true, id: projectId };
 }
