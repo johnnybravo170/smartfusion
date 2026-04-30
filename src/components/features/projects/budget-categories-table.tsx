@@ -292,7 +292,11 @@ export function BudgetCategoriesTable({
       </div>
 
       {showAddBucket && (
-        <AddBudgetCategoryForm projectId={projectId} onDone={() => setShowAddBucket(false)} />
+        <AddBudgetCategoryForm
+          projectId={projectId}
+          existingSections={Array.from(new Set(lines.map((l) => l.section).filter(Boolean)))}
+          onDone={() => setShowAddBucket(false)}
+        />
       )}
 
       {Array.from(sections.entries()).map(([section, sectionLines]) => {
@@ -850,9 +854,20 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
   );
 }
 
-function AddBudgetCategoryForm({ projectId, onDone }: { projectId: string; onDone: () => void }) {
+function AddBudgetCategoryForm({
+  projectId,
+  existingSections,
+  onDone,
+}: {
+  projectId: string;
+  /** Sections already in use on this project — drives the datalist
+   * autocomplete. Free-text per migration 0072; operator can type a
+   * brand-new section name and it just becomes one. */
+  existingSections: string[];
+  onDone: () => void;
+}) {
   const [name, setName] = useState('');
-  const [section, setSection] = useState('interior');
+  const [section, setSection] = useState(existingSections[0] ?? 'interior');
   const [estimate, setEstimate] = useState('');
   const [description, setDescription] = useState('');
   const [isPending, startTransition] = useTransition();
@@ -900,16 +915,25 @@ function AddBudgetCategoryForm({ projectId, onDone }: { projectId: string; onDon
           <label htmlFor="add-bucket-section" className="mb-1 block text-xs font-medium">
             Section
           </label>
-          <select
+          <Input
             id="add-bucket-section"
+            list="add-bucket-section-options"
             value={section}
             onChange={(e) => setSection(e.target.value)}
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-          >
-            <option value="interior">interior</option>
-            <option value="exterior">exterior</option>
-            <option value="general">general</option>
-          </select>
+            placeholder="e.g. Kitchen, Basement, Exterior"
+          />
+          <datalist id="add-bucket-section-options">
+            {/* Existing sections + the legacy three so operators have a
+                starting point if they're seeding a fresh project. */}
+            {Array.from(new Set([...existingSections, 'interior', 'exterior', 'general']))
+              .filter(Boolean)
+              .map((s) => (
+                <option key={s} value={s} />
+              ))}
+          </datalist>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Type any section name. New ones become headers automatically.
+          </p>
         </div>
         <div>
           <label htmlFor="add-bucket-estimate" className="mb-1 block text-xs font-medium">
