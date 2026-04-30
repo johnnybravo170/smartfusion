@@ -67,7 +67,7 @@ export function WorkspaceSwitcher({ memberships, activeTenantId }: Props) {
                   aria-hidden
                 />
               ) : null}
-              <span className="flex-1 truncate font-medium">{active.tenantName}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{active.tenantName}</span>
               {active.isDemo ? (
                 <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
                   Demo
@@ -101,7 +101,7 @@ export function WorkspaceSwitcher({ memberships, activeTenantId }: Props) {
                 ) : (
                   <span className="inline-block size-2.5 shrink-0" aria-hidden />
                 )}
-                <span className="flex-1 truncate">{m.tenantName}</span>
+                <span className="min-w-0 flex-1 truncate">{m.tenantName}</span>
                 {m.isDemo ? (
                   <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
                     Demo

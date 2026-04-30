@@ -96,7 +96,7 @@ export function InviteWorkerCard() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2">
-            <code className="flex-1 truncate rounded border bg-muted px-3 py-2 text-sm">
+            <code className="min-w-0 flex-1 truncate rounded border bg-muted px-3 py-2 text-sm">
               {joinUrl}
             </code>
             <Button variant="outline" size="icon" onClick={handleCopy} title="Copy link">

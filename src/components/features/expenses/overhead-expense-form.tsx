@@ -308,7 +308,7 @@ export function OverheadExpenseForm({
       {isEdit && initialValues?.existingReceiptPath && !receipt && !removeExistingReceipt ? (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/20 px-4 py-3 text-sm">
           <Paperclip className="size-4 text-muted-foreground" />
-          <span className="flex-1 truncate">
+          <span className="min-w-0 flex-1 truncate">
             {initialValues.existingReceiptUrl ? (
               <a
                 href={initialValues.existingReceiptUrl}

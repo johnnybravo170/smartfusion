@@ -115,17 +115,21 @@ export const workerInvoiceStatusTone = {
  *  view reads at a glance:
  *    planning           — neutral gray, internal draft, nothing sent
  *    awaiting_approval  — info blue, sent and waiting on the customer
- *    active             — warning amber, work in progress
- *    on_hold            — hold slate, paused
+ *    active             — success green, money flowing and work happening
+ *    on_hold            — warning amber, paused (not failed, just stopped)
  *    declined           — danger red
  *    complete           — done dark slate, shipped
  *    cancelled          — neutral gray, dropped before start
+ *
+ *  Note: `active` reads success (green) rather than warning (amber) — Jonathan
+ *  flagged the amber as a false alarm, since an active job is the *healthy*
+ *  state for a contractor. Amber is reserved for paused/at-risk states.
  */
 export const projectStageTone = {
   planning: 'neutral',
   awaiting_approval: 'info',
-  active: 'warning',
-  on_hold: 'hold',
+  active: 'success',
+  on_hold: 'warning',
   declined: 'danger',
   complete: 'done',
   cancelled: 'neutral',

@@ -96,7 +96,7 @@ export function InviteBookkeeperCard() {
                 Invite link (share manually if needed):
               </p>
               <div className="flex items-center gap-2">
-                <code className="flex-1 truncate text-xs">{joinUrl}</code>
+                <code className="min-w-0 flex-1 truncate text-xs">{joinUrl}</code>
                 <Button type="button" size="sm" variant="outline" onClick={copyLink}>
                   <Copy className="size-3.5" />
                   Copy

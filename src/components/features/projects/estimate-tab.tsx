@@ -392,7 +392,7 @@ export function EstimateTab({
               >
                 <Link
                   href={`/projects/${projectId}/change-orders/${c.id}`}
-                  className="flex-1 truncate hover:underline"
+                  className="min-w-0 flex-1 truncate hover:underline"
                 >
                   <span className="mr-2 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-blue-800">
                     CO {c.short_id}

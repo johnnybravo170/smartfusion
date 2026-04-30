@@ -149,7 +149,7 @@ export function TaskRow({
         variant="ghost"
         size="sm"
         onClick={onDelete}
-        className="size-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+        className="hidden size-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 md:inline-flex"
         aria-label="Delete task"
       >
         <Trash2 className="size-3.5" />

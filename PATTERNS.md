@@ -242,3 +242,62 @@ When a server action returns a `{ duplicate: { existing_id, vendor, amount_cents
 - `src/components/layout/quick-log-expense-button.tsx` — top-bar quick-log caller.
 
 When you add a new caller (or extend the duplicate-detection rule to a new entity type), surface the existing callers and ask the user before changing the dialog's contract. Don't degrade one caller's UX (e.g. swap the dialog for a toast) without explicit decision — that's exactly the bug this pattern was extracted to fix.
+
+---
+
+## 16. Mobile width: grid + truncate min-width gotchas
+
+Two tightly-related Tailwind/CSS pitfalls that can silently push a layout past the iPhone viewport. Both surfaced together while chasing a "dashboard too wide" bug — neither showed up under static inspection or with `overflow-x-hidden` on `<main>` (that just clipped the visual; the layout had already escaped).
+
+### Rule A — Always set `grid-cols-1` on the base breakpoint when the larger breakpoint sets columns
+
+```tsx
+// WRONG — at mobile, grid-template-columns falls back to `none`,
+// implicit columns size to grid-auto-columns: auto = max-content.
+// Each grid item grows to fit its widest descendant's intrinsic width.
+<div className="grid gap-4 md:grid-cols-3">
+
+// RIGHT — explicit grid-cols-1 = repeat(1, minmax(0, 1fr)),
+// constraining the column track to the container width.
+<div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+```
+
+### Rule B — Grid items default to `min-width: auto`, just like flex items
+
+`grid-cols-1` (= `minmax(0, 1fr)`) sets the column track's *minimum* to 0, but the item inside still defaults to `min-width: auto = min-content`. With `truncate` (which sets `white-space: nowrap`) anywhere in the subtree, min-content propagates up to the full nowrap text width — the item then overflows the column track.
+
+`min-w-0` on the grid item is the symmetric counterpart to the flex `min-w-0` trick:
+
+```tsx
+// Card grid:
+<div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+  <section className="min-w-0 rounded-xl border bg-card p-4">
+    {/* truncate-laden content here is now safe */}
+  </section>
+</div>
+
+// Flex row with truncating child:
+<div className="flex items-center gap-3">
+  <Link className="min-w-0 flex-1 truncate">{title}</Link>
+  <Badge className="shrink-0" />
+</div>
+```
+
+### Quick checklist when a row / card looks "too wide on mobile"
+
+1. Does the wrapping grid have `grid-cols-N` set at the **base** breakpoint? If only `md:`/`sm:` is set, add `grid-cols-1`.
+2. Does the grid **item** have `min-w-0`? Required when descendants use `truncate`, `whitespace-nowrap`, or other nowrap text.
+3. Does each `flex-1 truncate` element also have `min-w-0` on the same node? Required for truncate to actually constrain in a flex row.
+4. Are there hover-only UI elements (`opacity-0 group-hover:opacity-100`, hover-revealed buttons) reserving width on touch devices? Hide on mobile (`hidden md:inline-flex`) — touch has no hover.
+5. If static inspection fails, drop in a temporary client-side runtime probe rather than guessing. Walk the DOM, find elements where `rect.right > nearestClippingAncestor.right`, render the top offenders as a fixed banner. Display **everything**; trust the user's eyes; remove the probe in the same commit as the fix.
+
+### Files this pattern was applied to
+
+- `src/components/features/dashboard/command-center.tsx` — outer grid + each Card section + Job Health inner ul
+- `src/components/features/dashboard/key-metrics.tsx`
+- `src/components/features/dashboard/pipeline-summary.tsx`
+- `src/components/features/dashboard/renovation-pipeline-summary.tsx`
+- `src/components/features/dashboard/recent-activity.tsx` — flex truncate min-w-0
+- `src/components/features/dashboard/money-at-risk-card.tsx` — break-all on phone/email
+- `src/components/features/tasks/task-row.tsx` — hover-only Delete button hidden on mobile
+- `src/components/layout/workspace-switcher.tsx`, settings/calendar-feed-card, settings/public-quote-link-card, portal/portal-toggle, calendar/assign-workers-dialog, calendar/owner-calendar, expenses/overhead-expense-form, projects/estimate-tab, team/invite-worker-card, team/invite-bookkeeper-card — all `flex-1 truncate` rows that needed `min-w-0`.

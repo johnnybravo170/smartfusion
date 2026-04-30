@@ -101,7 +101,7 @@ export function PublicQuoteLinkCard({ currentSlug, businessName }: PublicQuoteLi
 
         {slug.length >= 3 && (
           <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
-            <span className="flex-1 truncate text-sm font-mono">{fullUrl}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-mono">{fullUrl}</span>
             <Button type="button" variant="ghost" size="sm" onClick={handleCopy}>
               <Copy className="size-3.5" />
             </Button>

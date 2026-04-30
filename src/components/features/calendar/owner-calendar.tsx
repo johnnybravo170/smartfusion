@@ -994,7 +994,7 @@ function ProjectRow({
                 isActive && 'ring-2 ring-foreground ring-offset-1',
               )}
             >
-              <span className="flex-1 truncate font-medium">{bar.workerName}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{bar.workerName}</span>
               {bar.length > 1 ? (
                 <span className="ml-1 shrink-0 rounded bg-foreground/10 px-1 text-[10px]">
                   {bar.length}d
@@ -1102,7 +1102,7 @@ function MobileDayList({
                         projectColor(a.project_id),
                       )}
                     >
-                      <div className="flex-1 truncate">
+                      <div className="min-w-0 flex-1 truncate">
                         <div className="font-medium">{w?.display_name ?? 'Worker'}</div>
                         <div className="truncate text-[11px] opacity-75">
                           {proj?.name ?? 'Project'}

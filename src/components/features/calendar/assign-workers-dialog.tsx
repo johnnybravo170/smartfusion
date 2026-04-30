@@ -262,7 +262,7 @@ export function AssignWorkersDialog({
                         disabled={pending}
                         className="mt-0.5"
                       />
-                      <div className="flex-1 truncate">
+                      <div className="min-w-0 flex-1 truncate">
                         <div className="truncate">{w.display_name}</div>
                         {conflict ? (
                           <div className="text-[11px] text-amber-600">
