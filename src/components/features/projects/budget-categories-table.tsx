@@ -699,14 +699,19 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
           </>
         ) : null}
         <td className="px-2 py-2 text-right">
-          <Button
-            size="xs"
-            variant="ghost"
-            className="text-destructive hover:text-destructive"
-            onClick={() => removeBucket(line.budget_category_id)}
-          >
-            ×
-          </Button>
+          {/* Remove-category is an authoring action — only available in
+              Editing mode. In Executing mode operators are tracking and
+              shouldn't blow away a signed bucket on the way past. */}
+          {mode === 'editing' ? (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              onClick={() => removeBucket(line.budget_category_id)}
+            >
+              ×
+            </Button>
+          ) : null}
         </td>
       </tr>
       {isExpanded && (
