@@ -6,6 +6,7 @@ import {
   BudgetModeToggle,
 } from '@/components/features/projects/budget-mode-toggle';
 import { EstimateSentBanner } from '@/components/features/projects/estimate-sent-banner';
+import { HenryInsightStrip } from '@/components/features/projects/henry-insight-strip';
 import { StarterTemplatePicker } from '@/components/features/projects/starter-template-picker';
 import { Button } from '@/components/ui/button';
 import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
@@ -88,6 +89,12 @@ export default async function BudgetTabServer({
       </div>
 
       {showStarterPicker ? <StarterTemplatePicker projectId={projectId} /> : null}
+
+      {/* Henry insight strip — Executing mode only. Reads variance +
+          diff signals, surfaces up to 2 actionable observations as
+          clickable rows. Hidden in Editing mode where the operator is
+          authoring scope, not tracking status. */}
+      {mode === 'executing' ? <HenryInsightStrip projectId={projectId} /> : null}
 
       <BudgetCategoriesTable
         lines={budget.lines}
