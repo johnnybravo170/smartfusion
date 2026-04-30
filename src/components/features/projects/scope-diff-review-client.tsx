@@ -57,7 +57,7 @@ export function ScopeDiffReviewClient({
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? null : close())}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-3xl lg:max-w-5xl xl:max-w-6xl">
         <DialogHeader>
           <DialogTitle>Unsent changes since v{diff.baseline_version ?? 1}</DialogTitle>
           <DialogDescription>

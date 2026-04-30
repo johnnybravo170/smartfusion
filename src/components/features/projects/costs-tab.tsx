@@ -603,7 +603,15 @@ export function CostsTab({
   const searchParams = useSearchParams();
   const sub: CostsSubtabKey = (() => {
     const raw = searchParams.get('sub');
-    if (raw === 'pos' || raw === 'bills' || raw === 'expenses') return raw;
+    if (raw === 'quotes' || raw === 'pos' || raw === 'bills' || raw === 'expenses') return raw;
+    // No explicit subtab — pick the first one that has content so the
+    // page isn't a wall of "No quotes yet" when there are 18 bills sitting
+    // one click away. Quotes still wins on a tie since it's the most
+    // common entry point for new spend.
+    if (subQuotes.length > 0) return 'quotes';
+    if (bills.length > 0) return 'bills';
+    if (expenses.length > 0) return 'expenses';
+    if (purchaseOrders.length > 0) return 'pos';
     return 'quotes';
   })();
   const groupByCategory = searchParams.get('view') === 'category';

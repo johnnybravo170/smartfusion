@@ -207,12 +207,16 @@ async function snapshot(label, signedAt, signedByName, changeOrderId = null) {
     FROM public.project_scope_snapshots WHERE project_id = ${projectId}
   `;
   const total = lines.reduce((s, l) => s + Number(l.line_price_cents ?? 0), 0);
+  // Pass the JS arrays via sql.json() so postgres-js binds them as jsonb
+  // arrays. Plain `${JSON.stringify(arr)}::jsonb` collapses to a JSON-string
+  // scalar — the diff query then iterates characters and emits thousands of
+  // phantom changes.
   await sql`
     INSERT INTO public.project_scope_snapshots
       (project_id, tenant_id, version_number, label, change_order_id,
        cost_lines, budget_categories, total_cents, signed_at, signed_by_name)
     VALUES (${projectId}, ${TENANT_ID}, ${next.v}, ${label}, ${changeOrderId},
-            ${JSON.stringify(lines)}::jsonb, ${JSON.stringify(cats)}::jsonb,
+            ${sql.json(lines)}, ${sql.json(cats)},
             ${total}, ${signedAt}, ${signedByName})
   `;
   return next.v;

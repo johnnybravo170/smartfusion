@@ -50,7 +50,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border bg-card p-4">
+    <section className="min-w-0 rounded-xl border bg-card p-4">
       <header className="flex items-center justify-between pb-2">
         <div className="flex items-center gap-2">
           <Icon className="size-4 text-muted-foreground" aria-hidden />
@@ -191,7 +191,7 @@ export function CommandCenter({
         </p>
       </Card>
 
-      <section className="rounded-xl border bg-card p-4 md:col-span-3">
+      <section className="min-w-0 rounded-xl border bg-card p-4 md:col-span-3">
         <header className="flex items-center justify-between pb-2">
           <div className="flex items-center gap-2">
             <ClipboardList className="size-4 text-muted-foreground" aria-hidden />
@@ -236,7 +236,7 @@ export function CommandCenter({
 
 export function PersonalTasksCard({ tasks }: { tasks: TaskRow[] }) {
   return (
-    <section className="rounded-xl border bg-card p-4">
+    <section className="min-w-0 rounded-xl border bg-card p-4">
       <header className="flex items-center justify-between pb-2">
         <h3 className="text-sm font-semibold">Your to-do</h3>
         <Link href="/todos" className="text-xs text-primary hover:underline">
