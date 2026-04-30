@@ -111,11 +111,19 @@ export const workerInvoiceStatusTone = {
   paid: 'success',
 } as const satisfies Record<string, StatusTone>;
 
-/** Project lifecycle stage. Mirrors jobStatusTone — 'active' reads warning
- *  (amber, in progress), 'complete' reads done (indigo, shipped). */
+/** Project lifecycle stage. Each stage gets a distinct tone so the list
+ *  view reads at a glance:
+ *    planning           — neutral gray, internal draft, nothing sent
+ *    awaiting_approval  — info blue, sent and waiting on the customer
+ *    active             — warning amber, work in progress
+ *    on_hold            — hold slate, paused
+ *    declined           — danger red
+ *    complete           — done dark slate, shipped
+ *    cancelled          — neutral gray, dropped before start
+ */
 export const projectStageTone = {
-  planning: 'info',
-  awaiting_approval: 'warning',
+  planning: 'neutral',
+  awaiting_approval: 'info',
   active: 'warning',
   on_hold: 'hold',
   declined: 'danger',
