@@ -63,6 +63,10 @@ export function BudgetCategoriesTable({
   const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
   const [showAddBucket, setShowAddBucket] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // Lines that the operator has tapped × on but the 5s undo window
+  // hasn't yet expired. Hidden from render; the actual server-side
+  // delete fires when the timer elapses (or never, if undo clicks).
+  const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -99,6 +103,7 @@ export function BudgetCategoriesTable({
   const linesByBudgetCategory = new Map<string, CostLineRow[]>();
   for (const cl of costLines) {
     if (!cl.budget_category_id) continue;
+    if (pendingDeletes.has(cl.id)) continue; // optimistically hidden
     const arr = linesByBudgetCategory.get(cl.budget_category_id) ?? [];
     arr.push(cl);
     linesByBudgetCategory.set(cl.budget_category_id, arr);
@@ -170,9 +175,67 @@ export function BudgetCategoriesTable({
   }
 
   function deleteLine(id: string) {
-    if (!confirm('Delete this line?')) return;
-    startTransition(async () => {
-      await deleteCostLineAction(id, projectId);
+    const line = costLines.find((l) => l.id === id);
+    if (!line) return;
+
+    // Detail-aware: only confirm when the line has notes or photos
+    // worth protecting. Empty / scaffolded lines delete instantly with
+    // a 5s undo toast (Sonner action).
+    const hasNotes = (line.notes?.trim() ?? '').length > 0;
+    const hasPhotos = (line.photo_storage_paths?.length ?? 0) > 0;
+    const hasDetail = hasNotes || hasPhotos;
+
+    if (hasDetail) {
+      const reasons: string[] = [];
+      if (hasNotes) reasons.push('notes');
+      if (hasPhotos) reasons.push('photos');
+      const summary = reasons.join(' and ');
+      if (!confirm(`This line has ${summary}. Delete anyway?`)) return;
+      startTransition(async () => {
+        await deleteCostLineAction(id, projectId);
+      });
+      return;
+    }
+
+    // No detail → optimistic undo flow. Hide locally, schedule the
+    // server delete for 5s out, cancel if Undo is clicked.
+    setPendingDeletes((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      deleteCostLineAction(id, projectId).then((res) => {
+        if (!res.ok) {
+          toast.error(res.error || "Couldn't delete line.");
+          // Restore from server state on failure.
+          setPendingDeletes((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+          router.refresh();
+        }
+      });
+    }, 5000);
+
+    toast('Line deleted', {
+      duration: 5000,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          cancelled = true;
+          clearTimeout(timer);
+          setPendingDeletes((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        },
+      },
     });
   }
 
