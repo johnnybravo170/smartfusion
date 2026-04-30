@@ -1,4 +1,3 @@
-import { OverflowProbe } from '@/components/debug/overflow-probe';
 import { ChecklistDashboardChip } from '@/components/features/checklist/dashboard-chip';
 import { CommandCenter, PersonalTasksCard } from '@/components/features/dashboard/command-center';
 import { EstimateCelebrationCard } from '@/components/features/dashboard/estimate-celebration-card';
@@ -98,7 +97,6 @@ export default async function DashboardPage() {
   const tasksToVerify = await listTasksAwaitingVerification();
 
   const firstName = operator?.firstName?.trim() || null;
-  const isJonathan = user?.email === 'jonathan@smartfusion.ca';
 
   return (
     <div className="flex flex-col gap-6">
@@ -152,8 +150,6 @@ export default async function DashboardPage() {
       <NeedsAttention items={attentionItems} />
 
       <RecentActivity entries={recentActivity} timezone={tz} />
-
-      {isJonathan ? <OverflowProbe /> : null}
     </div>
   );
 }
