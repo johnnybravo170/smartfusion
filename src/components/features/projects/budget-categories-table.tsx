@@ -551,15 +551,19 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                 CO {c.co_short_id}
               </a>
             ))}
-            {/* Drill into actuals for this bucket on the Spend tab. Uses
-                the existing ?focus= pattern that variance also uses. */}
-            <Link
-              href={`/projects/${projectId}?tab=costs&focus=${encodeURIComponent(line.budget_category_name)}`}
-              className="ml-auto inline-flex items-center text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
-              title="See spend for this bucket"
-            >
-              Spend →
-            </Link>
+            {/* Drill into actuals for this bucket on the Spend tab.
+                Executing mode only — in Editing posture there's no
+                meaningful spend yet, and a row of identical "Spend →"
+                links was just visual noise (Jonathan, 2026-04-30). */}
+            {mode === 'executing' ? (
+              <Link
+                href={`/projects/${projectId}?tab=costs&focus=${encodeURIComponent(line.budget_category_name)}`}
+                className="ml-auto inline-flex items-center text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                title="See spend for this bucket"
+              >
+                Spend →
+              </Link>
+            ) : null}
           </div>
           {editingDescId === line.budget_category_id ? (
             <div className="mt-1 flex items-start gap-1">
