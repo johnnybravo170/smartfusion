@@ -1,4 +1,5 @@
 import { CostsTab } from '@/components/features/projects/costs-tab';
+import { listCostLines } from '@/lib/db/queries/cost-lines';
 import { listExpenses } from '@/lib/db/queries/expenses';
 import { listProjectBills } from '@/lib/db/queries/project-bills';
 import { listBudgetCategoriesForProject } from '@/lib/db/queries/project-budget-categories';
@@ -21,6 +22,7 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
     expenses,
     crewWorkers,
     operatorNameByUserId,
+    costLines,
   ] = await Promise.all([
     listPurchaseOrders(projectId),
     listProjectBills(projectId),
@@ -29,7 +31,16 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
     listExpenses({ project_id: projectId, limit: 200 }),
     listWorkerProfiles(project.tenant_id),
     getOperatorNamesForTenant(project.tenant_id),
+    listCostLines(projectId),
   ]);
+
+  const costLinesByBucket = new Map<string, Array<{ id: string; label: string }>>();
+  for (const l of costLines) {
+    if (!l.budget_category_id) continue;
+    const arr = costLinesByBucket.get(l.budget_category_id) ?? [];
+    arr.push({ id: l.id, label: l.label });
+    costLinesByBucket.set(l.budget_category_id, arr);
+  }
 
   // Sign receipt URLs for any expense with a storage-backed receipt.
   const supabase = await createClient();
@@ -70,7 +81,8 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
       amount_cents: e.amount_cents,
       vendor: e.vendor ?? null,
       description: e.description ?? null,
-      budget_category_id: (e as { budget_category_id: string | null }).budget_category_id ?? null,
+      budget_category_id: e.budget_category_id ?? null,
+      cost_line_id: e.cost_line_id ?? null,
       worker_profile_id: e.worker_profile_id ?? null,
       worker_name: posterName,
       receipt_url: expenseReceiptUrls.get(e.id) ?? null,
@@ -88,6 +100,7 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
         id: b.id,
         name: b.name,
         section: (b.section as 'interior' | 'exterior' | 'general') ?? 'general',
+        cost_lines: costLinesByBucket.get(b.id) ?? [],
       }))}
     />
   );

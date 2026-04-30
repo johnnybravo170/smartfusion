@@ -31,6 +31,7 @@ export function WorkerExpenseForm({ projects }: Props) {
   const [extracting, setExtracting] = useState(false);
   const [projectId, setProjectId] = useState(initialProject);
   const [bucketId, setBucketId] = useState('');
+  const [costLineId, setCostLineId] = useState('');
   const [amount, setAmount] = useState('');
   const [vendor, setVendor] = useState('');
   const [vendorGstNumber, setVendorGstNumber] = useState('');
@@ -41,6 +42,10 @@ export function WorkerExpenseForm({ projects }: Props) {
   const buckets = useMemo(
     () => projects.find((p) => p.project_id === projectId)?.buckets ?? [],
     [projects, projectId],
+  );
+  const costLines = useMemo(
+    () => buckets.find((b) => b.id === bucketId)?.cost_lines ?? [],
+    [buckets, bucketId],
   );
 
   async function handleReceiptPick(file: File | null) {
@@ -113,6 +118,7 @@ export function WorkerExpenseForm({ projects }: Props) {
     const fd = new FormData();
     fd.append('project_id', projectId);
     if (bucketId) fd.append('budget_category_id', bucketId);
+    if (costLineId) fd.append('cost_line_id', costLineId);
     fd.append('amount_cents', String(Math.round(amt * 100)));
     fd.append('vendor', vendor);
     fd.append('vendor_gst_number', vendorGstNumber);
@@ -191,7 +197,13 @@ export function WorkerExpenseForm({ projects }: Props) {
       {buckets.length > 0 ? (
         <div className="space-y-1.5">
           <Label htmlFor="bucket">Work area (optional)</Label>
-          <Select value={bucketId} onValueChange={setBucketId}>
+          <Select
+            value={bucketId}
+            onValueChange={(v) => {
+              setBucketId(v);
+              setCostLineId('');
+            }}
+          >
             <SelectTrigger id="bucket">
               <SelectValue placeholder="— none —" />
             </SelectTrigger>
@@ -199,6 +211,28 @@ export function WorkerExpenseForm({ projects }: Props) {
               {buckets.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
                   {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+
+      {bucketId && costLines.length > 0 ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="cost-line">Line item (optional)</Label>
+          <Select
+            value={costLineId || '__none__'}
+            onValueChange={(v) => setCostLineId(v === '__none__' ? '' : v)}
+          >
+            <SelectTrigger id="cost-line">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">— none (whole bucket) —</SelectItem>
+              {costLines.map((l) => (
+                <SelectItem key={l.id} value={l.id}>
+                  {l.label}
                 </SelectItem>
               ))}
             </SelectContent>

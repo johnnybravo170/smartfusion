@@ -15,6 +15,7 @@ export type WorkerTimeResult = { ok: true; id: string } | { ok: false; error: st
 const logSchema = z.object({
   project_id: z.string().uuid({ message: 'Pick a project.' }),
   budget_category_id: z.string().uuid().optional().or(z.literal('')),
+  cost_line_id: z.string().uuid().optional().or(z.literal('')),
   hours: z.coerce.number().positive().max(24),
   notes: z.string().trim().max(2000).optional().or(z.literal('')),
   entry_date: z.string().min(1),
@@ -23,6 +24,7 @@ const logSchema = z.object({
 export async function logWorkerTimeAction(input: {
   project_id: string;
   budget_category_id?: string;
+  cost_line_id?: string;
   hours: number;
   notes?: string;
   entry_date: string;
@@ -65,6 +67,7 @@ export async function logWorkerTimeAction(input: {
       worker_profile_id: profile.id,
       project_id: parsed.data.project_id,
       budget_category_id: parsed.data.budget_category_id || null,
+      cost_line_id: parsed.data.cost_line_id || null,
       hours: parsed.data.hours,
       hourly_rate_cents: payCents,
       charge_rate_cents: chargeCents,
@@ -148,6 +151,7 @@ const updateSchema = z.object({
   id: z.string().uuid(),
   project_id: z.string().uuid(),
   budget_category_id: z.string().uuid().optional().or(z.literal('')),
+  cost_line_id: z.string().uuid().optional().or(z.literal('')),
   hours: z.coerce.number().positive().max(24),
   notes: z.string().trim().max(2000).optional().or(z.literal('')),
   entry_date: z.string().min(1),
@@ -157,6 +161,7 @@ export async function updateWorkerTimeAction(input: {
   id: string;
   project_id: string;
   budget_category_id?: string;
+  cost_line_id?: string;
   hours: number;
   notes?: string;
   entry_date: string;
@@ -182,6 +187,7 @@ export async function updateWorkerTimeAction(input: {
     .update({
       project_id: parsed.data.project_id,
       budget_category_id: parsed.data.budget_category_id || null,
+      cost_line_id: parsed.data.cost_line_id || null,
       hours: parsed.data.hours,
       notes: parsed.data.notes?.trim() || null,
       entry_date: parsed.data.entry_date,

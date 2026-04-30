@@ -13,6 +13,7 @@ export type WorkerExpenseResult = { ok: true; id: string } | { ok: false; error:
 const schema = z.object({
   project_id: z.string().uuid({ message: 'Pick a project.' }),
   budget_category_id: z.string().uuid().optional().or(z.literal('')),
+  cost_line_id: z.string().uuid().optional().or(z.literal('')),
   amount_cents: z.coerce.number().int().positive(),
   vendor: z.string().trim().max(200).optional().or(z.literal('')),
   vendor_gst_number: z.string().trim().max(40).optional().or(z.literal('')),
@@ -35,6 +36,7 @@ export async function logWorkerExpenseAction(formData: FormData): Promise<Worker
   const input = {
     project_id: String(formData.get('project_id') ?? ''),
     budget_category_id: String(formData.get('budget_category_id') ?? ''),
+    cost_line_id: String(formData.get('cost_line_id') ?? ''),
     amount_cents: Number(formData.get('amount_cents') ?? 0),
     vendor: String(formData.get('vendor') ?? ''),
     vendor_gst_number: String(formData.get('vendor_gst_number') ?? ''),
@@ -87,6 +89,7 @@ export async function logWorkerExpenseAction(formData: FormData): Promise<Worker
       worker_profile_id: profile.id,
       project_id: parsed.data.project_id,
       budget_category_id: parsed.data.budget_category_id || null,
+      cost_line_id: parsed.data.cost_line_id || null,
       amount_cents: parsed.data.amount_cents,
       vendor: parsed.data.vendor?.trim() || null,
       vendor_gst_number: parsed.data.vendor_gst_number?.trim() || null,

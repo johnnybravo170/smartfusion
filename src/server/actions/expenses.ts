@@ -30,6 +30,7 @@ const expenseSchema = z.object({
   project_id: z.string().uuid().optional().or(z.literal('')),
   job_id: z.string().uuid().optional().or(z.literal('')),
   budget_category_id: z.string().uuid().optional().or(z.literal('')),
+  cost_line_id: z.string().uuid().optional().or(z.literal('')),
   // Non-zero instead of strictly positive — credits/returns log as negative
   // amounts (owner-side only; the worker form still enforces positive).
   amount_cents: z.coerce
@@ -164,6 +165,7 @@ export async function logExpenseAction(input: {
       project_id: projectId,
       job_id: jobId,
       budget_category_id: parsed.data.budget_category_id || null,
+      cost_line_id: parsed.data.cost_line_id || null,
       amount_cents: parsed.data.amount_cents,
       vendor: parsed.data.vendor?.trim() || null,
       vendor_gst_number: parsed.data.vendor_gst_number?.trim() || null,
@@ -193,6 +195,7 @@ export async function logExpenseWithReceiptAction(
   const input = {
     project_id: String(formData.get('project_id') ?? ''),
     budget_category_id: String(formData.get('budget_category_id') ?? ''),
+    cost_line_id: String(formData.get('cost_line_id') ?? ''),
     amount_cents: Number(formData.get('amount_cents') ?? 0),
     vendor: String(formData.get('vendor') ?? ''),
     vendor_gst_number: String(formData.get('vendor_gst_number') ?? ''),
@@ -242,6 +245,7 @@ export async function logExpenseWithReceiptAction(
       user_id: user.id,
       project_id: parsed.data.project_id,
       budget_category_id: parsed.data.budget_category_id || null,
+      cost_line_id: parsed.data.cost_line_id || null,
       amount_cents: parsed.data.amount_cents,
       vendor: parsed.data.vendor?.trim() || null,
       vendor_gst_number: parsed.data.vendor_gst_number?.trim() || null,
@@ -276,6 +280,7 @@ const updateExpenseSchema = z.object({
   vendor: z.string().trim().max(200).nullable().optional(),
   description: z.string().trim().max(2000).nullable().optional(),
   budget_category_id: z.string().uuid().nullable().optional(),
+  cost_line_id: z.string().uuid().nullable().optional(),
 });
 
 export async function updateExpenseAction(input: {
@@ -285,6 +290,7 @@ export async function updateExpenseAction(input: {
   vendor?: string | null;
   description?: string | null;
   budget_category_id?: string | null;
+  cost_line_id?: string | null;
 }): Promise<ExpenseActionResult> {
   const parsed = updateExpenseSchema.safeParse(input);
   if (!parsed.success) {
@@ -307,6 +313,7 @@ export async function updateExpenseAction(input: {
   if (rest.description !== undefined) patch.description = rest.description?.trim() || null;
   if (rest.budget_category_id !== undefined)
     patch.budget_category_id = rest.budget_category_id || null;
+  if (rest.cost_line_id !== undefined) patch.cost_line_id = rest.cost_line_id || null;
 
   const supabase = await createClient();
   // RLS scopes this to the caller's tenant; no manual tenant_id filter needed

@@ -11,6 +11,7 @@ export type ExpenseRow = {
   worker_profile_id: string | null;
   project_id: string | null;
   budget_category_id: string | null;
+  cost_line_id: string | null;
   job_id: string | null;
   amount_cents: number;
   vendor: string | null;

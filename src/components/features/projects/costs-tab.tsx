@@ -240,7 +240,7 @@ function BillForm({
   onDone,
 }: {
   projectId: string;
-  buckets: Array<{ id: string; name: string }>;
+  buckets: Array<{ id: string; name: string; cost_lines: Array<{ id: string; label: string }> }>;
   initial?: ProjectBillRow;
   onDone: () => void;
 }) {
@@ -259,6 +259,7 @@ function BillForm({
     initial && initial.gst_cents > 0 ? (initial.gst_cents / 100).toFixed(2) : '',
   );
   const [bucketId, setBucketId] = useState(initial?.budget_category_id ?? '');
+  const [costLineId, setCostLineId] = useState(initial?.cost_line_id ?? '');
   const [costCode, setCostCode] = useState(initial?.cost_code ?? '');
   const [vendorGstNumber, setVendorGstNumber] = useState(initial?.vendor_gst_number ?? '');
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
@@ -308,6 +309,7 @@ function BillForm({
       fd.set('amount_cents', String(subtotalCents));
       fd.set('gst_cents', String(gstCents));
       fd.set('budget_category_id', bucketId);
+      if (costLineId) fd.set('cost_line_id', costLineId);
       fd.set('cost_code', costCode);
       fd.set('vendor_gst_number', vendorGstNumber);
       if (attachmentFile) fd.set('attachment', attachmentFile);
@@ -353,7 +355,10 @@ function BillForm({
             <select
               id="bill-bucket"
               value={bucketId}
-              onChange={(e) => setBucketId(e.target.value)}
+              onChange={(e) => {
+                setBucketId(e.target.value);
+                setCostLineId('');
+              }}
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
             >
               <option value="">— none —</option>
@@ -365,6 +370,30 @@ function BillForm({
             </select>
           </div>
         )}
+        {(() => {
+          const lines = buckets.find((b) => b.id === bucketId)?.cost_lines ?? [];
+          if (!bucketId || lines.length === 0) return null;
+          return (
+            <div>
+              <label htmlFor="bill-line" className="mb-1 block text-xs font-medium">
+                Line item (optional)
+              </label>
+              <select
+                id="bill-line"
+                value={costLineId}
+                onChange={(e) => setCostLineId(e.target.value)}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">— bucket only —</option>
+                {lines.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        })()}
         <div className="sm:col-span-2">
           <label htmlFor="bill-desc" className="mb-1 block text-xs font-medium">
             Description
@@ -534,7 +563,12 @@ export function CostsTab({
   bills: ProjectBillRow[];
   subQuotes: SubQuoteRow[];
   expenses: ExpenseItem[];
-  buckets: Array<{ id: string; name: string; section: 'interior' | 'exterior' | 'general' }>;
+  buckets: Array<{
+    id: string;
+    name: string;
+    section: 'interior' | 'exterior' | 'general';
+    cost_lines: Array<{ id: string; label: string }>;
+  }>;
 }) {
   const [showPOForm, setShowPOForm] = useState(false);
   const [showBillForm, setShowBillForm] = useState(false);
@@ -574,27 +608,44 @@ export function CostsTab({
   })();
   const groupByCategory = searchParams.get('view') === 'category';
   // Drill-down filter: Budget tab links here with `?focus=<budget_category_id>`
-  // so the operator lands on Spend already filtered to the category they
-  // wanted to inspect. Bills, expenses, and vendor-quote allocations carry
-  // budget_category_id directly. POs match through their line items'
-  // cost_line.budget_category_id (resolved in listPurchaseOrders).
+  // (bucket-level) or `?focus_line=<cost_line_id>` (line-level) so the operator
+  // lands on Spend already filtered. Bills, expenses, and vendor-quote
+  // allocations carry budget_category_id directly. POs match through their
+  // line items' cost_line.budget_category_id (resolved in
+  // listPurchaseOrders). focus_line is finer-grained — applied on top of /
+  // instead of focus.
   const focusCategoryId = searchParams.get('focus');
-  const filteredBills = focusCategoryId
-    ? bills.filter((b) => b.budget_category_id === focusCategoryId)
-    : bills;
-  const filteredExpenses = focusCategoryId
-    ? expenses.filter((e) => e.budget_category_id === focusCategoryId)
-    : expenses;
-  const filteredSubQuotes = focusCategoryId
-    ? subQuotes.filter((q) => q.allocations.some((a) => a.budget_category_id === focusCategoryId))
-    : subQuotes;
-  const filteredPurchaseOrders = focusCategoryId
-    ? purchaseOrders.filter((po) =>
-        po.items.some((it) => it.budget_category_id === focusCategoryId),
-      )
-    : purchaseOrders;
+  const focusLineId = searchParams.get('focus_line');
+  const filteredBills = focusLineId
+    ? bills.filter((b) => b.cost_line_id === focusLineId)
+    : focusCategoryId
+      ? bills.filter((b) => b.budget_category_id === focusCategoryId)
+      : bills;
+  const filteredExpenses = focusLineId
+    ? expenses.filter((e) => e.cost_line_id === focusLineId)
+    : focusCategoryId
+      ? expenses.filter((e) => e.budget_category_id === focusCategoryId)
+      : expenses;
+  const filteredSubQuotes = focusLineId
+    ? // Sub-quote allocations are per-bucket only — hide all when filtering
+      // to a single line. Honest empty state beats "every quote against this
+      // bucket also lights up under every line", which would be misleading.
+      []
+    : focusCategoryId
+      ? subQuotes.filter((q) => q.allocations.some((a) => a.budget_category_id === focusCategoryId))
+      : subQuotes;
+  const filteredPurchaseOrders = focusLineId
+    ? purchaseOrders.filter((po) => po.items.some((it) => it.cost_line_id === focusLineId))
+    : focusCategoryId
+      ? purchaseOrders.filter((po) =>
+          po.items.some((it) => it.budget_category_id === focusCategoryId),
+        )
+      : purchaseOrders;
   const focusCategoryName = focusCategoryId
     ? buckets.find((b) => b.id === focusCategoryId)?.name
+    : null;
+  const focusLineLabel = focusLineId
+    ? buckets.flatMap((b) => b.cost_lines).find((l) => l.id === focusLineId)?.label
     : null;
   const subtabCounts: Record<CostsSubtabKey, number> = {
     quotes: filteredSubQuotes.length,
@@ -633,13 +684,13 @@ export function CostsTab({
       <div className="flex items-center justify-between gap-2">
         <div className="flex rounded-md border bg-muted/30 p-0.5 text-xs">
           <a
-            href={`/projects/${projectId}?tab=costs${focusCategoryId ? `&focus=${focusCategoryId}` : ''}`}
+            href={`/projects/${projectId}?tab=costs${focusCategoryId ? `&focus=${focusCategoryId}` : ''}${focusLineId ? `&focus_line=${focusLineId}` : ''}`}
             className={`rounded px-2 py-1 ${!groupByCategory ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
           >
             By type
           </a>
           <a
-            href={`/projects/${projectId}?tab=costs&view=category${focusCategoryId ? `&focus=${focusCategoryId}` : ''}`}
+            href={`/projects/${projectId}?tab=costs&view=category${focusCategoryId ? `&focus=${focusCategoryId}` : ''}${focusLineId ? `&focus_line=${focusLineId}` : ''}`}
             className={`rounded px-2 py-1 ${groupByCategory ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
           >
             By category
@@ -649,7 +700,19 @@ export function CostsTab({
 
       {!groupByCategory ? <CostsSubtabs counts={subtabCounts} /> : null}
 
-      {focusCategoryId && focusCategoryName ? (
+      {focusLineId && focusLineLabel ? (
+        <div className="flex items-center justify-between rounded-md border border-amber-300/60 bg-amber-50/50 px-3 py-2 text-xs">
+          <span>
+            Filtered to line item <span className="font-semibold">{focusLineLabel}</span>
+          </span>
+          <a
+            href={`/projects/${projectId}?tab=costs&sub=${sub}`}
+            className="text-primary hover:underline"
+          >
+            Clear filter
+          </a>
+        </div>
+      ) : focusCategoryId && focusCategoryName ? (
         <div className="flex items-center justify-between rounded-md border border-amber-300/60 bg-amber-50/50 px-3 py-2 text-xs">
           <span>
             Filtered to <span className="font-semibold">{focusCategoryName}</span>
@@ -680,7 +743,11 @@ export function CostsTab({
       {!groupByCategory && sub === 'expenses' ? (
         <ExpensesSection
           projectId={projectId}
-          buckets={buckets.map((b) => ({ id: b.id, name: b.name }))}
+          buckets={buckets.map((b) => ({
+            id: b.id,
+            name: b.name,
+            cost_lines: b.cost_lines,
+          }))}
           expenses={filteredExpenses}
         />
       ) : null}

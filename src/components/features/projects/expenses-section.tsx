@@ -36,12 +36,13 @@ export type ExpenseItem = {
   vendor: string | null;
   description: string | null;
   budget_category_id: string | null;
+  cost_line_id: string | null;
   worker_profile_id: string | null;
   worker_name: string | null;
   receipt_url: string | null;
 };
 
-type Bucket = { id: string; name: string };
+type Bucket = { id: string; name: string; cost_lines: Array<{ id: string; label: string }> };
 
 // ─── Inline add form ─────────────────────────────────────────────────────────
 
@@ -61,6 +62,7 @@ function ExpenseForm({
   const [vendor, setVendor] = useState('');
   const [description, setDescription] = useState('');
   const [bucketId, setBucketId] = useState('');
+  const [costLineId, setCostLineId] = useState('');
   const [receipt, setReceipt] = useState<File | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
@@ -74,6 +76,7 @@ function ExpenseForm({
       fd.set('vendor', vendor);
       fd.set('description', description);
       fd.set('budget_category_id', bucketId);
+      if (costLineId) fd.set('cost_line_id', costLineId);
       if (receipt) fd.set('receipt', receipt);
       const res = await logExpenseWithReceiptAction(fd);
       if (res.ok) {
@@ -120,7 +123,10 @@ function ExpenseForm({
             <span className="mb-1 block text-xs font-medium">Bucket</span>
             <select
               value={bucketId}
-              onChange={(e) => setBucketId(e.target.value)}
+              onChange={(e) => {
+                setBucketId(e.target.value);
+                setCostLineId('');
+              }}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
               <option value="">— none —</option>
@@ -132,6 +138,27 @@ function ExpenseForm({
             </select>
           </div>
         )}
+        {(() => {
+          const lines = buckets.find((b) => b.id === bucketId)?.cost_lines ?? [];
+          if (!bucketId || lines.length === 0) return null;
+          return (
+            <div>
+              <span className="mb-1 block text-xs font-medium">Line item</span>
+              <select
+                value={costLineId}
+                onChange={(e) => setCostLineId(e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">— bucket only —</option>
+                {lines.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        })()}
         <div className="sm:col-span-2">
           <span className="mb-1 block text-xs font-medium">Description</span>
           <Input
@@ -184,6 +211,7 @@ function EditExpenseDialog({
   const [vendor, setVendor] = useState(expense.vendor ?? '');
   const [description, setDescription] = useState(expense.description ?? '');
   const [bucketId, setBucketId] = useState(expense.budget_category_id ?? '');
+  const [costLineId, setCostLineId] = useState(expense.cost_line_id ?? '');
   const [error, setError] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
@@ -202,6 +230,7 @@ function EditExpenseDialog({
         vendor: vendor || null,
         description: description || null,
         budget_category_id: bucketId || null,
+        cost_line_id: costLineId || null,
       });
       if (!res.ok) {
         setError(res.error);
@@ -252,7 +281,10 @@ function EditExpenseDialog({
               <select
                 id="edit-exp-bucket"
                 value={bucketId}
-                onChange={(e) => setBucketId(e.target.value)}
+                onChange={(e) => {
+                  setBucketId(e.target.value);
+                  setCostLineId('');
+                }}
                 disabled={pending}
                 className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
               >
@@ -265,6 +297,29 @@ function EditExpenseDialog({
               </select>
             </div>
           ) : null}
+          {(() => {
+            const lines = buckets.find((b) => b.id === bucketId)?.cost_lines ?? [];
+            if (!bucketId || lines.length === 0) return null;
+            return (
+              <div>
+                <Label htmlFor="edit-exp-line">Line item</Label>
+                <select
+                  id="edit-exp-line"
+                  value={costLineId}
+                  onChange={(e) => setCostLineId(e.target.value)}
+                  disabled={pending}
+                  className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
+                >
+                  <option value="">— bucket only —</option>
+                  {lines.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })()}
           <div>
             <Label htmlFor="edit-exp-vendor">Vendor</Label>
             <Input

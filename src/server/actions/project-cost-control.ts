@@ -270,6 +270,7 @@ export async function upsertBillWithAttachmentAction(
   const amount_cents = Math.round(parseFloat(String(formData.get('amount_cents') || '0')) || 0);
   const gst_cents = Math.round(parseFloat(String(formData.get('gst_cents') || '0')) || 0);
   const budget_category_id = (formData.get('budget_category_id') as string | null)?.trim() || null;
+  const cost_line_id = (formData.get('cost_line_id') as string | null)?.trim() || null;
   const cost_code = (formData.get('cost_code') as string | null)?.trim() || null;
   const vendor_gst_number = (formData.get('vendor_gst_number') as string | null)?.trim() || null;
   const attachmentFile = formData.get('attachment');
@@ -314,6 +315,7 @@ export async function upsertBillWithAttachmentAction(
     amount_cents,
     gst_cents,
     budget_category_id: budget_category_id || null,
+    cost_line_id: cost_line_id || null,
     cost_code,
     vendor_gst_number,
     status: 'pending',

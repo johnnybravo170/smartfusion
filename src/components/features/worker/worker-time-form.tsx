@@ -38,6 +38,7 @@ export function WorkerTimeForm({ projects, initial }: Props) {
   const [pending, startTransition] = useTransition();
   const [projectId, setProjectId] = useState(initialProject);
   const [bucketId, setBucketId] = useState(initial?.budget_category_id ?? '');
+  const [costLineId, setCostLineId] = useState(initial?.cost_line_id ?? '');
   const [hours, setHours] = useState(initial ? String(initial.hours) : '');
   const [date, setDate] = useState(initialDate);
   const [notes, setNotes] = useState(initial?.notes ?? '');
@@ -45,6 +46,10 @@ export function WorkerTimeForm({ projects, initial }: Props) {
   const buckets = useMemo(
     () => projects.find((p) => p.project_id === projectId)?.buckets ?? [],
     [projects, projectId],
+  );
+  const costLines = useMemo(
+    () => buckets.find((b) => b.id === bucketId)?.cost_lines ?? [],
+    [buckets, bucketId],
   );
 
   function handleSubmit(e: React.FormEvent) {
@@ -64,6 +69,7 @@ export function WorkerTimeForm({ projects, initial }: Props) {
             id: initial?.id ?? '',
             project_id: projectId,
             budget_category_id: bucketId || undefined,
+            cost_line_id: costLineId || undefined,
             hours: h,
             notes: notes || undefined,
             entry_date: date,
@@ -71,6 +77,7 @@ export function WorkerTimeForm({ projects, initial }: Props) {
         : await logWorkerTimeAction({
             project_id: projectId,
             budget_category_id: bucketId || undefined,
+            cost_line_id: costLineId || undefined,
             hours: h,
             notes: notes || undefined,
             entry_date: date,
@@ -119,7 +126,13 @@ export function WorkerTimeForm({ projects, initial }: Props) {
       {buckets.length > 0 ? (
         <div className="space-y-1.5">
           <Label htmlFor="bucket">Work area (optional)</Label>
-          <Select value={bucketId} onValueChange={setBucketId}>
+          <Select
+            value={bucketId}
+            onValueChange={(v) => {
+              setBucketId(v);
+              setCostLineId('');
+            }}
+          >
             <SelectTrigger id="bucket">
               <SelectValue placeholder="— none —" />
             </SelectTrigger>
@@ -127,6 +140,32 @@ export function WorkerTimeForm({ projects, initial }: Props) {
               {buckets.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
                   {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+
+      {/* Cost line picker — only shows when a bucket is chosen and that
+          bucket has lines. Helps the office track labour at the line level
+          (e.g. "tile install" vs the whole bathroom). Optional — the
+          default is bucket-only. */}
+      {bucketId && costLines.length > 0 ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="cost-line">Line item (optional)</Label>
+          <Select
+            value={costLineId || '__none__'}
+            onValueChange={(v) => setCostLineId(v === '__none__' ? '' : v)}
+          >
+            <SelectTrigger id="cost-line">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">— none (whole bucket) —</SelectItem>
+              {costLines.map((l) => (
+                <SelectItem key={l.id} value={l.id}>
+                  {l.label}
                 </SelectItem>
               ))}
             </SelectContent>
