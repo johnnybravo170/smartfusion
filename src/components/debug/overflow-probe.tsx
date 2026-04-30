@@ -44,26 +44,21 @@ export function OverflowProbe() {
   const [docScroll, setDocScroll] = useState(0);
 
   useEffect(() => {
-    function isClippedByAncestor(el: Element): boolean {
+    function nearestClippingAncestor(el: Element): Element | null {
       let cur: Element | null = el.parentElement;
       while (cur && cur !== document.documentElement) {
         const cs = window.getComputedStyle(cur);
-        const ovx = cs.overflowX;
-        const ov = cs.overflow;
-        // Anything that contains horizontal overflow visually counts.
         if (
-          ovx === 'hidden' ||
-          ovx === 'clip' ||
-          ovx === 'scroll' ||
-          ovx === 'auto' ||
-          ov === 'hidden' ||
-          ov === 'clip'
+          cs.overflowX === 'hidden' ||
+          cs.overflowX === 'clip' ||
+          cs.overflow === 'hidden' ||
+          cs.overflow === 'clip'
         ) {
-          return true;
+          return cur;
         }
         cur = cur.parentElement;
       }
-      return false;
+      return null;
     }
 
     function probe() {
@@ -76,66 +71,58 @@ export function OverflowProbe() {
       for (const el of all) {
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) continue;
+        if (rect.right <= viewportWidth + tolerance) continue;
+
+        // Skip intentional clipping (truncate/ellipsis spans).
         const classes =
           typeof el.className === 'string'
             ? el.className
             : ((el as Element & { className?: { baseVal?: string } }).className?.baseVal ?? '');
+        const cs = window.getComputedStyle(el);
+        const intentionalSelf =
+          cs.textOverflow === 'ellipsis' ||
+          cs.overflowX === 'scroll' ||
+          cs.overflowX === 'auto' ||
+          cs.overflow === 'scroll' ||
+          cs.overflow === 'auto' ||
+          classes.toString().includes('truncate') ||
+          classes.toString().includes('line-clamp');
+        if (intentionalSelf) continue;
 
-        // Pass 1 — page-wide overflow: extends past viewport AND not contained
-        // by an overflow-hidden/clip ancestor (means it's pushing the page wide).
-        if (rect.right > viewportWidth + tolerance && !isClippedByAncestor(el)) {
-          if (!seen.has(el)) {
-            seen.add(el);
-            found.push({
-              kind: 'page',
-              tag: el.tagName.toLowerCase(),
-              classes: classes.toString().slice(0, 100),
-              text: (el.textContent ?? '').trim().slice(0, 40),
-              right: Math.round(rect.right),
-              left: Math.round(rect.left),
-              width: Math.round(rect.width),
-              selector: elementSelector(el),
-            });
-          }
-        }
+        // Find the nearest ancestor that's actually clipping. If the element
+        // extends past that ancestor, the user sees content cut off — that's
+        // the real "too wide" symptom even when the document doesn't scroll.
+        const clipper = nearestClippingAncestor(el);
+        const clipperRect = clipper?.getBoundingClientRect();
+        const kind: Offender['kind'] =
+          clipper && clipperRect
+            ? rect.right > clipperRect.right + tolerance
+              ? 'clip'
+              : null!
+            : 'page';
+        if (!kind) continue;
 
-        // Pass 2 — content-clipping: element's own content overflows its visible
-        // box (scrollWidth > clientWidth). Skip intentional truncate / line-clamp
-        // (those produce ellipsis on purpose) and overflow:auto/scroll containers
-        // (intentional scrolling). Only flag *unintentional* clipping.
-        if (el instanceof HTMLElement) {
-          const cs = window.getComputedStyle(el);
-          const isIntentional =
-            cs.textOverflow === 'ellipsis' ||
-            cs.overflowX === 'scroll' ||
-            cs.overflowX === 'auto' ||
-            cs.overflow === 'scroll' ||
-            cs.overflow === 'auto' ||
-            (cs as CSSStyleDeclaration & { webkitLineClamp?: string }).webkitLineClamp !== '' ||
-            classes.toString().includes('truncate') ||
-            classes.toString().includes('line-clamp');
-          if (isIntentional) continue;
-          const overflow = el.scrollWidth - el.clientWidth;
-          if (overflow > tolerance && el.clientWidth > 0) {
-            if (!seen.has(el)) {
-              seen.add(el);
-              found.push({
-                kind: 'clip',
-                tag: el.tagName.toLowerCase(),
-                classes: classes.toString().slice(0, 100),
-                text: (el.textContent ?? '').trim().slice(0, 40),
-                right: Math.round(el.clientWidth + overflow),
-                left: 0,
-                width: Math.round(el.clientWidth),
-                selector: elementSelector(el),
-              });
-            }
-          }
+        if (!seen.has(el)) {
+          seen.add(el);
+          found.push({
+            kind,
+            tag: el.tagName.toLowerCase(),
+            classes: classes.toString().slice(0, 100),
+            text: (el.textContent ?? '').trim().slice(0, 40),
+            right: Math.round(rect.right),
+            left: Math.round(rect.left),
+            width: Math.round(rect.width),
+            selector: elementSelector(el),
+          });
         }
       }
-      // Page-wide first (more severe), then clip — within each, biggest first.
+      // Sort outermost-first (smallest left, then deepest tree position) so
+      // the actual root offender shows at the top — descendants of a wide
+      // ancestor will all also be wide, but only the ancestor needs fixing.
       found.sort((a, b) => {
         if (a.kind !== b.kind) return a.kind === 'page' ? -1 : 1;
+        // Smaller left = outermost in the layout chain
+        if (Math.abs(a.left - b.left) > 4) return a.left - b.left;
         return b.right - a.right;
       });
       setVw(viewportWidth);
