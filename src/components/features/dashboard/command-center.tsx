@@ -90,7 +90,7 @@ export function CommandCenter({
   ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       <Card
         title="Today"
         icon={CalendarDays}
@@ -204,7 +204,7 @@ export function CommandCenter({
             <CheckCircle2 className="size-4" aria-hidden /> No open project tasks.
           </p>
         ) : (
-          <ul className="grid gap-1 sm:grid-cols-2 md:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2 md:grid-cols-3">
             {jobHealth.map((j) => (
               <li key={j.job_id} className="min-w-0">
                 <Link

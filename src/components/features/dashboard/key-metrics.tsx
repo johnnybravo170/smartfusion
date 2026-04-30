@@ -38,7 +38,7 @@ export function KeyMetrics({
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
         <Link key={card.label} href={card.href}>
           <Card className="cursor-pointer transition-colors hover:bg-muted/50">
