@@ -11,8 +11,9 @@
 import { Check, ChevronDown, ChevronRight, FileEdit, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { CostLineActualsInline } from '@/components/features/projects/cost-line-actuals-inline';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -506,6 +507,20 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
   // we still want one chip per CO).
   const coChips = Array.from(new Map(coContributions.map((c) => [c.co_id, c])).values());
 
+  // Per-line "see spend" expansion. Only used in Executing mode —
+  // Editing-mode operators are authoring, not tracking. State is
+  // local to the bucket row so closing/reopening the bucket retains
+  // which lines were expanded for the current session.
+  const [expandedLineIds, setExpandedLineIds] = useState<Set<string>>(new Set());
+  function toggleLineSpend(id: string) {
+    setExpandedLineIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   // Callback ref — fires once when the focused row mounts; scroll into
   // view smoothly so the user lands on it without scrolling manually.
   const focusRef = (node: HTMLTableRowElement | null) => {
@@ -778,47 +793,88 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {bucketLines.map((cl) => (
-                      <tr key={cl.id} className="border-t">
-                        <td className="px-2 py-1">
-                          {cl.label}
-                          {cl.notes && (
-                            <span className="ml-1 text-muted-foreground">— {cl.notes}</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">{Number(cl.qty)}</td>
-                        <td className="px-2 py-1 text-muted-foreground">{cl.unit}</td>
-                        <td className="px-2 py-1 text-right tabular-nums text-muted-foreground">
-                          {formatCurrencyCompact(cl.unit_cost_cents)}
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">
-                          {formatCurrencyCompact(cl.unit_price_cents)}
-                        </td>
-                        <td className="px-2 py-1 text-right font-medium tabular-nums">
-                          {formatCurrencyCompact(cl.line_price_cents)}
-                        </td>
-                        <td className="px-2 py-1 text-right">
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            onClick={() => {
-                              setEditingLine(cl);
-                              setAddingLineFor(null);
-                            }}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => deleteLine(cl.id)}
-                          >
-                            Del
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
+                    {bucketLines.map((cl) => {
+                      const isLineExpanded = expandedLineIds.has(cl.id);
+                      return (
+                        <Fragment key={cl.id}>
+                          <tr className="border-t">
+                            <td className="px-2 py-1">
+                              {/* Executing mode: clicking the label
+                                  toggles the inline spend breakdown
+                                  for this specific line. Editing mode
+                                  has nothing meaningful to drill into. */}
+                              {mode === 'executing' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleLineSpend(cl.id)}
+                                  className="inline-flex items-center gap-1 text-left hover:text-foreground"
+                                  aria-expanded={isLineExpanded}
+                                  title={
+                                    isLineExpanded
+                                      ? 'Hide spend on this line'
+                                      : 'See spend on this line'
+                                  }
+                                >
+                                  {isLineExpanded ? (
+                                    <ChevronDown className="size-3.5 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronRight className="size-3.5 text-muted-foreground" />
+                                  )}
+                                  {cl.label}
+                                </button>
+                              ) : (
+                                cl.label
+                              )}
+                              {cl.notes && (
+                                <span className="ml-1 text-muted-foreground">— {cl.notes}</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums">{Number(cl.qty)}</td>
+                            <td className="px-2 py-1 text-muted-foreground">{cl.unit}</td>
+                            <td className="px-2 py-1 text-right tabular-nums text-muted-foreground">
+                              {formatCurrencyCompact(cl.unit_cost_cents)}
+                            </td>
+                            <td className="px-2 py-1 text-right tabular-nums">
+                              {formatCurrencyCompact(cl.unit_price_cents)}
+                            </td>
+                            <td className="px-2 py-1 text-right font-medium tabular-nums">
+                              {formatCurrencyCompact(cl.line_price_cents)}
+                            </td>
+                            <td className="px-2 py-1 text-right">
+                              <Button
+                                size="xs"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingLine(cl);
+                                  setAddingLineFor(null);
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                size="xs"
+                                variant="ghost"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => deleteLine(cl.id)}
+                              >
+                                Del
+                              </Button>
+                            </td>
+                          </tr>
+                          {mode === 'executing' && isLineExpanded ? (
+                            <tr>
+                              <td colSpan={7} className="bg-background px-2 py-2">
+                                <CostLineActualsInline
+                                  projectId={projectId}
+                                  costLineId={cl.id}
+                                  costLineLabel={cl.label}
+                                />
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
