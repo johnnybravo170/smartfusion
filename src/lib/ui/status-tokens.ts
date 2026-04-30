@@ -111,31 +111,28 @@ export const workerInvoiceStatusTone = {
   paid: 'success',
 } as const satisfies Record<string, StatusTone>;
 
-/** Project lifecycle stage. Each stage gets a distinct tone so the list
- *  view reads at a glance — no two stages share a colour:
- *    planning           — neutral muted gray, internal draft, nothing sent
- *    awaiting_approval  — info blue, sent and waiting on the customer
- *    active             — success green, money flowing and work happening
- *    on_hold            — warning amber, paused (not failed, just stopped)
- *    declined           — danger red, customer said no
- *    complete           — done dark slate filled, shipped
- *    cancelled          — hold light slate, filed away (dropped before/after)
+/** Project lifecycle stage. Restored to the original spec from
+ *  commit 46608fe ("Unify status-tag colors") with one carry-over
+ *  from b44fe56: complete moves from success → done (the dedicated
+ *  "shipped" tone) so it's distinct from active without bumping
+ *  active off green.
  *
- *  Notes:
- *  - `active` reads success (green) rather than warning (amber) — an active
- *    job is the *healthy* state for a contractor. Amber is reserved for
- *    paused/at-risk states.
- *  - `cancelled` and `planning` are both quiet/dim by intent, but use
- *    different tones so they don't visually collide on the list.
+ *    planning           — info blue, in-flight (drafting the scope)
+ *    awaiting_approval  — warning amber, pending approval
+ *    active             — success green, healthy/in motion ("active = good")
+ *    on_hold            — hold slate, paused
+ *    declined           — danger red
+ *    complete           — done dark slate, shipped
+ *    cancelled          — neutral gray, dropped/void
  */
 export const projectStageTone = {
-  planning: 'neutral',
-  awaiting_approval: 'info',
+  planning: 'info',
+  awaiting_approval: 'warning',
   active: 'success',
-  on_hold: 'warning',
+  on_hold: 'hold',
   declined: 'danger',
   complete: 'done',
-  cancelled: 'hold',
+  cancelled: 'neutral',
 } as const satisfies Record<string, StatusTone>;
 
 /** Change order lifecycle. */
