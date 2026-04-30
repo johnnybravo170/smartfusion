@@ -797,103 +797,122 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
               {bucketLines.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No line items in this category yet.</p>
               ) : (
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-muted-foreground">
-                      <th className="px-2 py-1 text-left font-medium">Label</th>
-                      <th className="px-2 py-1 text-right font-medium">Qty</th>
-                      <th className="px-2 py-1 text-left font-medium">Unit</th>
-                      <th className="px-2 py-1 text-right font-medium">Cost</th>
-                      <th className="px-2 py-1 text-right font-medium">Price</th>
-                      <th className="px-2 py-1 text-right font-medium">Total</th>
-                      <th className="px-2 py-1" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bucketLines.map((cl) => {
-                      const isLineExpanded = expandedLineIds.has(cl.id);
-                      return (
-                        <Fragment key={cl.id}>
-                          <tr className="border-t">
-                            <td className="px-2 py-1">
-                              {/* Executing mode: clicking the label
+                // Line items have 7 cols (Label + 5 numeric + actions) which
+                // do not fit a 390px mobile viewport — Editing mode collapsed
+                // view fits natively, but when expanded the cell would crush
+                // the Label col and clip Total. Local overflow-x-auto + a
+                // table-level min-w keeps the collapsed table tidy and lets
+                // only this sub-table scroll horizontally when expanded.
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] table-fixed text-xs">
+                    <colgroup>
+                      <col />
+                      <col className="w-12" />
+                      <col className="w-14" />
+                      <col className="w-20" />
+                      <col className="w-20" />
+                      <col className="w-24" />
+                      <col className="w-10" />
+                    </colgroup>
+                    <thead>
+                      <tr className="text-muted-foreground">
+                        <th className="px-2 py-1 text-left font-medium">Label</th>
+                        <th className="px-2 py-1 text-right font-medium">Qty</th>
+                        <th className="px-2 py-1 text-left font-medium">Unit</th>
+                        <th className="px-2 py-1 text-right font-medium">Cost</th>
+                        <th className="px-2 py-1 text-right font-medium">Price</th>
+                        <th className="px-2 py-1 text-right font-medium">Total</th>
+                        <th className="px-2 py-1" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bucketLines.map((cl) => {
+                        const isLineExpanded = expandedLineIds.has(cl.id);
+                        return (
+                          <Fragment key={cl.id}>
+                            <tr className="border-t">
+                              <td className="px-2 py-1">
+                                {/* Executing mode: clicking the label
                                   toggles the inline spend breakdown
                                   for this specific line. Editing mode
                                   has nothing meaningful to drill into. */}
-                              {mode === 'executing' ? (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleLineSpend(cl.id)}
-                                  className="inline-flex items-center gap-1 text-left hover:text-foreground"
-                                  aria-expanded={isLineExpanded}
-                                  title={
-                                    isLineExpanded
-                                      ? 'Hide spend on this line'
-                                      : 'See spend on this line'
-                                  }
+                                {mode === 'executing' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleLineSpend(cl.id)}
+                                    className="inline-flex items-center gap-1 text-left hover:text-foreground"
+                                    aria-expanded={isLineExpanded}
+                                    title={
+                                      isLineExpanded
+                                        ? 'Hide spend on this line'
+                                        : 'See spend on this line'
+                                    }
+                                  >
+                                    {isLineExpanded ? (
+                                      <ChevronDown className="size-3.5 text-muted-foreground" />
+                                    ) : (
+                                      <ChevronRight className="size-3.5 text-muted-foreground" />
+                                    )}
+                                    {cl.label}
+                                  </button>
+                                ) : (
+                                  cl.label
+                                )}
+                                {cl.notes && (
+                                  <span className="ml-1 text-muted-foreground">— {cl.notes}</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-1 text-right tabular-nums">
+                                {Number(cl.qty)}
+                              </td>
+                              <td className="px-2 py-1 text-muted-foreground">{cl.unit}</td>
+                              <td className="px-2 py-1 text-right tabular-nums text-muted-foreground">
+                                {formatCurrencyCompact(cl.unit_cost_cents)}
+                              </td>
+                              <td className="px-2 py-1 text-right tabular-nums">
+                                {formatCurrencyCompact(cl.unit_price_cents)}
+                              </td>
+                              <td className="px-2 py-1 text-right font-medium tabular-nums">
+                                {formatCurrencyCompact(cl.line_price_cents)}
+                              </td>
+                              <td className="px-2 py-1 text-right">
+                                <Button
+                                  size="xs"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setEditingLine(cl);
+                                    setAddingLineFor(null);
+                                  }}
                                 >
-                                  {isLineExpanded ? (
-                                    <ChevronDown className="size-3.5 text-muted-foreground" />
-                                  ) : (
-                                    <ChevronRight className="size-3.5 text-muted-foreground" />
-                                  )}
-                                  {cl.label}
-                                </button>
-                              ) : (
-                                cl.label
-                              )}
-                              {cl.notes && (
-                                <span className="ml-1 text-muted-foreground">— {cl.notes}</span>
-                              )}
-                            </td>
-                            <td className="px-2 py-1 text-right tabular-nums">{Number(cl.qty)}</td>
-                            <td className="px-2 py-1 text-muted-foreground">{cl.unit}</td>
-                            <td className="px-2 py-1 text-right tabular-nums text-muted-foreground">
-                              {formatCurrencyCompact(cl.unit_cost_cents)}
-                            </td>
-                            <td className="px-2 py-1 text-right tabular-nums">
-                              {formatCurrencyCompact(cl.unit_price_cents)}
-                            </td>
-                            <td className="px-2 py-1 text-right font-medium tabular-nums">
-                              {formatCurrencyCompact(cl.line_price_cents)}
-                            </td>
-                            <td className="px-2 py-1 text-right">
-                              <Button
-                                size="xs"
-                                variant="ghost"
-                                onClick={() => {
-                                  setEditingLine(cl);
-                                  setAddingLineFor(null);
-                                }}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                size="xs"
-                                variant="ghost"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => deleteLine(cl.id)}
-                              >
-                                Del
-                              </Button>
-                            </td>
-                          </tr>
-                          {mode === 'executing' && isLineExpanded ? (
-                            <tr>
-                              <td colSpan={7} className="bg-background px-2 py-2">
-                                <CostLineActualsInline
-                                  projectId={projectId}
-                                  costLineId={cl.id}
-                                  costLineLabel={cl.label}
-                                />
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="xs"
+                                  variant="ghost"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => deleteLine(cl.id)}
+                                >
+                                  Del
+                                </Button>
                               </td>
                             </tr>
-                          ) : null}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            {mode === 'executing' && isLineExpanded ? (
+                              <tr>
+                                <td colSpan={7} className="bg-background px-2 py-2">
+                                  <CostLineActualsInline
+                                    projectId={projectId}
+                                    costLineId={cl.id}
+                                    costLineLabel={cl.label}
+                                  />
+                                </td>
+                              </tr>
+                            ) : null}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
 
               {editingLine && editingLine.budget_category_id === line.budget_category_id ? (
