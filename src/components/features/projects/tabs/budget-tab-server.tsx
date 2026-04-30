@@ -71,29 +71,34 @@ export default async function BudgetTabServer({
         projectId={projectId}
       />
 
-      {/* Mode toolbar — toggle on the left, mode-specific actions on
-          the right. Sticky at the top of the tab content so it's always
-          accessible while scrolling. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-3 py-2">
-        <div className="flex items-center gap-3">
-          <BudgetModeToggle currentMode={mode} />
-          <span className="text-xs text-muted-foreground">
+      {/* Mode toggle — large, prominent, anchored at the top of the
+          tab so the operator always knows which posture they're in.
+          Editing = authoring; Executing = tracking. Each posture
+          shows different columns + different action density (see
+          BudgetCategoriesTable). */}
+      <BudgetModeToggle currentMode={mode} />
+
+      {/* Mode-specific actions row — only renders when there's
+          something to act on. Subordinate to the mode toggle above. */}
+      {(mode === 'editing' && (sendable || !isEmptyScope)) || mode === 'executing' ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+          <span>
             {mode === 'editing'
               ? 'Build the scope. Send to the customer when ready.'
               : 'Track actuals against the signed estimate. Edits flow through change orders.'}
           </span>
+          <div className="flex items-center gap-2">
+            {mode === 'editing' && !isEmptyScope ? (
+              <SaveAsTemplateButton projectId={projectId} />
+            ) : null}
+            {mode === 'editing' && sendable ? (
+              <Button asChild size="sm">
+                <Link href={`/projects/${projectId}/estimate/preview`}>Send for approval</Link>
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {mode === 'editing' && !isEmptyScope ? (
-            <SaveAsTemplateButton projectId={projectId} />
-          ) : null}
-          {mode === 'editing' && sendable ? (
-            <Button asChild size="sm">
-              <Link href={`/projects/${projectId}/estimate/preview`}>Send for approval</Link>
-            </Button>
-          ) : null}
-        </div>
-      </div>
+      ) : null}
 
       {showStarterPicker ? (
         <>

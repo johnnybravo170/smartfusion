@@ -311,10 +311,10 @@ export function BudgetCategoriesTable({
                   <col className="w-8" />
                   <col />
                   <col className="w-32" />
-                  <col className="w-28" />
-                  <col className="w-28" />
-                  <col className="w-28" />
-                  <col className="w-32" />
+                  {mode === 'executing' ? <col className="w-28" /> : null}
+                  {mode === 'executing' ? <col className="w-28" /> : null}
+                  {mode === 'executing' ? <col className="w-28" /> : null}
+                  {mode === 'executing' ? <col className="w-32" /> : null}
                   <col className="w-10" />
                 </colgroup>
                 <thead>
@@ -322,25 +322,29 @@ export function BudgetCategoriesTable({
                     <th className="px-2 py-2" />
                     <th className="px-3 py-2 text-left font-medium">Category</th>
                     <th className="px-3 py-2 text-right font-medium">Estimate</th>
-                    <th
-                      className="px-3 py-2 text-right font-medium"
-                      title="Realized cost: labour + bills + expenses"
-                    >
-                      Spent
-                    </th>
-                    <th
-                      className="px-3 py-2 text-right font-medium"
-                      title="Promised but not yet realized: accepted vendor quotes + active POs"
-                    >
-                      Committed
-                    </th>
-                    <th
-                      className="px-3 py-2 text-right font-medium"
-                      title="Estimate − Spent − Committed. Negative = over budget."
-                    >
-                      Remaining
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium">Progress</th>
+                    {mode === 'executing' ? (
+                      <>
+                        <th
+                          className="px-3 py-2 text-right font-medium"
+                          title="Realized cost: labour + bills + expenses"
+                        >
+                          Spent
+                        </th>
+                        <th
+                          className="px-3 py-2 text-right font-medium"
+                          title="Promised but not yet realized: accepted vendor quotes + active POs"
+                        >
+                          Committed
+                        </th>
+                        <th
+                          className="px-3 py-2 text-right font-medium"
+                          title="Estimate − Spent − Committed. Negative = over budget."
+                        >
+                          Remaining
+                        </th>
+                        <th className="px-3 py-2 text-right font-medium">Progress</th>
+                      </>
+                    ) : null}
                     <th className="px-2 py-2" />
                   </tr>
                 </thead>
@@ -387,6 +391,7 @@ export function BudgetCategoriesTable({
                         saveEditDesc={saveEditDesc}
                         startEditDesc={startEditDesc}
                         coContributions={coContributionsByCategoryId[line.budget_category_id] ?? []}
+                        mode={mode}
                       />
                     );
                   })}
@@ -398,15 +403,21 @@ export function BudgetCategoriesTable({
                       {section.charAt(0).toUpperCase() + section.slice(1)} Total
                     </td>
                     <td className="px-3 py-2 text-right">{formatCurrency(sectionTotal)}</td>
-                    <td className="px-3 py-2 text-right">{formatCurrency(sectionActual)}</td>
-                    <td className="px-3 py-2 text-right text-muted-foreground">
-                      {sectionCommitted > 0 ? formatCurrency(sectionCommitted) : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {formatCurrency(Math.abs(sectionTotal - sectionActual - sectionCommitted))}
-                      {sectionTotal - sectionActual - sectionCommitted < 0 ? ' over' : ''}
-                    </td>
-                    <td />
+                    {mode === 'executing' ? (
+                      <>
+                        <td className="px-3 py-2 text-right">{formatCurrency(sectionActual)}</td>
+                        <td className="px-3 py-2 text-right text-muted-foreground">
+                          {sectionCommitted > 0 ? formatCurrency(sectionCommitted) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {formatCurrency(
+                            Math.abs(sectionTotal - sectionActual - sectionCommitted),
+                          )}
+                          {sectionTotal - sectionActual - sectionCommitted < 0 ? ' over' : ''}
+                        </td>
+                        <td />
+                      </>
+                    ) : null}
                     <td />
                   </tr>
                 </tfoot>
@@ -450,6 +461,7 @@ type BudgetCategoryRowProps = {
   saveEditDesc: (id: string) => void;
   startEditDesc: (line: BudgetLine) => void;
   coContributions: AppliedChangeOrderContribution[];
+  mode: 'editing' | 'executing';
 };
 
 function BudgetCategoryRow(props: BudgetCategoryRowProps) {
@@ -484,6 +496,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
     saveEditDesc,
     startEditDesc,
     coContributions,
+    mode,
   } = props;
   // Distinct CO chip per CO (a CO may have multiple lines in this category;
   // we still want one chip per CO).
@@ -639,25 +652,29 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
             </button>
           )}
         </td>
-        <td className="px-3 py-2 text-right">{formatCurrency(line.actual_cents)}</td>
-        <td className="px-3 py-2 text-right text-muted-foreground">
-          {line.committed_cents > 0 ? formatCurrency(line.committed_cents) : '—'}
-        </td>
-        <td className={cn('px-3 py-2 text-right', isOver && 'font-medium text-red-600')}>
-          {formatCurrency(Math.abs(line.remaining_cents))}
-          {isOver ? ' over' : ''}
-        </td>
-        <td className="px-3 py-2">
-          <div className="h-1.5 w-full rounded-full bg-gray-200">
-            <div
-              className={cn(
-                'h-full rounded-full',
-                isOver ? 'bg-red-500' : progress > 80 ? 'bg-yellow-500' : 'bg-green-500',
-              )}
-              style={{ width: `${Math.min(progress, 100)}%` }}
-            />
-          </div>
-        </td>
+        {mode === 'executing' ? (
+          <>
+            <td className="px-3 py-2 text-right">{formatCurrency(line.actual_cents)}</td>
+            <td className="px-3 py-2 text-right text-muted-foreground">
+              {line.committed_cents > 0 ? formatCurrency(line.committed_cents) : '—'}
+            </td>
+            <td className={cn('px-3 py-2 text-right', isOver && 'font-medium text-red-600')}>
+              {formatCurrency(Math.abs(line.remaining_cents))}
+              {isOver ? ' over' : ''}
+            </td>
+            <td className="px-3 py-2">
+              <div className="h-1.5 w-full rounded-full bg-gray-200">
+                <div
+                  className={cn(
+                    'h-full rounded-full',
+                    isOver ? 'bg-red-500' : progress > 80 ? 'bg-yellow-500' : 'bg-green-500',
+                  )}
+                  style={{ width: `${Math.min(progress, 100)}%` }}
+                />
+              </div>
+            </td>
+          </>
+        ) : null}
         <td className="px-2 py-2 text-right">
           <Button
             size="xs"
@@ -672,7 +689,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
       {isExpanded && (
         <tr className="border-b bg-muted/20">
           <td />
-          <td colSpan={6} className="px-3 py-3">
+          <td colSpan={mode === 'executing' ? 6 : 2} className="px-3 py-3">
             <div className="space-y-3">
               {/* Actuals breakdown by source — synthesized from time_entries,
                   expenses, project_bills. Each row deep-links to the tab
