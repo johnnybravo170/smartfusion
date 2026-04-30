@@ -5,6 +5,7 @@ import {
   type BudgetMode,
   BudgetModeToggle,
 } from '@/components/features/projects/budget-mode-toggle';
+import { EstimateSentBanner } from '@/components/features/projects/estimate-sent-banner';
 import { Button } from '@/components/ui/button';
 import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
 import { listCostLines } from '@/lib/db/queries/cost-lines';
@@ -50,6 +51,12 @@ export default async function BudgetTabServer({
 
   return (
     <div className="flex flex-col gap-3">
+      <EstimateSentBanner
+        estimateStatus={estimateStatus}
+        sentAt={(project?.estimate_sent_at as string | null) ?? null}
+        customerName={project?.customer?.name ?? null}
+        approvalCode={(project?.estimate_approval_code as string | null) ?? null}
+      />
       <AppliedChangeOrdersBanner
         appliedCount={coContributions.appliedOrder.length}
         projectId={projectId}

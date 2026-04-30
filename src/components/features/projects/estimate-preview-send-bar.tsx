@@ -88,7 +88,7 @@ export function EstimatePreviewSendBar({
       if (res.ok) {
         toast.success('Estimate sent to customer');
         setOpen(false);
-        router.push(`/projects/${projectId}?tab=estimate`);
+        router.push(`/projects/${projectId}?tab=budget`);
       } else {
         toast.error(res.error);
       }
@@ -119,7 +119,7 @@ export function EstimatePreviewSendBar({
       if (res.ok) {
         toast.success('Estimate sent to customer');
         setOpen(false);
-        router.push(`/projects/${projectId}?tab=estimate`);
+        router.push(`/projects/${projectId}?tab=budget`);
       } else {
         toast.error(res.error);
       }
@@ -131,7 +131,7 @@ export function EstimatePreviewSendBar({
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => router.push(`/projects/${projectId}?tab=estimate`)}
+        onClick={() => router.push(`/projects/${projectId}?tab=budget`)}
       >
         <ArrowLeft className="size-3.5" />
         Back to estimate
@@ -156,7 +156,9 @@ export function EstimatePreviewSendBar({
           <AlertDialogTrigger asChild>
             <Button disabled={!canSend}>
               <Send className="size-3.5" />
-              {alreadySent ? 'Resend to customer' : 'Send to customer'}
+              {alreadySent
+                ? `Resend to ${customerName.split(' ')[0]}`
+                : `Send to ${customerName.split(' ')[0]}`}
             </Button>
           </AlertDialogTrigger>
 
