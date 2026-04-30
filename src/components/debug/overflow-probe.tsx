@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 
 type Offender = {
+  kind: 'page' | 'clip';
   tag: string;
   classes: string;
   text: string;
@@ -69,30 +70,62 @@ export function OverflowProbe() {
       const viewportWidth = window.innerWidth;
       const docScrollWidth = document.documentElement.scrollWidth;
       const tolerance = 1;
+      const seen = new Set<Element>();
       const found: Offender[] = [];
       const all = document.querySelectorAll('body *');
       for (const el of all) {
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0) continue;
-        if (rect.right <= viewportWidth + tolerance) continue;
-        // Skip elements visually contained by an ancestor — those are
-        // truncated/hidden in practice and not what's pushing the page wide.
-        if (isClippedByAncestor(el)) continue;
         const classes =
           typeof el.className === 'string'
             ? el.className
             : ((el as Element & { className?: { baseVal?: string } }).className?.baseVal ?? '');
-        found.push({
-          tag: el.tagName.toLowerCase(),
-          classes: classes.toString().slice(0, 100),
-          text: (el.textContent ?? '').trim().slice(0, 40),
-          right: Math.round(rect.right),
-          left: Math.round(rect.left),
-          width: Math.round(rect.width),
-          selector: elementSelector(el),
-        });
+
+        // Pass 1 — page-wide overflow: extends past viewport AND not contained
+        // by an overflow-hidden/clip ancestor (means it's pushing the page wide).
+        if (rect.right > viewportWidth + tolerance && !isClippedByAncestor(el)) {
+          if (!seen.has(el)) {
+            seen.add(el);
+            found.push({
+              kind: 'page',
+              tag: el.tagName.toLowerCase(),
+              classes: classes.toString().slice(0, 100),
+              text: (el.textContent ?? '').trim().slice(0, 40),
+              right: Math.round(rect.right),
+              left: Math.round(rect.left),
+              width: Math.round(rect.width),
+              selector: elementSelector(el),
+            });
+          }
+        }
+
+        // Pass 2 — content-clipping: element's own content overflows its visible
+        // box (scrollWidth > clientWidth). Visually clipped, but the user
+        // perceives it as "too wide / cut off". HTMLElement check excludes SVG.
+        if (el instanceof HTMLElement) {
+          const overflow = el.scrollWidth - el.clientWidth;
+          if (overflow > tolerance && el.clientWidth > 0) {
+            if (!seen.has(el)) {
+              seen.add(el);
+              found.push({
+                kind: 'clip',
+                tag: el.tagName.toLowerCase(),
+                classes: classes.toString().slice(0, 100),
+                text: (el.textContent ?? '').trim().slice(0, 40),
+                right: Math.round(el.clientWidth + overflow),
+                left: 0,
+                width: Math.round(el.clientWidth),
+                selector: elementSelector(el),
+              });
+            }
+          }
+        }
       }
-      found.sort((a, b) => b.right - a.right);
+      // Page-wide first (more severe), then clip — within each, biggest first.
+      found.sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === 'page' ? -1 : 1;
+        return b.right - a.right;
+      });
       setVw(viewportWidth);
       setDocScroll(Math.max(0, docScrollWidth - viewportWidth));
       setOffenders(found.slice(0, 8));
@@ -122,7 +155,7 @@ export function OverflowProbe() {
         // biome-ignore lint/suspicious/noArrayIndexKey: temporary debug output, ranks by overflow
         <div key={`${i}-${o.selector}`} className="mb-1.5 border-t border-white/30 pt-1">
           <div className="font-mono">
-            <b>#{i + 1}</b> {o.tag}{' '}
+            <b>#{i + 1}</b> [{o.kind}] {o.tag}{' '}
             <span className="text-yellow-200">
               right={o.right} left={o.left} w={o.width}
             </span>

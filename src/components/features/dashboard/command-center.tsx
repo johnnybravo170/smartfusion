@@ -206,10 +206,10 @@ export function CommandCenter({
         ) : (
           <ul className="grid gap-1 sm:grid-cols-2 md:grid-cols-3">
             {jobHealth.map((j) => (
-              <li key={j.job_id}>
+              <li key={j.job_id} className="min-w-0">
                 <Link
                   href={`/jobs/${j.job_id}/tasks`}
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+                  className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
                 >
                   <span
                     title={j.health}
@@ -222,7 +222,7 @@ export function CommandCenter({
                   >
                     <span className="sr-only">{j.health}</span>
                   </span>
-                  <span className="flex-1 truncate">{j.customer_name ?? 'Job'}</span>
+                  <span className="min-w-0 flex-1 truncate">{j.customer_name ?? 'Job'}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">{j.open_count}</span>
                 </Link>
               </li>
