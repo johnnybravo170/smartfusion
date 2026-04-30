@@ -76,7 +76,11 @@ export function ChatPanel() {
           </div>
 
           {/* Voice indicator -- shows listening/processing/speaking state when voice is on */}
-          <VoiceIndicator voiceState={voice.voiceState} onStopSpeaking={voice.stopSpeaking} />
+          <VoiceIndicator
+            voiceEnabled={voice.voiceEnabled}
+            voiceState={voice.voiceState}
+            onStopSpeaking={voice.stopSpeaking}
+          />
 
           {/* Error banner */}
           {error && (

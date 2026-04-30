@@ -287,8 +287,27 @@ export function useHenry(): UseHenryReturn {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, args }),
           });
-          const json = (await res.json()) as { result?: string };
-          output = json.result ?? 'No output.';
+          // Read the body once, then decide. Surface real errors to the model
+          // (and the user) instead of silently degrading to "No output." —
+          // that pattern caused the model to end its turn with no audio when
+          // the tool route returned 401/500.
+          const raw = await res.text();
+          let parsed: { result?: string; error?: string } | null = null;
+          try {
+            parsed = raw ? JSON.parse(raw) : null;
+          } catch {
+            parsed = null;
+          }
+          if (!res.ok) {
+            const reason = parsed?.error ?? raw.slice(0, 200) ?? res.statusText;
+            console.error('[Henry] tool call failed', { name, status: res.status, reason });
+            output = `Tool "${name}" failed (${res.status}): ${reason}`;
+          } else if (parsed && typeof parsed.result === 'string') {
+            output = parsed.result;
+          } else {
+            console.error('[Henry] tool call returned no result', { name, raw });
+            output = `Tool "${name}" returned an empty response.`;
+          }
         }
       } catch (e) {
         output = `Tool call failed: ${e instanceof Error ? e.message : String(e)}`;
@@ -554,6 +573,14 @@ export function useHenry(): UseHenryReturn {
         setError(`Connection closed (${e.code}): ${e.reason || 'no reason given'}`);
       }
       wsRef.current = null;
+      // If the socket dies (idle timeout, mobile background, network drop)
+      // we must also release the mic and audio output, otherwise the UI
+      // shows "off" while the mic is still engaged and the toggle button
+      // ends up reconnecting instead of turning voice off.
+      stopMicCapture();
+      outputAudioCtxRef.current?.close().catch(() => {});
+      outputAudioCtxRef.current = null;
+      playbackCursorRef.current = 0;
       setVoiceEnabled(false);
       setVoiceState('off');
       setIsLoading(false);
@@ -563,7 +590,7 @@ export function useHenry(): UseHenryReturn {
 
     outputAudioCtxRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
     playbackCursorRef.current = 0;
-  }, [handleServerEvent]);
+  }, [handleServerEvent, stopMicCapture]);
 
   const disconnect = useCallback(() => {
     wsRef.current?.close();
@@ -579,7 +606,10 @@ export function useHenry(): UseHenryReturn {
 
   // ─── Public voice controls ─────────────────────────────────────────────
   const toggleVoice = useCallback(async () => {
-    if (voiceEnabled) {
+    // Treat a tap as "turn off" if either flag OR any live audio resource is
+    // present. Without this, a stale mic stream after a dropped WS would
+    // cause the next tap to reconnect instead of turning the mic off.
+    if (voiceEnabled || wsRef.current || micStreamRef.current) {
       disconnect();
       return;
     }

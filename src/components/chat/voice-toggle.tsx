@@ -14,10 +14,10 @@ const stateStyles: Record<VoiceState, string> = {
 
 const stateLabels: Record<VoiceState, string> = {
   off: 'Enable voice mode',
-  idle: 'Voice mode on (listening for Hey Henry)',
-  listening: 'Listening...',
-  processing: 'Processing...',
-  speaking: 'Speaking...',
+  idle: 'Voice on — tap to turn off',
+  listening: 'Listening… (tap to turn off)',
+  processing: 'Thinking… (tap to turn off)',
+  speaking: 'Speaking… (tap to turn off)',
 };
 
 export function VoiceToggle({

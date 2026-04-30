@@ -9,10 +9,15 @@ export const projectTools: AiTool[] = [
     definition: {
       name: 'list_projects',
       description:
-        'List renovation projects. Filter by lifecycle stage (planning/awaiting_approval/active/on_hold/declined/complete/cancelled) or customer.',
+        'List renovation projects. Filter by name (case-insensitive substring match — use this when the operator names a project), lifecycle stage, or customer.',
       input_schema: {
         type: 'object',
         properties: {
+          name: {
+            type: 'string',
+            description:
+              'Case-insensitive substring of the project name (e.g. "glendwood" matches "Glendwood Reno"). Use this whenever the operator refers to a project by name.',
+          },
           stage: {
             type: 'string',
             enum: [
@@ -42,6 +47,7 @@ export const projectTools: AiTool[] = [
         const rows = await listProjects({
           stage: input.stage as import('@/lib/validators/project').LifecycleStage | undefined,
           customer_id: input.customer_id as string | undefined,
+          name: input.name as string | undefined,
           limit: Math.min((input.limit as number) || 20, 100),
         });
 
@@ -191,109 +197,43 @@ export const projectTools: AiTool[] = [
     definition: {
       name: 'get_project_budget',
       description:
-        'Get budget vs actual spending for a project. Shows each cost bucket with estimate, actual (labor + expenses), and remaining.',
+        'Budget vs actual spending. Pass a project id to get the full per-cost-bucket breakdown for one project (Framing, Plumbing, Electrical, etc with estimate/actual/remaining). Omit id to get an active-projects rollup with totals and over-80% warnings. Use this whenever the operator asks how much was spent on a category like framing for a specific project.',
       input_schema: {
         type: 'object',
         properties: {
-          id: { type: 'string', description: 'Project UUID' },
-        },
-        required: ['id'],
-      },
-    },
-    handler: async (input) => {
-      try {
-        const budget = await getBudgetVsActual(input.id as string);
-
-        if (budget.lines.length === 0) {
-          return 'No cost buckets found for this project.';
-        }
-
-        let output = `Budget vs Actual\n${'='.repeat(40)}\n\n`;
-
-        // Group by section
-        const sections = new Map<string, typeof budget.lines>();
-        for (const line of budget.lines) {
-          const existing = sections.get(line.section) ?? [];
-          existing.push(line);
-          sections.set(line.section, existing);
-        }
-
-        for (const [section, lines] of sections) {
-          output += `${section.toUpperCase()}\n${'-'.repeat(30)}\n`;
-          for (const line of lines) {
-            output += `  ${line.budget_category_name}: `;
-            output += `Est ${formatCad(line.estimate_cents)} · `;
-            output += `Actual ${formatCad(line.actual_cents)} · `;
-            output += `Remaining ${formatCad(line.remaining_cents)}`;
-            if (line.remaining_cents < 0) output += ' [OVER BUDGET]';
-            output += '\n';
-          }
-          output += '\n';
-        }
-
-        output += `TOTALS\n`;
-        output += `  Estimated: ${formatCad(budget.total_estimate_cents)}\n`;
-        output += `  Actual:    ${formatCad(budget.total_actual_cents)}\n`;
-        output += `  Remaining: ${formatCad(budget.total_remaining_cents)}\n`;
-
-        return output;
-      } catch (e) {
-        return `Failed to get budget: ${e instanceof Error ? e.message : String(e)}`;
-      }
-    },
-  },
-  {
-    definition: {
-      name: 'get_project_budget_status',
-      description:
-        'Get budget vs actual spending for renovation projects. Flags projects over 80% budget used.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          project_id: {
+          id: {
             type: 'string',
-            description: 'Project UUID. Omit to get all active projects.',
+            description:
+              'Project UUID. Required for per-bucket breakdown. Omit to roll up all active projects.',
           },
         },
       },
     },
     handler: async (input) => {
       try {
-        let projectIds: { id: string; name: string }[] = [];
-
-        if (input.project_id) {
-          const project = await getProject(input.project_id as string);
-          if (!project) return 'Project not found.';
-          projectIds = [{ id: project.id, name: project.name }];
-        } else {
-          const supabase = await createClient();
-          const { data, error } = await supabase
-            .from('projects')
-            .select('id, name')
-            .in('lifecycle_stage', ['planning', 'awaiting_approval', 'active'])
-            .is('deleted_at', null)
-            .order('created_at', { ascending: false });
-
-          if (error) {
-            return `Failed to list projects: ${error.message}`;
-          }
-          projectIds = (data ?? []) as { id: string; name: string }[];
+        if (input.id) {
+          return await renderProjectBudgetDetail(input.id as string);
         }
 
-        if (projectIds.length === 0) {
-          return 'No active projects found.';
-        }
+        const supabase = await createClient();
+        const { data, error } = await supabase
+          .from('projects')
+          .select('id, name')
+          .in('lifecycle_stage', ['planning', 'awaiting_approval', 'active'])
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false });
+
+        if (error) return `Failed to list projects: ${error.message}`;
+        const projects = (data ?? []) as { id: string; name: string }[];
+        if (projects.length === 0) return 'No active projects found.';
 
         let output = `Project Budget Status\n${'='.repeat(40)}\n\n`;
-
-        for (const proj of projectIds) {
+        for (const proj of projects) {
           const budget = await getBudgetVsActual(proj.id);
-
           const pct =
             budget.total_estimate_cents > 0
               ? Math.round((budget.total_actual_cents / budget.total_estimate_cents) * 100)
               : 0;
-
           const warning = pct >= 80 ? ' ⚠ OVER 80%' : '';
           output += `${proj.name}${warning}\n`;
           output += `  Budget: ${formatCad(budget.total_estimate_cents)}`;
@@ -306,11 +246,40 @@ export const projectTools: AiTool[] = [
           }
           output += '\n';
         }
-
         return output;
       } catch (e) {
-        return `Failed to get project budget status: ${e instanceof Error ? e.message : String(e)}`;
+        return `Failed to get budget: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
   },
 ];
+
+async function renderProjectBudgetDetail(projectId: string): Promise<string> {
+  const budget = await getBudgetVsActual(projectId);
+  if (budget.lines.length === 0) return 'No cost buckets found for this project.';
+
+  let output = `Budget vs Actual\n${'='.repeat(40)}\n\n`;
+  const sections = new Map<string, typeof budget.lines>();
+  for (const line of budget.lines) {
+    const existing = sections.get(line.section) ?? [];
+    existing.push(line);
+    sections.set(line.section, existing);
+  }
+  for (const [section, lines] of sections) {
+    output += `${section.toUpperCase()}\n${'-'.repeat(30)}\n`;
+    for (const line of lines) {
+      output += `  ${line.budget_category_name}: `;
+      output += `Est ${formatCad(line.estimate_cents)} · `;
+      output += `Actual ${formatCad(line.actual_cents)} · `;
+      output += `Remaining ${formatCad(line.remaining_cents)}`;
+      if (line.remaining_cents < 0) output += ' [OVER BUDGET]';
+      output += '\n';
+    }
+    output += '\n';
+  }
+  output += `TOTALS\n`;
+  output += `  Estimated: ${formatCad(budget.total_estimate_cents)}\n`;
+  output += `  Actual:    ${formatCad(budget.total_actual_cents)}\n`;
+  output += `  Remaining: ${formatCad(budget.total_remaining_cents)}\n`;
+  return output;
+}

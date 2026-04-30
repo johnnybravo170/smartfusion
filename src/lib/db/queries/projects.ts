@@ -76,6 +76,7 @@ export type ProjectWithRelations = ProjectWithCustomer & {
 export type ProjectListFilters = {
   stage?: LifecycleStage;
   customer_id?: string;
+  name?: string;
   limit?: number;
 };
 
@@ -116,6 +117,11 @@ export async function listProjects(
 
   if (filters.stage) query = query.eq('lifecycle_stage', filters.stage);
   if (filters.customer_id) query = query.eq('customer_id', filters.customer_id);
+  if (filters.name) {
+    // Escape PostgREST ilike wildcards in user input so "%" / "_" don't blow scope.
+    const escaped = filters.name.replace(/[\\%_]/g, (c) => `\\${c}`);
+    query = query.ilike('name', `%${escaped}%`);
+  }
 
   const { data, error } = await query.order('created_at', { ascending: false }).limit(limit);
 

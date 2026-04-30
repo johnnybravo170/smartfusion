@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2, Mic, Radio, Square, Volume2 } from 'lucide-react';
+import { Loader2, Mic, Square, Volume2 } from 'lucide-react';
 import type { VoiceState } from '@/hooks/use-voice';
 import { cn } from '@/lib/utils';
 
@@ -9,25 +9,33 @@ const config: Record<
   { icon: typeof Mic; label: string; color: string }
 > = {
   idle: {
-    icon: Radio,
-    label: "Listening for 'Hey Henry'...",
+    icon: Mic,
+    label: 'Mic on — speak any time',
     color: 'bg-emerald-500/10 text-emerald-600',
   },
-  listening: { icon: Mic, label: 'Listening...', color: 'bg-red-500/10 text-red-600' },
-  processing: { icon: Loader2, label: 'Thinking...', color: 'bg-amber-500/10 text-amber-600' },
-  speaking: { icon: Volume2, label: 'Speaking...', color: 'bg-blue-500/10 text-blue-600' },
+  listening: { icon: Mic, label: 'Listening…', color: 'bg-red-500/10 text-red-600' },
+  processing: { icon: Loader2, label: 'Thinking…', color: 'bg-amber-500/10 text-amber-600' },
+  speaking: { icon: Volume2, label: 'Speaking…', color: 'bg-blue-500/10 text-blue-600' },
 };
 
 export function VoiceIndicator({
+  voiceEnabled,
   voiceState,
   onStopSpeaking,
 }: {
+  voiceEnabled: boolean;
   voiceState: VoiceState;
   onStopSpeaking: () => void;
 }) {
-  if (voiceState === 'off') return null;
+  // Only hide the bar when the operator has actually disabled voice.
+  // Per-turn state ("off" briefly between responses) must NOT hide it,
+  // otherwise the bar disappears while the mic is still live.
+  if (!voiceEnabled) return null;
 
-  const { icon: Icon, label, color } = config[voiceState];
+  // If voiceEnabled but state is somehow "off" (race), show the ambient
+  // "mic on" treatment rather than blanking out.
+  const effective: Exclude<VoiceState, 'off'> = voiceState === 'off' ? 'idle' : voiceState;
+  const { icon: Icon, label, color } = config[effective];
 
   return (
     <div
@@ -40,8 +48,8 @@ export function VoiceIndicator({
         <Icon
           className={cn(
             'size-3.5',
-            voiceState === 'processing' && 'animate-spin',
-            voiceState === 'listening' && 'animate-pulse',
+            effective === 'processing' && 'animate-spin',
+            (effective === 'listening' || effective === 'idle') && 'animate-pulse',
           )}
         />
         <span>{label}</span>
