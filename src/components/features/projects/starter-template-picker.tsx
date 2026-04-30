@@ -16,17 +16,12 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  applyStarterTemplateAction,
-  listStarterTemplatesAction,
-} from '@/server/actions/starter-templates';
+  applyTemplateAction,
+  type CombinedTemplateListItem,
+  listAllTemplatesAction,
+} from '@/server/actions/quote-templates';
 
-type Template = {
-  slug: string;
-  label: string;
-  description: string;
-  bucketCount: number;
-  lineCount: number;
-};
+type Template = CombinedTemplateListItem;
 
 export function StarterTemplatePicker({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
@@ -35,12 +30,16 @@ export function StarterTemplatePicker({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (!open || templates !== null) return;
-    listStarterTemplatesAction().then(setTemplates);
+    listAllTemplatesAction().then(setTemplates);
   }, [open, templates]);
 
-  function apply(slug: string) {
+  function apply(t: Template) {
     startTransition(async () => {
-      const res = await applyStarterTemplateAction({ projectId, templateSlug: slug });
+      const res = await applyTemplateAction({
+        projectId,
+        source: t.source,
+        slug: t.slug,
+      });
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -80,19 +79,34 @@ export function StarterTemplatePicker({ projectId }: { projectId: string }) {
             <ul className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
               {templates.map((t) => (
                 <li
-                  key={t.slug}
+                  key={`${t.source}-${t.slug}`}
                   className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium">{t.label}</p>
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <p className="font-medium">{t.label}</p>
+                      <span
+                        className={
+                          t.source === 'user'
+                            ? 'rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-800 dark:bg-blue-950 dark:text-blue-200'
+                            : 'rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground'
+                        }
+                      >
+                        {t.source === 'user'
+                          ? t.visibility === 'private'
+                            ? 'Mine'
+                            : 'Team'
+                          : 'Starter'}
+                      </span>
+                    </div>
                     <p className="text-xs text-muted-foreground">{t.description}</p>
                     <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      {t.bucketCount} buckets · {t.lineCount} line items · prices empty
+                      {t.bucketCount} buckets · {t.lineCount} line items
                     </p>
                   </div>
                   <Button
                     size="sm"
-                    onClick={() => apply(t.slug)}
+                    onClick={() => apply(t)}
                     disabled={pending}
                     className="shrink-0"
                   >

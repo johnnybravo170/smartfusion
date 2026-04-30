@@ -7,6 +7,7 @@ import {
 } from '@/components/features/projects/budget-mode-toggle';
 import { EstimateSentBanner } from '@/components/features/projects/estimate-sent-banner';
 import { HenryInsightStrip } from '@/components/features/projects/henry-insight-strip';
+import { SaveAsTemplateButton } from '@/components/features/projects/save-as-template-button';
 import { StarterTemplatePicker } from '@/components/features/projects/starter-template-picker';
 import { Button } from '@/components/ui/button';
 import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
@@ -81,11 +82,16 @@ export default async function BudgetTabServer({
               : 'Track actuals against the signed estimate. Edits flow through change orders.'}
           </span>
         </div>
-        {mode === 'editing' && sendable ? (
-          <Button asChild size="sm">
-            <Link href={`/projects/${projectId}/estimate/preview`}>Send for approval</Link>
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {mode === 'editing' && !isEmptyScope ? (
+            <SaveAsTemplateButton projectId={projectId} />
+          ) : null}
+          {mode === 'editing' && sendable ? (
+            <Button asChild size="sm">
+              <Link href={`/projects/${projectId}/estimate/preview`}>Send for approval</Link>
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {showStarterPicker ? <StarterTemplatePicker projectId={projectId} /> : null}
