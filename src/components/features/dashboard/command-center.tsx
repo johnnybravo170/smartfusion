@@ -22,13 +22,15 @@ type ChangeOrderRow = {
 function TaskLine({ task }: { task: TaskRow }) {
   const href = task.job_id ? `/jobs/${task.job_id}/tasks` : '/todos';
   return (
-    <li className="flex min-w-0 items-center justify-between gap-3 py-1.5 text-sm">
+    <li className="flex min-w-0 items-center justify-between gap-2 py-1.5 text-sm sm:gap-3">
       <Link href={href} className="min-w-0 flex-1 truncate hover:underline">
         {task.title}
       </Link>
       <TaskStatusBadge status={task.status} className="shrink-0" hideLabelOnMobile />
       {task.due_date ? (
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{task.due_date}</span>
+        <span className="hidden shrink-0 text-xs tabular-nums text-muted-foreground sm:inline">
+          {task.due_date}
+        </span>
       ) : null}
     </li>
   );
