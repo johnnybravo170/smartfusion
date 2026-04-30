@@ -9,6 +9,7 @@ import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { upsertCostLineAction } from '@/server/actions/project-cost-control';
 import { CostLinePhotoStrip } from './cost-line-photo-strip';
+import { LastUsedPriceHints } from './last-used-price-hints';
 
 const CATEGORIES = ['material', 'labour', 'sub', 'equipment', 'overhead'] as const;
 
@@ -251,6 +252,12 @@ export function CostLineForm({
             value={priceRaw}
             onChange={(e) => handlePriceChange(e.target.value)}
             placeholder="0.00"
+          />
+          <LastUsedPriceHints
+            label={label}
+            category={category}
+            excludeProjectId={projectId}
+            onPick={(p) => handlePriceChange(p)}
           />
         </div>
       </div>
