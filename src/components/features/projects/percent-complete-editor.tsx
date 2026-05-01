@@ -1,29 +1,16 @@
 /**
- * Read-only progress display. Replaces the old manual percent_complete
- * editor — `% complete` is now derived from cost-to-cost (capped at 99
- * for active projects, 100 for complete, 0 for cancelled). The "burn"
- * sub-line shows uncapped cost / est-revenue so over-budget jobs are
- * visible at a glance (red when burn > 100).
+ * Read-only progress display. `% complete` is derived from cost-to-cost
+ * (capped at 99 for active projects, 100 for complete, 0 for cancelled).
+ *
+ * The old "burn N%" sub-line was dropped from the project header — it
+ * read as duplicate noise next to "% complete" without context, and the
+ * over-budget signal it carried is now expressed by the budget tab's
+ * spent-vs-committed bar (red when actuals exceed estimate).
  */
-import { cn } from '@/lib/utils';
-
-export function PercentCompleteEditor({
-  workStatusPct,
-  costBurnPct,
-}: {
-  workStatusPct: number;
-  costBurnPct: number;
-}) {
-  const overBudget = costBurnPct > 100;
+export function PercentCompleteEditor({ workStatusPct }: { workStatusPct: number }) {
   return (
-    <div className="flex items-baseline gap-3 text-sm text-muted-foreground">
+    <div className="text-sm text-muted-foreground">
       <span>{workStatusPct}% complete</span>
-      <span
-        className={cn('text-xs', overBudget ? 'text-destructive font-medium' : '')}
-        title="Cost burn: cost incurred / estimated revenue (uncapped)"
-      >
-        burn {costBurnPct}%
-      </span>
     </div>
   );
 }

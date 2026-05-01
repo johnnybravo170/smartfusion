@@ -149,29 +149,34 @@ export default async function ProjectDetailPage({
     <div className="mx-auto w-full max-w-7xl">
       {/* Header */}
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
+        {/* Info column: capped at max-w-3xl so customer + description */}
+        {/* don't span the full viewport (lines were wrapping at ~150 */}
+        {/* chars, way past comfortable reading width). */}
+        <div className="max-w-3xl">
           <div className="flex items-center gap-3">
             <ProjectNameEditor projectId={project.id} name={project.name} />
             <ProjectStatusBadge stage={project.lifecycle_stage as LifecycleStage} />
-            <Suspense fallback={null}>
-              <VersionsDropdown projectId={id} />
-            </Suspense>
           </div>
           {project.customer ? (
-            <p className="mt-1 text-sm text-muted-foreground">
-              <Link href={`/contacts/${project.customer.id}`} className="hover:underline">
+            <p className="mt-1 text-sm">
+              <Link
+                href={`/contacts/${project.customer.id}`}
+                className="font-medium hover:underline"
+              >
                 {project.customer.name}
               </Link>
             </p>
           ) : null}
           {project.description ? (
-            <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
+            <p
+              className="mt-1 line-clamp-2 text-sm text-muted-foreground"
+              title={project.description}
+            >
+              {project.description}
+            </p>
           ) : null}
           <div className="mt-1">
-            <PercentCompleteEditor
-              workStatusPct={progress.workStatusPct}
-              costBurnPct={progress.costBurnPct}
-            />
+            <PercentCompleteEditor workStatusPct={progress.workStatusPct} />
           </div>
           {draws.has_any ? (
             <p className="mt-1 text-xs text-muted-foreground">
@@ -190,6 +195,12 @@ export default async function ProjectDetailPage({
             </p>
           ) : null}
         </div>
+        {/* Actions row: three visual clusters separated by vertical */}
+        {/* dividers — utility chips · primary CTA · secondary actions. */}
+        {/* Old layout had Versions floating in the title row and a naked */}
+        {/* trash icon directly next to the black "Add to project" CTA, */}
+        {/* which was accident-prone. Versions and Delete now live in the */}
+        {/* secondary cluster behind a divider. */}
         <div className="flex flex-wrap items-center gap-1">
           {secondaryTabs.map((s) => {
             const active = tab === s.key;
@@ -221,6 +232,7 @@ export default async function ProjectDetailPage({
               </Link>
             );
           })}
+          <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
           <ProjectIntakeZone
             projectId={project.id}
             buckets={projectBuckets.map((b) => ({
@@ -229,6 +241,10 @@ export default async function ProjectDetailPage({
               section: (b.section as 'interior' | 'exterior' | 'general') ?? 'general',
             }))}
           />
+          <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+          <Suspense fallback={null}>
+            <VersionsDropdown projectId={id} />
+          </Suspense>
           <DeleteProjectButton projectId={project.id} projectName={project.name} />
         </div>
       </header>
