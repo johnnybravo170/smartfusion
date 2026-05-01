@@ -129,6 +129,7 @@ export default async function DashboardPage() {
         jobHealth={jobTaskHealth}
         changeOrdersPending={pendingChangeOrders}
         tasksToVerify={tasksToVerify}
+        showJobHealth={!isRenovation}
       />
 
       <MoneyAtRiskCard rows={moneyAtRisk} />

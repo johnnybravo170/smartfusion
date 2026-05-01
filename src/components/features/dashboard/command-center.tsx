@@ -9,6 +9,7 @@ import { AlertTriangle, CalendarDays, CheckCircle2, ClipboardList, Hourglass } f
 import Link from 'next/link';
 import { TaskStatusBadge } from '@/components/features/tasks/task-status-badge';
 import { VerifyTaskButtons } from '@/components/features/tasks/verify-task-buttons';
+import { formatDateShort } from '@/lib/date/format';
 import type { DashboardTaskBuckets, JobTaskHealth, TaskRow } from '@/lib/db/queries/tasks';
 import { cn } from '@/lib/utils';
 
@@ -28,8 +29,11 @@ function TaskLine({ task }: { task: TaskRow }) {
       </Link>
       <TaskStatusBadge status={task.status} className="shrink-0" hideLabelOnMobile />
       {task.due_date ? (
-        <span className="hidden shrink-0 text-xs tabular-nums text-muted-foreground sm:inline">
-          {task.due_date}
+        <span
+          className="hidden shrink-0 text-xs tabular-nums text-muted-foreground sm:inline"
+          title={task.due_date}
+        >
+          {formatDateShort(task.due_date)}
         </span>
       ) : null}
     </li>
@@ -74,11 +78,15 @@ export function CommandCenter({
   jobHealth,
   changeOrdersPending,
   tasksToVerify = [],
+  showJobHealth = true,
 }: {
   buckets: DashboardTaskBuckets;
   jobHealth: JobTaskHealth[];
   changeOrdersPending: ChangeOrderRow[];
   tasksToVerify?: TaskRow[];
+  /** Job task health is the per-job rollup. Renovation/tile GCs think
+   * project-not-job, so the dashboard hides this section for them. */
+  showJobHealth?: boolean;
 }) {
   const today = buckets.dueToday;
   const overdue = buckets.overdue;
@@ -191,45 +199,47 @@ export function CommandCenter({
         </p>
       </Card>
 
-      <section className="min-w-0 rounded-xl border bg-card p-4 md:col-span-3">
-        <header className="flex items-center justify-between pb-2">
-          <div className="flex items-center gap-2">
-            <ClipboardList className="size-4 text-muted-foreground" aria-hidden />
-            <h3 className="text-sm font-semibold">Job task health</h3>
-          </div>
-          <span className="text-xs text-muted-foreground">{jobHealth.length}</span>
-        </header>
-        {jobHealth.length === 0 ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CheckCircle2 className="size-4" aria-hidden /> No open project tasks.
-          </p>
-        ) : (
-          <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2 md:grid-cols-3">
-            {jobHealth.map((j) => (
-              <li key={j.job_id} className="min-w-0">
-                <Link
-                  href={`/jobs/${j.job_id}/tasks`}
-                  className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
-                >
-                  <span
-                    title={j.health}
-                    className={cn(
-                      'inline-block size-2.5 shrink-0 rounded-full',
-                      j.health === 'red' && 'bg-red-500',
-                      j.health === 'yellow' && 'bg-amber-400',
-                      j.health === 'green' && 'bg-emerald-500',
-                    )}
+      {showJobHealth ? (
+        <section className="min-w-0 rounded-xl border bg-card p-4 md:col-span-3">
+          <header className="flex items-center justify-between pb-2">
+            <div className="flex items-center gap-2">
+              <ClipboardList className="size-4 text-muted-foreground" aria-hidden />
+              <h3 className="text-sm font-semibold">Job task health</h3>
+            </div>
+            <span className="text-xs text-muted-foreground">{jobHealth.length}</span>
+          </header>
+          {jobHealth.length === 0 ? (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <CheckCircle2 className="size-4" aria-hidden /> No open project tasks.
+            </p>
+          ) : (
+            <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2 md:grid-cols-3">
+              {jobHealth.map((j) => (
+                <li key={j.job_id} className="min-w-0">
+                  <Link
+                    href={`/jobs/${j.job_id}/tasks`}
+                    className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
                   >
-                    <span className="sr-only">{j.health}</span>
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{j.customer_name ?? 'Job'}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{j.open_count}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                    <span
+                      title={j.health}
+                      className={cn(
+                        'inline-block size-2.5 shrink-0 rounded-full',
+                        j.health === 'red' && 'bg-red-500',
+                        j.health === 'yellow' && 'bg-amber-400',
+                        j.health === 'green' && 'bg-emerald-500',
+                      )}
+                    >
+                      <span className="sr-only">{j.health}</span>
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{j.customer_name ?? 'Job'}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{j.open_count}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -251,8 +261,11 @@ export function PersonalTasksCard({ tasks }: { tasks: TaskRow[] }) {
             <li key={t.id} className="flex min-w-0 items-center gap-2 py-1.5 text-sm">
               <span className="min-w-0 flex-1 truncate">{t.title}</span>
               {t.due_date ? (
-                <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {t.due_date}
+                <span
+                  className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground"
+                  title={t.due_date}
+                >
+                  {formatDateShort(t.due_date)}
                 </span>
               ) : null}
             </li>

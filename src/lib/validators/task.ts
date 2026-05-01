@@ -34,6 +34,24 @@ export const taskStatusLabels: Record<TaskStatus, string> = {
   verified: 'Verified',
 };
 
+/**
+ * Compact labels for dense list contexts (dashboard pills, task rows in
+ * tight tables) where the icon already conveys "this is a waiting state"
+ * — the "Waiting — " prefix becomes redundant noise. Full labels stay
+ * for dropdowns, toasts, and any text-only surface where the icon isn't
+ * carrying the semantic.
+ */
+export const taskStatusShortLabels: Record<TaskStatus, string> = {
+  ready: 'Ready',
+  in_progress: 'In Progress',
+  waiting_client: 'Client',
+  waiting_material: 'Material',
+  waiting_sub: 'Sub',
+  blocked: 'Blocked',
+  done: 'Done',
+  verified: 'Verified',
+};
+
 export const taskVisibilities = ['internal', 'crew', 'client'] as const;
 export type TaskVisibility = (typeof taskVisibilities)[number];
 

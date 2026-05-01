@@ -43,6 +43,38 @@ export function formatDateTime(
   }).format(d);
 }
 
+/**
+ * Compact date for dense lists ("Apr 25"). When the date isn't in the
+ * current calendar year, append a 2-digit year ("Apr 25 '25") so the
+ * operator still has anchor without spending the width on a full year.
+ */
+export function formatDateShort(
+  date: string | Date | null | undefined,
+  options?: { timezone?: string },
+): string {
+  if (!date) return '—';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return '—';
+
+  const tz = options?.timezone || DEFAULT_TZ;
+  const monthDay = new Intl.DateTimeFormat('en-CA', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: tz,
+  }).format(d);
+
+  const dateYear = Number(
+    new Intl.DateTimeFormat('en-CA', { year: 'numeric', timeZone: tz }).format(d),
+  );
+  const currentYear = Number(
+    new Intl.DateTimeFormat('en-CA', { year: 'numeric', timeZone: tz }).format(new Date()),
+  );
+  if (dateYear !== currentYear) {
+    return `${monthDay} '${String(dateYear).slice(-2)}`;
+  }
+  return monthDay;
+}
+
 export function formatRelativeTime(
   date: string | Date | null | undefined,
   options?: { timezone?: string },
