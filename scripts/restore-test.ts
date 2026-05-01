@@ -48,9 +48,21 @@ async function main() {
   );
 
   console.log('→ Restoring to drill DB...');
-  sh(
-    `pg_restore --clean --if-exists --no-owner --no-acl --dbname="${DRILL_DATABASE_URL}" "${dumpPath}"`,
-  );
+  // pg_restore exits non-zero when the dump references roles or
+  // extensions that don't exist in the target (Supabase ships with
+  // `anon`/`authenticated`/`service_role`/`authenticator` roles and
+  // pgsodium/pg_graphql/pg_jsonschema extensions that a vanilla
+  // Postgres 17 container doesn't have). Those errors are expected and
+  // don't affect table data restoration. The table-existence + row
+  // count verification below is the actual source of truth — if real
+  // data didn't land, those checks fail.
+  try {
+    sh(
+      `pg_restore --clean --if-exists --no-owner --no-acl --dbname="${DRILL_DATABASE_URL}" "${dumpPath}"`,
+    );
+  } catch (err) {
+    console.log('  (pg_restore reported errors — proceeding to verification)');
+  }
 
   console.log('→ Verifying...');
   const sql = postgres(DRILL_DATABASE_URL!, { max: 1 });
