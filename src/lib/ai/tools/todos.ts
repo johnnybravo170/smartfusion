@@ -8,7 +8,8 @@ export const todoTools: AiTool[] = [
   {
     definition: {
       name: 'list_todos',
-      description: 'List todos. Filter by completion status.',
+      description:
+        "Legacy /inbox 'Todos' tab only. Auto-fed by quote-accepted and new-lead events. For the operator's personal task list (the /todos page and the dashboard task buckets), use list_tasks with scope='personal'. Only call this when the operator explicitly says 'inbox'.",
       input_schema: {
         type: 'object',
         properties: {
@@ -53,7 +54,8 @@ export const todoTools: AiTool[] = [
   {
     definition: {
       name: 'create_todo',
-      description: 'Create a new todo item.',
+      description:
+        "Adds an item to the legacy /inbox 'Todos' tab. Prefer add_task with scope='personal' for the operator's regular personal task list. Only use this when the operator explicitly says 'add to my inbox'.",
       input_schema: {
         type: 'object',
         properties: {
@@ -103,7 +105,8 @@ export const todoTools: AiTool[] = [
   {
     definition: {
       name: 'complete_todo',
-      description: 'Mark a todo as done.',
+      description:
+        "Mark a legacy /inbox 'Todos' tab item done. For ordinary personal tasks (anything created via add_task or shown on /todos), use complete_task instead.",
       input_schema: {
         type: 'object',
         properties: {

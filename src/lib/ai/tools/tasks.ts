@@ -40,7 +40,7 @@ export const taskTools: AiTool[] = [
     definition: {
       name: 'create_task',
       description:
-        'Create a task. Defaults to a personal todo for the current user. Pass scope="project" with a job_id to attach the task to a job. Henry stamps created_by="henry" for audit.',
+        'Create a task. Defaults to a personal task on the operator\'s /todos list (also shown in the dashboard "Personal" task bucket). Pass scope="project" with a job_id to attach to a job, or scope="lead" with a lead_id. Do NOT use this for the legacy /inbox Todos tab — that uses create_todo. Henry stamps created_by="henry" for audit.',
       input_schema: {
         type: 'object',
         properties: {
