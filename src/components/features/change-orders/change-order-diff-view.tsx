@@ -36,17 +36,32 @@ export function ChangeOrderDiffView({
 
       {hasLines ? (
         <div className="rounded-lg border p-4">
-          <p className="mb-3 text-xs text-muted-foreground">Line-level Changes</p>
+          <p className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">
+            Line-level Changes
+          </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            {/* table-fixed + colgroup so numeric cols are anchored on the */}
+            {/* right and the Line description absorbs slack. Per-cell px-3 */}
+            {/* gives the columns visible separation — without it the */}
+            {/* numbers run together ("$0.00$7,350.00+$7,350.00") and the */}
+            {/* CATEGORY/BEFORE headers read as one word. */}
+            <table className="w-full min-w-[640px] table-fixed text-sm">
+              <colgroup>
+                <col className="w-20" />
+                <col />
+                <col className="w-28" />
+                <col className="w-24" />
+                <col className="w-24" />
+                <col className="w-24" />
+              </colgroup>
               <thead className="text-xs uppercase tracking-wide text-muted-foreground">
                 <tr className="border-b">
-                  <th className="py-1.5 text-left font-medium">Action</th>
-                  <th className="py-1.5 text-left font-medium">Line</th>
-                  <th className="py-1.5 text-left font-medium">Category</th>
-                  <th className="py-1.5 text-right font-medium">Before</th>
-                  <th className="py-1.5 text-right font-medium">After</th>
-                  <th className="py-1.5 text-right font-medium">Delta</th>
+                  <th className="px-3 py-2 text-left font-medium">Action</th>
+                  <th className="px-3 py-2 text-left font-medium">Line</th>
+                  <th className="px-3 py-2 text-left font-medium">Category</th>
+                  <th className="px-3 py-2 text-right font-medium">Before</th>
+                  <th className="px-3 py-2 text-right font-medium">After</th>
+                  <th className="px-3 py-2 text-right font-medium">Delta</th>
                 </tr>
               </thead>
               <tbody>
@@ -68,10 +83,10 @@ export function ChangeOrderDiffView({
                     ? `Budget: ${d.label ?? '—'}`
                     : (d.label ?? before?.label ?? '—');
                   return (
-                    <tr key={d.id} className="border-b last:border-0">
-                      <td className="py-1.5 align-top">
+                    <tr key={d.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="px-3 py-2 align-top">
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                          className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
                             d.action === 'add'
                               ? 'bg-emerald-100 text-emerald-800'
                               : d.action === 'remove'
@@ -84,7 +99,7 @@ export function ChangeOrderDiffView({
                           {d.action === 'modify_envelope' ? 'budget' : d.action}
                         </span>
                       </td>
-                      <td className="py-1.5 align-top">
+                      <td className="px-3 py-2 align-top">
                         <div>{label}</div>
                         {d.notes ? (
                           <div className="mt-0.5 text-xs italic text-muted-foreground">
@@ -92,19 +107,19 @@ export function ChangeOrderDiffView({
                           </div>
                         ) : null}
                       </td>
-                      <td className="py-1.5 align-top text-xs text-muted-foreground">
+                      <td className="px-3 py-2 align-top text-xs text-muted-foreground">
                         {d.budget_category_id
                           ? (budgetCategoryNamesById[d.budget_category_id] ?? '—')
                           : '—'}
                       </td>
-                      <td className="py-1.5 text-right align-top tabular-nums text-muted-foreground">
+                      <td className="px-3 py-2 text-right align-top tabular-nums text-muted-foreground">
                         {d.action === 'add' ? '—' : formatCurrency(beforePrice)}
                       </td>
-                      <td className="py-1.5 text-right align-top tabular-nums">
+                      <td className="px-3 py-2 text-right align-top tabular-nums">
                         {d.action === 'remove' ? '—' : formatCurrency(afterPrice)}
                       </td>
                       <td
-                        className={`py-1.5 text-right align-top font-medium tabular-nums ${delta < 0 ? 'text-emerald-700' : ''}`}
+                        className={`px-3 py-2 text-right align-top font-medium tabular-nums ${delta < 0 ? 'text-emerald-700' : ''}`}
                       >
                         {delta >= 0 ? '+' : ''}
                         {formatCurrency(delta)}

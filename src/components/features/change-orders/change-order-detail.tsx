@@ -103,7 +103,7 @@ export function ChangeOrderDetail({
       : formatCurrency(co.cost_impact_cents);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       {error ? <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
 
       <div className="flex items-start justify-between gap-4">
@@ -194,27 +194,30 @@ export function ChangeOrderDetail({
         </div>
       </div>
 
-      <div className="rounded-lg border p-4 space-y-4">
+      <div className="space-y-4 rounded-lg border p-4">
         <div>
-          <p className="text-xs text-muted-foreground">Description</p>
-          <p className="text-sm mt-1 whitespace-pre-wrap">{co.description}</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Description</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm">{co.description}</p>
         </div>
         {co.reason ? (
-          <div>
-            <p className="text-xs text-muted-foreground">Reason</p>
-            <p className="text-sm mt-1">{co.reason}</p>
+          <div className="border-t pt-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Reason</p>
+            <p className="mt-1 text-sm">{co.reason}</p>
           </div>
         ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="rounded-lg border p-4">
-          <p className="text-xs text-muted-foreground">Cost Impact</p>
-          <p className="text-lg font-semibold">{costFormatted}</p>
+      {/* Impact pair: single card with a divider between Cost and Timeline */}
+      {/* so they read as related, not as two independent cards floating */}
+      {/* with empty space around them on a wider container. */}
+      <div className="grid grid-cols-1 divide-y rounded-lg border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        <div className="p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Cost Impact</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums">{costFormatted}</p>
         </div>
-        <div className="rounded-lg border p-4">
-          <p className="text-xs text-muted-foreground">Timeline Impact</p>
-          <p className="text-lg font-semibold">
+        <div className="p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Timeline Impact</p>
+          <p className="mt-1 text-lg font-semibold">
             {co.timeline_impact_days === 0
               ? 'None'
               : `${co.timeline_impact_days > 0 ? '+' : ''}${co.timeline_impact_days} day${Math.abs(co.timeline_impact_days) === 1 ? '' : 's'}`}
