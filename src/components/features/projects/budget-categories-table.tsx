@@ -8,7 +8,7 @@
  * from buckets" button that seeds cost lines from bucket estimates.
  */
 
-import { Check, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ChevronUp, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
@@ -26,6 +26,7 @@ import { formatCurrencyCompact } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 import {
   addBudgetCategoryAction,
+  moveSectionAction,
   removeBudgetCategoryAction,
   updateBudgetCategoryAction,
 } from '@/server/actions/project-budget-categories';
@@ -278,16 +279,60 @@ export function BudgetCategoriesTable({
         />
       )}
 
-      {Array.from(sections.entries()).map(([section, sectionLines]) => {
+      {Array.from(sections.entries()).map(([section, sectionLines], sectionIdx, sectionArr) => {
         const sectionTotal = sectionLines.reduce((s, l) => s + l.estimate_cents, 0);
         const sectionActual = sectionLines.reduce((s, l) => s + l.actual_cents, 0);
         const sectionCommitted = sectionLines.reduce((s, l) => s + l.committed_cents, 0);
+        const isFirstSection = sectionIdx === 0;
+        const isLastSection = sectionIdx === sectionArr.length - 1;
+
+        function moveSection(direction: 'up' | 'down') {
+          startTransition(async () => {
+            const res = await moveSectionAction({
+              project_id: projectId,
+              section,
+              direction,
+            });
+            if (!res.ok) toast.error(res.error);
+          });
+        }
 
         return (
           <div key={section}>
-            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              {section}
-            </h3>
+            <div className="mb-2 flex items-center gap-1">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                {section}
+              </h3>
+              {/* Section reorder controls — only render in Editing mode */}
+              {/* (Executing is read-only on structure). Chevrons over a */}
+              {/* drag handle: zero added libraries, predictable on touch, */}
+              {/* and the surface area matches the rest of the inline */}
+              {/* edit affordances on this page. */}
+              {mode === 'editing' && sectionArr.length > 1 ? (
+                <div className="flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => moveSection('up')}
+                    disabled={isFirstSection || isPending}
+                    aria-label={`Move ${section} section up`}
+                    title="Move section up"
+                    className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                  >
+                    <ChevronUp className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveSection('down')}
+                    disabled={isLastSection || isPending}
+                    aria-label={`Move ${section} section down`}
+                    title="Move section down"
+                    className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                  >
+                    <ChevronDown className="size-3.5" />
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <div className="overflow-x-auto rounded-md border">
               {/* Number columns sized for typical values ($X,XXX) rather */}
               {/* than worst-case ($XXX,XXX.XX). Combined with */}

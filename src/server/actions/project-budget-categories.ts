@@ -86,6 +86,77 @@ export async function addBudgetCategoryAction(input: {
   return { ok: true, id: data.id };
 }
 
+/**
+ * Move a section up or down in the budget table by swapping it with its
+ * adjacent section. Implemented by recomputing display_order across every
+ * category in the project as `section_index * 1000 + within_section_index`.
+ *
+ * Within-section order is preserved by sorting the existing rows on
+ * (display_order ASC, name ASC) before reassignment — same secondary sort
+ * the read query uses, so the visible order on screen is what gets
+ * captured.
+ *
+ * No-ops gracefully when the section is already at the edge or doesn't
+ * exist on this project.
+ */
+export async function moveSectionAction(input: {
+  project_id: string;
+  section: string;
+  direction: 'up' | 'down';
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient();
+
+  const { data: rows, error } = await supabase
+    .from('project_budget_categories')
+    .select('id, name, section, display_order')
+    .eq('project_id', input.project_id)
+    .order('display_order', { ascending: true })
+    .order('name', { ascending: true });
+
+  if (error) return { ok: false, error: error.message };
+
+  const sectionsInOrder: string[] = [];
+  for (const r of rows ?? []) {
+    const s = (r as { section: string }).section;
+    if (!sectionsInOrder.includes(s)) sectionsInOrder.push(s);
+  }
+
+  const idx = sectionsInOrder.indexOf(input.section);
+  if (idx === -1) return { ok: false, error: 'Section not found.' };
+
+  const swapWith = input.direction === 'up' ? idx - 1 : idx + 1;
+  if (swapWith < 0 || swapWith >= sectionsInOrder.length) {
+    return { ok: true }; // already at the edge — no-op
+  }
+
+  const reordered = [...sectionsInOrder];
+  [reordered[idx], reordered[swapWith]] = [reordered[swapWith], reordered[idx]];
+
+  const updates: { id: string; display_order: number }[] = [];
+  reordered.forEach((sec, sectionIdx) => {
+    const inSection = (rows ?? []).filter((r) => (r as { section: string }).section === sec);
+    inSection.forEach((r, withinIdx) => {
+      updates.push({
+        id: (r as { id: string }).id,
+        display_order: sectionIdx * 1000 + withinIdx,
+      });
+    });
+  });
+
+  // No bulk-update primitive in PostgREST; fan out one-by-one. Project
+  // budget tables are small (~10s of rows), so this is cheap.
+  for (const u of updates) {
+    const { error: upErr } = await supabase
+      .from('project_budget_categories')
+      .update({ display_order: u.display_order, updated_at: new Date().toISOString() })
+      .eq('id', u.id);
+    if (upErr) return { ok: false, error: upErr.message };
+  }
+
+  revalidatePath(`/projects/${input.project_id}`);
+  return { ok: true };
+}
+
 export async function removeBudgetCategoryAction(input: {
   id: string;
   project_id: string;
