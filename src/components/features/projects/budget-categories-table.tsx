@@ -314,12 +314,11 @@ export function BudgetCategoriesTable({
               {/* Number columns sized for typical values ($X,XXX) rather */}
               {/* than worst-case ($XXX,XXX.XX). Combined with */}
               {/* formatCurrencyCompact (drops .00 on whole dollars), this */}
-              {/* frees ~64px of width back into the Category column so */}
-              {/* descriptions can run longer before clamping. Executing */}
-              {/* fixed cols total ~488px now; with the w-56 Category */}
-              {/* col, min-w-[700px] keeps mobile scrolling honest. */}
+              {/* frees width back into the Category column so descriptions */}
+              {/* can run longer before clamping. Executing also drops the */}
+              {/* trailing actions col (no per-row × in Executing). */}
               <table
-                className={`table-fixed text-sm ${mode === 'executing' ? 'w-full min-w-[700px]' : 'w-full'}`}
+                className={`table-fixed text-sm ${mode === 'executing' ? 'w-full min-w-[660px]' : 'w-full'}`}
               >
                 <colgroup>
                   <col className="w-8" />
@@ -328,7 +327,10 @@ export function BudgetCategoriesTable({
                   {mode === 'executing' ? <col className="w-24" /> : null}
                   {mode === 'executing' ? <col className="w-24" /> : null}
                   {mode === 'executing' ? <col className="w-28" /> : null}
-                  <col className="w-10" />
+                  {/* Actions col only renders in Editing mode (× to */}
+                  {/* remove a bucket). Executing has no per-row action, */}
+                  {/* so the column would be 40px of dead space. */}
+                  {mode === 'editing' ? <col className="w-10" /> : null}
                 </colgroup>
                 <thead>
                   <tr className="border-b bg-muted/50">
@@ -357,7 +359,7 @@ export function BudgetCategoriesTable({
                         </th>
                       </>
                     ) : null}
-                    <th className="px-2 py-1.5" />
+                    {mode === 'editing' ? <th className="px-2 py-1.5" /> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -433,7 +435,7 @@ export function BudgetCategoriesTable({
                         </td>
                       </>
                     ) : null}
-                    <td />
+                    {mode === 'editing' ? <td /> : null}
                   </tr>
                 </tfoot>
               </table>
@@ -703,11 +705,11 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
             </td>
           </>
         ) : null}
-        <td className="px-2 py-1.5 text-right">
-          {/* Remove-category is an authoring action — only available in
-              Editing mode. In Executing mode operators are tracking and
-              shouldn't blow away a signed bucket on the way past. */}
-          {mode === 'editing' ? (
+        {/* Remove-category is an authoring action — only available in */}
+        {/* Editing mode. In Executing mode the entire actions column */}
+        {/* doesn't render (would be 40px of dead space on every row). */}
+        {mode === 'editing' ? (
+          <td className="px-2 py-1.5 text-right">
             <Button
               size="xs"
               variant="ghost"
@@ -716,8 +718,8 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
             >
               ×
             </Button>
-          ) : null}
-        </td>
+          </td>
+        ) : null}
       </tr>
       {isExpanded && (
         <tr className="border-b bg-muted/20">
