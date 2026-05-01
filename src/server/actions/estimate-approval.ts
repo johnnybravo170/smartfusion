@@ -290,7 +290,7 @@ export async function approveEstimateAction(
     console.warn('Failed to notify operator of estimate approval:', err);
   });
 
-  // Henry suggestion: seed tasks from estimate scope buckets.
+  // Henry suggestion: seed tasks from estimate scope categories.
   const { onEstimateApproved } = await import('@/server/ai/triggers');
   await onEstimateApproved(p.id as string);
 

@@ -45,7 +45,7 @@ export const changeOrderCreateSchema = z
       .number()
       .int({ message: 'Cost impact must be a whole number of cents.' }),
     timeline_impact_days: z.coerce.number().int({ message: 'Timeline impact must be whole days.' }),
-    affected_buckets: z.array(z.string().uuid()).default([]),
+    affected_budget_categories: z.array(z.string().uuid()).default([]),
     /**
      * Per-budget-category attribution. Sum of amount_cents must equal
      * cost_impact_cents (validated server-side via .superRefine below).

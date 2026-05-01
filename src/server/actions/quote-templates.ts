@@ -61,7 +61,7 @@ export async function saveProjectAsTemplateAction(
   const admin = createAdminClient();
 
   // Pull the current scope.
-  const [bucketsRes, linesRes] = await Promise.all([
+  const [categoriesRes, linesRes] = await Promise.all([
     admin
       .from('project_budget_categories')
       .select('id, name, section, description, display_order')
@@ -75,10 +75,10 @@ export async function saveProjectAsTemplateAction(
       .eq('project_id', projectId)
       .order('sort_order', { ascending: true }),
   ]);
-  if (bucketsRes.error) return { ok: false, error: bucketsRes.error.message };
+  if (categoriesRes.error) return { ok: false, error: categoriesRes.error.message };
   if (linesRes.error) return { ok: false, error: linesRes.error.message };
 
-  type BucketRow = {
+  type CategoryRow = {
     id: string;
     name: string;
     section: string;
@@ -97,31 +97,31 @@ export async function saveProjectAsTemplateAction(
     sort_order: number;
   };
 
-  const buckets = (bucketsRes.data ?? []) as BucketRow[];
+  const categories = (categoriesRes.data ?? []) as CategoryRow[];
   const lines = (linesRes.data ?? []) as LineRow[];
 
-  if (buckets.length === 0 && lines.length === 0) {
+  if (categories.length === 0 && lines.length === 0) {
     return { ok: false, error: 'Nothing to save — add some scope first.' };
   }
 
   // Build StarterTemplate-shaped snapshot.
-  const linesByBucket = new Map<string, LineRow[]>();
+  const linesByCategory = new Map<string, LineRow[]>();
   for (const l of lines) {
     if (!l.budget_category_id) continue;
-    const arr = linesByBucket.get(l.budget_category_id) ?? [];
+    const arr = linesByCategory.get(l.budget_category_id) ?? [];
     arr.push(l);
-    linesByBucket.set(l.budget_category_id, arr);
+    linesByCategory.set(l.budget_category_id, arr);
   }
 
   const snapshot: StarterTemplate = {
     slug: '', // not used for user templates; kept for type compatibility
     label,
     description: description ?? '',
-    buckets: buckets.map((b) => ({
+    categories: categories.map((b) => ({
       name: b.name,
       section: b.section,
       description: b.description ?? undefined,
-      lines: (linesByBucket.get(b.id) ?? []).map((l) => ({
+      lines: (linesByCategory.get(b.id) ?? []).map((l) => ({
         label: l.label,
         category: l.category as 'material' | 'labour' | 'sub' | 'equipment' | 'overhead',
         qty: l.qty,
@@ -168,10 +168,25 @@ export type CombinedTemplateListItem = {
   slug: string; // for starter; user templates use their UUID
   label: string;
   description: string;
-  bucketCount: number;
+  categoryCount: number;
   lineCount: number;
   visibility?: 'private' | 'tenant';
 };
+
+/**
+ * Read a stored snapshot's categories array. Backcompat: pre-rename rows
+ * used the `buckets` key — fall back to that when the new key is absent.
+ */
+function snapshotCategories(
+  snapshot: StarterTemplate | null | undefined,
+): StarterTemplate['categories'] {
+  if (!snapshot) return [];
+  const newShape = snapshot.categories;
+  if (Array.isArray(newShape)) return newShape;
+  // backcompat: pre-rename rows used `buckets` key
+  const legacy = (snapshot as unknown as { buckets?: StarterTemplate['categories'] }).buckets;
+  return Array.isArray(legacy) ? legacy : [];
+}
 
 /** Combined picker list: built-in starter templates + user-saved templates. */
 export async function listAllTemplatesAction(): Promise<CombinedTemplateListItem[]> {
@@ -186,8 +201,8 @@ export async function listAllTemplatesAction(): Promise<CombinedTemplateListItem
       slug: t.slug,
       label: t.label,
       description: t.description,
-      bucketCount: t.buckets.length,
-      lineCount: t.buckets.reduce((s, b) => s + b.lines.length, 0),
+      categoryCount: t.categories.length,
+      lineCount: t.categories.reduce((s, b) => s + b.lines.length, 0),
     });
   }
 
@@ -208,14 +223,14 @@ export async function listAllTemplatesAction(): Promise<CombinedTemplateListItem
       snapshot: StarterTemplate;
       visibility: 'private' | 'tenant';
     }>) {
-      const buckets = row.snapshot?.buckets ?? [];
+      const categories = snapshotCategories(row.snapshot);
       out.push({
         source: 'user',
         slug: row.id,
         label: row.label,
         description: row.description ?? '',
-        bucketCount: buckets.length,
-        lineCount: buckets.reduce((s, b) => s + b.lines.length, 0),
+        categoryCount: categories.length,
+        lineCount: categories.reduce((s, b) => s + b.lines.length, 0),
         visibility: row.visibility,
       });
     }
@@ -234,7 +249,7 @@ export async function applyTemplateAction(input: {
   projectId: string;
   source: 'starter' | 'user';
   slug: string;
-}): Promise<{ ok: true; bucketCount: number; lineCount: number } | { ok: false; error: string }> {
+}): Promise<{ ok: true; categoryCount: number; lineCount: number } | { ok: false; error: string }> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
 
@@ -251,7 +266,7 @@ export async function applyTemplateAction(input: {
   }
 
   // Refuse merge into existing scope.
-  const [{ count: lineCount }, { count: bucketCount }] = await Promise.all([
+  const [{ count: lineCount }, { count: categoryCount }] = await Promise.all([
     admin
       .from('project_cost_lines')
       .select('id', { count: 'exact', head: true })
@@ -261,10 +276,10 @@ export async function applyTemplateAction(input: {
       .select('id', { count: 'exact', head: true })
       .eq('project_id', input.projectId),
   ]);
-  if ((lineCount ?? 0) > 0 || (bucketCount ?? 0) > 0) {
+  if ((lineCount ?? 0) > 0 || (categoryCount ?? 0) > 0) {
     return {
       ok: false,
-      error: 'Project already has buckets or line items. Clear them first.',
+      error: 'Project already has categories or line items. Clear them first.',
     };
   }
 
@@ -284,8 +299,9 @@ export async function applyTemplateAction(input: {
   }
   if (!template) return { ok: false, error: 'Template not found.' };
 
-  // Insert buckets + lines.
-  const bucketRows = template.buckets.map((b, i) => ({
+  // Insert categories + lines. Snapshot may use legacy `buckets` key.
+  const templateCategories = snapshotCategories(template);
+  const categoryRows = templateCategories.map((b, i) => ({
     project_id: input.projectId,
     tenant_id: tenant.id,
     name: b.name,
@@ -294,15 +310,15 @@ export async function applyTemplateAction(input: {
     estimate_cents: 0,
     display_order: i,
   }));
-  const { data: insertedBuckets, error: bucketErr } = await admin
+  const { data: insertedCategories, error: categoryErr } = await admin
     .from('project_budget_categories')
-    .insert(bucketRows)
+    .insert(categoryRows)
     .select('id, name');
-  if (bucketErr) return { ok: false, error: bucketErr.message };
+  if (categoryErr) return { ok: false, error: categoryErr.message };
 
-  const bucketIdByName = new Map<string, string>();
-  for (const b of insertedBuckets ?? []) {
-    bucketIdByName.set(b.name as string, b.id as string);
+  const categoryIdByName = new Map<string, string>();
+  for (const b of insertedCategories ?? []) {
+    categoryIdByName.set(b.name as string, b.id as string);
   }
 
   type LineToInsert = {
@@ -321,16 +337,16 @@ export async function applyTemplateAction(input: {
   };
   const lineRows: LineToInsert[] = [];
   let sortOrder = 0;
-  for (const bucket of template.buckets) {
-    const bucketId = bucketIdByName.get(bucket.name);
-    if (!bucketId) continue;
-    for (const line of bucket.lines) {
+  for (const category of templateCategories) {
+    const categoryId = categoryIdByName.get(category.name);
+    if (!categoryId) continue;
+    for (const line of category.lines) {
       const unit_cost_cents = (line as { unit_cost_cents?: number }).unit_cost_cents ?? 0;
       const unit_price_cents = (line as { unit_price_cents?: number }).unit_price_cents ?? 0;
       lineRows.push({
         project_id: input.projectId,
         tenant_id: tenant.id,
-        budget_category_id: bucketId,
+        budget_category_id: categoryId,
         category: line.category,
         label: line.label,
         qty: line.qty,
@@ -352,7 +368,7 @@ export async function applyTemplateAction(input: {
   revalidatePath(`/projects/${input.projectId}`);
   return {
     ok: true,
-    bucketCount: insertedBuckets?.length ?? 0,
+    categoryCount: insertedCategories?.length ?? 0,
     lineCount: lineRows.length,
   };
 }

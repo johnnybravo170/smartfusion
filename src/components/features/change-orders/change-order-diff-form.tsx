@@ -94,7 +94,7 @@ export function ChangeOrderDiffForm({
   const isEdit = mode.kind === 'edit';
   const initial = mode.kind === 'edit' ? mode.initialState : null;
 
-  // Local copy of the project's buckets so newly-created ones from this CO
+  // Local copy of the project's categories so newly-created ones from this CO
   // form show up immediately without a full page refresh. Persisted server-
   // side at the moment of creation (not staged), per the design call to
   // keep abandoned drafts harmless.
@@ -954,7 +954,7 @@ export function ChangeOrderDiffForm({
               {creatingCategory === section ? (
                 <div className="rounded-md border border-dashed p-3">
                   <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    New bucket in {section}
+                    New category in {section}
                   </p>
                   <div className="flex gap-2">
                     <Input
@@ -1006,7 +1006,7 @@ export function ChangeOrderDiffForm({
                   className="self-start rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
                   <Plus className="mr-1 inline size-3" />
-                  New bucket in {section}
+                  New category in {section}
                 </button>
               )}
             </div>
@@ -1014,7 +1014,7 @@ export function ChangeOrderDiffForm({
         );
       })}
 
-      {/* Add a brand-new section (with its first bucket). Sections are
+      {/* Add a brand-new section (with its first category). Sections are
           free-form per project — see migration 0072. */}
       {creatingCategory === '__new_section__' ? (
         <div className="rounded-md border border-dashed p-3">
@@ -1043,7 +1043,7 @@ export function ChangeOrderDiffForm({
                   setNewSectionName('');
                 }
               }}
-              placeholder="First bucket (e.g. Waterproofing)"
+              placeholder="First category (e.g. Waterproofing)"
               className="h-8 flex-1 text-sm"
               disabled={creatingPending}
             />

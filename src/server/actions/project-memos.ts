@@ -4,7 +4,7 @@
  * Server actions for voice memo upload, transcription, and extraction.
  *
  * Flow: upload audio → create memo row (pending) → call Claude with audio
- * content block → extract work items + map to cost buckets → update memo row.
+ * content block → extract work items + map to budget categories → update memo row.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -25,7 +25,7 @@ export type MemoExtraction = {
   work_items: {
     area: string;
     description: string;
-    suggested_bucket: string;
+    suggested_category: string;
     section: string;
     referenced_photo_indexes?: number[];
   }[];
@@ -153,7 +153,7 @@ export async function uploadMemoAction(formData: FormData): Promise<MemoActionRe
 
 /**
  * Transcribe a memo's audio using Claude's audio content block and extract
- * work items mapped to renovation cost buckets.
+ * work items mapped to renovation budget categories.
  */
 export async function transcribeMemoAction(memoId: string): Promise<MemoActionResult> {
   const tenant = await getCurrentTenant();
@@ -249,17 +249,17 @@ export async function transcribeMemoAction(memoId: string): Promise<MemoActionRe
         ? `\n\n${photoParts.length} site-walk ${photoParts.length === 1 ? 'photo is' : 'photos are'} attached (in order, 0-indexed). For each work item, include a "referenced_photo_indexes" array listing the indexes of photos that show the area or condition you're describing. Empty array if none are relevant.`
         : '';
 
-    const prompt = `You are a renovation project assistant. Transcribe this renovation site walk-through audio. Then extract work items and map them to standard renovation cost buckets.
+    const prompt = `You are a renovation project assistant. Transcribe this renovation site walk-through audio. Then extract work items and map them to standard renovation budget categories.
 
-Standard interior buckets: Demo, Disposal, Framing, Plumbing, Plumbing Fixtures, HVAC, Insulation, Drywall, Flooring, Doors & Mouldings, Windows & Doors, Railings, Electrical, Painting, Kitchen, Contingency.
+Standard interior categories: Demo, Disposal, Framing, Plumbing, Plumbing Fixtures, HVAC, Insulation, Drywall, Flooring, Doors & Mouldings, Windows & Doors, Railings, Electrical, Painting, Kitchen, Contingency.
 
-Standard exterior buckets: Demo, Disposal, Framing, Siding, Sheathing, Painting, Gutters, Front Garden, Front Door, Rot Repair, Garage Doors, Contingency.${photoInstruction}
+Standard exterior categories: Demo, Disposal, Framing, Siding, Sheathing, Painting, Gutters, Front Garden, Front Door, Rot Repair, Garage Doors, Contingency.${photoInstruction}
 
 Respond with ONLY valid JSON in this exact format:
 {
   "transcript": "full transcription of the audio",
   "work_items": [
-    { "area": "room or location", "description": "what needs to be done", "suggested_bucket": "bucket name", "section": "interior or exterior", "referenced_photo_indexes": [] }
+    { "area": "room or location", "description": "what needs to be done", "suggested_category": "category name", "section": "interior or exterior", "referenced_photo_indexes": [] }
   ],
   "customer_preferences": ["any customer preferences mentioned"],
   "uncertainty_flags": ["anything unclear or that needs clarification"]
@@ -404,7 +404,7 @@ export async function addMemoItemToCostLinesAction(
   if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
 
   if (!input.label.trim()) return { ok: false, error: 'Label is required.' };
-  if (!input.budget_category_id) return { ok: false, error: 'Bucket is required.' };
+  if (!input.budget_category_id) return { ok: false, error: 'Category is required.' };
   if (input.qty <= 0) return { ok: false, error: 'Quantity must be positive.' };
 
   const supabase = await createClient();

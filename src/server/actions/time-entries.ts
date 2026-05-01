@@ -145,7 +145,7 @@ export async function listActiveProjectsAction(): Promise<
       projects: {
         id: string;
         name: string;
-        buckets: { id: string; name: string; section: string }[];
+        categories: { id: string; name: string; section: string }[];
       }[];
     }
   | { ok: false; error: string }
@@ -179,7 +179,7 @@ export async function listActiveProjectsAction(): Promise<
   ).map((p) => ({
     id: p.id,
     name: p.name,
-    buckets: (p.project_budget_categories ?? [])
+    categories: (p.project_budget_categories ?? [])
       .filter((c) => c.is_visible_in_report !== false)
       .sort(
         (a, b) =>

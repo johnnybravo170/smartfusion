@@ -86,8 +86,9 @@ export function TemplateSuggestionsCard() {
                     <p className="font-medium">{s.label}</p>
                     <p className="text-xs text-muted-foreground">{s.description}</p>
                     <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      {s.project_count} similar projects · {s.scaffold.buckets.length} buckets ·{' '}
-                      {s.scaffold.buckets.reduce((acc, b) => acc + b.lines.length, 0)} line items
+                      {s.project_count} similar projects · {s.scaffold.categories.length} categories
+                      · {s.scaffold.categories.reduce((acc, b) => acc + b.lines.length, 0)} line
+                      items
                     </p>
                   </div>
                   <Button

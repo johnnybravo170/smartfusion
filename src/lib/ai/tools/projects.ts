@@ -91,7 +91,7 @@ export const projectTools: AiTool[] = [
     definition: {
       name: 'get_project',
       description:
-        'Get full details for a project, including customer info, cost buckets, and budget summary.',
+        'Get full details for a project, including customer info, budget categories, and budget summary.',
       input_schema: {
         type: 'object',
         properties: {
@@ -114,7 +114,7 @@ export const projectTools: AiTool[] = [
         if (project.target_end_date)
           output += `Target end: ${formatDate(project.target_end_date)}\n`;
         output += `Management fee: ${Math.round(project.management_fee_rate * 100)}%\n`;
-        output += `\nCost Buckets: ${project.budget_categories.length}\n`;
+        output += `\nBudget Categories: ${project.budget_categories.length}\n`;
 
         if (project.budget_categories.length > 0) {
           const totalEstimate = project.budget_categories.reduce((s, b) => s + b.estimate_cents, 0);
@@ -132,7 +132,7 @@ export const projectTools: AiTool[] = [
     definition: {
       name: 'create_project',
       description:
-        'Create a new renovation project. Seeds default cost buckets automatically. Requires a customer.',
+        'Create a new renovation project. Seeds default budget categories automatically. Requires a customer.',
       input_schema: {
         type: 'object',
         properties: {
@@ -163,7 +163,7 @@ export const projectTools: AiTool[] = [
         });
 
         if (!result.ok) return `Failed to create project: ${result.error}`;
-        return `Project "${input.name}" created successfully.\nID: ${result.id}\nDefault cost buckets have been seeded (interior + exterior).`;
+        return `Project "${input.name}" created successfully.\nID: ${result.id}\nDefault budget categories have been seeded (interior + exterior).`;
       } catch (e) {
         return `Failed to create project: ${e instanceof Error ? e.message : String(e)}`;
       }
@@ -214,14 +214,14 @@ export const projectTools: AiTool[] = [
     definition: {
       name: 'get_project_budget',
       description:
-        'Budget vs actual spending. Pass a project id to get the full per-cost-bucket breakdown for one project (Framing, Plumbing, Electrical, etc with estimate/actual/remaining). Omit id to get an active-projects rollup with totals and over-80% warnings. Use this whenever the operator asks how much was spent on a category like framing for a specific project.',
+        'Budget vs actual spending. Pass a project id to get the full per-category breakdown for one project (Framing, Plumbing, Electrical, etc with estimate/actual/remaining). Omit id to get an active-projects rollup with totals and over-80% warnings. Use this whenever the operator asks how much was spent on a category like framing for a specific project.',
       input_schema: {
         type: 'object',
         properties: {
           id: {
             type: 'string',
             description:
-              'Project UUID. Required for per-bucket breakdown. Omit to roll up all active projects.',
+              'Project UUID. Required for per-category breakdown. Omit to roll up all active projects.',
           },
         },
       },
@@ -273,7 +273,7 @@ export const projectTools: AiTool[] = [
     definition: {
       name: 'upsert_project_budget_category',
       description:
-        'Add a new cost bucket to a project, or update an existing one. Use this when the operator asks to add a scope item to a project (e.g. "add a $10K steam room to the ensuite") or to bump an existing bucket\'s estimate. Pass `id` to update an existing bucket; omit `id` to create a new one. Adding a bucket only changes the internal budget — it does NOT bill the customer. After calling this, offer to create a Change Order via create_change_order if the addition is customer-billable scope.',
+        'Add a new budget category to a project, or update an existing one. Use this when the operator asks to add a scope item to a project (e.g. "add a $10K steam room to the ensuite") or to bump an existing category\'s estimate. Pass `id` to update an existing category; omit `id` to create a new one. Adding a category only changes the internal budget — it does NOT bill the customer. After calling this, offer to create a Change Order via create_change_order if the addition is customer-billable scope.',
       input_schema: {
         type: 'object',
         properties: {
@@ -281,17 +281,17 @@ export const projectTools: AiTool[] = [
           id: {
             type: 'string',
             description:
-              'Cost bucket UUID. Provide to update an existing bucket; omit to create a new one.',
+              'Budget category UUID. Provide to update an existing category; omit to create a new one.',
           },
           name: {
             type: 'string',
             description:
-              'Bucket name (e.g. "Steam Room", "Heated Floors"). Required when creating; ignored when updating.',
+              'Category name (e.g. "Steam Room", "Heated Floors"). Required when creating; ignored when updating.',
           },
           section: {
             type: 'string',
             description:
-              'Bucket section. Common values are "interior" or "exterior". Required when creating; ignored when updating. Default to "interior" for indoor scope additions like ensuites/kitchens/baths.',
+              'Category section. Common values are "interior" or "exterior". Required when creating; ignored when updating. Default to "interior" for indoor scope additions like ensuites/kitchens/baths.',
           },
           estimate_cents: {
             type: 'number',
@@ -300,7 +300,7 @@ export const projectTools: AiTool[] = [
           },
           description: {
             type: 'string',
-            description: 'Optional free-text note about the bucket.',
+            description: 'Optional free-text note about the category.',
           },
         },
         required: ['project_id'],
@@ -322,16 +322,16 @@ export const projectTools: AiTool[] = [
             estimate_cents: input.estimate_cents as number | undefined,
             description: input.description as string | undefined,
           });
-          if (!result.ok) return `Failed to update bucket: ${result.error}`;
-          return `Updated cost bucket ${id}.`;
+          if (!result.ok) return `Failed to update category: ${result.error}`;
+          return `Updated budget category ${id}.`;
         }
 
         const name = input.name as string | undefined;
         const section = (input.section as string | undefined) ?? 'interior';
-        if (!name) return 'name is required when creating a new cost bucket.';
+        if (!name) return 'name is required when creating a new budget category.';
         const estimateCents = input.estimate_cents as number | undefined;
         if (estimateCents === undefined) {
-          return 'estimate_cents is required when creating a new cost bucket.';
+          return 'estimate_cents is required when creating a new budget category.';
         }
 
         const { addBudgetCategoryAction } = await import(
@@ -344,10 +344,10 @@ export const projectTools: AiTool[] = [
           description: input.description as string | undefined,
           estimate_cents: estimateCents,
         });
-        if (!result.ok) return `Failed to add bucket: ${result.error}`;
-        return `Added "${name}" (${section}) to the project budget at ${formatCad(estimateCents)}. Bucket id: ${result.id}. This is an internal budget change — if the customer is being billed for this scope, follow up by creating a Change Order.`;
+        if (!result.ok) return `Failed to add category: ${result.error}`;
+        return `Added "${name}" (${section}) to the project budget at ${formatCad(estimateCents)}. Category id: ${result.id}. This is an internal budget change — if the customer is being billed for this scope, follow up by creating a Change Order.`;
       } catch (e) {
-        return `Failed to upsert bucket: ${e instanceof Error ? e.message : String(e)}`;
+        return `Failed to upsert category: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
   },
@@ -355,7 +355,7 @@ export const projectTools: AiTool[] = [
 
 async function renderProjectBudgetDetail(projectId: string): Promise<string> {
   const budget = await getBudgetVsActual(projectId);
-  if (budget.lines.length === 0) return 'No cost buckets found for this project.';
+  if (budget.lines.length === 0) return 'No budget categories found for this project.';
 
   let output = `Budget vs Actual\n${'='.repeat(40)}\n\n`;
   const sections = new Map<string, typeof budget.lines>();

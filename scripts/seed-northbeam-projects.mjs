@@ -93,7 +93,7 @@ async function uploadPhoto({ jobId, projectId, customerId, slug, prompt, tag, ca
   return row.id;
 }
 
-// ---- Common: insert customer / project / buckets / lines / job / tasks / notes / bills ----
+// ---- Common: insert customer / project / categories / lines / job / tasks / notes / bills ----
 async function seedProject(spec) {
   const existing = await sql`
     SELECT id FROM public.customers
@@ -129,31 +129,31 @@ async function seedProject(spec) {
   `;
   console.log(`\n=== ${project.name} (${project.id}) ===`);
 
-  // buckets
-  const bucketIds = {};
-  for (let i = 0; i < spec.buckets.length; i++) {
-    const b = spec.buckets[i];
+  // categories
+  const categoryIds = {};
+  for (let i = 0; i < spec.categories.length; i++) {
+    const b = spec.categories[i];
     const [row] = await sql`
-      INSERT INTO public.project_cost_buckets
+      INSERT INTO public.project_budget_categories
         (project_id, tenant_id, name, section, estimate_cents, display_order, is_visible_in_report)
       VALUES (${project.id}, ${TENANT_ID}, ${b.name}, ${b.section ?? null}, ${b.est}, ${i + 1}, true)
       RETURNING id
     `;
-    bucketIds[b.name] = row.id;
+    categoryIds[b.name] = row.id;
   }
 
   // cost lines
   for (let i = 0; i < spec.lines.length; i++) {
-    const [bucketName, category, label, qty, unit, unitCost, unitPrice] = spec.lines[i];
+    const [categoryName, category, label, qty, unit, unitCost, unitPrice] = spec.lines[i];
     const lineCost = Math.round(qty * unitCost);
     const linePrice = Math.round(qty * unitPrice);
     const markup = unitCost > 0 ? ((unitPrice - unitCost) / unitCost) * 100 : 0;
     await sql`
       INSERT INTO public.project_cost_lines
-        (project_id, bucket_id, category, label, qty, unit,
+        (project_id, budget_category_id, category, label, qty, unit,
          unit_cost_cents, unit_price_cents, markup_pct,
          line_cost_cents, line_price_cents, sort_order, photo_storage_paths)
-      VALUES (${project.id}, ${bucketIds[bucketName]}, ${category}, ${label},
+      VALUES (${project.id}, ${categoryIds[categoryName]}, ${category}, ${label},
               ${qty}, ${unit}, ${unitCost}, ${unitPrice}, ${markup.toFixed(2)},
               ${lineCost}, ${linePrice}, ${i}, '[]'::jsonb)
     `;
@@ -197,13 +197,13 @@ async function seedProject(spec) {
 
   // bills
   for (const b of spec.bills ?? []) {
-    const [vendor, desc, amt, bucketName, dayOffset, status] = b;
+    const [vendor, desc, amt, categoryName, dayOffset, status] = b;
     const date = day(dayOffset);
     const gst = Math.round(amt * 0.05);
     await sql`
       INSERT INTO public.project_bills
-        (tenant_id, project_id, vendor, bill_date, description, amount_cents, status, bucket_id, gst_cents)
-      VALUES (${TENANT_ID}, ${project.id}, ${vendor}, ${date}, ${desc}, ${amt}, ${status}, ${bucketIds[bucketName]}, ${gst})
+        (tenant_id, project_id, vendor, bill_date, description, amount_cents, status, budget_category_id, gst_cents)
+      VALUES (${TENANT_ID}, ${project.id}, ${vendor}, ${date}, ${desc}, ${amt}, ${status}, ${categoryIds[categoryName]}, ${gst})
     `;
   }
 
@@ -294,7 +294,7 @@ const A = {
     start: day(-9), target_end: day(5), percent: 25,
     estimate_status: 'approved', lifecycle: 'active',
   },
-  buckets: [
+  categories: [
     { name: 'Demolition', section: 'Powder Room', est: 35000 },
     { name: 'Plumbing + fixtures', section: 'Powder Room', est: 240000 },
     { name: 'Paint + finish', section: 'Powder Room', est: 95000 },
@@ -362,7 +362,7 @@ const B = {
     start: day(-28), target_end: day(14), percent: 60,
     estimate_status: 'approved', lifecycle: 'active',
   },
-  buckets: [
+  categories: [
     { name: 'Demolition', section: 'Kitchen', est: 180000 },
     { name: 'Plumbing', section: 'Kitchen', est: 220000 },
     { name: 'Electrical', section: 'Kitchen', est: 280000 },
@@ -456,7 +456,7 @@ const C = {
     start: day(-75), target_end: day(-3), percent: 100,
     estimate_status: 'approved', lifecycle: 'complete',
   },
-  buckets: [
+  categories: [
     { name: 'Demolition', section: 'Basement', est: 240000 },
     { name: 'Framing', section: 'Basement', est: 980000 },
     { name: 'Plumbing', section: 'Basement', est: 1450000 },
@@ -551,7 +551,7 @@ const D = {
     start: day(-12), target_end: day(95), percent: 10,
     estimate_status: 'approved', lifecycle: 'active',
   },
-  buckets: [
+  categories: [
     { name: 'Site prep + demo', section: 'Whole Home', est: 1850000 },
     { name: 'Structural framing', section: 'Whole Home', est: 2480000 },
     { name: 'Plumbing rough', section: 'Whole Home', est: 1980000 },
@@ -659,7 +659,7 @@ const E = {
     start: day(7), target_end: day(28), percent: 0,
     estimate_status: 'pending_approval', lifecycle: 'awaiting_approval',
   },
-  buckets: [
+  categories: [
     { name: 'Demolition', section: 'Deck', est: 95000 },
     { name: 'Structural', section: 'Deck', est: 480000 },
     { name: 'Decking material', section: 'Deck', est: 580000 },

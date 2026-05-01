@@ -5,7 +5,7 @@
  *
  * Each row carries enough info to render status at a glance:
  *   - customer + project name
- *   - estimate total (sum of cost-bucket estimates)
+ *   - estimate total (sum of budget-category estimates)
  *   - days since sent
  *   - view count + last-viewed timestamp (from public_page_views)
  *
@@ -45,7 +45,7 @@ export async function getProjectsAwaitingApproval(): Promise<AwaitingApprovalPro
 
   const ids = projects.map((p) => p.id as string);
 
-  const [{ data: buckets, error: bucketsErr }, { data: views, error: viewsErr }] =
+  const [{ data: categories, error: categoriesErr }, { data: views, error: viewsErr }] =
     await Promise.all([
       supabase
         .from('project_budget_categories')
@@ -57,11 +57,11 @@ export async function getProjectsAwaitingApproval(): Promise<AwaitingApprovalPro
         .eq('resource_type', 'estimate')
         .in('resource_id', ids),
     ]);
-  if (bucketsErr) throw new Error(`Awaiting approval: ${bucketsErr.message}`);
+  if (categoriesErr) throw new Error(`Awaiting approval: ${categoriesErr.message}`);
   if (viewsErr) throw new Error(`Awaiting approval: ${viewsErr.message}`);
 
   const totalsBy = new Map<string, number>();
-  for (const b of buckets ?? []) {
+  for (const b of categories ?? []) {
     const pid = b.project_id as string;
     totalsBy.set(pid, (totalsBy.get(pid) ?? 0) + ((b.estimate_cents as number) ?? 0));
   }

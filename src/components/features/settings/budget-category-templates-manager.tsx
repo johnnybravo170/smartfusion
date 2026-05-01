@@ -4,15 +4,15 @@ import { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  deleteBucketTemplateAction,
-  upsertBucketTemplateAction,
-} from '@/server/actions/bucket-templates';
+  deleteBudgetCategoryTemplateAction,
+  upsertBudgetCategoryTemplateAction,
+} from '@/server/actions/budget-category-templates';
 
 type TemplateRow = {
   id: string;
   name: string;
   section: 'interior' | 'exterior' | 'general';
-  buckets: string[];
+  categories: string[];
   is_default: boolean;
 };
 
@@ -23,22 +23,22 @@ function TemplateForm({ initial, onDone }: { initial?: TemplateRow; onDone: () =
   const [section, setSection] = useState<'interior' | 'exterior' | 'general'>(
     initial?.section ?? 'interior',
   );
-  const [bucketText, setBucketText] = useState(initial?.buckets.join('\n') ?? '');
+  const [categoryText, setCategoryText] = useState(initial?.categories.join('\n') ?? '');
   const [isDefault, setIsDefault] = useState(initial?.is_default ?? false);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    const buckets = bucketText
+    const categories = categoryText
       .split('\n')
-      .map((b) => b.trim())
+      .map((c) => c.trim())
       .filter(Boolean);
     startTransition(async () => {
-      const res = await upsertBucketTemplateAction({
+      const res = await upsertBudgetCategoryTemplateAction({
         id: initial?.id,
         name,
         section,
-        buckets,
+        categories,
         is_default: isDefault,
       });
       if (res.ok) onDone();
@@ -50,11 +50,11 @@ function TemplateForm({ initial, onDone }: { initial?: TemplateRow; onDone: () =
     <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border bg-muted/30 p-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="sm:col-span-2">
-          <label htmlFor="btm-name" className="mb-1 block text-xs font-medium">
+          <label htmlFor="bct-name" className="mb-1 block text-xs font-medium">
             Template Name
           </label>
           <Input
-            id="btm-name"
+            id="bct-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Bathroom Reno"
@@ -62,11 +62,11 @@ function TemplateForm({ initial, onDone }: { initial?: TemplateRow; onDone: () =
           />
         </div>
         <div>
-          <label htmlFor="btm-section" className="mb-1 block text-xs font-medium">
+          <label htmlFor="bct-section" className="mb-1 block text-xs font-medium">
             Section
           </label>
           <select
-            id="btm-section"
+            id="bct-section"
             value={section}
             onChange={(e) => setSection(e.target.value as 'interior' | 'exterior' | 'general')}
             className="w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -90,13 +90,13 @@ function TemplateForm({ initial, onDone }: { initial?: TemplateRow; onDone: () =
       </div>
 
       <div>
-        <label htmlFor="btm-buckets" className="mb-1 block text-xs font-medium">
-          Buckets (one per line)
+        <label htmlFor="bct-categories" className="mb-1 block text-xs font-medium">
+          Categories (one per line)
         </label>
         <textarea
-          id="btm-buckets"
-          value={bucketText}
-          onChange={(e) => setBucketText(e.target.value)}
+          id="bct-categories"
+          value={categoryText}
+          onChange={(e) => setCategoryText(e.target.value)}
           rows={6}
           placeholder={'Demo\nDisposal\nFraming\nPlumbing\nElectrical\nDrywall'}
           className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
@@ -125,7 +125,7 @@ export function BudgetCategoryTemplatesManager({ templates }: { templates: Templ
   function deleteTemplate(id: string) {
     if (!confirm('Delete this template?')) return;
     startTransition(async () => {
-      await deleteBucketTemplateAction(id);
+      await deleteBudgetCategoryTemplateAction(id);
     });
   }
 
@@ -147,7 +147,7 @@ export function BudgetCategoryTemplatesManager({ templates }: { templates: Templ
 
       {templates.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No templates yet. Add your first bucket template above.
+          No templates yet. Add your first budget category template above.
         </p>
       ) : (
         <div className="space-y-3">
@@ -167,8 +167,8 @@ export function BudgetCategoryTemplatesManager({ templates }: { templates: Templ
                     )}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {t.buckets.length} buckets: {t.buckets.slice(0, 5).join(', ')}
-                    {t.buckets.length > 5 ? ` +${t.buckets.length - 5} more` : ''}
+                    {t.categories.length} categories: {t.categories.slice(0, 5).join(', ')}
+                    {t.categories.length > 5 ? ` +${t.categories.length - 5} more` : ''}
                   </p>
                 </div>
                 <div className="flex gap-1">

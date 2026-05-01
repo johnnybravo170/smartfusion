@@ -3,20 +3,20 @@ import Link from 'next/link';
 import { BudgetCategoryTemplatesManager } from '@/components/features/settings/budget-category-templates-manager';
 import { createClient } from '@/lib/supabase/server';
 
-export const metadata = { title: 'Bucket Templates — HeyHenry' };
+export const metadata = { title: 'Budget Category Templates — HeyHenry' };
 
-export default async function BucketTemplatesPage() {
+export default async function BudgetCategoryTemplatesPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .from('budget_category_templates')
-    .select('id, name, section, buckets, is_default')
+    .select('id, name, section, categories, is_default')
     .order('name');
 
   const templates = (data ?? []).map((t) => ({
     id: t.id as string,
     name: t.name as string,
     section: t.section as 'interior' | 'exterior' | 'general',
-    buckets: (t.buckets as string[]) ?? [],
+    categories: (t.categories as string[]) ?? [],
     is_default: (t.is_default as boolean) ?? false,
   }));
 
@@ -30,9 +30,10 @@ export default async function BucketTemplatesPage() {
           <ArrowLeft className="size-3.5" />
           Back to settings
         </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">Bucket Templates</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Budget Category Templates</h1>
         <p className="text-sm text-muted-foreground">
-          Reusable cost bucket sets for renovation projects. Applied when creating a new project.
+          Reusable budget category sets for renovation projects. Applied when creating a new
+          project.
         </p>
       </header>
 

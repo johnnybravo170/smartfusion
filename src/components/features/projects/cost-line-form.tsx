@@ -24,14 +24,14 @@ export function CostLineForm({
   projectId,
   initial,
   catalog,
-  defaultBucketId,
+  defaultCategoryId,
   onDone,
   photoUrls,
 }: {
   projectId: string;
   initial?: CostLineRow;
   catalog: MaterialsCatalogRow[];
-  defaultBucketId?: string;
+  defaultCategoryId?: string;
   onDone: () => void;
   /** Path → signed URL map for any existing photos on this line. */
   photoUrls?: Record<string, string>;
@@ -117,7 +117,7 @@ export function CostLineForm({
       const res = await upsertCostLineAction({
         id: initial?.id,
         project_id: projectId,
-        budget_category_id: initial?.budget_category_id ?? defaultBucketId,
+        budget_category_id: initial?.budget_category_id ?? defaultCategoryId,
         category,
         label,
         qty: parseFloat(qty || '1'),

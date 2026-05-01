@@ -24,8 +24,8 @@ export type ProjectActionResult =
   | { ok: true; id: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
-/** Jon's default interior cost buckets. */
-const DEFAULT_INTERIOR_BUCKETS = [
+/** Jon's default interior budget categories. */
+const DEFAULT_INTERIOR_CATEGORIES = [
   'Demo',
   'Disposal',
   'Framing',
@@ -44,8 +44,8 @@ const DEFAULT_INTERIOR_BUCKETS = [
   'Contingency',
 ];
 
-/** Jon's default exterior cost buckets. */
-const DEFAULT_EXTERIOR_BUCKETS = [
+/** Jon's default exterior budget categories. */
+const DEFAULT_EXTERIOR_CATEGORIES = [
   'Demo',
   'Disposal',
   'Framing',
@@ -125,30 +125,32 @@ export async function createProjectAction(input: {
     }
   }
 
-  // Seed default cost buckets
-  const bucketRows = [
-    ...DEFAULT_INTERIOR_BUCKETS.map((name, i) => ({
+  // Seed default budget categories
+  const categoryRows = [
+    ...DEFAULT_INTERIOR_CATEGORIES.map((name, i) => ({
       project_id: data.id,
       tenant_id: tenant.id,
       name,
       section: 'interior' as const,
       display_order: i,
     })),
-    ...DEFAULT_EXTERIOR_BUCKETS.map((name, i) => ({
+    ...DEFAULT_EXTERIOR_CATEGORIES.map((name, i) => ({
       project_id: data.id,
       tenant_id: tenant.id,
       name,
       section: 'exterior' as const,
-      display_order: DEFAULT_INTERIOR_BUCKETS.length + i,
+      display_order: DEFAULT_INTERIOR_CATEGORIES.length + i,
     })),
   ];
 
-  const { error: bucketErr } = await supabase.from('project_budget_categories').insert(bucketRows);
+  const { error: categoryErr } = await supabase
+    .from('project_budget_categories')
+    .insert(categoryRows);
 
-  if (bucketErr) {
-    // Project created but buckets failed. Still return success so the user
+  if (categoryErr) {
+    // Project created but categories failed. Still return success so the user
     // can seed manually.
-    console.error('Failed to seed default buckets:', bucketErr.message);
+    console.error('Failed to seed default categories:', categoryErr.message);
   }
 
   // Write worklog entry
@@ -348,7 +350,7 @@ export async function cloneProjectAction(input: {
   source_id: string;
   customer_id: string;
   name: string;
-  clone_cost_buckets: boolean;
+  clone_budget_categories: boolean;
   clone_notes: boolean;
   keep_line_photos?: boolean;
 }): Promise<ProjectActionResult> {
@@ -415,19 +417,19 @@ export async function cloneProjectAction(input: {
     }
   }
 
-  if (input.clone_cost_buckets) {
-    const { data: srcBuckets } = await supabase
+  if (input.clone_budget_categories) {
+    const { data: srcCategories } = await supabase
       .from('project_budget_categories')
       .select('id, name, section, description, estimate_cents, display_order, is_visible_in_report')
       .eq('project_id', input.source_id);
 
-    // Pre-generate new bucket UUIDs so we can remap cost-line bucket_ids
+    // Pre-generate new category UUIDs so we can remap cost-line category ids
     // without a second round-trip to read back inserted rows.
-    const bucketIdMap = new Map<string, string>();
-    if (srcBuckets && srcBuckets.length > 0) {
-      const rows = srcBuckets.map((b) => {
+    const categoryIdMap = new Map<string, string>();
+    if (srcCategories && srcCategories.length > 0) {
+      const rows = srcCategories.map((b) => {
         const newId = crypto.randomUUID();
-        bucketIdMap.set(b.id, newId);
+        categoryIdMap.set(b.id, newId);
         return {
           id: newId,
           tenant_id: tenant.id,
@@ -441,11 +443,11 @@ export async function cloneProjectAction(input: {
         };
       });
       const { error: bErr } = await supabase.from('project_budget_categories').insert(rows);
-      if (bErr) console.error('Failed to clone cost buckets:', bErr.message);
+      if (bErr) console.error('Failed to clone budget categories:', bErr.message);
     }
 
     // Estimate line items live on project_cost_lines, keyed by budget_category_id.
-    // Without these, cloned projects show empty buckets with no prices.
+    // Without these, cloned projects show empty categories with no prices.
     const { data: srcLines } = await supabase
       .from('project_cost_lines')
       .select(
@@ -459,7 +461,7 @@ export async function cloneProjectAction(input: {
         tenant_id: tenant.id,
         project_id: created.id,
         budget_category_id: l.budget_category_id
-          ? (bucketIdMap.get(l.budget_category_id) ?? null)
+          ? (categoryIdMap.get(l.budget_category_id) ?? null)
           : null,
         photo_storage_paths: input.keep_line_photos ? l.photo_storage_paths : [],
       }));

@@ -240,7 +240,7 @@ export type PipelineMetrics = {
   expiredQuoteCount: number;
   expiredQuoteValueCents: number;
   activeProjectCount: number;
-  /** Sum of cost-bucket estimates for projects in planning + in_progress. */
+  /** Sum of budget-category estimates for projects in planning + in_progress. */
   activeProjectValueCents: number;
 };
 
@@ -281,12 +281,12 @@ export async function getPipelineMetrics(): Promise<PipelineMetrics> {
   // Skip the second round-trip when there are no active projects.
   let activeProjectValueCents = 0;
   if (projectIds.length > 0) {
-    const { data: buckets, error: bucketsErr } = await supabase
+    const { data: categories, error: categoriesErr } = await supabase
       .from('project_budget_categories')
       .select('estimate_cents')
       .in('project_id', projectIds);
-    if (bucketsErr) throw new Error(`Pipeline: ${bucketsErr.message}`);
-    activeProjectValueCents = (buckets ?? []).reduce(
+    if (categoriesErr) throw new Error(`Pipeline: ${categoriesErr.message}`);
+    activeProjectValueCents = (categories ?? []).reduce(
       (sum, b) => sum + ((b.estimate_cents as number) ?? 0),
       0,
     );
@@ -319,11 +319,11 @@ export type RenovationPipelineMetrics = {
 
 /**
  * Renovation-vertical pipeline snapshot. All counts/values come from
- * projects (via cost buckets), not quotes — the polygon quoting tool
+ * projects (via budget categories), not quotes — the polygon quoting tool
  * is irrelevant for GCs.
  *
  * Values are summed from `project_budget_categories.estimate_cents` for each
- * stage. Single round-trip to projects, then one to buckets filtered
+ * stage. Single round-trip to projects, then one to categories filtered
  * by the project ids we care about. "Complete this year" is a count
  * only (no value) because it's a retrospective metric.
  */
@@ -365,13 +365,13 @@ export async function getRenovationPipelineMetrics(
   const allIds = rows.map((r) => r.id);
   let valueByProject = new Map<string, number>();
   if (allIds.length > 0) {
-    const { data: buckets, error: bucketsErr } = await supabase
+    const { data: categories, error: categoriesErr } = await supabase
       .from('project_budget_categories')
       .select('project_id, estimate_cents')
       .in('project_id', allIds);
-    if (bucketsErr) throw new Error(`Renovation pipeline: ${bucketsErr.message}`);
+    if (categoriesErr) throw new Error(`Renovation pipeline: ${categoriesErr.message}`);
     valueByProject = new Map();
-    for (const b of buckets ?? []) {
+    for (const b of categories ?? []) {
       const pid = b.project_id as string;
       valueByProject.set(pid, (valueByProject.get(pid) ?? 0) + ((b.estimate_cents as number) ?? 0));
     }

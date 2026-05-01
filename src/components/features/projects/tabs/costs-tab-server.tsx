@@ -18,7 +18,7 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
     purchaseOrders,
     bills,
     subQuotes,
-    projectBuckets,
+    projectCategories,
     expenses,
     crewWorkers,
     operatorNameByUserId,
@@ -34,12 +34,12 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
     listCostLines(projectId),
   ]);
 
-  const costLinesByBucket = new Map<string, Array<{ id: string; label: string }>>();
+  const costLinesByCategory = new Map<string, Array<{ id: string; label: string }>>();
   for (const l of costLines) {
     if (!l.budget_category_id) continue;
-    const arr = costLinesByBucket.get(l.budget_category_id) ?? [];
+    const arr = costLinesByCategory.get(l.budget_category_id) ?? [];
     arr.push({ id: l.id, label: l.label });
-    costLinesByBucket.set(l.budget_category_id, arr);
+    costLinesByCategory.set(l.budget_category_id, arr);
   }
 
   // Sign receipt URLs for any expense with a storage-backed receipt.
@@ -96,11 +96,11 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
       bills={bills}
       subQuotes={subQuotes}
       expenses={expenseItems}
-      buckets={projectBuckets.map((b) => ({
+      categories={projectCategories.map((b) => ({
         id: b.id,
         name: b.name,
         section: (b.section as 'interior' | 'exterior' | 'general') ?? 'general',
-        cost_lines: costLinesByBucket.get(b.id) ?? [],
+        cost_lines: costLinesByCategory.get(b.id) ?? [],
       }))}
     />
   );

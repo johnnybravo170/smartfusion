@@ -35,7 +35,7 @@ export async function listProjectBills(projectId: string): Promise<ProjectBillRo
   if (error) throw new Error(`Failed to list project bills: ${error.message}`);
   return ((data ?? []) as unknown[]).map((row) => {
     const r = row as Record<string, unknown>;
-    const bucketRel = r.project_budget_categories as { name: string } | null;
+    const categoryRel = r.project_budget_categories as { name: string } | null;
     return {
       id: r.id as string,
       tenant_id: r.tenant_id as string,
@@ -50,7 +50,7 @@ export async function listProjectBills(projectId: string): Promise<ProjectBillRo
       cost_code: (r.cost_code as string | null) ?? null,
       vendor_gst_number: (r.vendor_gst_number as string | null) ?? null,
       budget_category_id: (r.budget_category_id as string | null) ?? null,
-      budget_category_name: bucketRel?.name ?? null,
+      budget_category_name: categoryRel?.name ?? null,
       cost_line_id: (r.cost_line_id as string | null) ?? null,
       attachment_storage_path: (r.attachment_storage_path as string | null) ?? null,
       created_at: r.created_at as string,

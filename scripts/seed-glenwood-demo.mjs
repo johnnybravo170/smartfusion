@@ -2,7 +2,7 @@
  * One-shot demo project seed for Northbeam Construction.
  *
  *   - Active project with 70%+ cost-burn already accumulated
- *   - 8 buckets, ~25 cost lines
+ *   - 8 categories, ~25 cost lines
  *   - Bills + expenses + POs + time entries (most tagged to specific
  *     cost_line_id so the line-level inline-expand has data)
  *   - 2 approved + applied change orders, with snapshots at v1/v2/v3
@@ -103,11 +103,11 @@ const [project] = await sql`
 const projectId = project.id;
 console.log(`\n=== ${project.name} (${projectId}) ===`);
 
-// ── buckets ─────────────────────────────────────────────────────────────────
+// ── categories ──────────────────────────────────────────────────────────────
 // Free-form sections (per migration 0072) — using "Master suite addition"
 // as the section so the budget table groups them under one header.
 const SECTION = 'Master suite addition';
-const bucketSpecs = [
+const categorySpecs = [
   { name: 'Site prep + demo', est: 380000 },
   { name: 'Structural framing + roof', est: 1880000 },
   { name: 'Plumbing rough', est: 980000 },
@@ -119,20 +119,20 @@ const bucketSpecs = [
   { name: 'Paint + trim', est: 380000 },
 ];
 
-const buckets = {};
-for (let i = 0; i < bucketSpecs.length; i++) {
-  const b = bucketSpecs[i];
+const categories = {};
+for (let i = 0; i < categorySpecs.length; i++) {
+  const b = categorySpecs[i];
   const [row] = await sql`
     INSERT INTO public.project_budget_categories
       (project_id, tenant_id, name, section, estimate_cents, display_order, is_visible_in_report)
     VALUES (${projectId}, ${TENANT_ID}, ${b.name}, ${SECTION}, ${b.est}, ${i + 1}, true)
     RETURNING id, name
   `;
-  buckets[b.name] = row.id;
+  categories[b.name] = row.id;
 }
 
 // ── cost lines (planning version) ──────────────────────────────────────────
-// [bucket, category, label, qty, unit, unit_cost_cents, unit_price_cents]
+// [category, costCategory, label, qty, unit, unit_cost_cents, unit_price_cents]
 const planningLines = [
   ['Site prep + demo', 'sub', 'Tear out garage ceiling + structural prep', 1, 'lump', 280000, 335000],
   ['Site prep + demo', 'overhead', 'Bin rental + disposal (2 bins)', 2, 'each', 35000, 42000],
@@ -172,7 +172,7 @@ const planningLines = [
 
 const lineIds = {};
 for (let i = 0; i < planningLines.length; i++) {
-  const [bucketName, category, label, qty, unit, uc, up] = planningLines[i];
+  const [categoryName, category, label, qty, unit, uc, up] = planningLines[i];
   const lineCost = Math.round(qty * uc);
   const linePrice = Math.round(qty * up);
   const markup = uc > 0 ? ((up - uc) / uc) * 100 : 0;
@@ -181,7 +181,7 @@ for (let i = 0; i < planningLines.length; i++) {
       (project_id, budget_category_id, category, label, qty, unit,
        unit_cost_cents, unit_price_cents, markup_pct,
        line_cost_cents, line_price_cents, sort_order, photo_storage_paths)
-    VALUES (${projectId}, ${buckets[bucketName]}, ${category}, ${label},
+    VALUES (${projectId}, ${categories[categoryName]}, ${category}, ${label},
             ${qty}, ${unit}, ${uc}, ${up}, ${markup.toFixed(2)},
             ${lineCost}, ${linePrice}, ${i}, '[]'::jsonb)
     RETURNING id, label
@@ -235,7 +235,7 @@ await sql`
 `;
 
 // ── time entries ────────────────────────────────────────────────────────────
-// (dayOffset, hours, bucket, lineLabel, notes)
+// (dayOffset, hours, category, lineLabel, notes)
 const timeEntries = [
   [-50, 8, 'Site prep + demo', 'Tear out garage ceiling + structural prep', 'Demo + prep'],
   [-49, 7, 'Site prep + demo', 'Tear out garage ceiling + structural prep', 'Demo finish + cleanup'],
@@ -269,7 +269,7 @@ const timeEntries = [
 ];
 
 let totalHours = 0;
-for (const [d, h, bucketName, lineLabel, notes] of timeEntries) {
+for (const [d, h, categoryName, lineLabel, notes] of timeEntries) {
   totalHours += h;
   await sql`
     INSERT INTO public.time_entries
@@ -277,7 +277,7 @@ for (const [d, h, bucketName, lineLabel, notes] of timeEntries) {
        budget_category_id, cost_line_id, hours,
        hourly_rate_cents, charge_rate_cents, notes, entry_date)
     VALUES (${TENANT_ID}, ${owner.user_id}, ${worker.id}, ${projectId},
-            ${buckets[bucketName]}, ${lineIds[lineLabel]}, ${h},
+            ${categories[categoryName]}, ${lineIds[lineLabel]}, ${h},
             ${worker.default_hourly_rate_cents}, ${worker.default_charge_rate_cents},
             ${notes}, ${day(d)})
   `;
@@ -285,7 +285,7 @@ for (const [d, h, bucketName, lineLabel, notes] of timeEntries) {
 console.log(`time entries: ${timeEntries.length} (${totalHours} hours)`);
 
 // ── bills (paid + pending) ──────────────────────────────────────────────────
-// (vendor, dayOffset, description, amount_cents, gst_cents, bucket, lineLabel, status, costCode)
+// (vendor, dayOffset, description, amount_cents, gst_cents, category, lineLabel, status, costCode)
 const bills = [
   ['Lumber World', -47, 'Framing lumber package + sheathing', 385000, 19250, 'Structural framing + roof', 'Lumber + sheathing package', 'paid', 'LBR-001'],
   ['Lumber World', -45, 'LVL beams + Simpson hangers', 92000, 4600, 'Structural framing + roof', 'LVL beams + hangers', 'paid', 'LBR-002'],
@@ -301,20 +301,20 @@ const bills = [
 ];
 
 let totalBillCents = 0;
-for (const [vendor, d, desc, amt, gst, bucketName, lineLabel, status, costCode] of bills) {
+for (const [vendor, d, desc, amt, gst, categoryName, lineLabel, status, costCode] of bills) {
   totalBillCents += amt;
   await sql`
     INSERT INTO public.project_bills
       (tenant_id, project_id, vendor, bill_date, description,
        amount_cents, gst_cents, status, budget_category_id, cost_line_id, cost_code)
     VALUES (${TENANT_ID}, ${projectId}, ${vendor}, ${day(d)}, ${desc},
-            ${amt}, ${gst}, ${status}, ${buckets[bucketName]}, ${lineIds[lineLabel]}, ${costCode})
+            ${amt}, ${gst}, ${status}, ${categories[categoryName]}, ${lineIds[lineLabel]}, ${costCode})
   `;
 }
 console.log(`bills: ${bills.length} ($${(totalBillCents/100).toLocaleString()})`);
 
 // ── expenses ────────────────────────────────────────────────────────────────
-// (dayOffset, vendor, description, amount_cents, bucket, lineLabel)
+// (dayOffset, vendor, description, amount_cents, category, lineLabel)
 const expenses = [
   [-48, 'Home Depot', 'Demo supplies — gloves, blades, tarps', 18900, 'Site prep + demo', 'Tear out garage ceiling + structural prep'],
   [-44, 'Home Depot', 'Framing nails, screws, joist hangers fill-in', 12450, 'Structural framing + roof', 'Frame 2nd-storey addition (walls, joists)'],
@@ -326,7 +326,7 @@ const expenses = [
 ];
 
 let totalExpenseCents = 0;
-for (const [d, vendor, desc, amt, bucketName, lineLabel] of expenses) {
+for (const [d, vendor, desc, amt, categoryName, lineLabel] of expenses) {
   totalExpenseCents += amt;
   await sql`
     INSERT INTO public.expenses
@@ -334,7 +334,7 @@ for (const [d, vendor, desc, amt, bucketName, lineLabel] of expenses) {
        budget_category_id, cost_line_id, amount_cents,
        vendor, description, expense_date)
     VALUES (${TENANT_ID}, ${owner.user_id}, ${projectId},
-            ${buckets[bucketName]}, ${lineIds[lineLabel]}, ${amt},
+            ${categories[categoryName]}, ${lineIds[lineLabel]}, ${amt},
             ${vendor}, ${desc}, ${day(d)})
   `;
 }
@@ -500,7 +500,7 @@ async function applyChangeOrder({ title, description, reason, approvedAtOffset, 
       {
         action: 'modify',
         original_line_id: oldLineId,
-        budget_category_id: buckets['Ensuite bath'],
+        budget_category_id: categories['Ensuite bath'],
         category: 'material',
         label: 'Tile package — floor + shower walls + niche (upgraded)',
         qty: 1,
@@ -526,7 +526,7 @@ async function applyChangeOrder({ title, description, reason, approvedAtOffset, 
        amount_cents, gst_cents, status, budget_category_id, cost_line_id, cost_code)
     VALUES (${TENANT_ID}, ${projectId}, 'Stoneworks Tile', ${day(-19)},
             'Tile package upgrade — marble-look porcelain delta',
-            625000, 31250, 'paid', ${buckets['Ensuite bath']},
+            625000, 31250, 'paid', ${categories['Ensuite bath']},
             ${upgradedLineId}, 'MAT-TIL-2')
   `;
   totalBillCents += 625000;
@@ -543,7 +543,7 @@ async function applyChangeOrder({ title, description, reason, approvedAtOffset, 
     lines: [
       {
         action: 'add',
-        budget_category_id: buckets['Ensuite bath'],
+        budget_category_id: categories['Ensuite bath'],
         category: 'material',
         label: 'In-floor electric heat mat + thermostat',
         qty: 1,
@@ -557,7 +557,7 @@ async function applyChangeOrder({ title, description, reason, approvedAtOffset, 
       },
       {
         action: 'add',
-        budget_category_id: buckets['Ensuite bath'],
+        budget_category_id: categories['Ensuite bath'],
         category: 'sub',
         label: 'In-floor heat install + thermostat hookup',
         qty: 1,
@@ -582,7 +582,7 @@ async function applyChangeOrder({ title, description, reason, approvedAtOffset, 
        amount_cents, gst_cents, status, budget_category_id, cost_line_id, cost_code)
     VALUES (${TENANT_ID}, ${projectId}, 'Stoneworks Tile', ${day(-15)},
             'In-floor heat mat install + thermostat',
-            125000, 6250, 'paid', ${buckets['Ensuite bath']},
+            125000, 6250, 'paid', ${categories['Ensuite bath']},
             ${heatSubLineId}, 'CO-HEAT-1')
   `;
   totalBillCents += 125000;
@@ -596,7 +596,7 @@ async function applyChangeOrder({ title, description, reason, approvedAtOffset, 
        budget_category_id, cost_line_id, amount_cents,
        vendor, description, expense_date)
     VALUES (${TENANT_ID}, ${owner.user_id}, ${projectId},
-            ${buckets['Ensuite bath']}, ${heatMatLineId}, 95000,
+            ${categories['Ensuite bath']}, ${heatMatLineId}, 95000,
             'Schluter', 'Ditra-Heat mat + thermostat', ${day(-29)})
   `;
   totalExpenseCents += 95000;

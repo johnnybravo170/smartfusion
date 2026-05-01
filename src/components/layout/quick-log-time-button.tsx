@@ -17,8 +17,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { listActiveProjectsAction, logTimeAction } from '@/server/actions/time-entries';
 
-type Bucket = { id: string; name: string; section: string };
-type Project = { id: string; name: string; buckets: Bucket[] };
+type Category = { id: string; name: string; section: string };
+type Project = { id: string; name: string; categories: Category[] };
 
 export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number | null }) {
   const [open, setOpen] = useState(false);
@@ -26,7 +26,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
   const [loadingProjects, setLoadingProjects] = useState(false);
 
   const [projectId, setProjectId] = useState('');
-  const [bucketId, setBucketId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [hours, setHours] = useState('');
   const [rate, setRate] = useState(ownerRateCents ? String(ownerRateCents / 100) : '');
@@ -34,7 +34,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
   const [error, setError] = useState('');
   const [pending, startTransition] = useTransition();
 
-  const buckets = projects.find((p) => p.id === projectId)?.buckets ?? [];
+  const categories = projects.find((p) => p.id === projectId)?.categories ?? [];
 
   useEffect(() => {
     if (!open) return;
@@ -49,7 +49,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
     setOpen(o);
     if (!o) {
       setProjectId('');
-      setBucketId('');
+      setCategoryId('');
       setDate(new Date().toISOString().slice(0, 10));
       setHours('');
       setRate(ownerRateCents ? String(ownerRateCents / 100) : '');
@@ -69,7 +69,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
       const rateCents = rate ? Math.round(parseFloat(rate) * 100) : undefined;
       const res = await logTimeAction({
         project_id: projectId,
-        budget_category_id: bucketId || undefined,
+        budget_category_id: categoryId || undefined,
         entry_date: date,
         hours: parseFloat(hours),
         hourly_rate_cents: rateCents,
@@ -109,7 +109,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
                 value={projectId}
                 onChange={(e) => {
                   setProjectId(e.target.value);
-                  setBucketId('');
+                  setCategoryId('');
                 }}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                 required
@@ -123,19 +123,19 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
               </select>
             )}
           </div>
-          {buckets.length > 0 ? (
+          {categories.length > 0 ? (
             <div>
-              <Label htmlFor="ql-bucket" className="mb-1.5 block text-sm">
+              <Label htmlFor="ql-category" className="mb-1.5 block text-sm">
                 Work area <span className="font-normal text-muted-foreground">optional</span>
               </Label>
               <select
-                id="ql-bucket"
-                value={bucketId}
-                onChange={(e) => setBucketId(e.target.value)}
+                id="ql-category"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
               >
                 <option value="">— none —</option>
-                {buckets.map((b) => (
+                {categories.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.section ? `${b.section} · ${b.name}` : b.name}
                   </option>

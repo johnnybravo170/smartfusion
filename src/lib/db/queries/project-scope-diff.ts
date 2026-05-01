@@ -84,7 +84,7 @@ export async function getUnsentDiff(projectId: string): Promise<ProjectScopeDiff
   if (!snapshot) return EMPTY_DIFF;
 
   const admin = createAdminClient();
-  const [linesRes, bucketsRes] = await Promise.all([
+  const [linesRes, categoriesRes] = await Promise.all([
     admin
       .from('project_cost_lines')
       .select(
@@ -100,7 +100,7 @@ export async function getUnsentDiff(projectId: string): Promise<ProjectScopeDiff
   ]);
 
   const currentLines = (linesRes.data ?? []) as SnapshotCostLine[];
-  const currentCategories = (bucketsRes.data ?? []) as SnapshotBudgetCategory[];
+  const currentCategories = (categoriesRes.data ?? []) as SnapshotBudgetCategory[];
   const currentTotalCents = currentLines.reduce((s, l) => s + (l.line_price_cents ?? 0), 0);
 
   const snapLinesById = new Map<string, SnapshotCostLine>();
@@ -136,14 +136,14 @@ export async function getUnsentDiff(projectId: string): Promise<ProjectScopeDiff
 
     // Henry suggestion logic:
     //   - Label change on a customer-visible line → send_as_co (scope changed)
-    //   - Pure bucket move with no label/total change → internal
+    //   - Pure category move with no label/total change → internal
     //   - Total or qty change with same label → send_as_co (it's customer-facing dollars)
     const labelChanged = cf.includes('label');
     const totalChanged = line.line_price_cents !== before.line_price_cents;
-    const onlyBucketMoved = cf.length === 1 && cf[0] === 'budget_category_id';
+    const onlyCategoryMoved = cf.length === 1 && cf[0] === 'budget_category_id';
 
     let suggests: 'send_as_co' | 'internal' = 'send_as_co';
-    if (onlyBucketMoved) suggests = 'internal';
+    if (onlyCategoryMoved) suggests = 'internal';
     if (!labelChanged && !totalChanged) suggests = 'internal';
 
     changes.push({
@@ -161,7 +161,7 @@ export async function getUnsentDiff(projectId: string): Promise<ProjectScopeDiff
     }
   }
 
-  // 2. Category-level diff (envelope edits + new buckets)
+  // 2. Category-level diff (envelope edits + new categories)
   for (const cat of currentCategories) {
     const before = snapCategoriesById.get(cat.id);
     if (!before) {
@@ -189,7 +189,7 @@ export async function getUnsentDiff(projectId: string): Promise<ProjectScopeDiff
     }
   }
 
-  // (We don't surface category_removed — bucket deletes are blocked at
+  // (We don't surface category_removed — category deletes are blocked at
   // the action layer when they have linked entries; orphan removals
   // are vanishingly rare and not customer-facing.)
 

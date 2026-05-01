@@ -5,7 +5,7 @@
  * detail page. Lets the user pick a customer (or inline-create one), name
  * the new project, and choose which related data to bring over.
  *
- * Cost buckets and notes are the only categories cloned today; assignments
+ * Budget categories and notes are the only data cloned today; assignments
  * are date-bound and execution data (photos, worklog, invoices, jobs,
  * change orders) is intentionally excluded.
  */
@@ -83,7 +83,7 @@ export function CloneProjectDialog({
         source_id: projectId,
         customer_id: customerId,
         name: name.trim(),
-        clone_cost_buckets: include.budget_categories,
+        clone_budget_categories: include.budget_categories,
         clone_notes: include.notes,
         keep_line_photos: include.line_photos,
       });
@@ -142,11 +142,11 @@ export function CloneProjectDialog({
           <div className="space-y-2">
             <p className="text-sm font-medium">Bring over</p>
             <label
-              htmlFor="clone-cost-buckets"
+              htmlFor="clone-budget-categories"
               className="flex cursor-pointer items-start gap-2 rounded-md border p-2.5 hover:bg-muted/40"
             >
               <Checkbox
-                id="clone-cost-buckets"
+                id="clone-budget-categories"
                 checked={include.budget_categories}
                 onCheckedChange={(v) =>
                   setInclude((s) => ({ ...s, budget_categories: v === true }))
@@ -154,10 +154,10 @@ export function CloneProjectDialog({
                 disabled={pending}
               />
               <div className="flex-1">
-                <p className="text-sm font-medium">Estimate (buckets + line items)</p>
+                <p className="text-sm font-medium">Estimate (categories + line items)</p>
                 <p className="text-xs text-muted-foreground">
-                  Bucket structure plus every line item with its quantity, cost, and price. Actuals
-                  (time, expenses, bills) are not copied.
+                  Category structure plus every line item with its quantity, cost, and price.
+                  Actuals (time, expenses, bills) are not copied.
                 </p>
               </div>
             </label>

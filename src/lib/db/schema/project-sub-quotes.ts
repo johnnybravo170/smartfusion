@@ -67,15 +67,18 @@ export const projectSubQuoteAllocations = pgTable(
   {
     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
     subQuoteId: uuid('sub_quote_id').notNull(),
-    bucketId: uuid('budget_category_id').notNull(),
+    budgetCategoryId: uuid('budget_category_id').notNull(),
     allocatedCents: bigint('allocated_cents', { mode: 'number' }).notNull(),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).default(sql`now()`).notNull(),
   },
   (table) => [
     index('idx_sub_quote_allocations_quote').on(table.subQuoteId),
-    index('idx_sub_quote_allocations_bucket').on(table.bucketId),
-    unique('sub_quote_allocations_quote_bucket_unique').on(table.subQuoteId, table.bucketId),
+    index('idx_sub_quote_allocations_bucket').on(table.budgetCategoryId),
+    unique('sub_quote_allocations_quote_bucket_unique').on(
+      table.subQuoteId,
+      table.budgetCategoryId,
+    ),
     check('sub_quote_allocations_amount_nonneg', sql`${table.allocatedCents} >= 0`),
   ],
 );

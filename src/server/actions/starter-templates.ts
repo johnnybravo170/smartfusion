@@ -1,8 +1,9 @@
 'use server';
 
 /**
- * Apply a built-in starter template to a project — seeds buckets +
- * cost lines from a hand-authored JSON in src/data/starter-templates.
+ * Apply a built-in starter template to a project — seeds budget
+ * categories + cost lines from a hand-authored JSON in
+ * src/data/starter-templates.
  *
  * Per the rollup, templates ship with no prices: structure only. The
  * operator fills in qty / cost / price per project. This avoids the
@@ -10,8 +11,8 @@
  * into.
  *
  * Refuses to apply when the project already has cost lines or
- * non-empty buckets — operators can clear the project first or use
- * the per-bucket "+ Add line" flow to layer manually.
+ * non-empty budget categories — operators can clear the project first
+ * or use the per-category "+ Add line" flow to layer manually.
  */
 
 import { revalidatePath } from 'next/cache';
@@ -20,7 +21,7 @@ import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export type ApplyTemplateResult =
-  | { ok: true; bucketCount: number; lineCount: number }
+  | { ok: true; categoryCount: number; lineCount: number }
   | { ok: false; error: string };
 
 export async function applyStarterTemplateAction(input: {
@@ -47,7 +48,7 @@ export async function applyStarterTemplateAction(input: {
 
   // Refuse if there's already meaningful scope authored — we don't
   // want to silently merge into an existing budget.
-  const [{ count: lineCount }, { count: bucketCount }] = await Promise.all([
+  const [{ count: lineCount }, { count: categoryCount }] = await Promise.all([
     admin
       .from('project_cost_lines')
       .select('id', { count: 'exact', head: true })
@@ -57,34 +58,34 @@ export async function applyStarterTemplateAction(input: {
       .select('id', { count: 'exact', head: true })
       .eq('project_id', input.projectId),
   ]);
-  if ((lineCount ?? 0) > 0 || (bucketCount ?? 0) > 0) {
+  if ((lineCount ?? 0) > 0 || (categoryCount ?? 0) > 0) {
     return {
       ok: false,
       error:
-        'Project already has buckets or line items. Clear them first, or use "+ Add line" to layer manually.',
+        'Project already has budget categories or line items. Clear them first, or use "+ Add line" to layer manually.',
     };
   }
 
-  // Insert buckets first; build a name → id map so lines can reference
-  // their parent bucket by id.
-  const bucketRows = template.buckets.map((b, i) => ({
+  // Insert categories first; build a name → id map so lines can
+  // reference their parent category by id.
+  const categoryRows = template.categories.map((c, i) => ({
     project_id: input.projectId,
     tenant_id: tenant.id,
-    name: b.name,
-    section: b.section,
-    description: b.description ?? null,
+    name: c.name,
+    section: c.section,
+    description: c.description ?? null,
     estimate_cents: 0,
     display_order: i,
   }));
-  const { data: insertedBuckets, error: bucketErr } = await admin
+  const { data: insertedCategories, error: categoryErr } = await admin
     .from('project_budget_categories')
-    .insert(bucketRows)
+    .insert(categoryRows)
     .select('id, name');
-  if (bucketErr) return { ok: false, error: bucketErr.message };
+  if (categoryErr) return { ok: false, error: categoryErr.message };
 
-  const bucketIdByName = new Map<string, string>();
-  for (const b of insertedBuckets ?? []) {
-    bucketIdByName.set(b.name as string, b.id as string);
+  const categoryIdByName = new Map<string, string>();
+  for (const c of insertedCategories ?? []) {
+    categoryIdByName.set(c.name as string, c.id as string);
   }
 
   // Insert cost lines, no prices set — operator fills in.
@@ -103,14 +104,14 @@ export async function applyStarterTemplateAction(input: {
     sort_order: number;
   }> = [];
   let sortOrder = 0;
-  for (const bucket of template.buckets) {
-    const bucketId = bucketIdByName.get(bucket.name);
-    if (!bucketId) continue;
-    for (const line of bucket.lines) {
+  for (const category of template.categories) {
+    const categoryId = categoryIdByName.get(category.name);
+    if (!categoryId) continue;
+    for (const line of category.lines) {
       lineRows.push({
         project_id: input.projectId,
         tenant_id: tenant.id,
-        budget_category_id: bucketId,
+        budget_category_id: categoryId,
         category: line.category,
         label: line.label,
         qty: line.qty,
@@ -132,7 +133,7 @@ export async function applyStarterTemplateAction(input: {
   revalidatePath(`/projects/${input.projectId}`);
   return {
     ok: true,
-    bucketCount: insertedBuckets?.length ?? 0,
+    categoryCount: insertedCategories?.length ?? 0,
     lineCount: lineRows.length,
   };
 }
@@ -143,7 +144,7 @@ export async function listStarterTemplatesAction(): Promise<
     slug: string;
     label: string;
     description: string;
-    bucketCount: number;
+    categoryCount: number;
     lineCount: number;
   }>
 > {
@@ -151,7 +152,7 @@ export async function listStarterTemplatesAction(): Promise<
     slug: t.slug,
     label: t.label,
     description: t.description,
-    bucketCount: t.buckets.length,
-    lineCount: t.buckets.reduce((s, b) => s + b.lines.length, 0),
+    categoryCount: t.categories.length,
+    lineCount: t.categories.reduce((s, c) => s + c.lines.length, 0),
   }));
 }

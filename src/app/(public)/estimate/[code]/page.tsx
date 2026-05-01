@@ -44,7 +44,7 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
   const tenantRaw = p.tenants as Record<string, unknown> | null;
   const customerRaw = p.customers as Record<string, unknown> | null;
 
-  // Sign the tenant logo (private `photos` bucket).
+  // Sign the tenant logo (private `photos` storage bucket).
   let logoUrl: string | null = null;
   const logoPath = tenantRaw?.logo_storage_path as string | null;
   if (logoPath) {
@@ -54,7 +54,7 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
     logoUrl = signed?.signedUrl ?? null;
   }
 
-  const [{ data: lines }, { data: buckets }] = await Promise.all([
+  const [{ data: lines }, { data: categories }] = await Promise.all([
     admin
       .from('project_cost_lines')
       .select(
@@ -67,12 +67,12 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
       .select('id, name, section, description, display_order')
       .eq('project_id', p.id as string),
   ]);
-  const bucketInfo = new Map<
+  const categoryInfo = new Map<
     string,
     { name: string; section: string | null; description: string | null; order: number }
   >();
-  for (const b of buckets ?? []) {
-    bucketInfo.set(b.id as string, {
+  for (const b of categories ?? []) {
+    categoryInfo.set(b.id as string, {
       name: (b.name as string) ?? '',
       section: (b.section as string | null) ?? null,
       description: (b.description as string | null) ?? null,
@@ -103,13 +103,13 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
       photo_storage_paths?: string[];
       budget_category_id?: string | null;
     } & EstimateRenderLine;
-    const info = raw.budget_category_id ? bucketInfo.get(raw.budget_category_id) : undefined;
+    const info = raw.budget_category_id ? categoryInfo.get(raw.budget_category_id) : undefined;
     return {
       ...(raw as EstimateRenderLine),
       budget_category_name: info?.name ?? null,
-      bucket_section: info?.section ?? null,
-      bucket_order: info?.order,
-      bucket_description: info?.description ?? null,
+      budget_category_section: info?.section ?? null,
+      budget_category_order: info?.order,
+      budget_category_description: info?.description ?? null,
       photo_urls: (raw.photo_storage_paths ?? [])
         .map((p) => photoUrlByPath.get(p) ?? '')
         .filter(Boolean),

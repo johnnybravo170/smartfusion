@@ -203,7 +203,7 @@ export async function getVarianceReport(projectId: string): Promise<{
   //   tab grand total shows. Surfaced as "Estimated Revenue."
   // - Operator envelope total: sum(budget_categories.estimate_cents).
   //   Shown in the per-category breakdown — where the operator allocates
-  //   the contract dollars across buckets, with optional headroom.
+  //   the contract dollars across categories, with optional headroom.
   //
   // These can diverge legitimately (mgmt fee, squishy envelope, lines
   // outside their envelope). Showing both side-by-side is the audit lens.

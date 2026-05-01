@@ -4,7 +4,7 @@
  * Server action for AI-assisted scope scaffold generation.
  *
  * The operator types a description (voice/photo modes are layered on
- * later); Henry returns a sectioned scaffold of buckets + line items
+ * later); Henry returns a sectioned scaffold of budget categories + line items
  * with no prices. Operator reviews, accepts the scaffold, and lines
  * land in the project. Same insert path as user-saved templates so
  * the snapshot/diff machinery picks up the changes automatically.
@@ -90,7 +90,7 @@ const applySchema = z.object({
   scaffold: z.object({
     label: z.string(),
     description: z.string().optional(),
-    buckets: z.array(
+    categories: z.array(
       z.object({
         name: z.string(),
         section: z.string(),
@@ -116,7 +116,7 @@ const applySchema = z.object({
  */
 export async function applyScaffoldAction(
   input: Record<string, unknown>,
-): Promise<{ ok: true; bucketCount: number; lineCount: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; categoryCount: number; lineCount: number } | { ok: false; error: string }> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
 
@@ -137,7 +137,7 @@ export async function applyScaffoldAction(
     return { ok: false, error: 'Project not found.' };
   }
 
-  const [{ count: lineCount }, { count: bucketCount }] = await Promise.all([
+  const [{ count: lineCount }, { count: categoryCount }] = await Promise.all([
     admin
       .from('project_cost_lines')
       .select('id', { count: 'exact', head: true })
@@ -147,14 +147,14 @@ export async function applyScaffoldAction(
       .select('id', { count: 'exact', head: true })
       .eq('project_id', projectId),
   ]);
-  if ((lineCount ?? 0) > 0 || (bucketCount ?? 0) > 0) {
+  if ((lineCount ?? 0) > 0 || (categoryCount ?? 0) > 0) {
     return {
       ok: false,
-      error: 'Project already has buckets or line items. Clear them first.',
+      error: 'Project already has categories or line items. Clear them first.',
     };
   }
 
-  const bucketRows = scaffold.buckets.map((b, i) => ({
+  const categoryRows = scaffold.categories.map((b, i) => ({
     project_id: projectId,
     tenant_id: tenant.id,
     name: b.name,
@@ -163,15 +163,15 @@ export async function applyScaffoldAction(
     estimate_cents: 0,
     display_order: i,
   }));
-  const { data: insertedBuckets, error: bucketErr } = await admin
+  const { data: insertedCategories, error: categoryErr } = await admin
     .from('project_budget_categories')
-    .insert(bucketRows)
+    .insert(categoryRows)
     .select('id, name');
-  if (bucketErr) return { ok: false, error: bucketErr.message };
+  if (categoryErr) return { ok: false, error: categoryErr.message };
 
-  const bucketIdByName = new Map<string, string>();
-  for (const b of insertedBuckets ?? []) {
-    bucketIdByName.set(b.name as string, b.id as string);
+  const categoryIdByName = new Map<string, string>();
+  for (const b of insertedCategories ?? []) {
+    categoryIdByName.set(b.name as string, b.id as string);
   }
 
   type LineToInsert = {
@@ -191,14 +191,14 @@ export async function applyScaffoldAction(
   };
   const lineRows: LineToInsert[] = [];
   let sortOrder = 0;
-  for (const bucket of scaffold.buckets) {
-    const bucketId = bucketIdByName.get(bucket.name);
-    if (!bucketId) continue;
-    for (const line of bucket.lines) {
+  for (const category of scaffold.categories) {
+    const categoryId = categoryIdByName.get(category.name);
+    if (!categoryId) continue;
+    for (const line of category.lines) {
       lineRows.push({
         project_id: projectId,
         tenant_id: tenant.id,
-        budget_category_id: bucketId,
+        budget_category_id: categoryId,
         category: line.category,
         label: line.label,
         qty: line.qty,
@@ -221,7 +221,7 @@ export async function applyScaffoldAction(
   revalidatePath(`/projects/${projectId}`);
   return {
     ok: true,
-    bucketCount: insertedBuckets?.length ?? 0,
+    categoryCount: insertedCategories?.length ?? 0,
     lineCount: lineRows.length,
   };
 }

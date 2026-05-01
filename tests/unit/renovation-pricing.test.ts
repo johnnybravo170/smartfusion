@@ -7,37 +7,37 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  calculateBucketTotal,
+  calculateBudgetCategoryTotal,
   calculateManagementFee,
   calculateRenovationTotal,
 } from '@/lib/pricing/renovation-quote';
 
-describe('calculateBucketTotal', () => {
+describe('calculateBudgetCategoryTotal', () => {
   it('sums all bucket estimates', () => {
     const buckets = [
       { estimate_cents: 500000 },
       { estimate_cents: 300000 },
       { estimate_cents: 200000 },
     ];
-    expect(calculateBucketTotal(buckets)).toBe(1000000);
+    expect(calculateBudgetCategoryTotal(buckets)).toBe(1000000);
   });
 
   it('returns 0 for empty array', () => {
-    expect(calculateBucketTotal([])).toBe(0);
+    expect(calculateBudgetCategoryTotal([])).toBe(0);
   });
 
   it('handles a single bucket', () => {
-    expect(calculateBucketTotal([{ estimate_cents: 750000 }])).toBe(750000);
+    expect(calculateBudgetCategoryTotal([{ estimate_cents: 750000 }])).toBe(750000);
   });
 
   it('handles large numbers', () => {
     const buckets = Array.from({ length: 30 }, () => ({ estimate_cents: 1000000 }));
-    expect(calculateBucketTotal(buckets)).toBe(30000000); // $300,000
+    expect(calculateBudgetCategoryTotal(buckets)).toBe(30000000); // $300,000
   });
 
   it('handles zero-value buckets', () => {
     const buckets = [{ estimate_cents: 500000 }, { estimate_cents: 0 }, { estimate_cents: 300000 }];
-    expect(calculateBucketTotal(buckets)).toBe(800000);
+    expect(calculateBudgetCategoryTotal(buckets)).toBe(800000);
   });
 });
 

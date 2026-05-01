@@ -2,7 +2,7 @@
   "slug": "kitchen-reno-standard",
   "label": "Kitchen Renovation (Standard)",
   "description": "Mid-size kitchen reno: demo, cabinets, counters, plumbing, electrical, backsplash, appliance install. Existing footprint.",
-  "buckets": [
+  "categories": [
     {
       "name": "Demo & Disposal",
       "section": "interior",

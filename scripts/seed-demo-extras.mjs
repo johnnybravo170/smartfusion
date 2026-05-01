@@ -218,14 +218,14 @@ const timeEntries = [
   [-7, 4.0, 'Framing adjustments for niche', null],
   [-3, 6.0, 'Sauna pad excavation + grading', null],
 ];
-const someBucket = await sql`SELECT id FROM public.project_cost_buckets WHERE project_id = ${project.id} AND name='Demolition' LIMIT 1`;
+const someCategory = await sql`SELECT id FROM public.project_budget_categories WHERE project_id = ${project.id} AND name='Demolition' LIMIT 1`;
 for (const [dayOffset, hours, notes] of timeEntries) {
   const entryDate = new Date(Date.now() + dayOffset * 86400_000).toISOString().slice(0,10);
   await sql`
     INSERT INTO public.time_entries
-      (tenant_id, user_id, project_id, job_id, bucket_id, hours, hourly_rate_cents, charge_rate_cents,
+      (tenant_id, user_id, project_id, job_id, budget_category_id, hours, hourly_rate_cents, charge_rate_cents,
        notes, entry_date)
-    VALUES (${TENANT_ID}, ${admin.user_id}, ${project.id}, ${job.id}, ${someBucket[0]?.id ?? null},
+    VALUES (${TENANT_ID}, ${admin.user_id}, ${project.id}, ${job.id}, ${someCategory[0]?.id ?? null},
             ${hours}, 7500, 9000, ${notes}, ${entryDate})
   `;
 }
@@ -243,9 +243,9 @@ for (const [dayOffset, vendor, desc, amt] of expenses) {
   await sql`
     INSERT INTO public.expenses
       (tenant_id, user_id, project_id, job_id, amount_cents, vendor, description, expense_date,
-       tax_cents, bucket_id)
+       tax_cents, budget_category_id)
     VALUES (${TENANT_ID}, ${admin.user_id}, ${project.id}, ${job.id}, ${amt}, ${vendor}, ${desc}, ${expDate},
-            ${Math.round(amt * 0.05)}, ${someBucket[0]?.id ?? null})
+            ${Math.round(amt * 0.05)}, ${someCategory[0]?.id ?? null})
   `;
 }
 console.log('expenses:', expenses.length);

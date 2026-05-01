@@ -2,7 +2,7 @@
   "slug": "bathroom-reno-standard",
   "label": "Bathroom Renovation (Standard)",
   "description": "Full bathroom reno: demo, plumbing rough, electrical rough, drywall, tile, vanity, fixtures, paint. ~5x8 footprint.",
-  "buckets": [
+  "categories": [
     {
       "name": "Demo & Disposal",
       "section": "interior",

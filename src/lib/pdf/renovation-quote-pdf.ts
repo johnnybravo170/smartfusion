@@ -11,9 +11,12 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency } from '@/lib/pricing/calculator';
-import { calculateBucketTotal, calculateRenovationTotal } from '@/lib/pricing/renovation-quote';
+import {
+  calculateBudgetCategoryTotal,
+  calculateRenovationTotal,
+} from '@/lib/pricing/renovation-quote';
 
-type BucketForPdf = {
+type BudgetCategoryForPdf = {
   name: string;
   section: string;
   description: string | null;
@@ -34,7 +37,7 @@ type CustomerForPdf = {
 type QuotePdfOptions = {
   tenantName: string;
   customer: CustomerForPdf;
-  buckets: BucketForPdf[];
+  categories: BudgetCategoryForPdf[];
   managementFeeRate: number;
   gstRate?: number;
   projectName?: string;
@@ -47,7 +50,7 @@ export async function generateRenovationQuotePdf(options: QuotePdfOptions): Prom
   const {
     tenantName,
     customer,
-    buckets,
+    categories,
     managementFeeRate,
     gstRate = 0.05,
     projectName,
@@ -100,28 +103,32 @@ export async function generateRenovationQuotePdf(options: QuotePdfOptions): Prom
 
   y += 5;
 
-  // Separate buckets by section
-  const visibleBuckets = buckets.filter((b) => b.is_visible_in_report);
-  const interiorBuckets = visibleBuckets.filter((b) => b.section === 'interior');
-  const exteriorBuckets = visibleBuckets.filter((b) => b.section === 'exterior');
-  const generalBuckets = visibleBuckets.filter((b) => b.section === 'general');
+  // Separate categories by section
+  const visibleCategories = categories.filter((b) => b.is_visible_in_report);
+  const interiorCategories = visibleCategories.filter((b) => b.section === 'interior');
+  const exteriorCategories = visibleCategories.filter((b) => b.section === 'exterior');
+  const generalCategories = visibleCategories.filter((b) => b.section === 'general');
 
   // Helper to render a section table
-  function renderSection(title: string, sectionBuckets: BucketForPdf[], startY: number): number {
-    if (sectionBuckets.length === 0) return startY;
+  function renderSection(
+    title: string,
+    sectionCategories: BudgetCategoryForPdf[],
+    startY: number,
+  ): number {
+    if (sectionCategories.length === 0) return startY;
 
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
     doc.text(title.toUpperCase(), margin, startY);
     startY += 2;
 
-    const tableBody = sectionBuckets.map((b) => [
+    const tableBody = sectionCategories.map((b) => [
       b.name,
       b.description || '',
       formatCurrency(b.estimate_cents),
     ]);
 
-    const sectionTotal = calculateBucketTotal(sectionBuckets);
+    const sectionTotal = calculateBudgetCategoryTotal(sectionCategories);
 
     autoTable(doc, {
       startY,
@@ -154,12 +161,12 @@ export async function generateRenovationQuotePdf(options: QuotePdfOptions): Prom
     return (doc as any).lastAutoTable.finalY + 8;
   }
 
-  y = renderSection('Interior', interiorBuckets, y);
-  y = renderSection('Exterior', exteriorBuckets, y);
-  y = renderSection('General', generalBuckets, y);
+  y = renderSection('Interior', interiorCategories, y);
+  y = renderSection('Exterior', exteriorCategories, y);
+  y = renderSection('General', generalCategories, y);
 
   // -- Totals block --
-  const totals = calculateRenovationTotal(visibleBuckets, managementFeeRate, gstRate);
+  const totals = calculateRenovationTotal(visibleCategories, managementFeeRate, gstRate);
 
   doc.setDrawColor(200, 200, 200);
   doc.line(margin, y, pageWidth - margin, y);

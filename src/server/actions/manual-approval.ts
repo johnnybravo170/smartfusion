@@ -17,7 +17,7 @@
  * Transition semantics mirror the digital-path actions:
  *   - manuallyApproveEstimate   → lifecycle_stage='active'
  *   - manuallyDeclineEstimate   → lifecycle_stage='declined'
- *   - manuallyApproveChangeOrder → applies cost delta to buckets
+ *   - manuallyApproveChangeOrder → applies cost delta to categories
  *   - manuallyDeclineChangeOrder → no budget effect
  *
  * See PROJECT_LIFECYCLE_PLAN.md for the broader lifecycle context.
@@ -302,7 +302,7 @@ export async function manuallyDeclineEstimateAction(
 
 /**
  * Operator marks a sent change order as approved on the customer's behalf.
- * Applies cost delta to affected buckets, same as the digital path.
+ * Applies cost delta to affected categories, same as the digital path.
  */
 export async function manuallyApproveChangeOrderAction(
   formData: FormData,
@@ -326,7 +326,7 @@ export async function manuallyApproveChangeOrderAction(
   const { data: co, error: coErr } = await admin
     .from('change_orders')
     .select(
-      'id, project_id, tenant_id, title, status, cost_impact_cents, affected_buckets, flow_version',
+      'id, project_id, tenant_id, title, status, cost_impact_cents, affected_budget_categories, flow_version',
     )
     .eq('id', changeOrderId)
     .eq('tenant_id', tenant.id)
@@ -366,24 +366,24 @@ export async function manuallyApproveChangeOrderAction(
   if (flowVersion === 2) {
     await applyV2ChangeOrderDiff(admin, changeOrderId);
   } else {
-    const affectedBuckets = (co.affected_buckets ?? []) as string[];
+    const affectedCategories = (co.affected_budget_categories ?? []) as string[];
     const costDelta = (co.cost_impact_cents as number) ?? 0;
-    if (affectedBuckets.length > 0 && costDelta !== 0) {
-      const perBucket = Math.round(costDelta / affectedBuckets.length);
-      for (const bucketId of affectedBuckets) {
-        const { data: bucket } = await admin
+    if (affectedCategories.length > 0 && costDelta !== 0) {
+      const perCategory = Math.round(costDelta / affectedCategories.length);
+      for (const categoryId of affectedCategories) {
+        const { data: category } = await admin
           .from('project_budget_categories')
           .select('estimate_cents')
-          .eq('id', bucketId)
+          .eq('id', categoryId)
           .single();
-        if (bucket) {
+        if (category) {
           await admin
             .from('project_budget_categories')
             .update({
-              estimate_cents: (bucket.estimate_cents as number) + perBucket,
+              estimate_cents: (category.estimate_cents as number) + perCategory,
               updated_at: now,
             })
-            .eq('id', bucketId);
+            .eq('id', categoryId);
         }
       }
     }

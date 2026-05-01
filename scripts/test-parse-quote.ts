@@ -14,11 +14,11 @@ const PROMPT = `You are extracting a renovation contractor's quote into structur
 
 Rules:
 - Preserve task/section names EXACTLY as written on the quote. Do not normalize "UPSTAIRS WORK" to "upstairs", do not rename "Vanity" to "Bathroom Fixtures". The contractor's words win.
-- Every distinct line item becomes one bucket. A section header (like "UPSTAIRS WORK", "DOWNSTAIRS", "EXTERIOR") is the bucket's "section" string.
+- Every distinct line item becomes one category. A section header (like "UPSTAIRS WORK", "DOWNSTAIRS", "EXTERIOR") is the category's "section" string.
 - "estimate_cents" is the line's dollar amount × 100, integer.
 - "management_fee_rate" is a decimal (15% → 0.15). Null if not stated.
 - "quote_date" is ISO (YYYY-MM-DD). If only a month is given (e.g. "April 2026"), use the 1st of that month.
-- Subtotal, tax, and total are the quote's totals — capture them so the operator can sanity-check. Do NOT emit them as buckets.
+- Subtotal, tax, and total are the quote's totals — capture them so the operator can sanity-check. Do NOT emit them as categories.
 - "uncertainty_flags" is a list of short strings for anything ambiguous (illegible amounts, unclear task boundaries, multiple customers, etc). Empty array if clean.
 - Customer name is the full string as shown (e.g. "Graham, Heather & Aaron Brandscombe"). Address is the site address, not the contractor's address.
 
@@ -33,7 +33,7 @@ Respond with ONLY valid JSON in this exact shape:
     "tax_cents": 0,
     "total_cents": 0
   },
-  "buckets": [
+  "categories": [
     { "section": "string", "name": "string", "description": "string", "estimate_cents": 0, "display_order": 0 }
   ],
   "uncertainty_flags": []

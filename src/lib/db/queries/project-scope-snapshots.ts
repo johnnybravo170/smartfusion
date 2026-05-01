@@ -76,7 +76,7 @@ export async function snapshotProjectScope(input: {
   const admin = createAdminClient();
 
   // 1. Pull the current scope (cost_lines + budget_categories + total).
-  const [linesRes, bucketsRes] = await Promise.all([
+  const [linesRes, categoriesRes] = await Promise.all([
     admin
       .from('project_cost_lines')
       .select(
@@ -93,10 +93,10 @@ export async function snapshotProjectScope(input: {
   ]);
 
   if (linesRes.error) return { ok: false, error: linesRes.error.message };
-  if (bucketsRes.error) return { ok: false, error: bucketsRes.error.message };
+  if (categoriesRes.error) return { ok: false, error: categoriesRes.error.message };
 
   const costLines = (linesRes.data ?? []) as SnapshotCostLine[];
-  const budgetCategories = (bucketsRes.data ?? []) as SnapshotBudgetCategory[];
+  const budgetCategories = (categoriesRes.data ?? []) as SnapshotBudgetCategory[];
   const totalCents = costLines.reduce((s, l) => s + (l.line_price_cents ?? 0), 0);
 
   // 2. Pick the next version number — monotonic per project.

@@ -501,7 +501,7 @@ export async function acceptQuoteAction(input: { quoteId: string }): Promise<Quo
     related_id: input.quoteId,
   });
 
-  // Henry suggestion: seed tasks from the quote's scope buckets.
+  // Henry suggestion: seed tasks from the quote's scope categories.
   const { onQuoteApproved } = await import('@/server/ai/triggers');
   await onQuoteApproved(input.quoteId);
 
@@ -628,7 +628,7 @@ export async function convertQuoteToJobAction(input: {
 
 /**
  * Convert an accepted quote to a project (GC/renovation vertical).
- * Creates a project with default cost buckets and links the quote.
+ * Creates a project with default budget categories and links the quote.
  */
 export async function convertQuoteToProjectAction(input: {
   quoteId: string;
@@ -671,7 +671,7 @@ export async function convertQuoteToProjectAction(input: {
   if (projErr || !projectData)
     return { ok: false, error: projErr?.message ?? 'Failed to create project.' };
 
-  const DEFAULT_BUCKETS = [
+  const DEFAULT_CATEGORIES = [
     { name: 'Demo', section: 'general' },
     { name: 'Disposal', section: 'general' },
     { name: 'Framing', section: 'interior' },
@@ -684,7 +684,7 @@ export async function convertQuoteToProjectAction(input: {
   ];
 
   await supabase.from('project_budget_categories').insert(
-    DEFAULT_BUCKETS.map((b, i) => ({
+    DEFAULT_CATEGORIES.map((b, i) => ({
       project_id: projectData.id,
       tenant_id: tenant.id,
       name: b.name,
@@ -979,7 +979,8 @@ export async function approveQuotePublicAction(
     }
   }
 
-  // Henry suggestion: seed tasks from quote scope buckets.
+  // Henry suggestion: seed tasks from quote scope categories.
+
   const { onQuoteApproved } = await import('@/server/ai/triggers');
   await onQuoteApproved(quoteId);
 

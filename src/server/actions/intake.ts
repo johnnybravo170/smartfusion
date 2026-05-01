@@ -8,10 +8,10 @@
  * operator can review. It does NOT mutate.
  *
  * `acceptInboundLeadAction` takes the (possibly edited) draft and
- * creates the customer, project, buckets, and cost lines. Reference-
- * photo upload to project storage is intentionally out of V1 — the
- * operator can attach photos to lines after creation through the
- * existing photo strip UI.
+ * creates the customer, project, budget categories, and cost lines.
+ * Reference-photo upload to project storage is intentionally out of
+ * V1 — the operator can attach photos to lines after creation through
+ * the existing photo strip UI.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -31,9 +31,9 @@ const MAX_IMAGES = 12;
 // Was gpt-4o-mini. Swapped up to gpt-4.1 because mini consistently
 // undershoots on long conversational transcripts — it would lump
 // flooring + baseboards + casings + demo into a single "Flooring"
-// bucket with three line items even when the audio explicitly broke
+// category with three line items even when the audio explicitly broke
 // them out with quantities and unit prices. gpt-4.1 is materially
-// better at multi-bucket decomposition and quantity disambiguation
+// better at multi-category decomposition and quantity disambiguation
 // across context-heavy inputs. Cost difference per intake call is
 // pennies; the win in completeness is much larger.
 const PARSE_MODEL = 'gpt-4.1';
@@ -49,7 +49,7 @@ const CLAUDE_PARSE_MODEL = 'claude-opus-4-5';
 // Opus's draft when there's a transcript to check against. Narrow
 // task ("find missing scope areas + missing numbers"), much faster
 // model — adds ~6-10s vs Opus's ~30-35s, but pulls the floor up
-// where Opus alone defaulted whole bucket categories to qty:1/scope.
+// where Opus alone defaulted whole budget categories to qty:1/scope.
 // Only fires when audio transcript exists; image-only runs skip it.
 const VERIFY_MODEL = 'claude-sonnet-4-5';
 
@@ -62,7 +62,7 @@ export type ParseInboundResult =
       /**
        * Concatenated Whisper transcript(s) from any audio attachments.
        * Surfaced on the review screen so the operator can see what the
-       * model actually heard — invaluable when the buckets come back
+       * model actually heard — invaluable when the categories come back
        * thin and you need to diagnose whether the audio was unclear or
        * the extraction was lazy.
        */
@@ -91,7 +91,7 @@ export async function parseInboundLeadAction(
   let pastedText = String(formData.get('pastedText') ?? '').trim();
 
   // Every file rides via Supabase Storage now — the client uploads to
-  // the `intake-audio` bucket (the name is historical; it stages
+  // the `intake-audio` storage bucket (the name is historical; it stages
   // images + PDFs too) and we get only the storage entries here. Vercel
   // caps server-action bodies around 4.5 MB, so two photos or one voice
   // memo in the body killed the request before the action even ran.
@@ -122,7 +122,7 @@ export async function parseInboundLeadAction(
   }
 
   // Download each staged file via the service-role client (bypasses RLS
-  // — the bucket is auth-scoped but the admin client skips that). Audio
+  // — the storage bucket is auth-scoped but the admin client skips that). Audio
   // goes to Whisper and its transcript is folded into pastedText AND
   // collected into transcriptParts so it can be surfaced on the review
   // screen for diagnosis. Images + PDFs collect into `files` for the
@@ -307,34 +307,34 @@ export async function acceptInboundLeadAction(
     return { ok: false, error: projErr?.message ?? 'Failed to create project.' };
   }
 
-  // 3. Buckets
-  const bucketRows = draft.buckets.map((b, i) => ({
+  // 3. Budget categories
+  const categoryRows = draft.categories.map((b, i) => ({
     project_id: proj.id,
     tenant_id: tenant.id,
     name: b.name,
     section: b.section?.trim() || 'General',
     display_order: i,
   }));
-  let bucketIds: string[] = [];
-  if (bucketRows.length) {
+  let categoryIds: string[] = [];
+  if (categoryRows.length) {
     const { data: bs, error: bErr } = await supabase
       .from('project_budget_categories')
-      .insert(bucketRows)
+      .insert(categoryRows)
       .select('id');
-    if (bErr) return { ok: false, error: `Buckets: ${bErr.message}` };
-    bucketIds = (bs ?? []).map((b) => b.id);
+    if (bErr) return { ok: false, error: `Categories: ${bErr.message}` };
+    categoryIds = (bs ?? []).map((b) => b.id);
   }
 
   // 4. Cost lines
   const lineRows: Array<Record<string, unknown>> = [];
-  draft.buckets.forEach((b, bi) => {
-    const bucketId = bucketIds[bi] ?? null;
+  draft.categories.forEach((b, bi) => {
+    const categoryId = categoryIds[bi] ?? null;
     b.lines.forEach((l, li) => {
       const qty = Number(l.qty) || 1;
       const unitPrice = Number(l.unit_price_cents ?? 0) || 0;
       lineRows.push({
         project_id: proj.id,
-        budget_category_id: bucketId,
+        budget_category_id: categoryId,
         category: 'material',
         label: l.label,
         notes: l.notes?.trim() || null,
@@ -539,12 +539,12 @@ async function runClaudeParse(
  * Structural-integrity verification pass. The first-pass model (Opus or
  * gpt-4.1) is the highest-reasoning step but exhibits high run-to-run
  * variance — sometimes it gives a comprehensive draft with quantities
- * propagated to every line, sometimes it defaults whole bucket
+ * propagated to every line, sometimes it defaults whole budget
  * categories to qty:1/scope and silently drops scope areas the speaker
  * mentioned.
  *
  * This pass is deliberately narrow and domain-agnostic:
- *   1. Did the first draft create a bucket for every distinct scope
+ *   1. Did the first draft create a category for every distinct scope
  *      area / trade / material the transcript mentions?
  *   2. Did every number / dimension / count / lineal-ft / sq-ft in the
  *      transcript end up on a qty field (not buried in description
@@ -564,13 +564,13 @@ const VERIFY_SYSTEM_PROMPT = `You are reviewing a draft estimate that another AI
 
 Your job is a structural integrity check, NOT a re-do. Preserve everything correct. Fix what was missed.
 
-1. SCOPE COMPLETENESS — Read the transcript. For every distinct trade, material, room, or scope area the contractor mentions, verify a bucket exists in the draft. If a scope area is missing, ADD a bucket for it with appropriate supply / install lines. Apply the same supply-and-install decomposition the first pass should have used: a "supply" line and an "install" line, plus pre-paint / finishing / disposal where the speaker mentioned them.
+1. SCOPE COMPLETENESS — Read the transcript. For every distinct trade, material, room, or scope area the contractor mentions, verify a budget category exists in the draft. If a scope area is missing, ADD a category for it with appropriate supply / install lines. Apply the same supply-and-install decomposition the first pass should have used: a "supply" line and an "install" line, plus pre-paint / finishing / disposal where the speaker mentioned them.
 
 2. QUANTITY COMPLETENESS — For every number, dimension, count, square-footage, lineal-footage, hourly figure the contractor mentions, verify it appears on the qty field of the appropriate line item — NOT just in description prose. If a number is buried in a description string or missing entirely, MOVE it onto the qty field with the correct unit. Math: if the speaker says "9 sixteen-foot lengths" the qty is 144 lineal ft, not 9. If a single sq-ft figure (e.g. "657 sq ft") describes the whole work area, propagate it to every install / supply line that covers that area.
 
 3. PRICE COMPLETENESS — If the contractor quoted a real unit price ("$0.50 a lineal foot", "$50 per sheet"), verify it appears in unit_price_cents (integer cents) on the right line. Do NOT invent prices.
 
-4. "(BY OTHERS)" EXCLUSION BUCKETS — If the contractor explicitly says the customer or a third party (painter friend, son-in-law, relative) is handling part of the scope, ensure there's a bucket whose name ends with "(by others)" containing those line items at qty: 0 / unit_price_cents: 0 with notes explaining who's doing it.
+4. "(BY OTHERS)" EXCLUSION CATEGORIES — If the contractor explicitly says the customer or a third party (painter friend, son-in-law, relative) is handling part of the scope, ensure there's a category whose name ends with "(by others)" containing those line items at qty: 0 / unit_price_cents: 0 with notes explaining who's doing it.
 
 5. PRESERVE everything else in the draft. Don't rewrite working content. Don't change the customer fields, project name/description, signals, image_roles, or reply_draft unless directly required by the corrections above.
 

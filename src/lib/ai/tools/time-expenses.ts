@@ -8,13 +8,16 @@ export const timeExpenseTools: AiTool[] = [
     definition: {
       name: 'log_time',
       description:
-        'Log hours worked on a project (with optional cost bucket) or job. Requires at least one of project_id or job_id.',
+        'Log hours worked on a project (with optional budget category) or job. Requires at least one of project_id or job_id.',
       input_schema: {
         type: 'object',
         properties: {
           project_id: { type: 'string', description: 'Project UUID' },
           job_id: { type: 'string', description: 'Job UUID' },
-          budget_category_id: { type: 'string', description: 'Cost bucket UUID (for projects)' },
+          budget_category_id: {
+            type: 'string',
+            description: 'Budget category UUID (for projects)',
+          },
           hours: { type: 'number', description: 'Hours worked (e.g. 2.5)' },
           hourly_rate_cents: {
             type: 'number',
@@ -50,13 +53,16 @@ export const timeExpenseTools: AiTool[] = [
     definition: {
       name: 'log_expense',
       description:
-        'Log an expense on a project (with optional cost bucket) or job. Requires at least one of project_id or job_id.',
+        'Log an expense on a project (with optional budget category) or job. Requires at least one of project_id or job_id.',
       input_schema: {
         type: 'object',
         properties: {
           project_id: { type: 'string', description: 'Project UUID' },
           job_id: { type: 'string', description: 'Job UUID' },
-          budget_category_id: { type: 'string', description: 'Cost bucket UUID (for projects)' },
+          budget_category_id: {
+            type: 'string',
+            description: 'Budget category UUID (for projects)',
+          },
           amount_cents: { type: 'number', description: 'Amount in cents (e.g. 15000 = $150.00)' },
           vendor: { type: 'string', description: 'Vendor name' },
           description: { type: 'string', description: 'What the expense was for' },
@@ -88,14 +94,14 @@ export const timeExpenseTools: AiTool[] = [
   {
     definition: {
       name: 'list_time_entries',
-      description: 'List time entries. Filter by project, job, bucket, worker, or date range.',
+      description: 'List time entries. Filter by project, job, category, worker, or date range.',
       input_schema: {
         type: 'object',
         properties: {
           project_id: { type: 'string', description: 'Filter by project UUID' },
           job_id: { type: 'string', description: 'Filter by job UUID' },
           user_id: { type: 'string', description: 'Filter by worker user UUID' },
-          budget_category_id: { type: 'string', description: 'Filter by cost bucket UUID' },
+          budget_category_id: { type: 'string', description: 'Filter by budget category UUID' },
           date_from: { type: 'string', description: 'Start date (YYYY-MM-DD)' },
           date_to: { type: 'string', description: 'End date (YYYY-MM-DD)' },
           limit: { type: 'number', description: 'Max results (default 50)' },
@@ -135,13 +141,13 @@ export const timeExpenseTools: AiTool[] = [
   {
     definition: {
       name: 'list_expenses',
-      description: 'List expenses. Filter by project, job, bucket, or date range.',
+      description: 'List expenses. Filter by project, job, category, or date range.',
       input_schema: {
         type: 'object',
         properties: {
           project_id: { type: 'string', description: 'Filter by project UUID' },
           job_id: { type: 'string', description: 'Filter by job UUID' },
-          budget_category_id: { type: 'string', description: 'Filter by cost bucket UUID' },
+          budget_category_id: { type: 'string', description: 'Filter by budget category UUID' },
           date_from: { type: 'string', description: 'Start date (YYYY-MM-DD)' },
           date_to: { type: 'string', description: 'End date (YYYY-MM-DD)' },
           limit: { type: 'number', description: 'Max results (default 50)' },

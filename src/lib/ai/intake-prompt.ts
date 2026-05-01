@@ -3,8 +3,8 @@
  *
  * Inputs: a customer name, optional pasted text, and 1+ images that
  * mix conversation screenshots with reference photos. Output: a
- * draft estimate (buckets + lines), captured signals, and a reply
- * the contractor can send back in their own voice.
+ * draft estimate (budget categories + lines), captured signals, and
+ * a reply the contractor can send back in their own voice.
  */
 
 import { HUMAN_VOICE_RULES } from './human-voice';
@@ -23,35 +23,35 @@ Your job — the same regardless of flavour, but the signals live in different p
 
 1. Extract scope, opt-outs ("baseboards OK as-is"), design intent ("chunky brick"), competitive signals ("getting other quotes"), budget hints, timeline, referral source.
 
-2. Classify each artifact: conversation screenshot, reference photo, sketch with measurements, PDF quote (sub-trade pricing → becomes a sub-trade bucket), PDF doc (drawings/specs/scope), or other.
+2. Classify each artifact: conversation screenshot, reference photo, sketch with measurements, PDF quote (sub-trade pricing → becomes a sub-trade category), PDF doc (drawings/specs/scope), or other.
 
-3. For a PDF quote from a sub-trade: create a bucket named after the trade (e.g. "Plumbing — Sub" or the company name) and add line items from the quote. Capture prices when stated.
+3. For a PDF quote from a sub-trade: create a budget category named after the trade (e.g. "Plumbing — Sub" or the company name) and add line items from the quote. Capture prices when stated.
 
-4. Draft a starting estimate. Group cost lines into buckets that match the contractor's mental model. Use the bucket section field for higher-level grouping if obvious ("Upstairs Work" / "Downstairs", "Interior" / "Exterior"); otherwise leave section null.
+4. Draft a starting estimate. Group cost lines into budget categories that match the contractor's mental model. Use the category section field for higher-level grouping if obvious ("Upstairs Work" / "Downstairs", "Interior" / "Exterior"); otherwise leave section null.
 
-   BUCKETING PRINCIPLE — granularity over compactness. Every distinct scope area, trade, or work category the input mentions gets its OWN bucket, even if it's only mentioned briefly, even if it'll only have one line item. A one-line bucket is better than burying a scope area inside an adjacent bucket where it doesn't belong. The contractor will price each bucket independently and may want to surface or hide individual buckets when sending the estimate.
+   CATEGORIZATION PRINCIPLE — granularity over compactness. Every distinct scope area, trade, or work category the input mentions gets its OWN budget category, even if it's only mentioned briefly, even if it'll only have one line item. A one-line category is better than burying a scope area inside an adjacent category where it doesn't belong. The contractor will price each category independently and may want to surface or hide individual categories when sending the estimate.
 
-   How to tell scope areas apart: if a different sub-trade, different material, different trip, or different price-out logic would apply, it's a different bucket. Flooring and baseboards are typically priced separately even though both are in the same room. Demo / tear-out is its own bucket because it's labor-only with disposal, not a finish material. A sub-trade quote (PDF or quoted in conversation) always gets its own bucket named after the trade or company.
+   How to tell scope areas apart: if a different sub-trade, different material, different trip, or different price-out logic would apply, it's a different category. Flooring and baseboards are typically priced separately even though both are in the same room. Demo / tear-out is its own category because it's labor-only with disposal, not a finish material. A sub-trade quote (PDF or quoted in conversation) always gets its own category named after the trade or company.
 
    Examples (illustrative across verticals — apply the principle to whatever scope actually shows up; do NOT limit to these vocabularies):
-   - Interior renovation memo touching flooring + baseboards + door casings + paint + tile = ~5 buckets, even if four of them get a single line item each.
-   - Roofing job touching tear-off + sheathing repair + underlayment + shingles + flashing + ventilation = ~6 buckets.
-   - Pressure-washing job touching driveway + house exterior + windows = 3 buckets.
-   - New-build framing memo touching framing + electrical rough-in + plumbing rough-in + drywall + paint + flooring + cabinets = ~7 buckets.
-   - Fence install touching demo of old fence + new posts + new panels + gate hardware = ~4 buckets.
-   - Bathroom reno touching demo + plumbing rough + tile + vanity install + fixtures = ~5 buckets.
-   The principle, repeated: read every distinct category mentioned, give each its own bucket.
+   - Interior renovation memo touching flooring + baseboards + door casings + paint + tile = ~5 categories, even if four of them get a single line item each.
+   - Roofing job touching tear-off + sheathing repair + underlayment + shingles + flashing + ventilation = ~6 categories.
+   - Pressure-washing job touching driveway + house exterior + windows = 3 categories.
+   - New-build framing memo touching framing + electrical rough-in + plumbing rough-in + drywall + paint + flooring + cabinets = ~7 categories.
+   - Fence install touching demo of old fence + new posts + new panels + gate hardware = ~4 categories.
+   - Bathroom reno touching demo + plumbing rough + tile + vanity install + fixtures = ~5 categories.
+   The principle, repeated: read every distinct category mentioned, give each its own budget category.
 
-4b. SUPPLY-AND-INSTALL DECOMPOSITION — for any scope where a material is sourced AND installed, default to at least two line items in that bucket: a "supply" line and an "install" line, each with its own qty/unit. Add separate lines for pre-paint, finishing (fill / caulk / sand), and disposal whenever the input mentions them, even briefly. The operator may collapse lines on review; missing a line forces them to type it in. Examples:
+4b. SUPPLY-AND-INSTALL DECOMPOSITION — for any scope where a material is sourced AND installed, default to at least two line items in that category: a "supply" line and an "install" line, each with its own qty/unit. Add separate lines for pre-paint, finishing (fill / caulk / sand), and disposal whenever the input mentions them, even briefly. The operator may collapse lines on review; missing a line forces them to type it in. Examples:
    - Baseboards: supply (lineal ft @ $/lf) + pre-paint (lot or lineal ft) + install (lineal ft) + fill & caulk (lot)
    - Door casings: supply (set or lineal ft) + pre-paint + install (set or door face)
    - Drywall: supply (sheets) + hang (sheets) + tape & mud (lot)
    - Flooring: supply (sq ft, may be 0 if material on hand) + install (sq ft) + transitions / trim
-   Single-line buckets are only correct when the work genuinely is one pass (e.g. "tear out tack strip and clean up").
+   Single-line categories are only correct when the work genuinely is one pass (e.g. "tear out tack strip and clean up").
 
 4c. ON-HAND MATERIAL ≠ FREE WORK — when the speaker says material is already purchased / leftover from a prior job / customer-supplied, that affects the SUPPLY line (qty 0, or unit_price_cents 0, or a note in the description) but does NOT remove the INSTALL line. Installation labour is still real scope. Capture it. Same logic for "the customer is supplying their own" — supply price is zero or excluded, but install stays.
 
-4d. "(BY OTHERS)" EXCLUSION BUCKETS — when the speaker explicitly says the customer, the customer's family member, a painter friend, a relative who is a tradesperson, or any other party OUTSIDE the contractor's crew is handling part of the scope ("Tony's son-in-law is a painter, he'll do the fill and caulk"; "the customer is doing the demo themselves"; "the homeowner's pulling the carpet and tack strip"), create a bucket whose name ends with "(by others)" — e.g. "Demo (by others)", "Fill & Caulk (by others)", "Carpet Tear-Out (by others)". Put the lines in there with qty: 0 and unit_price_cents: 0, with notes explaining who is doing it and any prep / coordination requirements the contractor mentioned (e.g. "Reminded customer to remove all tack strip"). This makes scope boundaries explicit on the customer-facing estimate so there's no later "wait, who was doing what?" — the buckets show up in the document with zero pricing, communicating that the contractor is aware of those tasks but they are NOT in the quote. Do NOT silently drop these scope items just because they're not billable; documenting them in the estimate is the whole point.
+4d. "(BY OTHERS)" EXCLUSION CATEGORIES — when the speaker explicitly says the customer, the customer's family member, a painter friend, a relative who is a tradesperson, or any other party OUTSIDE the contractor's crew is handling part of the scope ("Tony's son-in-law is a painter, he'll do the fill and caulk"; "the customer is doing the demo themselves"; "the homeowner's pulling the carpet and tack strip"), create a category whose name ends with "(by others)" — e.g. "Demo (by others)", "Fill & Caulk (by others)", "Carpet Tear-Out (by others)". Put the lines in there with qty: 0 and unit_price_cents: 0, with notes explaining who is doing it and any prep / coordination requirements the contractor mentioned (e.g. "Reminded customer to remove all tack strip"). This makes scope boundaries explicit on the customer-facing estimate so there's no later "wait, who was doing what?" — the categories show up in the document with zero pricing, communicating that the contractor is aware of those tasks but they are NOT in the quote. Do NOT silently drop these scope items just because they're not billable; documenting them in the estimate is the whole point.
 
 5. QUANTITY DISCIPLINE — extract every number the speaker states, paired with its unit:
    - "657 square feet" → qty: 657, unit: "sq ft"
@@ -63,7 +63,7 @@ Your job — the same regardless of flavour, but the signals live in different p
    - Room dimensions, board counts, sheet counts, hours, trips, fixtures — all of it gets pulled out and put on the qty/unit fields, NOT just mentioned in description prose.
    - Falling back to qty: 1, unit: "job" / "scope" / "lot" is a SIGNAL THAT YOU MISSED A NUMBER. Only use this fallback when the input genuinely never quantifies the work.
 
-5b. SELF-CHECK before finalizing buckets: scan your line items. If MORE THAN ONE line is qty:1 unit:"scope"/"job"/"lot", re-read the transcript looking for numbers, dimensions, counts you skipped. Most contractor memos contain multiple measurements; a draft full of qty:1/scope means you under-extracted, not that the contractor was vague.
+5b. SELF-CHECK before finalizing categories: scan your line items. If MORE THAN ONE line is qty:1 unit:"scope"/"job"/"lot", re-read the transcript looking for numbers, dimensions, counts you skipped. Most contractor memos contain multiple measurements; a draft full of qty:1/scope means you under-extracted, not that the contractor was vague.
 
 6. PRICE DISCIPLINE — if the speaker quotes a real price, capture it in unit_price_cents (integer cents):
    - "$0.50 a lineal foot" → unit_price_cents: 50
@@ -120,7 +120,7 @@ export const INTAKE_JSON_SCHEMA = {
         },
         required: ['name', 'description'],
       },
-      buckets: {
+      categories: {
         type: 'array',
         items: {
           type: 'object',
@@ -199,7 +199,7 @@ export const INTAKE_JSON_SCHEMA = {
         },
       },
     },
-    required: ['customer', 'project', 'buckets', 'signals', 'reply_draft', 'image_roles'],
+    required: ['customer', 'project', 'categories', 'signals', 'reply_draft', 'image_roles'],
   },
 } as const;
 
@@ -211,7 +211,7 @@ export type ParsedIntake = {
     address: string | null;
   };
   project: { name: string; description: string | null };
-  buckets: Array<{
+  categories: Array<{
     name: string;
     section: string | null;
     lines: Array<{

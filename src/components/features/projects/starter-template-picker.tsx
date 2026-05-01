@@ -2,7 +2,7 @@
 
 /**
  * Starter-template picker on the Budget page (Editing mode), shown
- * only when the project has no buckets / lines yet. Apply seeds a
+ * only when the project has no categories / lines yet. Apply seeds a
  * structured starting point — cold-start solution per the rollup.
  *
  * Lands on the page as a small banner above the (empty) budget table.
@@ -44,7 +44,7 @@ export function StarterTemplatePicker({ projectId }: { projectId: string }) {
         toast.error(res.error);
         return;
       }
-      toast.success(`Seeded ${res.bucketCount} buckets · ${res.lineCount} line items.`);
+      toast.success(`Seeded ${res.categoryCount} categories · ${res.lineCount} line items.`);
       setOpen(false);
     });
   }
@@ -57,7 +57,8 @@ export function StarterTemplatePicker({ projectId }: { projectId: string }) {
           <div>
             <p className="font-medium">Start from a template</p>
             <p className="text-xs text-muted-foreground">
-              Pick a job type — bathroom, kitchen, basement, deck — to seed buckets and line items.
+              Pick a job type — bathroom, kitchen, basement, deck — to seed categories and line
+              items.
             </p>
           </div>
         </div>
@@ -101,7 +102,7 @@ export function StarterTemplatePicker({ projectId }: { projectId: string }) {
                     </div>
                     <p className="text-xs text-muted-foreground">{t.description}</p>
                     <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      {t.bucketCount} buckets · {t.lineCount} line items
+                      {t.categoryCount} categories · {t.lineCount} line items
                     </p>
                   </div>
                   <Button

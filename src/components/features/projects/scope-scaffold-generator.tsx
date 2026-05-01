@@ -4,7 +4,7 @@
  * AI-assisted scope scaffold generator on the empty Budget page.
  *
  * Operator types a brief description; Henry drafts a sectioned
- * scaffold (buckets + lines, no prices). Operator reviews and applies
+ * scaffold (categories + lines, no prices). Operator reviews and applies
  * — never auto-applied. Per the rollup: typed-first, voice/photo
  * input layers on later.
  */
@@ -69,7 +69,7 @@ export function ScopeScaffoldGenerator({ projectId }: { projectId: string }) {
         toast.error(res.error);
         return;
       }
-      toast.success(`Seeded ${res.bucketCount} buckets · ${res.lineCount} line items.`);
+      toast.success(`Seeded ${res.categoryCount} categories · ${res.lineCount} line items.`);
       setOpen(false);
       reset();
     });
@@ -85,7 +85,7 @@ export function ScopeScaffoldGenerator({ projectId }: { projectId: string }) {
               Or describe the job and let Henry draft it
             </p>
             <p className="text-xs text-blue-800/80 dark:text-blue-200/80">
-              Type a couple sentences — Henry returns buckets + line items, no prices.
+              Type a couple sentences — Henry returns categories + line items, no prices.
             </p>
           </div>
         </div>
@@ -106,8 +106,8 @@ export function ScopeScaffoldGenerator({ projectId }: { projectId: string }) {
           <DialogHeader>
             <DialogTitle>Describe the job</DialogTitle>
             <DialogDescription>
-              Plain language, like you&rsquo;d tell a buddy. Henry returns buckets + line items (no
-              prices). You review, edit, accept.
+              Plain language, like you&rsquo;d tell a buddy. Henry returns categories + line items
+              (no prices). You review, edit, accept.
             </DialogDescription>
           </DialogHeader>
 
@@ -203,7 +203,7 @@ export function ScopeScaffoldGenerator({ projectId }: { projectId: string }) {
 }
 
 function ScaffoldPreview({ scaffold }: { scaffold: StarterTemplate }) {
-  if (scaffold.buckets.length === 0) {
+  if (scaffold.categories.length === 0) {
     return (
       <div className="rounded-md border border-amber-200 bg-amber-50/40 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/20">
         <p className="font-medium text-amber-900 dark:text-amber-100">Need a bit more detail</p>
@@ -211,18 +211,18 @@ function ScaffoldPreview({ scaffold }: { scaffold: StarterTemplate }) {
       </div>
     );
   }
-  const totalLines = scaffold.buckets.reduce((s, b) => s + b.lines.length, 0);
+  const totalLines = scaffold.categories.reduce((s, b) => s + b.lines.length, 0);
   return (
     <div className="space-y-2">
       <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
         <p className="font-medium">{scaffold.label}</p>
         <p className="text-muted-foreground">{scaffold.description}</p>
         <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-          {scaffold.buckets.length} buckets · {totalLines} line items · prices empty
+          {scaffold.categories.length} categories · {totalLines} line items · prices empty
         </p>
       </div>
       <ul className="max-h-[40vh] space-y-2 overflow-y-auto pr-1">
-        {scaffold.buckets.map((b) => (
+        {scaffold.categories.map((b) => (
           <li key={b.name} className="rounded-md border">
             <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-1.5">
               <span className="text-sm font-medium">{b.name}</span>

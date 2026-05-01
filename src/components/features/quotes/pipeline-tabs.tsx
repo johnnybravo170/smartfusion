@@ -8,7 +8,7 @@
  * of horizontal button scroll.
  *
  * Accepted quotes live under Projects (separate page); expired quotes fall
- * through to the "All" bucket since they're rare.
+ * through to the "All" tab since they're rare.
  */
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';

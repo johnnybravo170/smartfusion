@@ -78,7 +78,7 @@ export async function upsertCostLineAction(input: unknown): Promise<CostControlR
   return { ok: true, id: data.id as string };
 }
 
-export async function generateEstimateFromBucketsAction(input: {
+export async function generateEstimateFromCategoriesAction(input: {
   project_id: string;
 }): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
   const tenant = await getCurrentTenant();
@@ -86,14 +86,14 @@ export async function generateEstimateFromBucketsAction(input: {
 
   const supabase = await createClient();
 
-  const { data: buckets, error: bErr } = await supabase
+  const { data: categories, error: bErr } = await supabase
     .from('project_budget_categories')
     .select('id, name, description, estimate_cents')
     .eq('project_id', input.project_id)
     .gt('estimate_cents', 0);
   if (bErr) return { ok: false, error: bErr.message };
-  if (!buckets || buckets.length === 0) {
-    return { ok: false, error: 'No buckets have an estimate to generate from.' };
+  if (!categories || categories.length === 0) {
+    return { ok: false, error: 'No categories have an estimate to generate from.' };
   }
 
   const { data: existingLines, error: lErr } = await supabase
@@ -103,10 +103,10 @@ export async function generateEstimateFromBucketsAction(input: {
     .not('budget_category_id', 'is', null);
   if (lErr) return { ok: false, error: lErr.message };
 
-  const usedBucketIds = new Set(
+  const usedCategoryIds = new Set(
     (existingLines ?? []).map((r) => (r as { budget_category_id: string }).budget_category_id),
   );
-  const toSeed = buckets.filter((b) => !usedBucketIds.has((b as { id: string }).id)) as {
+  const toSeed = categories.filter((b) => !usedCategoryIds.has((b as { id: string }).id)) as {
     id: string;
     name: string;
     description: string | null;
@@ -114,7 +114,7 @@ export async function generateEstimateFromBucketsAction(input: {
   }[];
 
   if (toSeed.length === 0) {
-    return { ok: false, error: 'All buckets with estimates already have line items.' };
+    return { ok: false, error: 'All categories with estimates already have line items.' };
   }
 
   const rows = toSeed.map((b) => ({
@@ -252,7 +252,7 @@ const MAX_BILL_ATTACHMENT_BYTES = 20 * 1024 * 1024; // 20 MB
  *   description?
  *   amount_cents             — pre-GST subtotal, integer cents
  *   gst_cents                — GST amount, integer cents (0 if no GST)
- *   budget_category_id?               — cost bucket UUID
+ *   budget_category_id?               — budget category UUID
  *   cost_code?
  *   attachment?              — File (PDF or image)
  */

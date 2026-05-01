@@ -2,7 +2,7 @@
   "slug": "basement-build",
   "label": "Basement Build-Out",
   "description": "Unfinished → finished basement: framing, insulation, drywall, electrical, plumbing (if bath), flooring, trim.",
-  "buckets": [
+  "categories": [
     {
       "name": "Layout & Framing",
       "section": "interior",

@@ -15,11 +15,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import type { ProjectWithBuckets } from '@/lib/db/queries/worker-time';
+import type { ProjectWithCategories } from '@/lib/db/queries/worker-time';
 import { extractReceiptFieldsAction } from '@/server/actions/extract-receipt';
 import { logWorkerExpenseAction } from '@/server/actions/worker-expenses';
 
-type Props = { projects: ProjectWithBuckets[] };
+type Props = { projects: ProjectWithCategories[] };
 
 export function WorkerExpenseForm({ projects }: Props) {
   const router = useRouter();
@@ -30,7 +30,7 @@ export function WorkerExpenseForm({ projects }: Props) {
   const [pending, startTransition] = useTransition();
   const [extracting, setExtracting] = useState(false);
   const [projectId, setProjectId] = useState(initialProject);
-  const [bucketId, setBucketId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [costLineId, setCostLineId] = useState('');
   const [amount, setAmount] = useState('');
   const [vendor, setVendor] = useState('');
@@ -39,13 +39,13 @@ export function WorkerExpenseForm({ projects }: Props) {
   const [date, setDate] = useState(today);
   const [receipt, setReceipt] = useState<File | null>(null);
 
-  const buckets = useMemo(
-    () => projects.find((p) => p.project_id === projectId)?.buckets ?? [],
+  const categories = useMemo(
+    () => projects.find((p) => p.project_id === projectId)?.categories ?? [],
     [projects, projectId],
   );
   const costLines = useMemo(
-    () => buckets.find((b) => b.id === bucketId)?.cost_lines ?? [],
-    [buckets, bucketId],
+    () => categories.find((b) => b.id === categoryId)?.cost_lines ?? [],
+    [categories, categoryId],
   );
 
   async function handleReceiptPick(file: File | null) {
@@ -117,7 +117,7 @@ export function WorkerExpenseForm({ projects }: Props) {
     }
     const fd = new FormData();
     fd.append('project_id', projectId);
-    if (bucketId) fd.append('budget_category_id', bucketId);
+    if (categoryId) fd.append('budget_category_id', categoryId);
     if (costLineId) fd.append('cost_line_id', costLineId);
     fd.append('amount_cents', String(Math.round(amt * 100)));
     fd.append('vendor', vendor);
@@ -178,7 +178,7 @@ export function WorkerExpenseForm({ projects }: Props) {
           value={projectId}
           onValueChange={(v) => {
             setProjectId(v);
-            setBucketId('');
+            setCategoryId('');
           }}
         >
           <SelectTrigger id="project">
@@ -194,21 +194,21 @@ export function WorkerExpenseForm({ projects }: Props) {
         </Select>
       </div>
 
-      {buckets.length > 0 ? (
+      {categories.length > 0 ? (
         <div className="space-y-1.5">
-          <Label htmlFor="bucket">Work area (optional)</Label>
+          <Label htmlFor="category">Work area (optional)</Label>
           <Select
-            value={bucketId}
+            value={categoryId}
             onValueChange={(v) => {
-              setBucketId(v);
+              setCategoryId(v);
               setCostLineId('');
             }}
           >
-            <SelectTrigger id="bucket">
+            <SelectTrigger id="category">
               <SelectValue placeholder="— none —" />
             </SelectTrigger>
             <SelectContent>
-              {buckets.map((b) => (
+              {categories.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
                   {b.name}
                 </SelectItem>
@@ -218,7 +218,7 @@ export function WorkerExpenseForm({ projects }: Props) {
         </div>
       ) : null}
 
-      {bucketId && costLines.length > 0 ? (
+      {categoryId && costLines.length > 0 ? (
         <div className="space-y-1.5">
           <Label htmlFor="cost-line">Line item (optional)</Label>
           <Select
@@ -229,7 +229,7 @@ export function WorkerExpenseForm({ projects }: Props) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__none__">— none (whole bucket) —</SelectItem>
+              <SelectItem value="__none__">— none (whole category) —</SelectItem>
               {costLines.map((l) => (
                 <SelectItem key={l.id} value={l.id}>
                   {l.label}

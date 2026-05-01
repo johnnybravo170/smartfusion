@@ -1,8 +1,8 @@
 {
   "slug": "whole-home-reno",
   "label": "Whole-Home Renovation (High-Level)",
-  "description": "Top-line buckets for a whole-home reno. Add line items per scope as estimating progresses; this seeds the sections so you don't start from a blank page.",
-  "buckets": [
+  "description": "Top-line categories for a whole-home reno. Add line items per scope as estimating progresses; this seeds the sections so you don't start from a blank page.",
+  "categories": [
     {
       "name": "General Conditions",
       "section": "general",

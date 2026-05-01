@@ -36,10 +36,10 @@ export async function listWorkerTimeEntries(
 
   return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => {
     const project = r.projects as { name?: string } | { name?: string }[] | null;
-    const bucket = r.project_budget_categories as { name?: string } | { name?: string }[] | null;
+    const category = r.project_budget_categories as { name?: string } | { name?: string }[] | null;
     const line = r.project_cost_lines as { label?: string } | { label?: string }[] | null;
     const proj = Array.isArray(project) ? project[0] : project;
-    const buck = Array.isArray(bucket) ? bucket[0] : bucket;
+    const cat = Array.isArray(category) ? category[0] : category;
     const ln = Array.isArray(line) ? line[0] : line;
     return {
       id: r.id as string,
@@ -50,7 +50,7 @@ export async function listWorkerTimeEntries(
       project_id: (r.project_id as string | null) ?? null,
       project_name: proj?.name ?? null,
       budget_category_id: (r.budget_category_id as string | null) ?? null,
-      budget_category_name: buck?.name ?? null,
+      budget_category_name: cat?.name ?? null,
       cost_line_id: (r.cost_line_id as string | null) ?? null,
       cost_line_label: ln?.label ?? null,
       created_at: r.created_at as string,
@@ -79,10 +79,10 @@ export async function getWorkerTimeEntry(
 
   const r = data as unknown as Record<string, unknown>;
   const project = r.projects as { name?: string } | { name?: string }[] | null;
-  const bucket = r.project_budget_categories as { name?: string } | { name?: string }[] | null;
+  const category = r.project_budget_categories as { name?: string } | { name?: string }[] | null;
   const line = r.project_cost_lines as { label?: string } | { label?: string }[] | null;
   const proj = Array.isArray(project) ? project[0] : project;
-  const buck = Array.isArray(bucket) ? bucket[0] : bucket;
+  const cat = Array.isArray(category) ? category[0] : category;
   const ln = Array.isArray(line) ? line[0] : line;
   return {
     id: r.id as string,
@@ -93,17 +93,17 @@ export async function getWorkerTimeEntry(
     project_id: (r.project_id as string | null) ?? null,
     project_name: proj?.name ?? null,
     budget_category_id: (r.budget_category_id as string | null) ?? null,
-    budget_category_name: buck?.name ?? null,
+    budget_category_name: cat?.name ?? null,
     cost_line_id: (r.cost_line_id as string | null) ?? null,
     cost_line_label: ln?.label ?? null,
     created_at: r.created_at as string,
   };
 }
 
-export type ProjectWithBuckets = {
+export type ProjectWithCategories = {
   project_id: string;
   project_name: string;
-  buckets: Array<{
+  categories: Array<{
     id: string;
     name: string;
     cost_lines: Array<{ id: string; label: string }>;
@@ -113,7 +113,7 @@ export type ProjectWithBuckets = {
 export async function listWorkerProjectsWithBudgetCategories(
   tenantId: string,
   workerProfileId: string,
-): Promise<ProjectWithBuckets[]> {
+): Promise<ProjectWithCategories[]> {
   const admin = createAdminClient();
   const { data: assignRows } = await admin
     .from('project_assignments')
@@ -130,7 +130,7 @@ export async function listWorkerProjectsWithBudgetCategories(
     .in('id', projectIds)
     .is('deleted_at', null);
 
-  const { data: buckets } = await admin
+  const { data: categories } = await admin
     .from('project_budget_categories')
     .select('id, name, project_id')
     .in('project_id', projectIds)
@@ -142,30 +142,30 @@ export async function listWorkerProjectsWithBudgetCategories(
     .in('project_id', projectIds)
     .order('sort_order', { ascending: true });
 
-  const linesByBucket = new Map<string, Array<{ id: string; label: string }>>();
+  const linesByCategory = new Map<string, Array<{ id: string; label: string }>>();
   for (const l of costLineRows ?? []) {
     const bid = l.budget_category_id as string | null;
     if (!bid) continue;
-    const arr = linesByBucket.get(bid) ?? [];
+    const arr = linesByCategory.get(bid) ?? [];
     arr.push({ id: l.id as string, label: l.label as string });
-    linesByBucket.set(bid, arr);
+    linesByCategory.set(bid, arr);
   }
 
-  type Bucket = { id: string; name: string; cost_lines: Array<{ id: string; label: string }> };
-  const bucketsByProject = new Map<string, Bucket[]>();
-  for (const b of buckets ?? []) {
+  type Category = { id: string; name: string; cost_lines: Array<{ id: string; label: string }> };
+  const categoriesByProject = new Map<string, Category[]>();
+  for (const b of categories ?? []) {
     const pid = b.project_id as string;
     const bid = b.id as string;
-    const arr = bucketsByProject.get(pid) ?? [];
-    arr.push({ id: bid, name: b.name as string, cost_lines: linesByBucket.get(bid) ?? [] });
-    bucketsByProject.set(pid, arr);
+    const arr = categoriesByProject.get(pid) ?? [];
+    arr.push({ id: bid, name: b.name as string, cost_lines: linesByCategory.get(bid) ?? [] });
+    categoriesByProject.set(pid, arr);
   }
 
   return (projects ?? [])
     .map((p) => ({
       project_id: p.id as string,
       project_name: p.name as string,
-      buckets: bucketsByProject.get(p.id as string) ?? [],
+      categories: categoriesByProject.get(p.id as string) ?? [],
     }))
     .sort((a, b) => a.project_name.localeCompare(b.project_name));
 }

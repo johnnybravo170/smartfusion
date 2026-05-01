@@ -5,7 +5,7 @@
  *
  * Supports both MediaRecorder (in-browser recording) and file upload.
  * After upload, user triggers transcription which extracts work items
- * mapped to cost buckets.
+ * mapped to budget categories.
  */
 
 import { ImagePlus, Loader2, Mic, MicOff, Trash2, Upload, X } from 'lucide-react';
@@ -43,7 +43,7 @@ type MemoPhoto = {
   caption: string | null;
 };
 
-type BucketOption = {
+type CategoryOption = {
   id: string;
   name: string;
   section: string;
@@ -52,7 +52,7 @@ type BucketOption = {
 type WorkItem = {
   area: string;
   description: string;
-  suggested_bucket: string;
+  suggested_category: string;
   section: string;
   referenced_photo_indexes?: number[];
 };
@@ -78,12 +78,12 @@ type MemoRow = {
 export type MemoUploadProps = {
   projectId: string;
   memos: MemoRow[];
-  buckets: BucketOption[];
+  categories: CategoryOption[];
 };
 
 type StagedPhoto = { key: string; file: File; previewUrl: string };
 
-export function MemoUpload({ projectId, memos, buckets }: MemoUploadProps) {
+export function MemoUpload({ projectId, memos, categories }: MemoUploadProps) {
   const router = useRouter();
   const [isRecording, setIsRecording] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -424,11 +424,11 @@ export function MemoUpload({ projectId, memos, buckets }: MemoUploadProps) {
                           (memo.ai_extraction as Record<string, unknown>).work_items as WorkItem[]
                         ).map((item, index) => (
                           <WorkItemRow
-                            key={`${memo.id}-${item.section}-${item.suggested_bucket}-${item.area}-${item.description}`}
+                            key={`${memo.id}-${item.section}-${item.suggested_category}-${item.area}-${item.description}`}
                             memoId={memo.id}
                             itemIndex={index}
                             item={item}
-                            buckets={buckets}
+                            categories={categories}
                             memoPhotos={memo.photos}
                             onDone={() => router.refresh()}
                           />
@@ -506,27 +506,34 @@ type WorkItemRowProps = {
   memoId: string;
   itemIndex: number;
   item: WorkItem;
-  buckets: BucketOption[];
+  categories: CategoryOption[];
   memoPhotos: MemoPhoto[];
   onDone: () => void;
 };
 
-function WorkItemRow({ memoId, itemIndex, item, buckets, memoPhotos, onDone }: WorkItemRowProps) {
+function WorkItemRow({
+  memoId,
+  itemIndex,
+  item,
+  categories,
+  memoPhotos,
+  onDone,
+}: WorkItemRowProps) {
   const defaultLabel = item.area ? `${item.area}: ${item.description}` : item.description;
 
-  // Try to find a bucket matching suggested_bucket name (case-insensitive)
+  // Try to find a category matching suggested_category name (case-insensitive)
   // inside the same section, then fall back to any section match, then none.
-  const suggestedLower = item.suggested_bucket.toLowerCase();
+  const suggestedLower = item.suggested_category.toLowerCase();
   const sectionLower = item.section.toLowerCase();
-  const matchedBucket =
-    buckets.find(
+  const matchedCategory =
+    categories.find(
       (b) => b.name.toLowerCase() === suggestedLower && b.section.toLowerCase() === sectionLower,
     ) ??
-    buckets.find((b) => b.name.toLowerCase() === suggestedLower) ??
+    categories.find((b) => b.name.toLowerCase() === suggestedLower) ??
     null;
 
   const [label, setLabel] = useState(defaultLabel);
-  const [bucketId, setBucketId] = useState<string>(matchedBucket?.id ?? '');
+  const [categoryId, setCategoryId] = useState<string>(matchedCategory?.id ?? '');
   const [category, setCategory] = useState<CostCategory>('sub');
   const [qty, setQty] = useState('1');
   const [unit, setUnit] = useState('ls');
@@ -537,14 +544,14 @@ function WorkItemRow({ memoId, itemIndex, item, buckets, memoPhotos, onDone }: W
     const qtyNum = Number(qty);
     const unitCostCents = Math.round(Number(unitCostDollars || '0') * 100);
     if (!label.trim()) return toast.error('Label is required.');
-    if (!bucketId) return toast.error('Pick a bucket.');
+    if (!categoryId) return toast.error('Pick a category.');
     if (!Number.isFinite(qtyNum) || qtyNum <= 0) return toast.error('Quantity must be positive.');
 
     startTransition(async () => {
       const result = await addMemoItemToCostLinesAction({
         memoId,
         itemIndex,
-        budget_category_id: bucketId,
+        budget_category_id: categoryId,
         category,
         label: label.trim(),
         qty: qtyNum,
@@ -580,7 +587,7 @@ function WorkItemRow({ memoId, itemIndex, item, buckets, memoPhotos, onDone }: W
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>
           AI suggestion: <span className="font-medium">{item.section}</span> /{' '}
-          <span className="font-medium">{item.suggested_bucket}</span>
+          <span className="font-medium">{item.suggested_category}</span>
         </span>
         {referenced.length > 0 ? (
           <div className="flex items-center gap-1">
@@ -592,17 +599,17 @@ function WorkItemRow({ memoId, itemIndex, item, buckets, memoPhotos, onDone }: W
       </div>
       <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Line item" />
       <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-        <Select value={bucketId} onValueChange={setBucketId}>
+        <Select value={categoryId} onValueChange={setCategoryId}>
           <SelectTrigger className="col-span-2">
-            <SelectValue placeholder="Bucket" />
+            <SelectValue placeholder="Category" />
           </SelectTrigger>
           <SelectContent>
-            {buckets.length === 0 ? (
+            {categories.length === 0 ? (
               <SelectItem value="__none" disabled>
-                No buckets — create some first
+                No categories — create some first
               </SelectItem>
             ) : (
-              buckets.map((b) => (
+              categories.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
                   {b.section}: {b.name}
                 </SelectItem>

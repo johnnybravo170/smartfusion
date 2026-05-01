@@ -5,15 +5,15 @@
  * 100% unit tested.
  */
 
-export type BucketEstimate = {
+export type BudgetCategoryEstimate = {
   estimate_cents: number;
 };
 
 /**
- * Sum all bucket estimates into a subtotal.
+ * Sum all category estimates into a subtotal.
  */
-export function calculateBucketTotal(buckets: BucketEstimate[]): number {
-  return buckets.reduce((sum, b) => sum + b.estimate_cents, 0);
+export function calculateBudgetCategoryTotal(categories: BudgetCategoryEstimate[]): number {
+  return categories.reduce((sum, b) => sum + b.estimate_cents, 0);
 }
 
 /**
@@ -32,18 +32,18 @@ export type RenovationTotal = {
 };
 
 /**
- * Calculate the full renovation quote total: buckets + management fee + GST.
+ * Calculate the full renovation quote total: categories + management fee + GST.
  *
- * @param buckets   - Array of bucket estimates.
+ * @param categories - Array of category estimates.
  * @param feeRate   - Management fee as a decimal (e.g. 0.12 for 12%).
  * @param gstRate   - GST rate as a decimal (e.g. 0.05 for 5%).
  */
 export function calculateRenovationTotal(
-  buckets: BucketEstimate[],
+  categories: BudgetCategoryEstimate[],
   feeRate: number,
   gstRate: number,
 ): RenovationTotal {
-  const subtotal_cents = calculateBucketTotal(buckets);
+  const subtotal_cents = calculateBudgetCategoryTotal(categories);
   const fee_cents = calculateManagementFee(subtotal_cents, feeRate);
   const beforeTax = subtotal_cents + fee_cents;
   const gst_cents = Math.round(beforeTax * gstRate);

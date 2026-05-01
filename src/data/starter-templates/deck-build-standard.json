@@ -2,7 +2,7 @@
   "slug": "deck-build-standard",
   "label": "Deck Build (Standard)",
   "description": "Pressure-treated frame, composite or PT deck boards, railings, stairs. ~12x16 footprint.",
-  "buckets": [
+  "categories": [
     {
       "name": "Permits & Layout",
       "section": "exterior",

@@ -5,8 +5,8 @@
  *
  * Click "Add to project" → modal with a drop area. Drop screenshots,
  * reference photos, sketches. Henry parses against the project's
- * existing buckets and returns a list of suggested additions. Operator
- * accepts or trims, then applies.
+ * existing budget categories and returns a list of suggested additions.
+ * Operator accepts or trims, then applies.
  *
  * V1 scope: images only. PDFs / receipts / audio land in later phases.
  */
@@ -52,17 +52,17 @@ async function shrinkIfNeeded(file: File): Promise<File> {
   }
 }
 
-type Bucket = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
+type Category = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
 
 export function ProjectIntakeZone({
   projectId,
-  buckets = [],
+  categories = [],
 }: {
   projectId: string;
-  /** Project's existing cost buckets. Used to resolve AI sub-quote
-   * allocation bucket-names back to real IDs before handing off to the
+  /** Project's existing budget categories. Used to resolve AI sub-quote
+   * allocation category-names back to real IDs before handing off to the
    * sub-quote review dialog. */
-  buckets?: Bucket[];
+  categories?: Category[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -123,18 +123,18 @@ export function ProjectIntakeZone({
   }, []);
   const [suggestions, setSuggestions] = useState<AugmentResult | null>(null);
   // Per-suggestion include flags so operator can trim.
-  const [existingBuckets, setExistingBuckets] = useState<string[]>([]);
-  const [includeBuckets, setIncludeBuckets] = useState<boolean[]>([]);
+  const [existingCategories, setExistingCategories] = useState<string[]>([]);
+  const [includeCategories, setIncludeCategories] = useState<boolean[]>([]);
   const [includeLines, setIncludeLines] = useState<boolean[]>([]);
   const [includeBills, setIncludeBills] = useState<boolean[]>([]);
   const [includeExpenses, setIncludeExpenses] = useState<boolean[]>([]);
-  // Per-line bucket selection: null = use AI suggestion, string = operator override
-  const [lineBucketSelections, setLineBucketSelections] = useState<string[]>([]);
-  // Per-bill / per-expense bucket overrides. Empty string "" = deliberately
-  // unassigned (valid — bill/expense can carry no bucket). string = operator
-  // chose that bucket name. Parallel arrays, one slot per item.
-  const [billBucketSelections, setBillBucketSelections] = useState<string[]>([]);
-  const [expenseBucketSelections, setExpenseBucketSelections] = useState<string[]>([]);
+  // Per-line category selection: null = use AI suggestion, string = operator override
+  const [lineCategorySelections, setLineCategorySelections] = useState<string[]>([]);
+  // Per-bill / per-expense category overrides. Empty string "" = deliberately
+  // unassigned (valid — bill/expense can carry no category). string = operator
+  // chose that category name. Parallel arrays, one slot per item.
+  const [billCategorySelections, setBillCategorySelections] = useState<string[]>([]);
+  const [expenseCategorySelections, setExpenseCategorySelections] = useState<string[]>([]);
   // Bill ↔ expense reclassification. If a bill gets marked as expense, at
   // apply time it's moved to the new_expenses payload (amount + GST merged
   // into one amount_cents). If an expense gets marked as bill, it's moved
@@ -157,10 +157,10 @@ export function ProjectIntakeZone({
     }
     setStaged([]);
     setSuggestions(null);
-    setExistingBuckets([]);
-    setLineBucketSelections([]);
-    setBillBucketSelections([]);
-    setExpenseBucketSelections([]);
+    setExistingCategories([]);
+    setLineCategorySelections([]);
+    setBillCategorySelections([]);
+    setExpenseCategorySelections([]);
     setBillReclassifiedAsExpense([]);
     setExpenseReclassifiedAsBill([]);
     setIncludeBills([]);
@@ -205,18 +205,18 @@ export function ProjectIntakeZone({
         return;
       }
       setSuggestions(res.suggestions);
-      setExistingBuckets(res.existingBuckets);
-      setIncludeBuckets(res.suggestions.new_buckets.map(() => true));
+      setExistingCategories(res.existingCategories);
+      setIncludeCategories(res.suggestions.new_categories.map(() => true));
       setIncludeLines(res.suggestions.new_lines.map(() => true));
       setIncludeBills((res.suggestions.new_bills ?? []).map(() => true));
       setIncludeExpenses((res.suggestions.new_expenses ?? []).map(() => true));
       setIncludeAddendum(!!res.suggestions.description_addendum);
       setIncludeSignals(true);
-      setLineBucketSelections(res.suggestions.new_lines.map((l) => l.budget_category_name));
-      setBillBucketSelections(
+      setLineCategorySelections(res.suggestions.new_lines.map((l) => l.budget_category_name));
+      setBillCategorySelections(
         (res.suggestions.new_bills ?? []).map((b) => b.budget_category_name ?? ''),
       );
-      setExpenseBucketSelections(
+      setExpenseCategorySelections(
         (res.suggestions.new_expenses ?? []).map((e) => e.budget_category_name ?? ''),
       );
       setBillReclassifiedAsExpense((res.suggestions.new_bills ?? []).map(() => false));
@@ -227,12 +227,12 @@ export function ProjectIntakeZone({
   function handleApply() {
     if (!suggestions) return;
     startApplying(async () => {
-      // Resolve which bucket each included line targets.
+      // Resolve which category each included line targets.
       const resolvedLines = suggestions.new_lines
         .map((l, i) => ({ l, i }))
         .filter(({ i }) => includeLines[i])
         .map(({ l, i }) => ({
-          budget_category_name: lineBucketSelections[i] ?? l.budget_category_name,
+          budget_category_name: lineCategorySelections[i] ?? l.budget_category_name,
           label: l.label,
           notes: l.notes,
           qty: l.qty,
@@ -241,25 +241,25 @@ export function ProjectIntakeZone({
           source_image_indexes: l.source_image_indexes ?? [],
         }));
 
-      // Only create new buckets that are still referenced by an included line.
-      const aiNewBucketNamesLower = new Set(
-        suggestions.new_buckets.map((b) => b.name.toLowerCase()),
+      // Only create new categories that are still referenced by an included line.
+      const aiNewCategoryNamesLower = new Set(
+        suggestions.new_categories.map((b) => b.name.toLowerCase()),
       );
-      const referencedNewBuckets = new Set(
+      const referencedNewCategories = new Set(
         resolvedLines
           .map((l) => l.budget_category_name.toLowerCase())
-          .filter((n) => aiNewBucketNamesLower.has(n)),
+          .filter((n) => aiNewCategoryNamesLower.has(n)),
       );
 
       const plan = {
         projectId,
         description_addendum: includeAddendum ? suggestions.description_addendum : null,
-        new_buckets: suggestions.new_buckets.filter(
-          (b, i) => includeBuckets[i] && referencedNewBuckets.has(b.name.toLowerCase()),
+        new_categories: suggestions.new_categories.filter(
+          (b, i) => includeCategories[i] && referencedNewCategories.has(b.name.toLowerCase()),
         ),
         new_lines: resolvedLines,
         // Map-then-filter preserves original index so we can read from the
-        // parallel billBucketSelections / expenseBucketSelections arrays.
+        // parallel billCategorySelections / expenseCategorySelections arrays.
         // A bill reclassified as expense moves to new_expenses below (amount
         // + GST merged). An expense reclassified as bill moves up here
         // (gst_cents defaults to 0 — operator can edit after).
@@ -275,7 +275,7 @@ export function ProjectIntakeZone({
               amount_cents: b.amount_cents,
               gst_cents: b.gst_cents,
               budget_category_name:
-                (billBucketSelections[i] ?? '') !== '' ? billBucketSelections[i] : null,
+                (billCategorySelections[i] ?? '') !== '' ? billCategorySelections[i] : null,
               source_image_index: b.source_image_index,
             })),
           ...(suggestions.new_expenses ?? [])
@@ -289,7 +289,7 @@ export function ProjectIntakeZone({
               amount_cents: e.amount_cents,
               gst_cents: 0,
               budget_category_name:
-                (expenseBucketSelections[i] ?? '') !== '' ? expenseBucketSelections[i] : null,
+                (expenseCategorySelections[i] ?? '') !== '' ? expenseCategorySelections[i] : null,
               source_image_index: e.source_image_index,
             })),
         ],
@@ -310,7 +310,7 @@ export function ProjectIntakeZone({
               expense_date: e.expense_date,
               description: e.description,
               budget_category_name:
-                (expenseBucketSelections[i] ?? '') !== '' ? expenseBucketSelections[i] : null,
+                (expenseCategorySelections[i] ?? '') !== '' ? expenseCategorySelections[i] : null,
               source_image_index: e.source_image_index,
             })),
           ...(suggestions.new_bills ?? [])
@@ -324,7 +324,7 @@ export function ProjectIntakeZone({
               expense_date: b.bill_date,
               description: b.description,
               budget_category_name:
-                (billBucketSelections[i] ?? '') !== '' ? billBucketSelections[i] : null,
+                (billCategorySelections[i] ?? '') !== '' ? billCategorySelections[i] : null,
               source_image_index: b.source_image_index,
             })),
         ],
@@ -387,7 +387,7 @@ export function ProjectIntakeZone({
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Drop screenshots, photos, sketches, PDFs — anything for this project. Henry will sort
-              it into the right buckets.
+              it into the right categories.
             </p>
             <DropArea onFiles={addFiles} />
             {staged.length > 0 ? (
@@ -453,19 +453,19 @@ export function ProjectIntakeZone({
               </SuggestionCard>
             ) : null}
 
-            {suggestions.new_buckets.length > 0 ? (
+            {suggestions.new_categories.length > 0 ? (
               <div className="rounded-md border">
                 <p className="border-b bg-muted/30 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  New buckets ({suggestions.new_buckets.length})
+                  New categories ({suggestions.new_categories.length})
                 </p>
                 <div className="divide-y">
-                  {suggestions.new_buckets.map((b, i) => (
+                  {suggestions.new_categories.map((b, i) => (
                     <SuggestionRow
                       // biome-ignore lint/suspicious/noArrayIndexKey: parallel state arrays bound by index
                       key={`b-${i}`}
-                      checked={includeBuckets[i]}
+                      checked={includeCategories[i]}
                       onToggle={() =>
-                        setIncludeBuckets((arr) => arr.map((v, j) => (j === i ? !v : v)))
+                        setIncludeCategories((arr) => arr.map((v, j) => (j === i ? !v : v)))
                       }
                     >
                       <div className="flex flex-1 items-center gap-2">
@@ -474,18 +474,18 @@ export function ProjectIntakeZone({
                           placeholder="Section"
                           className="h-8 max-w-[140px] text-xs"
                           onChange={(e) => {
-                            const next = [...suggestions.new_buckets];
+                            const next = [...suggestions.new_categories];
                             next[i] = { ...next[i], section: e.target.value || null };
-                            setSuggestions({ ...suggestions, new_buckets: next });
+                            setSuggestions({ ...suggestions, new_categories: next });
                           }}
                         />
                         <Input
                           value={b.name}
                           className="h-8 text-sm font-medium"
                           onChange={(e) => {
-                            const next = [...suggestions.new_buckets];
+                            const next = [...suggestions.new_categories];
                             next[i] = { ...next[i], name: e.target.value };
-                            setSuggestions({ ...suggestions, new_buckets: next });
+                            setSuggestions({ ...suggestions, new_categories: next });
                           }}
                         />
                       </div>
@@ -513,26 +513,26 @@ export function ProjectIntakeZone({
                       <div className="flex-1 space-y-1.5">
                         <div className="flex flex-wrap items-center gap-2">
                           <select
-                            value={lineBucketSelections[i] ?? l.budget_category_name}
+                            value={lineCategorySelections[i] ?? l.budget_category_name}
                             onChange={(e) =>
-                              setLineBucketSelections((arr) =>
+                              setLineCategorySelections((arr) =>
                                 arr.map((v, j) => (j === i ? e.target.value : v)),
                               )
                             }
                             className="h-7 rounded-md border bg-background px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
                           >
-                            {existingBuckets.length > 0 && (
+                            {existingCategories.length > 0 && (
                               <optgroup label="Existing">
-                                {existingBuckets.map((name) => (
+                                {existingCategories.map((name) => (
                                   <option key={name} value={name}>
                                     {name}
                                   </option>
                                 ))}
                               </optgroup>
                             )}
-                            {suggestions.new_buckets.length > 0 && (
+                            {suggestions.new_categories.length > 0 && (
                               <optgroup label="New">
-                                {suggestions.new_buckets.map((b) => (
+                                {suggestions.new_categories.map((b) => (
                                   <option key={b.name} value={b.name}>
                                     + {b.name}
                                   </option>
@@ -643,10 +643,10 @@ export function ProjectIntakeZone({
                           <Button
                             size="xs"
                             onClick={() => setReviewingSubQuoteIndex(i)}
-                            disabled={buckets.length === 0}
+                            disabled={categories.length === 0}
                             title={
-                              buckets.length === 0
-                                ? 'This project needs cost buckets first.'
+                              categories.length === 0
+                                ? 'This project needs budget categories first.'
                                 : undefined
                             }
                           >
@@ -701,27 +701,27 @@ export function ProjectIntakeZone({
                           )}
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <select
-                              value={billBucketSelections[i] ?? ''}
+                              value={billCategorySelections[i] ?? ''}
                               onChange={(e) =>
-                                setBillBucketSelections((arr) =>
+                                setBillCategorySelections((arr) =>
                                   arr.map((v, j) => (j === i ? e.target.value : v)),
                                 )
                               }
                               className="h-7 rounded-md border bg-background px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
                             >
-                              <option value="">— no bucket —</option>
-                              {existingBuckets.length > 0 && (
+                              <option value="">— no category —</option>
+                              {existingCategories.length > 0 && (
                                 <optgroup label="Existing">
-                                  {existingBuckets.map((name) => (
+                                  {existingCategories.map((name) => (
                                     <option key={name} value={name}>
                                       {name}
                                     </option>
                                   ))}
                                 </optgroup>
                               )}
-                              {suggestions.new_buckets.length > 0 && (
+                              {suggestions.new_categories.length > 0 && (
                                 <optgroup label="New">
-                                  {suggestions.new_buckets.map((nb) => (
+                                  {suggestions.new_categories.map((nb) => (
                                     <option key={nb.name} value={nb.name}>
                                       + {nb.name}
                                     </option>
@@ -794,27 +794,27 @@ export function ProjectIntakeZone({
                           ) : null}
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <select
-                              value={expenseBucketSelections[i] ?? ''}
+                              value={expenseCategorySelections[i] ?? ''}
                               onChange={(ev) =>
-                                setExpenseBucketSelections((arr) =>
+                                setExpenseCategorySelections((arr) =>
                                   arr.map((v, j) => (j === i ? ev.target.value : v)),
                                 )
                               }
                               className="h-7 rounded-md border bg-background px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
                             >
-                              <option value="">— no bucket —</option>
-                              {existingBuckets.length > 0 && (
+                              <option value="">— no category —</option>
+                              {existingCategories.length > 0 && (
                                 <optgroup label="Existing">
-                                  {existingBuckets.map((name) => (
+                                  {existingCategories.map((name) => (
                                     <option key={name} value={name}>
                                       {name}
                                     </option>
                                   ))}
                                 </optgroup>
                               )}
-                              {suggestions.new_buckets.length > 0 && (
+                              {suggestions.new_categories.length > 0 && (
                                 <optgroup label="New">
-                                  {suggestions.new_buckets.map((nb) => (
+                                  {suggestions.new_categories.map((nb) => (
                                     <option key={nb.name} value={nb.name}>
                                       + {nb.name}
                                     </option>
@@ -903,7 +903,7 @@ export function ProjectIntakeZone({
               </div>
             ) : null}
 
-            {suggestions.new_buckets.length === 0 &&
+            {suggestions.new_categories.length === 0 &&
             suggestions.new_lines.length === 0 &&
             (suggestions.new_bills?.length ?? 0) === 0 &&
             (suggestions.new_expenses?.length ?? 0) === 0 &&
@@ -933,12 +933,12 @@ export function ProjectIntakeZone({
         )}
       </DialogContent>
 
-      {/* Nested vendor quote review dialog. Maps AI-suggested bucket names
-          back to real bucket IDs before handing to SubQuoteForm. */}
+      {/* Nested vendor quote review dialog. Maps AI-suggested category names
+          back to real category IDs before handing to SubQuoteForm. */}
       {reviewingSubQuoteIndex !== null && suggestions?.new_sub_quotes ? (
         <SubQuoteReviewDialog
           projectId={projectId}
-          buckets={buckets}
+          categories={categories}
           sq={suggestions.new_sub_quotes[reviewingSubQuoteIndex]}
           sourceFile={
             suggestions.new_sub_quotes[reviewingSubQuoteIndex].source_image_index != null
@@ -964,25 +964,25 @@ export function ProjectIntakeZone({
 
 function SubQuoteReviewDialog({
   projectId,
-  buckets,
+  categories,
   sq,
   sourceFile,
   onClose,
   onSaved,
 }: {
   projectId: string;
-  buckets: Bucket[];
+  categories: Category[];
   sq: NonNullable<AugmentResult['new_sub_quotes']>[number];
   sourceFile: File | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  // Resolve AI-suggested bucket names to real bucket IDs. Anything that
+  // Resolve AI-suggested category names to real category IDs. Anything that
   // doesn't exist is dropped — operator allocates manually in the form.
-  const bucketsByName = new Map(buckets.map((b) => [b.name, b]));
+  const categoriesByName = new Map(categories.map((b) => [b.name, b]));
   const matched = sq.allocations
     .map((a) => {
-      const hit = bucketsByName.get(a.budget_category_name);
+      const hit = categoriesByName.get(a.budget_category_name);
       return hit
         ? { budget_category_id: hit.id, allocated_cents: a.allocated_cents, notes: a.reasoning }
         : null;
@@ -993,9 +993,9 @@ function SubQuoteReviewDialog({
     notes: string;
   }>;
 
-  const unmatched = sq.allocations.filter((a) => !bucketsByName.has(a.budget_category_name));
+  const unmatched = sq.allocations.filter((a) => !categoriesByName.has(a.budget_category_name));
   const unmatchedNote = unmatched.length
-    ? `Henry suggested but no matching bucket:\n${unmatched
+    ? `Henry suggested but no matching category:\n${unmatched
         .map((u) => `  • ${u.budget_category_name} — $${(u.allocated_cents / 100).toFixed(2)}`)
         .join('\n')}`
     : '';
@@ -1010,7 +1010,7 @@ function SubQuoteReviewDialog({
         </DialogHeader>
         <SubQuoteForm
           projectId={projectId}
-          buckets={buckets}
+          categories={categories}
           initialValues={{
             vendor_name: sq.vendor_name,
             vendor_email: sq.vendor_email ?? '',

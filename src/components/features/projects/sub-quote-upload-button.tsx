@@ -3,13 +3,13 @@
 /**
  * "Upload vendor quote" flow: operator picks a PDF or image → we call the
  * AI parser → surface results + any AI warnings → hand off to
- * SubQuoteForm pre-filled with extracted data and matched bucket
+ * SubQuoteForm pre-filled with extracted data and matched category
  * allocations. The same File is passed through as the attachment so we
  * don't re-upload.
  *
- * Unmatched AI allocations (bucket names the model invented that don't
+ * Unmatched AI allocations (category names the model invented that don't
  * exist on the project) are surfaced in the form's Notes so the operator
- * can read the AI's reasoning and decide whether to create that bucket
+ * can read the AI's reasoning and decide whether to create that category
  * or reallocate to an existing one.
  */
 
@@ -27,14 +27,14 @@ import {
 import { parseSubQuoteFromFileAction } from '@/server/actions/sub-quotes';
 import { SubQuoteForm, type SubQuoteInitialValues } from './sub-quote-form';
 
-type Bucket = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
+type Category = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
 
 export function SubQuoteUploadButton({
   projectId,
-  buckets,
+  categories,
 }: {
   projectId: string;
-  buckets: Bucket[];
+  categories: Category[];
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
@@ -70,10 +70,10 @@ export function SubQuoteUploadButton({
       // Weave any AI-unmatched allocations into the form notes so the
       // operator sees the reasoning and can act on it.
       const unmatchedNote = result.unmatchedAllocations.length
-        ? `AI suggested but no matching bucket:\n${result.unmatchedAllocations
+        ? `AI suggested but no matching category:\n${result.unmatchedAllocations
             .map(
               (u) =>
-                `  • ${u.proposedBucketName} — $${(u.allocatedCents / 100).toFixed(2)} (${u.reasoning})`,
+                `  • ${u.proposedCategoryName} — $${(u.allocatedCents / 100).toFixed(2)} (${u.reasoning})`,
             )
             .join('\n')}`
         : '';
@@ -87,7 +87,7 @@ export function SubQuoteUploadButton({
         quote_date: result.extracted.quote_date ?? '',
         valid_until: result.extracted.valid_until ?? '',
         allocations: result.allocations.map((a) => ({
-          budget_category_id: a.bucketId,
+          budget_category_id: a.categoryId,
           allocated_cents: a.allocatedCents,
           notes: a.reasoning,
         })),
@@ -104,8 +104,8 @@ export function SubQuoteUploadButton({
         size="sm"
         variant="outline"
         onClick={handlePick}
-        disabled={pending || buckets.length === 0}
-        title={buckets.length === 0 ? 'Create at least one cost bucket first.' : undefined}
+        disabled={pending || categories.length === 0}
+        title={categories.length === 0 ? 'Create at least one budget category first.' : undefined}
       >
         {pending ? (
           <Loader2 className="mr-1 size-3.5 animate-spin" />
@@ -163,7 +163,7 @@ export function SubQuoteUploadButton({
           {initialValues ? (
             <SubQuoteForm
               projectId={projectId}
-              buckets={buckets}
+              categories={categories}
               initialValues={initialValues}
               onDone={() => {
                 setOpen(false);

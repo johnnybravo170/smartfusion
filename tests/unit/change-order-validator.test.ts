@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { changeOrderApprovalSchema, changeOrderCreateSchema } from '@/lib/validators/change-order';
 
 const VALID_UUID = '11111111-2222-4333-8444-555555555555';
-const BUCKET_UUID = '22222222-3333-4444-8555-666666666666';
+const CATEGORY_UUID = '22222222-3333-4444-8555-666666666666';
 
 describe('changeOrderCreateSchema', () => {
   it('accepts a fully populated change order', () => {
@@ -17,14 +17,14 @@ describe('changeOrderCreateSchema', () => {
       reason: 'Requested during walkthrough',
       cost_impact_cents: 125000,
       timeline_impact_days: 3,
-      affected_buckets: [BUCKET_UUID],
+      affected_budget_categories: [CATEGORY_UUID],
     });
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.title).toBe('Add pot lights to kitchen');
       expect(parsed.data.cost_impact_cents).toBe(125000);
       expect(parsed.data.timeline_impact_days).toBe(3);
-      expect(parsed.data.affected_buckets).toEqual([BUCKET_UUID]);
+      expect(parsed.data.affected_budget_categories).toEqual([CATEGORY_UUID]);
     }
   });
 
@@ -43,7 +43,7 @@ describe('changeOrderCreateSchema', () => {
     }
   });
 
-  it('defaults affected_buckets to empty array', () => {
+  it('defaults affected_budget_categories to empty array', () => {
     const parsed = changeOrderCreateSchema.safeParse({
       project_id: VALID_UUID,
       title: 'Test',
@@ -53,7 +53,7 @@ describe('changeOrderCreateSchema', () => {
     });
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      expect(parsed.data.affected_buckets).toEqual([]);
+      expect(parsed.data.affected_budget_categories).toEqual([]);
     }
   });
 

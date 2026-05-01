@@ -11,8 +11,8 @@
  * Read-only summary view — full edit affordances stay on the per-type
  * subtabs. Toggle is in CostsTab.
  *
- * Honors `?focus=<bucket-name>` in the URL — used by the Budget tab's
- * "Spend →" drill-link to scroll + highlight a specific bucket.
+ * Honors `?focus=<category-name>` in the URL — used by the Budget tab's
+ * "Spend →" drill-link to scroll + highlight a specific category.
  */
 
 import { useSearchParams } from 'next/navigation';
@@ -23,7 +23,7 @@ import type { PurchaseOrderRow } from '@/lib/db/queries/purchase-orders';
 import { formatCurrency, formatCurrencyCompact } from '@/lib/pricing/calculator';
 import type { ExpenseItem } from './expenses-section';
 
-type Bucket = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
+type Category = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
 
 type Row = {
   kind: 'quote' | 'po' | 'bill' | 'expense';
@@ -34,13 +34,13 @@ type Row = {
 };
 
 export function CostsByCategoryView({
-  buckets,
+  categories,
   bills,
   expenses,
   subQuotes,
   purchaseOrders,
 }: {
-  buckets: Bucket[];
+  categories: Category[];
   bills: ProjectBillRow[];
   expenses: ExpenseItem[];
   subQuotes: SubQuoteRow[];
@@ -109,8 +109,8 @@ export function CostsByCategoryView({
     }
   }
 
-  const sectionsByName = new Map<string, Bucket[]>();
-  for (const b of buckets) {
+  const sectionsByName = new Map<string, Category[]>();
+  for (const b of categories) {
     const arr = sectionsByName.get(b.section) ?? [];
     arr.push(b);
     sectionsByName.set(b.section, arr);
@@ -119,13 +119,13 @@ export function CostsByCategoryView({
 
   const searchParams = useSearchParams();
   const focusName = (searchParams.get('focus') ?? '').toLowerCase().trim();
-  const focusedBucketRef = useRef<HTMLDivElement | null>(null);
+  const focusedCategoryRef = useRef<HTMLDivElement | null>(null);
 
-  // Scroll to the focused bucket on mount / focus change. Stays subtle
+  // Scroll to the focused category on mount / focus change. Stays subtle
   // — no jarring jumps if the user is already scrolled.
   useEffect(() => {
     if (!focusName) return;
-    const el = focusedBucketRef.current;
+    const el = focusedCategoryRef.current;
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [focusName]);
@@ -136,18 +136,18 @@ export function CostsByCategoryView({
         <CategoryBlock name="Unallocated" rows={unallocated} highlight />
       ) : null}
 
-      {Array.from(sectionsByName.entries()).map(([section, sectionBuckets]) => (
+      {Array.from(sectionsByName.entries()).map(([section, sectionCategories]) => (
         <div key={section}>
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {section}
           </h3>
           <div className="space-y-3">
-            {sectionBuckets.map((b) => {
+            {sectionCategories.map((b) => {
               const rows = rowsByCategory.get(b.id) ?? [];
               if (rows.length === 0) return null;
               const isFocused = focusName.length > 0 && b.name.toLowerCase().trim() === focusName;
               return (
-                <div key={b.id} ref={isFocused ? focusedBucketRef : undefined}>
+                <div key={b.id} ref={isFocused ? focusedCategoryRef : undefined}>
                   <CategoryBlock name={b.name} rows={rows} highlight={isFocused} />
                 </div>
               );

@@ -98,7 +98,7 @@ export default async function ProjectDetailPage({
   // Shell-only queries. getProject is React.cache-wrapped, so generateMetadata
   // + the shell + any inner tab that also calls it (e.g. OverviewTab) dedupe
   // to a single DB hit per request.
-  const [project, projectBuckets, progress, draws] = await Promise.all([
+  const [project, projectCategories, progress, draws] = await Promise.all([
     getProject(id),
     listBudgetCategoriesForProject(id),
     getProjectProgress(id),
@@ -235,7 +235,7 @@ export default async function ProjectDetailPage({
           <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
           <ProjectIntakeZone
             projectId={project.id}
-            buckets={projectBuckets.map((b) => ({
+            categories={projectCategories.map((b) => ({
               id: b.id,
               name: b.name,
               section: (b.section as 'interior' | 'exterior' | 'general') ?? 'general',

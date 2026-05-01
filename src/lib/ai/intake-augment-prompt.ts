@@ -10,22 +10,22 @@ export const AUGMENT_SYSTEM_PROMPT = `You help a Canadian general contractor add
 
 You are given:
 - The existing project (name, description, customer)
-- The existing buckets (each with a name, an optional section, and the cost lines already in it)
+- The existing budget categories (each with a name, an optional section, and the cost lines already in it)
 - One or more new artifacts (images and/or PDFs — sub-trade quotes, invoices/bills, drawings, specs)
 
 Your job: return a list of additions and updates the operator can review.
 
 CRITICAL DISTINCTION — sub quotes vs invoices/bills vs receipts:
-- A SUB QUOTE / ESTIMATE / PROPOSAL from a subcontractor or supplier (future tense, "we propose", "quotation", "estimate for"): → Use new_sub_quotes. Do NOT create new_buckets or new_lines from it; sub quotes are a separate first-class concept that get allocated across the project's EXISTING cost buckets.
+- A SUB QUOTE / ESTIMATE / PROPOSAL from a subcontractor or supplier (future tense, "we propose", "quotation", "estimate for"): → Use new_sub_quotes. Do NOT create new_categories or new_lines from it; sub quotes are a separate first-class concept that get allocated across the project's EXISTING budget categories.
 - An INVOICE / BILL: the sub-trade is requesting payment for work already done ("invoice #", "amount owing", "payment due", "please remit", past tense, has an invoice number and due date). → Use new_bills. Do NOT add to the estimate.
 - A RECEIPT: already paid (store receipt, "paid", zero balance). → Use new_expenses.
 
 Rules:
-1. Reuse existing bucket names whenever the artifact's content fits one. Only propose a NEW bucket when nothing existing fits.
-2. When proposing a new line, name the target bucket EXACTLY as it appears in the existing project, or use a new bucket name you also propose.
-3. For a PDF SUB QUOTE / PROPOSAL from a sub-trade or supplier: emit a new_sub_quotes entry with vendor_name (as it appears on the quote), vendor_email + vendor_phone (if visible), total_cents (quote's grand total in integer cents), scope_description (vendor's own words summarising what's quoted), quote_date + valid_until (YYYY-MM-DD or null), line_items (label + qty + unit_price_cents + line_total_cents per line), and allocations (budget_category_name must EXACTLY match an existing bucket — do NOT invent bucket names, and if you can't confidently map the scope to an existing bucket, leave allocations empty and let the operator allocate manually). The source PDF index goes in source_image_index. Do NOT create new_buckets or new_lines from a sub quote.
-4. For a PDF INVOICE/BILL (work done, money owed): emit a new_bills entry with vendor, vendor_gst_number (the vendor's GST/HST Business Number if printed — labeled "GST Reg #", "HST #", "BN", "Business Number", etc. Canadian format is 9 digits + "RT" + 4 digits like "123456789 RT0001", or just the 9-digit root. Null if not visible), bill_date (YYYY-MM-DD), amount_cents (pre-GST subtotal in integer cents), gst_cents (GST/HST portion in integer cents — extract from lines like "GST 5%", "HST 13%", "GST incl.", "GST INCLUDED", "GST/HST". If only a rate is shown and no dollar figure, compute cents from the subtotal and rate. Return 0 only when GST is definitely not charged), a one-line description, and budget_category_name (match to the most relevant existing bucket, or null). The source PDF index goes in source_image_index. Do NOT create cost lines for invoices.
-5. For a RECEIPT (paid invoice / store receipt — image or PDF): emit a new_expenses entry with vendor, vendor_gst_number (same rule as bills — BN if printed, null otherwise), amount in integer cents, date (YYYY-MM-DD), and a one-line description. If the receipt clearly fits an existing or proposed bucket, set budget_category_name; otherwise leave null. Receipts are NOT cost-line estimates — they're real money already spent.
+1. Reuse existing budget category names whenever the artifact's content fits one. Only propose a NEW category when nothing existing fits.
+2. When proposing a new line, name the target category EXACTLY as it appears in the existing project, or use a new category name you also propose.
+3. For a PDF SUB QUOTE / PROPOSAL from a sub-trade or supplier: emit a new_sub_quotes entry with vendor_name (as it appears on the quote), vendor_email + vendor_phone (if visible), total_cents (quote's grand total in integer cents), scope_description (vendor's own words summarising what's quoted), quote_date + valid_until (YYYY-MM-DD or null), line_items (label + qty + unit_price_cents + line_total_cents per line), and allocations (budget_category_name must EXACTLY match an existing category — do NOT invent category names, and if you can't confidently map the scope to an existing category, leave allocations empty and let the operator allocate manually). The source PDF index goes in source_image_index. Do NOT create new_categories or new_lines from a sub quote.
+4. For a PDF INVOICE/BILL (work done, money owed): emit a new_bills entry with vendor, vendor_gst_number (the vendor's GST/HST Business Number if printed — labeled "GST Reg #", "HST #", "BN", "Business Number", etc. Canadian format is 9 digits + "RT" + 4 digits like "123456789 RT0001", or just the 9-digit root. Null if not visible), bill_date (YYYY-MM-DD), amount_cents (pre-GST subtotal in integer cents), gst_cents (GST/HST portion in integer cents — extract from lines like "GST 5%", "HST 13%", "GST incl.", "GST INCLUDED", "GST/HST". If only a rate is shown and no dollar figure, compute cents from the subtotal and rate. Return 0 only when GST is definitely not charged), a one-line description, and budget_category_name (match to the most relevant existing category, or null). The source PDF index goes in source_image_index. Do NOT create cost lines for invoices.
+5. For a RECEIPT (paid invoice / store receipt — image or PDF): emit a new_expenses entry with vendor, vendor_gst_number (same rule as bills — BN if printed, null otherwise), amount in integer cents, date (YYYY-MM-DD), and a one-line description. If the receipt clearly fits an existing or proposed category, set budget_category_name; otherwise leave null. Receipts are NOT cost-line estimates — they're real money already spent.
 6. REFERENCE PHOTOS of existing conditions (rooms, fixtures, before/after) → attach to the most relevant cost line via source_image_indexes. They show what work is being done on.
 7. SKETCHES with measurements, INSPIRATION shots, and PDF DOCS (drawings/specs/scope, NOT quotes or invoices) → emit a new_artifacts entry. These are project knowledge, not cost lines. Do NOT create a cost line for "Fireplace measurements" — make it a new_artifact with label ("Fireplace measurement sketch") and a 1–2 sentence summary. Pick the most accurate kind: 'sketch' | 'inspiration' | 'drawing'.
 8. Leave unit_price_cents null whenever you don't have a real basis to price something. Do NOT guess prices (except where a PDF quote, invoice, or receipt states a real number).
@@ -48,7 +48,7 @@ export const AUGMENT_JSON_SCHEMA = {
     additionalProperties: false,
     properties: {
       description_addendum: { type: ['string', 'null'] },
-      new_buckets: {
+      new_categories: {
         type: 'array',
         items: {
           type: 'object',
@@ -263,7 +263,7 @@ export const AUGMENT_JSON_SCHEMA = {
     },
     required: [
       'description_addendum',
-      'new_buckets',
+      'new_categories',
       'new_lines',
       'new_bills',
       'new_artifacts',
@@ -336,7 +336,7 @@ export type AugmentSubQuote = {
 
 export type AugmentResult = {
   description_addendum: string | null;
-  new_buckets: Array<{ name: string; section: string | null }>;
+  new_categories: Array<{ name: string; section: string | null }>;
   new_lines: Array<{
     budget_category_name: string;
     label: string;

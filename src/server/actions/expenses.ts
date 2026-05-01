@@ -45,17 +45,17 @@ const expenseSchema = z.object({
 });
 
 /**
- * List active-ish projects with their cost buckets for the Log Expense
+ * List active-ish projects with their budget categories for the Log Expense
  * dialog. Tenant-scoped via RLS — returns every project the caller's
- * session can see, with each project's buckets nested.
+ * session can see, with each project's categories nested.
  */
-export async function listProjectsWithBucketsForExpenseAction(): Promise<
+export async function listProjectsWithCategoriesForExpenseAction(): Promise<
   | {
       ok: true;
       projects: Array<{
         id: string;
         name: string;
-        buckets: Array<{ id: string; name: string }>;
+        categories: Array<{ id: string; name: string }>;
       }>;
     }
   | { ok: false; error: string }
@@ -72,19 +72,19 @@ export async function listProjectsWithBucketsForExpenseAction(): Promise<
   const projectIds = (projects ?? []).map((p) => p.id as string);
   if (projectIds.length === 0) return { ok: true, projects: [] };
 
-  const { data: buckets, error: bErr } = await supabase
+  const { data: categories, error: bErr } = await supabase
     .from('project_budget_categories')
     .select('id, name, project_id, display_order')
     .in('project_id', projectIds)
     .order('display_order', { ascending: true });
   if (bErr) return { ok: false, error: bErr.message };
 
-  const bucketsByProject = new Map<string, Array<{ id: string; name: string }>>();
-  for (const b of buckets ?? []) {
+  const categoriesByProject = new Map<string, Array<{ id: string; name: string }>>();
+  for (const b of categories ?? []) {
     const pid = b.project_id as string;
-    const arr = bucketsByProject.get(pid) ?? [];
+    const arr = categoriesByProject.get(pid) ?? [];
     arr.push({ id: b.id as string, name: b.name as string });
-    bucketsByProject.set(pid, arr);
+    categoriesByProject.set(pid, arr);
   }
 
   return {
@@ -92,7 +92,7 @@ export async function listProjectsWithBucketsForExpenseAction(): Promise<
     projects: (projects ?? []).map((p) => ({
       id: p.id as string,
       name: p.name as string,
-      buckets: bucketsByProject.get(p.id as string) ?? [],
+      categories: categoriesByProject.get(p.id as string) ?? [],
     })),
   };
 }

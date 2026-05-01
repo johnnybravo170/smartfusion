@@ -45,7 +45,7 @@ export function EstimateTab({
   approval,
   costLinePhotoUrls,
   feedback,
-  bucketsById,
+  categoriesById,
   coContributionsByLineId = {},
   appliedChangeOrders = [],
 }: {
@@ -61,7 +61,7 @@ export function EstimateTab({
   approval: EstimateApprovalInfo;
   costLinePhotoUrls: Record<string, string>;
   feedback: FeedbackRow[];
-  bucketsById: Record<string, { name: string; section: string | null; order: number }>;
+  categoriesById: Record<string, { name: string; section: string | null; order: number }>;
   /** Audit lens: which applied COs touched each line. Empty by default
    *  for projects with no v2 COs. */
   coContributionsByLineId?: Record<string, AppliedChangeOrderContribution[]>;
@@ -123,12 +123,12 @@ export function EstimateTab({
     0,
   );
 
-  // Group by bucket, then nest buckets under their section so the section
+  // Group by category, then nest categories under their section so the section
   // label is rendered once as a top-level header rather than repeated on
-  // every bucket.
-  type BucketGroup = {
+  // every category.
+  type CategoryGroup = {
     key: string;
-    bucketName: string;
+    categoryName: string;
     order: number;
     lines: CostLineRow[];
   };
@@ -136,37 +136,37 @@ export function EstimateTab({
     key: string;
     section: string | null;
     order: number;
-    buckets: BucketGroup[];
+    categories: CategoryGroup[];
   };
-  const bucketMap = new Map<string, BucketGroup & { section: string | null }>();
+  const categoryMap = new Map<string, CategoryGroup & { section: string | null }>();
   for (const line of costLines) {
     const key = line.budget_category_id ?? '__none__';
-    const info = line.budget_category_id ? bucketsById[line.budget_category_id] : undefined;
-    const g = bucketMap.get(key) ?? {
+    const info = line.budget_category_id ? categoriesById[line.budget_category_id] : undefined;
+    const g = categoryMap.get(key) ?? {
       key,
-      bucketName: info?.name ?? 'Other',
+      categoryName: info?.name ?? 'Other',
       section: info?.section ?? null,
       order: info?.order ?? Number.MAX_SAFE_INTEGER,
       lines: [],
     };
     g.lines.push(line);
-    bucketMap.set(key, g);
+    categoryMap.set(key, g);
   }
   const sectionMap = new Map<string, SectionGroup>();
-  for (const b of bucketMap.values()) {
+  for (const b of categoryMap.values()) {
     const sKey = b.section ?? '__none__';
     const s = sectionMap.get(sKey) ?? {
       key: sKey,
       section: b.section,
       order: b.order,
-      buckets: [],
+      categories: [],
     };
-    s.buckets.push({ key: b.key, bucketName: b.bucketName, order: b.order, lines: b.lines });
+    s.categories.push({ key: b.key, categoryName: b.categoryName, order: b.order, lines: b.lines });
     s.order = Math.min(s.order, b.order);
     sectionMap.set(sKey, s);
   }
   const sections = Array.from(sectionMap.values())
-    .map((s) => ({ ...s, buckets: s.buckets.sort((a, b) => a.order - b.order) }))
+    .map((s) => ({ ...s, categories: s.categories.sort((a, b) => a.order - b.order) }))
     .sort((a, b) => a.order - b.order);
 
   const statusChip = (() => {
@@ -465,7 +465,7 @@ export function EstimateTab({
                         </td>
                       </tr>
                     ) : null}
-                    {sec.buckets.flatMap(({ lines }) =>
+                    {sec.categories.flatMap(({ lines }) =>
                       lines.map((line) => {
                         const photos = (line.photo_storage_paths ?? [])
                           .map((path) => ({

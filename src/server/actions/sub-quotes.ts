@@ -199,7 +199,7 @@ const subQuoteUpdateSchema = subQuoteCreateSchema.extend({
 
 /**
  * Edit an existing vendor quote's fields + allocations. Status is preserved
- * (edit is allowed on any status so operators can rebucket an already-
+ * (edit is allowed on any status so operators can recategorize an already-
  * accepted quote). Allocations are wipe+reinsert, same as
  * setSubQuoteAllocationsAction. Balance invariant is only enforced on
  * accept — an edit can leave an accepted quote unbalanced.
@@ -327,11 +327,11 @@ export async function setSubQuoteAllocationsAction(input: {
 /**
  * Accept a vendor quote. Enforces the invariant: sum of allocations must
  * equal total_cents. If a prior accepted quote from the same vendor
- * exists on this project AND shares a bucket, that prior quote is
+ * exists on this project AND shares a category, that prior quote is
  * superseded (its status flips, `superseded_by_id` points at this one).
  *
  * `replaceExisting`:
- *   - `'auto'` — apply supersede if bucket-overlap, else leave in place
+ *   - `'auto'` — apply supersede if category-overlap, else leave in place
  *   - `'yes'`  — force supersede every accepted quote from this vendor
  *   - `'no'`   — leave any existing accepted quotes alone
  */
@@ -387,16 +387,16 @@ export async function acceptSubQuoteAction(input: {
   if (replaceMode === 'yes') {
     toSupersede.push(...(priorAccepted ?? []).map((p) => p.id as string));
   } else if (replaceMode === 'auto' && priorAccepted?.length) {
-    // Supersede only when bucket overlap exists — different buckets =
+    // Supersede only when category overlap exists — different categories =
     // genuinely separate scopes (tile kitchen vs tile bathroom).
-    const ourBuckets = new Set((allocations ?? []).map((a) => a.budget_category_id as string));
+    const ourCategories = new Set((allocations ?? []).map((a) => a.budget_category_id as string));
     for (const prior of priorAccepted) {
       const { data: priorAllocs } = await supabase
         .from('project_sub_quote_allocations')
         .select('budget_category_id')
         .eq('sub_quote_id', prior.id as string);
       const overlap = (priorAllocs ?? []).some((pa) =>
-        ourBuckets.has(pa.budget_category_id as string),
+        ourCategories.has(pa.budget_category_id as string),
       );
       if (overlap) toSupersede.push(prior.id as string);
     }
@@ -457,22 +457,25 @@ export async function deleteSubQuoteAction(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Inline bucket creation (from the allocation editor)
+// Inline category creation (from the allocation editor)
 // ---------------------------------------------------------------------------
 
-const bucketSectionSchema = z.enum(['interior', 'exterior', 'general']);
+const categorySectionSchema = z.enum(['interior', 'exterior', 'general']);
 
 /**
- * Create a new cost bucket on a project from inside the allocation
- * editor. Returns the new bucket so the caller can append it to the
- * in-memory bucket list and select it in a fresh allocation row.
+ * Create a new budget category on a project from inside the allocation
+ * editor. Returns the new category so the caller can append it to the
+ * in-memory category list and select it in a fresh allocation row.
  */
-export async function createProjectBucketAction(input: {
+export async function createProjectCategoryAction(input: {
   projectId: string;
   name: string;
   section: 'interior' | 'exterior' | 'general';
 }): Promise<
-  | { ok: true; bucket: { id: string; name: string; section: 'interior' | 'exterior' | 'general' } }
+  | {
+      ok: true;
+      category: { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
+    }
   | { ok: false; error: string }
 > {
   const tenant = await getCurrentTenant();
@@ -482,14 +485,14 @@ export async function createProjectBucketAction(input: {
     .object({
       projectId: z.string().uuid(),
       name: z.string().trim().min(1).max(120),
-      section: bucketSectionSchema,
+      section: categorySectionSchema,
     })
     .safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Invalid input.' };
 
   const supabase = await createClient();
 
-  // Next display_order = max(existing) + 10 so the new bucket lands at
+  // Next display_order = max(existing) + 10 so the new category lands at
   // the end of the list without clashing.
   const { data: existing } = await supabase
     .from('project_budget_categories')
@@ -510,12 +513,12 @@ export async function createProjectBucketAction(input: {
     })
     .select('id, name, section')
     .single();
-  if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create bucket.' };
+  if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create category.' };
 
   revalidatePath(`/projects/${parsed.data.projectId}`);
   return {
     ok: true,
-    bucket: {
+    category: {
       id: data.id as string,
       name: data.name as string,
       section: data.section as 'interior' | 'exterior' | 'general',
@@ -535,19 +538,19 @@ export type ParseSubQuoteResult =
       reasonIfNot: string | null;
       extracted: SubQuoteParseResult['extracted'];
       /**
-       * Allocations already mapped to real bucket IDs. AI returns names; we
-       * resolve to IDs server-side. Bucket names the AI suggests that don't
-       * match a real bucket are dropped (operator allocates manually).
+       * Allocations already mapped to real category IDs. AI returns names; we
+       * resolve to IDs server-side. Category names the AI suggests that don't
+       * match a real category are dropped (operator allocates manually).
        */
       allocations: Array<{
-        bucketId: string;
-        bucketName: string;
+        categoryId: string;
+        categoryName: string;
         allocatedCents: number;
         confidence: 'high' | 'medium' | 'low';
         reasoning: string;
       }>;
       unmatchedAllocations: Array<{
-        proposedBucketName: string;
+        proposedCategoryName: string;
         allocatedCents: number;
         reasoning: string;
       }>;
@@ -587,7 +590,7 @@ export async function parseSubQuoteFromFileAction(
 
   const supabase = await createClient();
 
-  // Load project + existing buckets so the AI can map scope → buckets.
+  // Load project + existing categories so the AI can map scope → categories.
   const { data: project } = await supabase
     .from('projects')
     .select('id, name, description, customers:customer_id (name)')
@@ -595,38 +598,38 @@ export async function parseSubQuoteFromFileAction(
     .maybeSingle();
   if (!project) return { ok: false, error: 'Project not found.' };
 
-  const { data: bucketRows } = await supabase
+  const { data: categoryRows } = await supabase
     .from('project_budget_categories')
     .select('id, name, section')
     .eq('project_id', projectId)
     .order('display_order');
 
-  const bucketsById = new Map<string, { id: string; name: string; section: string | null }>();
-  const bucketsByName = new Map<string, { id: string; name: string; section: string | null }>();
-  for (const b of bucketRows ?? []) {
+  const categoriesById = new Map<string, { id: string; name: string; section: string | null }>();
+  const categoriesByName = new Map<string, { id: string; name: string; section: string | null }>();
+  for (const b of categoryRows ?? []) {
     const entry = {
       id: b.id as string,
       name: b.name as string,
       section: (b.section as string | null) ?? null,
     };
-    bucketsById.set(entry.id, entry);
+    categoriesById.set(entry.id, entry);
     // Case-preserving key; the prompt tells the model to match exactly.
-    bucketsByName.set(entry.name, entry);
+    categoriesByName.set(entry.name, entry);
   }
 
-  if (bucketsByName.size === 0) {
+  if (categoriesByName.size === 0) {
     return {
       ok: false,
       error:
-        'This project has no cost buckets yet. Create at least one bucket before parsing a quote.',
+        'This project has no budget categories yet. Create at least one category before parsing a quote.',
     };
   }
 
-  // Build the intro: project + customer + bucket roster.
+  // Build the intro: project + customer + category roster.
   const customerName = Array.isArray(project.customers)
     ? (project.customers[0] as { name?: string } | undefined)?.name
     : (project.customers as { name?: string } | null)?.name;
-  const bucketRoster = Array.from(bucketsByName.values())
+  const categoryRoster = Array.from(categoriesByName.values())
     .map((b) => `  - ${b.section ? `[${b.section}] ` : ''}${b.name}`)
     .join('\n');
 
@@ -635,8 +638,8 @@ export async function parseSubQuoteFromFileAction(
     `Project: ${project.name}`,
     `Customer: ${customerName ?? '(unknown)'}`,
     `Description: ${project.description ?? '(none)'}`,
-    `Existing cost buckets (you may ONLY reference these exact names in allocations):`,
-    bucketRoster,
+    `Existing budget categories (you may ONLY reference these exact names in allocations):`,
+    categoryRoster,
     '',
     'The document that follows is what the operator uploaded. Parse it.',
   ].join('\n');
@@ -697,18 +700,18 @@ export async function parseSubQuoteFromFileAction(
     return { ok: false, error: 'OpenAI returned non-JSON.' };
   }
 
-  // Map AI allocation bucket names back to real bucket IDs. Anything the
+  // Map AI allocation category names back to real category IDs. Anything the
   // AI invented (or mis-cased) goes into unmatchedAllocations so the UI
   // can surface it as context without silently persisting junk.
   type MatchedAllocation = {
-    bucketId: string;
-    bucketName: string;
+    categoryId: string;
+    categoryName: string;
     allocatedCents: number;
     confidence: 'high' | 'medium' | 'low';
     reasoning: string;
   };
   type UnmatchedAllocation = {
-    proposedBucketName: string;
+    proposedCategoryName: string;
     allocatedCents: number;
     reasoning: string;
   };
@@ -716,18 +719,18 @@ export async function parseSubQuoteFromFileAction(
   const unmatched: UnmatchedAllocation[] = [];
 
   for (const a of parsed.allocations) {
-    const hit = bucketsByName.get(a.budget_category_name);
+    const hit = categoriesByName.get(a.budget_category_name);
     if (hit) {
       matched.push({
-        bucketId: hit.id,
-        bucketName: hit.name,
+        categoryId: hit.id,
+        categoryName: hit.name,
         allocatedCents: a.allocated_cents,
         confidence: a.confidence,
         reasoning: a.reasoning,
       });
     } else {
       unmatched.push({
-        proposedBucketName: a.budget_category_name,
+        proposedCategoryName: a.budget_category_name,
         allocatedCents: a.allocated_cents,
         reasoning: a.reasoning,
       });

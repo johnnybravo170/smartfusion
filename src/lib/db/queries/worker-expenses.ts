@@ -36,9 +36,9 @@ export async function listWorkerExpenses(
 
   return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => {
     const project = r.projects as { name?: string } | { name?: string }[] | null;
-    const bucket = r.project_budget_categories as { name?: string } | { name?: string }[] | null;
+    const category = r.project_budget_categories as { name?: string } | { name?: string }[] | null;
     const proj = Array.isArray(project) ? project[0] : project;
-    const buck = Array.isArray(bucket) ? bucket[0] : bucket;
+    const cat = Array.isArray(category) ? category[0] : category;
     return {
       id: r.id as string,
       expense_date: r.expense_date as string,
@@ -50,7 +50,7 @@ export async function listWorkerExpenses(
       project_id: (r.project_id as string | null) ?? null,
       project_name: proj?.name ?? null,
       budget_category_id: (r.budget_category_id as string | null) ?? null,
-      budget_category_name: buck?.name ?? null,
+      budget_category_name: cat?.name ?? null,
       created_at: r.created_at as string,
     };
   });

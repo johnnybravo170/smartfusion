@@ -1,7 +1,7 @@
 /**
  * Seeds a comprehensive demo project for jonathan@smartfusion.ca:
  * Bathroom renovation + outdoor sauna build for "Sarah & Mike Thompson".
- * Realistic Canadian renovation pricing, multiple cost buckets per scope,
+ * Realistic Canadian renovation pricing, multiple budget categories per scope,
  * a mix of tasks across phases, and a few sample bills/expenses.
  */
 import postgres from 'postgres';
@@ -48,8 +48,8 @@ const [project] = await sql`
 `;
 console.log('Project:', project.id, project.name);
 
-// 3. Cost buckets — Bathroom + Sauna sections
-const buckets = [
+// 3. Budget categories — Bathroom + Sauna sections
+const categories =[
   // Bathroom section
   { name: 'Demolition', section: 'Bathroom', est: 180000, order: 1 },
   { name: 'Plumbing rough + fixtures', section: 'Bathroom', est: 720000, order: 2 },
@@ -67,19 +67,19 @@ const buckets = [
   { name: 'Exterior siding + finish', section: 'Sauna', est: 320000, order: 15 },
 ];
 
-const bucketIds = {};
-for (const b of buckets) {
+const categoryIds = {};
+for (const b of categories) {
   const [row] = await sql`
-    INSERT INTO public.project_cost_buckets
+    INSERT INTO public.project_budget_categories
       (project_id, tenant_id, name, section, estimate_cents, display_order, is_visible_in_report)
     VALUES (${project.id}, ${TENANT_ID}, ${b.name}, ${b.section}, ${b.est}, ${b.order}, true)
     RETURNING id
   `;
-  bucketIds[b.name] = row.id;
+  categoryIds[b.name] = row.id;
 }
-console.log('Buckets:', Object.keys(bucketIds).length);
+console.log('Categories:', Object.keys(categoryIds).length);
 
-// 4. Cost lines — a few representative items per bucket
+// 4. Cost lines — a few representative items per category
 const costLines = [
   // Demolition
   ['Demolition', 'labour', 'Demo crew (2 days, 2 people)', 32, 'hr', 7500, 9000],
@@ -151,16 +151,16 @@ const costLines = [
 
 let lineCount = 0;
 for (let i = 0; i < costLines.length; i++) {
-  const [bucketName, category, label, qty, unit, unitCost, unitPrice] = costLines[i];
+  const [categoryName, category, label, qty, unit, unitCost, unitPrice] = costLines[i];
   const lineCost = Math.round(qty * unitCost);
   const linePrice = Math.round(qty * unitPrice);
   const markup = unitCost > 0 ? ((unitPrice - unitCost) / unitCost) * 100 : 0;
   await sql`
     INSERT INTO public.project_cost_lines
-      (project_id, bucket_id, category, label, qty, unit,
+      (project_id, budget_category_id, category, label, qty, unit,
        unit_cost_cents, unit_price_cents, markup_pct,
        line_cost_cents, line_price_cents, sort_order, photo_storage_paths)
-    VALUES (${project.id}, ${bucketIds[bucketName]}, ${category}, ${label},
+    VALUES (${project.id}, ${categoryIds[categoryName]}, ${category}, ${label},
             ${qty}, ${unit}, ${unitCost}, ${unitPrice}, ${markup.toFixed(2)},
             ${lineCost}, ${linePrice}, ${i}, '[]'::jsonb)
   `;
@@ -247,13 +247,13 @@ const bills = [
   ['Concrete Co', 'Pad pour deposit', 32000, 'Concrete pad + foundation', -3, 'pending'],
   ['Tile Outlet', 'Floor + wall tile delivery', 304000, 'Tile + flooring', -7, 'paid'],
 ];
-for (const [vendor, desc, amt, bucketName, dayOffset, status] of bills) {
+for (const [vendor, desc, amt, categoryName, dayOffset, status] of bills) {
   const date = new Date(today.getTime() + dayOffset * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const gst = Math.round(amt * 0.05);
   await sql`
     INSERT INTO public.project_bills
-      (tenant_id, project_id, vendor, bill_date, description, amount_cents, status, bucket_id, gst_cents)
-    VALUES (${TENANT_ID}, ${project.id}, ${vendor}, ${date}, ${desc}, ${amt}, ${status}, ${bucketIds[bucketName]}, ${gst})
+      (tenant_id, project_id, vendor, bill_date, description, amount_cents, status, budget_category_id, gst_cents)
+    VALUES (${TENANT_ID}, ${project.id}, ${vendor}, ${date}, ${desc}, ${amt}, ${status}, ${categoryIds[categoryName]}, ${gst})
   `;
 }
 console.log('Bills:', bills.length);

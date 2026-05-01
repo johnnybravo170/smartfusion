@@ -1,14 +1,14 @@
 'use server';
 
 /**
- * Server actions for project cost bucket management.
+ * Server actions for project budget category management.
  */
 
 import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
 
-export type BucketActionResult = { ok: true; id: string } | { ok: false; error: string };
+export type BudgetCategoryActionResult = { ok: true; id: string } | { ok: false; error: string };
 
 export async function updateBudgetCategoryAction(input: {
   id: string;
@@ -16,7 +16,7 @@ export async function updateBudgetCategoryAction(input: {
   estimate_cents?: number;
   description?: string;
   is_visible_in_report?: boolean;
-}): Promise<BucketActionResult> {
+}): Promise<BudgetCategoryActionResult> {
   const supabase = await createClient();
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -44,7 +44,7 @@ export async function addBudgetCategoryAction(input: {
   section: string;
   description?: string;
   estimate_cents?: number;
-}): Promise<BucketActionResult> {
+}): Promise<BudgetCategoryActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) {
     return { ok: false, error: 'Not signed in or missing tenant.' };
@@ -79,7 +79,7 @@ export async function addBudgetCategoryAction(input: {
     .single();
 
   if (error || !data) {
-    return { ok: false, error: error?.message ?? 'Failed to add bucket.' };
+    return { ok: false, error: error?.message ?? 'Failed to add category.' };
   }
 
   revalidatePath(`/projects/${input.project_id}`);
@@ -160,7 +160,7 @@ export async function moveSectionAction(input: {
 export async function removeBudgetCategoryAction(input: {
   id: string;
   project_id: string;
-}): Promise<BucketActionResult> {
+}): Promise<BudgetCategoryActionResult> {
   const supabase = await createClient();
 
   // Check for linked time entries or expenses
@@ -177,7 +177,7 @@ export async function removeBudgetCategoryAction(input: {
   if ((timeCount ?? 0) > 0 || (expenseCount ?? 0) > 0) {
     return {
       ok: false,
-      error: 'Cannot remove bucket with linked time entries or expenses. Reassign them first.',
+      error: 'Cannot remove category with linked time entries or expenses. Reassign them first.',
     };
   }
 
@@ -192,12 +192,12 @@ export async function removeBudgetCategoryAction(input: {
 }
 
 /**
- * Seed a project with default cost buckets. Used when creating a project
- * from the AI or when manually resetting buckets.
+ * Seed a project with default budget categories. Used when creating a project
+ * from the AI or when manually resetting categories.
  */
-export async function seedBucketsFromTemplateAction(input: {
+export async function seedBudgetCategoriesFromTemplateAction(input: {
   project_id: string;
-}): Promise<BucketActionResult> {
+}): Promise<BudgetCategoryActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) {
     return { ok: false, error: 'Not signed in or missing tenant.' };

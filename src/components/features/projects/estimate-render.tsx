@@ -18,15 +18,15 @@ export type EstimateRenderLine = {
   line_price_cents: number;
   category: string;
   /**
-   * Bucket this line belongs to. Used for grouping on the customer-facing
-   * estimate. Lines without a bucket group under "Other".
+   * Budget category this line belongs to. Used for grouping on the customer-facing
+   * estimate. Lines without a category group under "Other".
    */
   budget_category_id?: string | null;
   budget_category_name?: string | null;
-  bucket_section?: string | null;
-  bucket_order?: number;
-  /** Optional description for the bucket. Rendered as subtext under the bucket header. */
-  bucket_description?: string | null;
+  budget_category_section?: string | null;
+  budget_category_order?: number;
+  /** Optional description for the category. Rendered as subtext under the category header. */
+  budget_category_description?: string | null;
   /** Signed URLs to any photos attached to this line. */
   photo_urls?: string[];
 };
@@ -75,15 +75,15 @@ function formatDate(iso: string | null | undefined): string | null {
 }
 
 /**
- * Group lines by bucket (budget_category_id) and then by section. Renders the same
- * columns in each bucket's own table so the customer sees the contractor's
+ * Group lines by category (budget_category_id) and then by section. Renders the same
+ * columns in each category's own table so the customer sees the contractor's
  * chosen divisions (e.g. UPSTAIRS WORK → Closets, Vanity, Paint) rather
  * than a single flat list.
  */
 function renderGroups(lines: EstimateRenderLine[]) {
-  type Bucket = {
+  type Category = {
     key: string;
-    bucketName: string;
+    categoryName: string;
     description: string | null;
     order: number;
     lines: EstimateRenderLine[];
@@ -92,34 +92,34 @@ function renderGroups(lines: EstimateRenderLine[]) {
     key: string;
     section: string | null;
     order: number;
-    buckets: Bucket[];
+    categories: Category[];
   };
-  const byBucket = new Map<string, Bucket & { section: string | null }>();
+  const byCategory = new Map<string, Category & { section: string | null }>();
   for (const l of lines) {
     const key = l.budget_category_id ?? '__none__';
-    const g = byBucket.get(key) ?? {
+    const g = byCategory.get(key) ?? {
       key,
-      section: l.bucket_section ?? null,
-      bucketName: l.budget_category_name ?? 'Other',
-      description: l.bucket_description ?? null,
-      order: l.bucket_order ?? Number.MAX_SAFE_INTEGER,
+      section: l.budget_category_section ?? null,
+      categoryName: l.budget_category_name ?? 'Other',
+      description: l.budget_category_description ?? null,
+      order: l.budget_category_order ?? Number.MAX_SAFE_INTEGER,
       lines: [],
     };
     g.lines.push(l);
-    byBucket.set(key, g);
+    byCategory.set(key, g);
   }
   const bySection = new Map<string, Section>();
-  for (const b of byBucket.values()) {
+  for (const b of byCategory.values()) {
     const sKey = b.section ?? '__none__';
     const s = bySection.get(sKey) ?? {
       key: sKey,
       section: b.section,
       order: b.order,
-      buckets: [],
+      categories: [],
     };
-    s.buckets.push({
+    s.categories.push({
       key: b.key,
-      bucketName: b.bucketName,
+      categoryName: b.categoryName,
       description: b.description,
       order: b.order,
       lines: b.lines,
@@ -128,7 +128,7 @@ function renderGroups(lines: EstimateRenderLine[]) {
     bySection.set(sKey, s);
   }
   const sections = Array.from(bySection.values())
-    .map((s) => ({ ...s, buckets: s.buckets.sort((a, b) => a.order - b.order) }))
+    .map((s) => ({ ...s, categories: s.categories.sort((a, b) => a.order - b.order) }))
     .sort((a, b) => a.order - b.order);
 
   return (
@@ -157,12 +157,12 @@ function renderGroups(lines: EstimateRenderLine[]) {
                   </td>
                 </tr>
               ) : null}
-              {sec.buckets.flatMap((g) => [
+              {sec.categories.flatMap((g) => [
                 ...(g.description?.trim()
                   ? [
                       <tr key={`${g.key}__desc`} className="border-b bg-muted/10">
                         <td colSpan={2} className="px-3 py-2">
-                          <p className="text-xs font-medium text-foreground">{g.bucketName}</p>
+                          <p className="text-xs font-medium text-foreground">{g.categoryName}</p>
                           <p className="mt-0.5 whitespace-pre-wrap text-xs text-muted-foreground">
                             {g.description.trim()}
                           </p>

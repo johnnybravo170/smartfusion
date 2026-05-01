@@ -42,17 +42,17 @@ export type ExpenseItem = {
   receipt_url: string | null;
 };
 
-type Bucket = { id: string; name: string; cost_lines: Array<{ id: string; label: string }> };
+type Category = { id: string; name: string; cost_lines: Array<{ id: string; label: string }> };
 
 // ─── Inline add form ─────────────────────────────────────────────────────────
 
 function ExpenseForm({
   projectId,
-  buckets,
+  categories,
   onDone,
 }: {
   projectId: string;
-  buckets: Bucket[];
+  categories: Category[];
   onDone: () => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -61,7 +61,7 @@ function ExpenseForm({
   const [amountRaw, setAmountRaw] = useState('');
   const [vendor, setVendor] = useState('');
   const [description, setDescription] = useState('');
-  const [bucketId, setBucketId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [costLineId, setCostLineId] = useState('');
   const [receipt, setReceipt] = useState<File | null>(null);
 
@@ -75,7 +75,7 @@ function ExpenseForm({
       fd.set('amount_cents', String(Math.round(parseFloat(amountRaw) * 100)));
       fd.set('vendor', vendor);
       fd.set('description', description);
-      fd.set('budget_category_id', bucketId);
+      fd.set('budget_category_id', categoryId);
       if (costLineId) fd.set('cost_line_id', costLineId);
       if (receipt) fd.set('receipt', receipt);
       const res = await logExpenseWithReceiptAction(fd);
@@ -118,19 +118,19 @@ function ExpenseForm({
             placeholder="Optional"
           />
         </div>
-        {buckets.length > 0 && (
+        {categories.length > 0 && (
           <div>
-            <span className="mb-1 block text-xs font-medium">Bucket</span>
+            <span className="mb-1 block text-xs font-medium">Category</span>
             <select
-              value={bucketId}
+              value={categoryId}
               onChange={(e) => {
-                setBucketId(e.target.value);
+                setCategoryId(e.target.value);
                 setCostLineId('');
               }}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
               <option value="">— none —</option>
-              {buckets.map((b) => (
+              {categories.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
@@ -139,8 +139,8 @@ function ExpenseForm({
           </div>
         )}
         {(() => {
-          const lines = buckets.find((b) => b.id === bucketId)?.cost_lines ?? [];
-          if (!bucketId || lines.length === 0) return null;
+          const lines = categories.find((b) => b.id === categoryId)?.cost_lines ?? [];
+          if (!categoryId || lines.length === 0) return null;
           return (
             <div>
               <span className="mb-1 block text-xs font-medium">Line item</span>
@@ -149,7 +149,7 @@ function ExpenseForm({
                 onChange={(e) => setCostLineId(e.target.value)}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
               >
-                <option value="">— bucket only —</option>
+                <option value="">— category only —</option>
                 {lines.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.label}
@@ -198,11 +198,11 @@ function ExpenseForm({
 
 function EditExpenseDialog({
   expense,
-  buckets,
+  categories,
   onClose,
 }: {
   expense: ExpenseItem;
-  buckets: Bucket[];
+  categories: Category[];
   onClose: () => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -210,7 +210,7 @@ function EditExpenseDialog({
   const [date, setDate] = useState(expense.expense_date);
   const [vendor, setVendor] = useState(expense.vendor ?? '');
   const [description, setDescription] = useState(expense.description ?? '');
-  const [bucketId, setBucketId] = useState(expense.budget_category_id ?? '');
+  const [categoryId, setCategoryId] = useState(expense.budget_category_id ?? '');
   const [costLineId, setCostLineId] = useState(expense.cost_line_id ?? '');
   const [error, setError] = useState<string | null>(null);
 
@@ -229,7 +229,7 @@ function EditExpenseDialog({
         amount_cents: Math.round(parsed * 100),
         vendor: vendor || null,
         description: description || null,
-        budget_category_id: bucketId || null,
+        budget_category_id: categoryId || null,
         cost_line_id: costLineId || null,
       });
       if (!res.ok) {
@@ -275,21 +275,21 @@ function EditExpenseDialog({
               <p className="mt-1 text-[11px] text-muted-foreground">Negative = credit/return.</p>
             </div>
           </div>
-          {buckets.length > 0 ? (
+          {categories.length > 0 ? (
             <div>
-              <Label htmlFor="edit-exp-bucket">Bucket</Label>
+              <Label htmlFor="edit-exp-category">Category</Label>
               <select
-                id="edit-exp-bucket"
-                value={bucketId}
+                id="edit-exp-category"
+                value={categoryId}
                 onChange={(e) => {
-                  setBucketId(e.target.value);
+                  setCategoryId(e.target.value);
                   setCostLineId('');
                 }}
                 disabled={pending}
                 className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
               >
                 <option value="">— None —</option>
-                {buckets.map((b) => (
+                {categories.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
                   </option>
@@ -298,8 +298,8 @@ function EditExpenseDialog({
             </div>
           ) : null}
           {(() => {
-            const lines = buckets.find((b) => b.id === bucketId)?.cost_lines ?? [];
-            if (!bucketId || lines.length === 0) return null;
+            const lines = categories.find((b) => b.id === categoryId)?.cost_lines ?? [];
+            if (!categoryId || lines.length === 0) return null;
             return (
               <div>
                 <Label htmlFor="edit-exp-line">Line item</Label>
@@ -310,7 +310,7 @@ function EditExpenseDialog({
                   disabled={pending}
                   className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
                 >
-                  <option value="">— bucket only —</option>
+                  <option value="">— category only —</option>
                   {lines.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.label}
@@ -361,11 +361,11 @@ function EditExpenseDialog({
 
 export function ExpensesSection({
   projectId,
-  buckets,
+  categories,
   expenses,
 }: {
   projectId: string;
-  buckets: Bucket[];
+  categories: Category[];
   expenses: ExpenseItem[];
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -400,7 +400,11 @@ export function ExpensesSection({
 
       {showForm && (
         <div className="mb-4">
-          <ExpenseForm projectId={projectId} buckets={buckets} onDone={() => setShowForm(false)} />
+          <ExpenseForm
+            projectId={projectId}
+            categories={categories}
+            onDone={() => setShowForm(false)}
+          />
         </div>
       )}
 
@@ -468,7 +472,7 @@ export function ExpensesSection({
         <EditExpenseDialog
           key={editingExpense.id}
           expense={editingExpense}
-          buckets={buckets}
+          categories={categories}
           onClose={() => setEditingExpense(null)}
         />
       ) : null}

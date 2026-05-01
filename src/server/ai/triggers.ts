@@ -87,7 +87,7 @@ export async function onQuoteApproved(quoteId: string): Promise<void> {
     await writeHenrySuggestion({
       tenantId: quote.tenant_id as string,
       title: 'Quote approved — seed tasks?',
-      body: `Quote for ${customerName} is approved. Want me to seed project tasks from the quote's scope buckets?`,
+      body: `Quote for ${customerName} is approved. Want me to seed project tasks from the quote's scope categories?`,
     });
   } catch (e) {
     console.error('[henry-trigger] onQuoteApproved failed:', e);
@@ -111,7 +111,7 @@ export async function onEstimateApproved(projectId: string): Promise<void> {
     await writeHenrySuggestion({
       tenantId: project.tenant_id as string,
       title: 'Estimate approved — seed tasks?',
-      body: `Estimate for "${project.name}" is approved. Want me to seed project tasks from the estimate scope buckets?`,
+      body: `Estimate for "${project.name}" is approved. Want me to seed project tasks from the estimate scope categories?`,
     });
   } catch (e) {
     console.error('[henry-trigger] onEstimateApproved failed:', e);

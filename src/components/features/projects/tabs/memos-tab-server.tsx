@@ -138,7 +138,7 @@ export default async function MemosTabServer({ projectId }: { projectId: string 
           created_at: m.created_at as string,
           photos: memoPhotosByMemo.get(m.id as string) ?? [],
         })),
-        buckets: budget.lines.map((b) => ({
+        categories: budget.lines.map((b) => ({
           id: b.budget_category_id,
           name: b.budget_category_name,
           section: b.section,

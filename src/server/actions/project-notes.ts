@@ -71,7 +71,7 @@ export async function deleteProjectNoteAction(input: {
 // ─── Henry chat ────────────────────────────────────────────────────────
 
 const HENRY_MODEL = 'gpt-4o-mini';
-const HENRY_SYSTEM = `You are Henry, a Canadian general contractor's AI assistant. The contractor is asking you a question about a specific project. You have the project's name, description, customer, cost buckets, line items, and recent notes.
+const HENRY_SYSTEM = `You are Henry, a Canadian general contractor's AI assistant. The contractor is asking you a question about a specific project. You have the project's name, description, customer, budget categories, line items, and recent notes.
 
 Answer directly and briefly. Reference real numbers from the project. If the question is about pricing or scope you don't have data for, say what's missing rather than guessing. Two short paragraphs max unless the operator clearly wants more.
 
@@ -107,7 +107,7 @@ export async function askHenryAboutProjectAction(input: {
   if (qErr) return { ok: false, error: `Save question: ${qErr.message}` };
 
   // 2. Build project context for Henry.
-  const [{ data: project }, { data: bucketRows }, { data: recentNotes }] = await Promise.all([
+  const [{ data: project }, { data: categoryRows }, { data: recentNotes }] = await Promise.all([
     supabase
       .from('projects')
       .select('name, description, customers:customer_id (name)')
@@ -135,7 +135,7 @@ export async function askHenryAboutProjectAction(input: {
     ? (project.customers[0] as { name?: string } | undefined)?.name
     : (project.customers as { name?: string } | null)?.name;
 
-  const bucketsBlock = (bucketRows ?? [])
+  const categoriesBlock = (categoryRows ?? [])
     .map((b) => {
       const sec = b.section ? `${b.section} / ` : '';
       const lines =
@@ -176,7 +176,7 @@ export async function askHenryAboutProjectAction(input: {
     `Project: ${project.name}`,
     `Customer: ${customerName ?? '(unknown)'}`,
     `Description: ${project.description ?? '(none)'}`,
-    `Buckets:\n${bucketsBlock || '  (none yet)'}`,
+    `Budget categories:\n${categoriesBlock || '  (none yet)'}`,
     '',
     noteHistory ? `RECENT ACTIVITY\n${noteHistory}` : null,
     '',

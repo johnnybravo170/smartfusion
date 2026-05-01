@@ -158,22 +158,22 @@ async function getProjectUncached(id: string): Promise<ProjectWithRelations | nu
   const { customers: customerRaw, ...rest } = data as Record<string, unknown>;
   const base: ProjectRow = rest as ProjectRow;
 
-  // Load cost buckets
-  const { data: bucketData, error: bucketErr } = await supabase
+  // Load budget categories
+  const { data: categoryData, error: categoryErr } = await supabase
     .from('project_budget_categories')
     .select('id, name, section, description, estimate_cents, display_order, is_visible_in_report')
     .eq('project_id', id)
     .order('display_order', { ascending: true })
     .order('name', { ascending: true });
 
-  if (bucketErr) {
-    throw new Error(`Failed to load cost buckets: ${bucketErr.message}`);
+  if (categoryErr) {
+    throw new Error(`Failed to load budget categories: ${categoryErr.message}`);
   }
 
   return {
     ...base,
     customer: extractCustomer(customerRaw),
-    budget_categories: (bucketData ?? []) as BudgetCategorySummary[],
+    budget_categories: (categoryData ?? []) as BudgetCategorySummary[],
   };
 }
 

@@ -7,8 +7,8 @@
  *
  * Accept button requires the allocation invariant (sum === total); the
  * server action re-checks and returns an error if they drift. If no
- * buckets exist on the project yet, the "New vendor quote" button shows
- * a gentle "create a bucket first" hint rather than erroring later.
+ * categories exist on the project yet, the "New vendor quote" button shows
+ * a gentle "create a category first" hint rather than erroring later.
  */
 
 import { CheckCircle2, ChevronDown, ChevronRight, FileStack, Pencil, XCircle } from 'lucide-react';
@@ -26,7 +26,7 @@ import {
 import { SubQuoteForm } from './sub-quote-form';
 import { SubQuoteUploadButton } from './sub-quote-upload-button';
 
-type Bucket = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
+type Category = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
 
 const STATUS_LABEL: Record<SubQuoteRow['status'], string> = {
   pending_review: 'Pending review',
@@ -47,11 +47,11 @@ const STATUS_CLASS: Record<SubQuoteRow['status'], string> = {
 export function SubQuotesSection({
   projectId,
   subQuotes,
-  buckets,
+  categories,
 }: {
   projectId: string;
   subQuotes: SubQuoteRow[];
-  buckets: Bucket[];
+  categories: Category[];
 }) {
   const [showForm, setShowForm] = useState(false);
 
@@ -74,12 +74,14 @@ export function SubQuotesSection({
         </div>
         {!showForm && (
           <div className="flex gap-2">
-            <SubQuoteUploadButton projectId={projectId} buckets={buckets} />
+            <SubQuoteUploadButton projectId={projectId} categories={categories} />
             <Button
               size="sm"
               onClick={() => setShowForm(true)}
-              disabled={buckets.length === 0}
-              title={buckets.length === 0 ? 'Create at least one cost bucket first.' : undefined}
+              disabled={categories.length === 0}
+              title={
+                categories.length === 0 ? 'Create at least one budget category first.' : undefined
+              }
             >
               + New vendor quote
             </Button>
@@ -89,7 +91,11 @@ export function SubQuotesSection({
 
       {showForm ? (
         <div className="mb-4">
-          <SubQuoteForm projectId={projectId} buckets={buckets} onDone={() => setShowForm(false)} />
+          <SubQuoteForm
+            projectId={projectId}
+            categories={categories}
+            onDone={() => setShowForm(false)}
+          />
         </div>
       ) : null}
 
@@ -106,13 +112,13 @@ export function SubQuotesSection({
               cost control stays accurate.
             </p>
           </div>
-          {buckets.length === 0 ? (
+          {categories.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              Create at least one cost bucket above, then come back here.
+              Create at least one budget category above, then come back here.
             </p>
           ) : (
             <div className="flex flex-wrap justify-center gap-2 pt-1">
-              <SubQuoteUploadButton projectId={projectId} buckets={buckets} />
+              <SubQuoteUploadButton projectId={projectId} categories={categories} />
               <Button size="sm" variant="outline" onClick={() => setShowForm(true)}>
                 + Add manually
               </Button>
@@ -122,7 +128,7 @@ export function SubQuotesSection({
       ) : (
         <div className="space-y-2">
           {subQuotes.map((q) => (
-            <SubQuoteRowView key={q.id} quote={q} projectId={projectId} buckets={buckets} />
+            <SubQuoteRowView key={q.id} quote={q} projectId={projectId} categories={categories} />
           ))}
         </div>
       )}
@@ -133,11 +139,11 @@ export function SubQuotesSection({
 function SubQuoteRowView({
   quote,
   projectId,
-  buckets,
+  categories,
 }: {
   quote: SubQuoteRow;
   projectId: string;
-  buckets: Bucket[];
+  categories: Category[];
 }) {
   const [expanded, setExpanded] = useState(quote.status === 'pending_review');
   const [editing, setEditing] = useState(false);
@@ -223,7 +229,7 @@ function SubQuoteRowView({
         <div className="border-t px-3 py-3">
           <SubQuoteForm
             projectId={projectId}
-            buckets={buckets}
+            categories={categories}
             editingQuoteId={quote.id}
             initialValues={{
               vendor_name: quote.vendor_name,
@@ -250,7 +256,7 @@ function SubQuoteRowView({
           {/* Allocations */}
           {quote.allocations.length === 0 ? (
             <p className="text-xs italic text-muted-foreground">
-              No allocations yet. Edit to assign this quote to buckets.
+              No allocations yet. Edit to assign this quote to categories.
             </p>
           ) : (
             <div className="space-y-1">
@@ -259,7 +265,7 @@ function SubQuoteRowView({
                   key={a.id}
                   className="flex items-center justify-between rounded bg-muted/30 px-2 py-1 text-xs"
                 >
-                  <span>{a.budget_category_name ?? '(deleted bucket)'}</span>
+                  <span>{a.budget_category_name ?? '(deleted category)'}</span>
                   <span className="tabular-nums">{formatCurrency(a.allocated_cents)}</span>
                 </div>
               ))}

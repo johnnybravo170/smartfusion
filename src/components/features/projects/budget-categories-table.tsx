@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * Cost buckets table for the project detail page.
+ * Budget categories table for the project detail page.
  *
- * Inline estimate editing, add/remove buckets, expandable rows showing the
- * cost lines associated with each bucket, and a one-click "generate estimate
- * from buckets" button that seeds cost lines from bucket estimates.
+ * Inline estimate editing, add/remove categories, expandable rows showing the
+ * cost lines associated with each category, and a one-click "generate estimate
+ * from categories" button that seeds cost lines from category estimates.
  */
 
 import { Check, ChevronDown, ChevronRight, ChevronUp, X } from 'lucide-react';
@@ -32,7 +32,7 @@ import {
 } from '@/server/actions/project-budget-categories';
 import {
   deleteCostLineAction,
-  generateEstimateFromBucketsAction,
+  generateEstimateFromCategoriesAction,
 } from '@/server/actions/project-cost-control';
 import { CostLineForm } from './cost-line-form';
 
@@ -75,7 +75,7 @@ export function BudgetCategoriesTable({
   );
   const [addingLineFor, setAddingLineFor] = useState<string | null>(null);
   const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
-  const [showAddBucket, setShowAddBucket] = useState(false);
+  const [showAddCategory, setShowAddCategory] = useState(false);
   const [isPending, startTransition] = useTransition();
   // Lines that the operator has tapped × on but the 5s undo window
   // hasn't yet expired. Hidden from render; the actual server-side
@@ -85,12 +85,12 @@ export function BudgetCategoriesTable({
   const searchParams = useSearchParams();
 
   // Variance tab on Overview deep-links here with `?focus=<category>` so
-  // the user lands directly on the bucket they wanted to edit. Match by
+  // the user lands directly on the category they wanted to edit. Match by
   // budget_category_name (case-insensitive — variance categories arrive lowercase
-  // capitalize; bucket names are operator-typed). Highlight fades after
+  // capitalize; category names are operator-typed). Highlight fades after
   // ~2.5s so the table looks normal again on subsequent interactions.
   const focusName = searchParams.get('focus');
-  const focusBucketId = useMemo(() => {
+  const focusCategoryId = useMemo(() => {
     if (!focusName) return null;
     const needle = focusName.toLowerCase().trim();
     return (
@@ -101,11 +101,11 @@ export function BudgetCategoriesTable({
 
   const [highlight, setHighlight] = useState(false);
   useEffect(() => {
-    if (!focusBucketId) return;
+    if (!focusCategoryId) return;
     setHighlight(true);
     const t = setTimeout(() => setHighlight(false), 2500);
     return () => clearTimeout(t);
-  }, [focusBucketId]);
+  }, [focusCategoryId]);
 
   const sections = new Map<string, BudgetLine[]>();
   for (const line of lines) {
@@ -123,11 +123,11 @@ export function BudgetCategoriesTable({
     linesByBudgetCategory.set(cl.budget_category_id, arr);
   }
 
-  function toggleExpand(bucketId: string) {
+  function toggleExpand(categoryId: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(bucketId)) next.delete(bucketId);
-      else next.add(bucketId);
+      if (next.has(categoryId)) next.delete(categoryId);
+      else next.add(categoryId);
       return next;
     });
   }
@@ -137,7 +137,7 @@ export function BudgetCategoriesTable({
     setEditValue(String(line.estimate_cents / 100));
   }
 
-  function saveEdit(bucketId: string) {
+  function saveEdit(categoryId: string) {
     const cents = Math.round(Number(editValue) * 100);
     if (Number.isNaN(cents) || cents < 0) {
       toast.error('Invalid amount');
@@ -145,7 +145,7 @@ export function BudgetCategoriesTable({
     }
     startTransition(async () => {
       const result = await updateBudgetCategoryAction({
-        id: bucketId,
+        id: categoryId,
         project_id: projectId,
         estimate_cents: cents,
       });
@@ -163,10 +163,10 @@ export function BudgetCategoriesTable({
     setEditDescValue(line.budget_category_description ?? '');
   }
 
-  function saveEditDesc(bucketId: string) {
+  function saveEditDesc(categoryId: string) {
     startTransition(async () => {
       const result = await updateBudgetCategoryAction({
-        id: bucketId,
+        id: categoryId,
         project_id: projectId,
         description: editDescValue.trim(),
       });
@@ -179,11 +179,11 @@ export function BudgetCategoriesTable({
     });
   }
 
-  function removeBucket(bucketId: string) {
+  function removeCategory(categoryId: string) {
     if (!confirm('Remove this category? Any line items attached will be orphaned.')) return;
     startTransition(async () => {
-      const result = await removeBudgetCategoryAction({ id: bucketId, project_id: projectId });
-      if (result.ok) toast.success('Bucket removed');
+      const result = await removeBudgetCategoryAction({ id: categoryId, project_id: projectId });
+      if (result.ok) toast.success('Category removed');
       else toast.error(result.error);
     });
   }
@@ -255,9 +255,9 @@ export function BudgetCategoriesTable({
 
   function generateEstimate() {
     startTransition(async () => {
-      const res = await generateEstimateFromBucketsAction({ project_id: projectId });
+      const res = await generateEstimateFromCategoriesAction({ project_id: projectId });
       if (res.ok) {
-        toast.success(`Seeded ${res.count} line${res.count === 1 ? '' : 's'} from buckets`);
+        toast.success(`Seeded ${res.count} line${res.count === 1 ? '' : 's'} from categories`);
         router.push(`/projects/${projectId}?tab=estimate`);
       } else {
         toast.error(res.error);
@@ -268,8 +268,8 @@ export function BudgetCategoriesTable({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={() => setShowAddBucket((v) => !v)}>
-          {showAddBucket ? 'Cancel' : '+ Add category'}
+        <Button size="sm" onClick={() => setShowAddCategory((v) => !v)}>
+          {showAddCategory ? 'Cancel' : '+ Add category'}
         </Button>
         <Button size="sm" variant="outline" onClick={generateEstimate} disabled={isPending}>
           Generate Estimate
@@ -277,11 +277,11 @@ export function BudgetCategoriesTable({
         {headerActions}
       </div>
 
-      {showAddBucket && (
+      {showAddCategory && (
         <AddBudgetCategoryForm
           projectId={projectId}
           existingSections={Array.from(new Set(lines.map((l) => l.section).filter(Boolean)))}
-          onDone={() => setShowAddBucket(false)}
+          onDone={() => setShowAddCategory(false)}
         />
       )}
 
@@ -363,7 +363,7 @@ export function BudgetCategoriesTable({
                   {mode === 'executing' ? <col className="w-24" /> : null}
                   {mode === 'executing' ? <col className="w-28" /> : null}
                   {/* Actions col only renders in Editing mode (× to */}
-                  {/* remove a bucket). Executing has no per-row action, */}
+                  {/* remove a category). Executing has no per-row action, */}
                   {/* so the column would be 40px of dead space. */}
                   {mode === 'editing' ? <col className="w-10" /> : null}
                 </colgroup>
@@ -407,7 +407,7 @@ export function BudgetCategoriesTable({
                     const isActuallyOver = line.actual_cents > line.estimate_cents;
                     const isProjectedOver = !isActuallyOver && totalUsed > line.estimate_cents;
                     const isExpanded = expanded.has(line.budget_category_id);
-                    const bucketLines = linesByBudgetCategory.get(line.budget_category_id) ?? [];
+                    const categoryLines = linesByBudgetCategory.get(line.budget_category_id) ?? [];
 
                     return (
                       <BudgetCategoryRow
@@ -416,7 +416,7 @@ export function BudgetCategoriesTable({
                         isActuallyOver={isActuallyOver}
                         isProjectedOver={isProjectedOver}
                         isExpanded={isExpanded}
-                        bucketLines={bucketLines}
+                        categoryLines={categoryLines}
                         editingId={editingId}
                         editValue={editValue}
                         setEditValue={setEditValue}
@@ -425,7 +425,7 @@ export function BudgetCategoriesTable({
                         saveEdit={saveEdit}
                         startEdit={startEdit}
                         toggleExpand={toggleExpand}
-                        removeBucket={removeBucket}
+                        removeCategory={removeCategory}
                         addingLineFor={addingLineFor}
                         setAddingLineFor={setAddingLineFor}
                         editingLine={editingLine}
@@ -433,8 +433,8 @@ export function BudgetCategoriesTable({
                         deleteLine={deleteLine}
                         projectId={projectId}
                         catalog={catalog}
-                        isFocused={line.budget_category_id === focusBucketId}
-                        showHighlight={highlight && line.budget_category_id === focusBucketId}
+                        isFocused={line.budget_category_id === focusCategoryId}
+                        showHighlight={highlight && line.budget_category_id === focusCategoryId}
                         editingDescId={editingDescId}
                         editDescValue={editDescValue}
                         setEditDescValue={setEditDescValue}
@@ -555,7 +555,7 @@ type BudgetCategoryRowProps = {
   isActuallyOver: boolean;
   isProjectedOver: boolean;
   isExpanded: boolean;
-  bucketLines: CostLineRow[];
+  categoryLines: CostLineRow[];
   editingId: string | null;
   editValue: string;
   setEditValue: (v: string) => void;
@@ -564,7 +564,7 @@ type BudgetCategoryRowProps = {
   saveEdit: (id: string) => void;
   startEdit: (line: BudgetLine) => void;
   toggleExpand: (id: string) => void;
-  removeBucket: (id: string) => void;
+  removeCategory: (id: string) => void;
   addingLineFor: string | null;
   setAddingLineFor: (v: string | null) => void;
   editingLine: CostLineRow | null;
@@ -590,7 +590,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
     isActuallyOver,
     isProjectedOver,
     isExpanded,
-    bucketLines,
+    categoryLines,
     editingId,
     editValue,
     setEditValue,
@@ -599,7 +599,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
     saveEdit,
     startEdit,
     toggleExpand,
-    removeBucket,
+    removeCategory,
     addingLineFor,
     setAddingLineFor,
     editingLine,
@@ -624,7 +624,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
 
   // Per-line "see spend" expansion. Only used in Executing mode —
   // Editing-mode operators are authoring, not tracking. State is
-  // local to the bucket row so closing/reopening the bucket retains
+  // local to the category row so closing/reopening the category retains
   // which lines were expanded for the current session.
   const [expandedLineIds, setExpandedLineIds] = useState<Set<string>>(new Set());
   function toggleLineSpend(id: string) {
@@ -666,9 +666,9 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         <td className="px-2 py-1.5">
           <div className="flex flex-wrap items-center gap-1.5">
             <span>{line.budget_category_name}</span>
-            {bucketLines.length > 0 && (
+            {categoryLines.length > 0 && (
               <span className="text-xs text-muted-foreground">
-                {bucketLines.length} line{bucketLines.length === 1 ? '' : 's'}
+                {categoryLines.length} line{categoryLines.length === 1 ? '' : 's'}
               </span>
             )}
             {coChips.map((c) => (
@@ -827,7 +827,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
               size="xs"
               variant="ghost"
               className="text-destructive hover:text-destructive"
-              onClick={() => removeBucket(line.budget_category_id)}
+              onClick={() => removeCategory(line.budget_category_id)}
             >
               ×
             </Button>
@@ -836,8 +836,8 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
       </tr>
       {isExpanded && (
         // Stronger bg + a left accent stripe that visually attaches the
-        // expanded detail to its parent bucket row above. Eyes can follow
-        // "this content belongs to that bucket" without re-reading.
+        // expanded detail to its parent category row above. Eyes can follow
+        // "this content belongs to that category" without re-reading.
         <tr className="border-b bg-muted/40">
           <td />
           <td
@@ -890,7 +890,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                 </div>
               ) : null}
 
-              {bucketLines.length === 0 ? (
+              {categoryLines.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No line items in this category yet.</p>
               ) : (
                 // Line items have 7 cols (Label + 5 numeric + actions) which
@@ -924,7 +924,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                       </tr>
                     </thead>
                     <tbody>
-                      {bucketLines.map((cl) => {
+                      {categoryLines.map((cl) => {
                         const isLineExpanded = expandedLineIds.has(cl.id);
                         return (
                           <Fragment key={cl.id}>
@@ -1035,14 +1035,14 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                   projectId={projectId}
                   initial={editingLine}
                   catalog={catalog}
-                  defaultBucketId={line.budget_category_id}
+                  defaultCategoryId={line.budget_category_id}
                   onDone={() => setEditingLine(null)}
                 />
               ) : addingLineFor === line.budget_category_id ? (
                 <CostLineForm
                   projectId={projectId}
                   catalog={catalog}
-                  defaultBucketId={line.budget_category_id}
+                  defaultCategoryId={line.budget_category_id}
                   onDone={() => setAddingLineFor(null)}
                 />
               ) : (
@@ -1099,7 +1099,7 @@ function AddBudgetCategoryForm({
         description: description.trim() || undefined,
       });
       if (result.ok) {
-        toast.success('Bucket added');
+        toast.success('Category added');
         onDone();
       } else {
         toast.error(result.error);
@@ -1111,11 +1111,11 @@ function AddBudgetCategoryForm({
     <form onSubmit={handleSubmit} className="rounded-lg border bg-muted/30 p-3">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
         <div className="sm:col-span-2">
-          <label htmlFor="add-bucket-name" className="mb-1 block text-xs font-medium">
+          <label htmlFor="add-category-name" className="mb-1 block text-xs font-medium">
             Name
           </label>
           <Input
-            id="add-bucket-name"
+            id="add-category-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Kitchen"
@@ -1123,17 +1123,17 @@ function AddBudgetCategoryForm({
           />
         </div>
         <div>
-          <label htmlFor="add-bucket-section" className="mb-1 block text-xs font-medium">
+          <label htmlFor="add-category-section" className="mb-1 block text-xs font-medium">
             Section
           </label>
           <Input
-            id="add-bucket-section"
-            list="add-bucket-section-options"
+            id="add-category-section"
+            list="add-category-section-options"
             value={section}
             onChange={(e) => setSection(e.target.value)}
             placeholder="e.g. Kitchen, Basement, Exterior"
           />
-          <datalist id="add-bucket-section-options">
+          <datalist id="add-category-section-options">
             {/* Existing sections + the legacy three so operators have a
                 starting point if they're seeding a fresh project. */}
             {Array.from(new Set([...existingSections, 'interior', 'exterior', 'general']))
@@ -1147,11 +1147,11 @@ function AddBudgetCategoryForm({
           </p>
         </div>
         <div>
-          <label htmlFor="add-bucket-estimate" className="mb-1 block text-xs font-medium">
+          <label htmlFor="add-category-estimate" className="mb-1 block text-xs font-medium">
             Estimate ($)
           </label>
           <Input
-            id="add-bucket-estimate"
+            id="add-category-estimate"
             type="number"
             step="0.01"
             min="0"
@@ -1161,12 +1161,12 @@ function AddBudgetCategoryForm({
           />
         </div>
         <div className="sm:col-span-4">
-          <label htmlFor="add-bucket-description" className="mb-1 block text-xs font-medium">
+          <label htmlFor="add-category-description" className="mb-1 block text-xs font-medium">
             Description{' '}
             <span className="text-muted-foreground">(optional — shown on estimate)</span>
           </label>
           <Textarea
-            id="add-bucket-description"
+            id="add-category-description"
             rows={3}
             className="min-h-[4.5rem] resize-y"
             value={description}

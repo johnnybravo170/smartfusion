@@ -300,7 +300,7 @@ export async function createChangeOrderV2Action(input: {
       reason: input.reason?.trim() || null,
       cost_impact_cents: input.cost_impact_cents,
       timeline_impact_days: input.timeline_impact_days,
-      affected_buckets: Array.from(
+      affected_budget_categories: Array.from(
         new Set(
           input.diff
             .map((d) => d.budget_category_id ?? d.before_snapshot?.budget_category_id)
@@ -405,7 +405,7 @@ export async function updateChangeOrderV2Action(input: {
     };
   }
 
-  const affectedBuckets = Array.from(
+  const affectedCategories = Array.from(
     new Set(
       input.diff
         .map((d) => d.budget_category_id ?? d.before_snapshot?.budget_category_id)
@@ -421,7 +421,7 @@ export async function updateChangeOrderV2Action(input: {
       reason: input.reason?.trim() || null,
       cost_impact_cents: input.cost_impact_cents,
       timeline_impact_days: input.timeline_impact_days,
-      affected_buckets: affectedBuckets,
+      affected_budget_categories: affectedCategories,
       category_notes: (input.category_notes ?? []).filter((n) => n.note.trim().length > 0),
       management_fee_override_rate:
         typeof input.management_fee_override_rate === 'number'
@@ -476,7 +476,7 @@ export async function createChangeOrderAction(input: {
   reason?: string;
   cost_impact_cents: number;
   timeline_impact_days: number;
-  affected_buckets?: string[];
+  affected_budget_categories?: string[];
   cost_breakdown?: { budget_category_id: string; amount_cents: number }[];
   category_notes?: { budget_category_id: string; note: string }[];
   /** Per-CO management fee override. NULL = use project default. */
@@ -512,7 +512,7 @@ export async function createChangeOrderAction(input: {
       reason: parsed.data.reason?.trim() || null,
       cost_impact_cents: parsed.data.cost_impact_cents,
       timeline_impact_days: parsed.data.timeline_impact_days,
-      affected_buckets: parsed.data.affected_buckets,
+      affected_budget_categories: parsed.data.affected_budget_categories,
       cost_breakdown: parsed.data.cost_breakdown.filter((r) => r.amount_cents !== 0),
       category_notes: parsed.data.category_notes.filter((n) => n.note.length > 0),
       management_fee_override_rate:
@@ -715,7 +715,7 @@ export async function approveChangeOrderAction(
   const { data: co, error: coErr } = await admin
     .from('change_orders')
     .select(
-      'id, project_id, tenant_id, title, status, cost_impact_cents, affected_buckets, flow_version',
+      'id, project_id, tenant_id, title, status, cost_impact_cents, affected_budget_categories, flow_version',
     )
     .eq('approval_code', approvalCode)
     .single();
@@ -753,31 +753,31 @@ export async function approveChangeOrderAction(
   //   cost_lines + modify_envelope on budget_categories. The CO IS the
   //   declarative diff; this is its execution.
   // - v1 (legacy cost_breakdown) → keep the existing even-distribute over
-  //   affected_buckets so legacy COs continue to behave the same.
+  //   affected_budget_categories DB column so legacy COs continue to behave the same.
   const flowVersion = (coData.flow_version as number | null) ?? 1;
   const applyResult =
     flowVersion === 2 ? await applyV2ChangeOrderDiff(admin, coData.id as string) : null;
 
   if (flowVersion !== 2) {
-    const affectedBuckets = (coData.affected_buckets ?? []) as string[];
+    const affectedCategories = (coData.affected_budget_categories ?? []) as string[];
     const costDelta = coData.cost_impact_cents as number;
-    if (affectedBuckets.length > 0 && costDelta !== 0) {
-      const perBucket = Math.round(costDelta / affectedBuckets.length);
-      for (const bucketId of affectedBuckets) {
-        const { data: bucket } = await admin
+    if (affectedCategories.length > 0 && costDelta !== 0) {
+      const perCategory = Math.round(costDelta / affectedCategories.length);
+      for (const categoryId of affectedCategories) {
+        const { data: category } = await admin
           .from('project_budget_categories')
           .select('estimate_cents')
-          .eq('id', bucketId)
+          .eq('id', categoryId)
           .single();
 
-        if (bucket) {
+        if (category) {
           await admin
             .from('project_budget_categories')
             .update({
-              estimate_cents: (bucket.estimate_cents as number) + perBucket,
+              estimate_cents: (category.estimate_cents as number) + perCategory,
               updated_at: now,
             })
-            .eq('id', bucketId);
+            .eq('id', categoryId);
         }
       }
     }

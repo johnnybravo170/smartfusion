@@ -215,7 +215,7 @@ function kindLabel(kind: DiffChange['kind']): string {
     case 'line_modified':
       return 'Line edited';
     case 'category_added':
-      return 'Bucket added';
+      return 'Category added';
     case 'category_envelope_changed':
       return 'Envelope edited';
   }
@@ -277,7 +277,7 @@ function describeChange(c: DiffChange): React.ReactNode {
       return (
         <>
           <span className="font-medium">{c.category.name}</span>
-          <span className="text-muted-foreground"> · new bucket in {c.category.section}</span>
+          <span className="text-muted-foreground"> · new category in {c.category.section}</span>
         </>
       );
     case 'category_envelope_changed': {

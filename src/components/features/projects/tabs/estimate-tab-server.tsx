@@ -17,7 +17,7 @@ export default async function EstimateTabServer({ projectId }: { projectId: stri
     project,
     costLines,
     catalog,
-    projectBuckets,
+    projectCategories,
     estimateViewStats,
     snippets,
     coContributions,
@@ -45,9 +45,10 @@ export default async function EstimateTabServer({ projectId }: { projectId: stri
     }
   }
 
-  const bucketsById: Record<string, { name: string; section: string | null; order: number }> = {};
-  for (const b of projectBuckets) {
-    bucketsById[b.id] = { name: b.name, section: b.section ?? null, order: b.display_order };
+  const categoriesById: Record<string, { name: string; section: string | null; order: number }> =
+    {};
+  for (const b of projectCategories) {
+    categoriesById[b.id] = { name: b.name, section: b.section ?? null, order: b.display_order };
   }
 
   // Customer feedback + cost-line photo URLs (signed via admin so storage
@@ -103,7 +104,7 @@ export default async function EstimateTabServer({ projectId }: { projectId: stri
         costLinePhotoUrls={costLinePhotoUrls}
         managementFeeRate={project.management_fee_rate}
         feedback={feedbackRows}
-        bucketsById={bucketsById}
+        categoriesById={categoriesById}
         coContributionsByLineId={Object.fromEntries(coContributions.byLineId)}
         appliedChangeOrders={coContributions.appliedOrder}
         approval={{

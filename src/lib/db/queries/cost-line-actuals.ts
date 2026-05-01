@@ -7,7 +7,7 @@
  * expenses, and project_bills. PO line items already had it. So the
  * data model now supports line-level drill on every spend type.
  *
- * Existing rows have NULL cost_line_id (only attached at the bucket
+ * Existing rows have NULL cost_line_id (only attached at the category
  * level). Going forward, operators can assign a line when categorising
  * a new bill/expense/time entry — the form-side UX is a separate card.
  */

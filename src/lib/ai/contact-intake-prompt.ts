@@ -3,7 +3,7 @@
  *
  * Used on /contacts/new for non-customer kinds (vendor, sub, agent,
  * inspector, referral, other). Unlike the lead intake (intake-prompt.ts)
- * which builds a draft estimate with buckets and cost lines, this parser
+ * which builds a draft estimate with categories and cost lines, this parser
  * only extracts contact fields + any free-form notes worth keeping.
  *
  * For kind=customer the /contacts/new page still routes through
@@ -27,7 +27,7 @@ Kinds and what to look for:
 
 Rules:
 1. Return ONLY JSON matching the schema. Use null for anything you cannot confidently extract. Never invent details.
-2. Do NOT produce any estimate, buckets, cost lines, or reply draft. This is contact capture only.
+2. Do NOT produce any estimate, categories, cost lines, or reply draft. This is contact capture only.
 3. Keep \`notes\` short (2-6 sentences max). It should summarize what the artifact tells us about this contact, so the contractor has context when they open the detail page later. Include anything useful that doesn't fit the structured fields (specialty, hours, payment terms, referral context).
 4. Trade is only relevant for sub-trades. Leave null for every other kind.
 5. Canadian context: addresses are Canadian (provinces like BC, ON, AB). Parse postal codes if present. Phone numbers are 10-digit; keep whatever format is given.`;

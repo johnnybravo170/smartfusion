@@ -1,8 +1,8 @@
 /**
- * Vendor quote queries — listings + committed totals by bucket.
+ * Vendor quote queries — listings + committed totals by category.
  *
  * `committed` = sum of allocations across all `accepted` vendor quotes on a
- * project, grouped by bucket. Feeds the Costs tab's "Vendor quotes" section
+ * project, grouped by category. Feeds the Costs tab's "Vendor quotes" section
  * and (later) the Job Cost Control V1 variance view.
  */
 
@@ -59,12 +59,14 @@ export async function listProjectSubQuotes(projectId: string): Promise<SubQuoteR
 
   const allocsByQuote = new Map<string, SubQuoteAllocationRow[]>();
   for (const a of allocations ?? []) {
-    const bucket = a.project_budget_categories as { name?: string } | { name?: string }[] | null;
-    const bucketName = Array.isArray(bucket) ? (bucket[0]?.name ?? null) : (bucket?.name ?? null);
+    const category = a.project_budget_categories as { name?: string } | { name?: string }[] | null;
+    const categoryName = Array.isArray(category)
+      ? (category[0]?.name ?? null)
+      : (category?.name ?? null);
     const row: SubQuoteAllocationRow = {
       id: a.id as string,
       budget_category_id: a.budget_category_id as string,
-      budget_category_name: bucketName,
+      budget_category_name: categoryName,
       allocated_cents: a.allocated_cents as number,
       notes: (a.notes as string | null) ?? null,
     };

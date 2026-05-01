@@ -46,12 +46,12 @@ type Expense = {
 
 function TimeForm({
   projectId,
-  buckets,
+  categories,
   defaultRateCents,
   onDone,
 }: {
   projectId: string;
-  buckets: BudgetCategorySummary[];
+  categories: BudgetCategorySummary[];
   defaultRateCents?: number | null;
   onDone: () => void;
 }) {
@@ -61,7 +61,7 @@ function TimeForm({
   const [hours, setHours] = useState('');
   const [rate, setRate] = useState(defaultRateCents ? String(defaultRateCents / 100) : '');
   const [notes, setNotes] = useState('');
-  const [bucketId, setBucketId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -73,7 +73,7 @@ function TimeForm({
         entry_date: date,
         hours: parseFloat(hours),
         hourly_rate_cents: rateCents,
-        budget_category_id: bucketId || undefined,
+        budget_category_id: categoryId || undefined,
         notes: notes || undefined,
       });
       if (res.ok) {
@@ -116,16 +116,16 @@ function TimeForm({
             placeholder="e.g. 75"
           />
         </div>
-        {buckets.length > 0 && (
+        {categories.length > 0 && (
           <div>
-            <span className="mb-1 block text-xs font-medium">Bucket</span>
+            <span className="mb-1 block text-xs font-medium">Category</span>
             <select
-              value={bucketId}
-              onChange={(e) => setBucketId(e.target.value)}
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
               <option value="">— none —</option>
-              {buckets.map((b) => (
+              {categories.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
@@ -153,11 +153,11 @@ function TimeForm({
 
 function ExpenseForm({
   projectId,
-  buckets,
+  categories,
   onDone,
 }: {
   projectId: string;
-  buckets: BudgetCategorySummary[];
+  categories: BudgetCategorySummary[];
   onDone: () => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -166,7 +166,7 @@ function ExpenseForm({
   const [amountRaw, setAmountRaw] = useState('');
   const [vendor, setVendor] = useState('');
   const [description, setDescription] = useState('');
-  const [bucketId, setBucketId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [receipt, setReceipt] = useState<File | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
@@ -179,7 +179,7 @@ function ExpenseForm({
       fd.set('amount_cents', String(Math.round(parseFloat(amountRaw) * 100)));
       fd.set('vendor', vendor);
       fd.set('description', description);
-      fd.set('budget_category_id', bucketId);
+      fd.set('budget_category_id', categoryId);
       if (receipt) fd.set('receipt', receipt);
       const res = await logExpenseWithReceiptAction(fd);
       if (res.ok) {
@@ -221,16 +221,16 @@ function ExpenseForm({
             placeholder="Optional"
           />
         </div>
-        {buckets.length > 0 && (
+        {categories.length > 0 && (
           <div>
-            <span className="mb-1 block text-xs font-medium">Bucket</span>
+            <span className="mb-1 block text-xs font-medium">Category</span>
             <select
-              value={bucketId}
-              onChange={(e) => setBucketId(e.target.value)}
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
               <option value="">— none —</option>
-              {buckets.map((b) => (
+              {categories.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
@@ -275,11 +275,11 @@ function ExpenseForm({
 
 function EditExpenseDialog({
   expense,
-  buckets,
+  categories,
   onClose,
 }: {
   expense: Expense;
-  buckets: BudgetCategorySummary[];
+  categories: BudgetCategorySummary[];
   onClose: () => void;
 }) {
   const [pending, startTransition] = useTransition();
@@ -287,7 +287,7 @@ function EditExpenseDialog({
   const [date, setDate] = useState(expense.expense_date);
   const [vendor, setVendor] = useState(expense.vendor ?? '');
   const [description, setDescription] = useState(expense.description ?? '');
-  const [bucketId, setBucketId] = useState(expense.budget_category_id ?? '');
+  const [categoryId, setCategoryId] = useState(expense.budget_category_id ?? '');
   const [error, setError] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
@@ -305,7 +305,7 @@ function EditExpenseDialog({
         amount_cents: Math.round(parsed * 100),
         vendor: vendor || null,
         description: description || null,
-        budget_category_id: bucketId || null,
+        budget_category_id: categoryId || null,
       });
       if (!res.ok) {
         setError(res.error);
@@ -350,18 +350,18 @@ function EditExpenseDialog({
               <p className="mt-1 text-[11px] text-muted-foreground">Negative = credit/return.</p>
             </div>
           </div>
-          {buckets.length > 0 ? (
+          {categories.length > 0 ? (
             <div>
-              <Label htmlFor="edit-exp-bucket">Bucket</Label>
+              <Label htmlFor="edit-exp-category">Category</Label>
               <select
-                id="edit-exp-bucket"
-                value={bucketId}
-                onChange={(e) => setBucketId(e.target.value)}
+                id="edit-exp-category"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
                 disabled={pending}
                 className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
               >
                 <option value="">— None —</option>
-                {buckets.map((b) => (
+                {categories.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
                   </option>
@@ -408,14 +408,14 @@ function EditExpenseDialog({
 
 export function TimeExpenseTab({
   projectId,
-  buckets,
+  categories,
   timeEntries,
   expenses,
   ownerRateCents,
   showExpenses = true,
 }: {
   projectId: string;
-  buckets: BudgetCategorySummary[];
+  categories: BudgetCategorySummary[];
   timeEntries: TimeEntry[];
   expenses: Expense[];
   ownerRateCents?: number | null;
@@ -434,7 +434,7 @@ export function TimeExpenseTab({
   const searchParams = useSearchParams();
   const focusCategoryId = searchParams.get('focus');
   const focusCategoryName = focusCategoryId
-    ? (buckets.find((b) => b.id === focusCategoryId)?.name ?? null)
+    ? (categories.find((b) => b.id === focusCategoryId)?.name ?? null)
     : null;
 
   const workerOptions = Array.from(
@@ -520,7 +520,7 @@ export function TimeExpenseTab({
           <div className="mb-4">
             <TimeForm
               projectId={projectId}
-              buckets={buckets}
+              categories={categories}
               defaultRateCents={ownerRateCents}
               onDone={() => setShowTimeForm(false)}
             />
@@ -591,7 +591,7 @@ export function TimeExpenseTab({
             <div className="mb-4">
               <ExpenseForm
                 projectId={projectId}
-                buckets={buckets}
+                categories={categories}
                 onDone={() => setShowExpenseForm(false)}
               />
             </div>
@@ -661,7 +661,7 @@ export function TimeExpenseTab({
           // key forces remount per expense so form state re-seeds correctly.
           key={editingExpense.id}
           expense={editingExpense}
-          buckets={buckets}
+          categories={categories}
           onClose={() => setEditingExpense(null)}
         />
       ) : null}

@@ -38,7 +38,7 @@ export default async function TimeTabServer({ projectId }: { projectId: string }
       </div>
       <TimeExpenseTab
         projectId={projectId}
-        buckets={project.budget_categories}
+        categories={project.budget_categories}
         ownerRateCents={ownerRateCents}
         showExpenses={false}
         expenses={[]}

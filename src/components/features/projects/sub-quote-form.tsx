@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Form for creating a new vendor quote, including the multi-bucket
- * allocation editor and inline bucket creation. Phase 1 of
+ * Form for creating a new vendor quote, including the multi-category
+ * allocation editor and inline category creation. Phase 1 of
  * SUB_QUOTES_PLAN.md — manual entry only. Upload/AI parsing is Phase 2.
  *
  * Allocation invariant is surfaced live: green check when balanced,
@@ -26,12 +26,12 @@ import { Label } from '@/components/ui/label';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 import {
-  createProjectBucketAction,
+  createProjectCategoryAction,
   createSubQuoteAction,
   updateSubQuoteAction,
 } from '@/server/actions/sub-quotes';
 
-type Bucket = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
+type Category = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
 
 type AllocationDraft = {
   key: string;
@@ -61,8 +61,8 @@ export type SubQuoteInitialValues = {
   attachment?: File;
   /**
    * Free-form notes to pre-populate — used to surface AI-unmatched
-   * bucket suggestions ("AI suggested: $X for 'Kitchen tile' but no
-   * matching bucket") so the operator can act on them.
+   * category suggestions ("AI suggested: $X for 'Kitchen tile' but no
+   * matching category") so the operator can act on them.
    */
   notes?: string;
 };
@@ -84,20 +84,20 @@ function toCents(raw: string): number {
 
 export function SubQuoteForm({
   projectId,
-  buckets: initialBuckets,
+  categories: initialCategories,
   initialValues,
   editingQuoteId,
   onDone,
 }: {
   projectId: string;
-  buckets: Bucket[];
+  categories: Category[];
   /** AI-parsed suggestions, pre-filled on mount. Undefined = blank form. */
   initialValues?: SubQuoteInitialValues;
   /** When set, the form updates this quote instead of creating a new one. */
   editingQuoteId?: string;
   onDone: () => void;
 }) {
-  const [buckets, setBuckets] = useState<Bucket[]>(initialBuckets);
+  const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [vendor, setVendor] = useState(initialValues?.vendor_name ?? '');
@@ -130,7 +130,7 @@ export function SubQuoteForm({
       notes: a.notes ?? '',
     }));
   });
-  const [newBucketOpen, setNewBucketOpen] = useState(false);
+  const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [pendingRowKey, setPendingRowKey] = useState<string | null>(null);
 
   const totalCents = toCents(totalRaw);
@@ -138,10 +138,10 @@ export function SubQuoteForm({
   const diff = totalCents - allocatedCents;
   const balanced = totalCents > 0 && diff === 0;
 
-  // The DB enforces (sub_quote_id, bucket_id) uniqueness — i.e. a quote
-  // can only have one allocation per bucket. Surface that as a clear UX
+  // The DB enforces (sub_quote_id, budget_category_id) uniqueness — i.e. a quote
+  // can only have one allocation per category. Surface that as a clear UX
   // signal here instead of letting the operator hit a constraint error.
-  const duplicateBucketId = (() => {
+  const duplicateCategoryId = (() => {
     const seen = new Set<string>();
     for (const r of rows) {
       if (!r.budget_category_id) continue;
@@ -150,8 +150,8 @@ export function SubQuoteForm({
     }
     return null;
   })();
-  const duplicateBucketName = duplicateBucketId
-    ? buckets.find((b) => b.id === duplicateBucketId)?.name
+  const duplicateCategoryName = duplicateCategoryId
+    ? categories.find((b) => b.id === duplicateCategoryId)?.name
     : null;
 
   // Sync the single-row allocation with the total when we have exactly
@@ -190,20 +190,20 @@ export function SubQuoteForm({
     setRows((prev) => [...prev, row]);
   }
 
-  function handleBucketChange(rowKey: string, value: string) {
+  function handleCategoryChange(rowKey: string, value: string) {
     if (value === '__new__') {
       setPendingRowKey(rowKey);
-      setNewBucketOpen(true);
+      setNewCategoryOpen(true);
       return;
     }
     updateRow(rowKey, 'budget_category_id', value);
   }
 
-  function handleBucketCreated(bucket: Bucket) {
-    setBuckets((prev) => [...prev, bucket]);
-    if (pendingRowKey) updateRow(pendingRowKey, 'budget_category_id', bucket.id);
+  function handleCategoryCreated(category: Category) {
+    setCategories((prev) => [...prev, category]);
+    if (pendingRowKey) updateRow(pendingRowKey, 'budget_category_id', category.id);
     setPendingRowKey(null);
-    setNewBucketOpen(false);
+    setNewCategoryOpen(false);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -218,9 +218,9 @@ export function SubQuoteForm({
       setError('Enter the quote total.');
       return;
     }
-    if (duplicateBucketId) {
+    if (duplicateCategoryId) {
       setError(
-        'Two splits point to the same bucket. Combine them into a single split, or pick a different bucket.',
+        'Two splits point to the same category. Combine them into a single split, or pick a different category.',
       );
       return;
     }
@@ -370,7 +370,7 @@ export function SubQuoteForm({
         {/* Allocation editor */}
         <div className="rounded-md border bg-card p-3">
           <div className="mb-2 flex items-center justify-between">
-            <Label className="text-sm font-semibold">Allocate across buckets</Label>
+            <Label className="text-sm font-semibold">Allocate across categories</Label>
             <AllocationBalance
               totalCents={totalCents}
               allocatedCents={allocatedCents}
@@ -378,17 +378,17 @@ export function SubQuoteForm({
               balanced={balanced}
             />
           </div>
-          {duplicateBucketId ? (
+          {duplicateCategoryId ? (
             <p className="mb-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
               Two splits point to{' '}
-              <span className="font-medium">{duplicateBucketName ?? 'the same bucket'}</span>. Each
-              bucket can only have one allocation per quote — combine the amounts into a single
-              split, or pick a different bucket.
+              <span className="font-medium">{duplicateCategoryName ?? 'the same category'}</span>.
+              Each category can only have one allocation per quote — combine the amounts into a
+              single split, or pick a different category.
             </p>
           ) : null}
           <div className="space-y-2">
             {rows.map((row) => {
-              // Hide buckets already chosen in *other* rows so the
+              // Hide categories already chosen in *other* rows so the
               // operator can't repeat a selection. Keep the row's own
               // selection visible so it doesn't disappear out from under
               // them as they edit.
@@ -397,23 +397,23 @@ export function SubQuoteForm({
                   .filter((r) => r.key !== row.key && r.budget_category_id)
                   .map((r) => r.budget_category_id),
               );
-              const availableBuckets = buckets.filter((b) => !usedByOthers.has(b.id));
+              const availableCategories = categories.filter((b) => !usedByOthers.has(b.id));
               return (
                 <div key={row.key} className="grid grid-cols-12 gap-2">
                   <div className="col-span-12 sm:col-span-6">
                     <select
                       value={row.budget_category_id}
-                      onChange={(e) => handleBucketChange(row.key, e.target.value)}
+                      onChange={(e) => handleCategoryChange(row.key, e.target.value)}
                       disabled={pending}
                       className="block w-full rounded-md border bg-background px-3 py-2 text-sm"
                     >
-                      <option value="">— Pick a bucket —</option>
-                      {availableBuckets.map((b) => (
+                      <option value="">— Pick a category —</option>
+                      {availableCategories.map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.name} ({b.section})
                         </option>
                       ))}
-                      <option value="__new__">+ New bucket…</option>
+                      <option value="__new__">+ New category…</option>
                     </select>
                   </div>
                   <div className="col-span-8 sm:col-span-4">
@@ -525,14 +525,14 @@ export function SubQuoteForm({
         </div>
       </form>
 
-      <NewBucketDialog
-        open={newBucketOpen}
+      <NewCategoryDialog
+        open={newCategoryOpen}
         projectId={projectId}
         onOpenChange={(open) => {
-          setNewBucketOpen(open);
+          setNewCategoryOpen(open);
           if (!open) setPendingRowKey(null);
         }}
-        onCreated={handleBucketCreated}
+        onCreated={handleCategoryCreated}
       />
     </>
   );
@@ -576,7 +576,7 @@ function AllocationBalance({
   );
 }
 
-function NewBucketDialog({
+function NewCategoryDialog({
   open,
   projectId,
   onOpenChange,
@@ -585,7 +585,7 @@ function NewBucketDialog({
   open: boolean;
   projectId: string;
   onOpenChange: (open: boolean) => void;
-  onCreated: (bucket: Bucket) => void;
+  onCreated: (category: Category) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState('');
@@ -600,7 +600,7 @@ function NewBucketDialog({
       return;
     }
     startTransition(async () => {
-      const result = await createProjectBucketAction({
+      const result = await createProjectCategoryAction({
         projectId,
         name: name.trim(),
         section,
@@ -609,7 +609,7 @@ function NewBucketDialog({
         setError(result.error);
         return;
       }
-      onCreated(result.bucket);
+      onCreated(result.category);
       setName('');
       setSection('general');
     });
@@ -628,7 +628,7 @@ function NewBucketDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>New cost bucket</DialogTitle>
+          <DialogTitle>New budget category</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
@@ -671,7 +671,7 @@ function NewBucketDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
-              {pending ? 'Creating…' : 'Create bucket'}
+              {pending ? 'Creating…' : 'Create category'}
             </Button>
           </DialogFooter>
         </form>

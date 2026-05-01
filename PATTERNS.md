@@ -4,6 +4,8 @@ Reusable UX/code patterns in this app. **Read this before building any new flow.
 
 If you introduce a new flow worth standardizing (or extract a one-off into a reusable component), add it here in the same turn.
 
+> **Naming conventions** — for term-level rules (especially "budget category" vs "storage bucket"), see [NAMING.md](./NAMING.md).
+
 ---
 
 ## 1. File / image upload zones

@@ -235,12 +235,12 @@ const GST_RATE = 0.05;
 
 function BillForm({
   projectId,
-  buckets,
+  categories,
   initial,
   onDone,
 }: {
   projectId: string;
-  buckets: Array<{ id: string; name: string; cost_lines: Array<{ id: string; label: string }> }>;
+  categories: Array<{ id: string; name: string; cost_lines: Array<{ id: string; label: string }> }>;
   initial?: ProjectBillRow;
   onDone: () => void;
 }) {
@@ -258,7 +258,7 @@ function BillForm({
   const [gstRaw, setGstRaw] = useState(
     initial && initial.gst_cents > 0 ? (initial.gst_cents / 100).toFixed(2) : '',
   );
-  const [bucketId, setBucketId] = useState(initial?.budget_category_id ?? '');
+  const [categoryId, setCategoryId] = useState(initial?.budget_category_id ?? '');
   const [costLineId, setCostLineId] = useState(initial?.cost_line_id ?? '');
   const [costCode, setCostCode] = useState(initial?.cost_code ?? '');
   const [vendorGstNumber, setVendorGstNumber] = useState(initial?.vendor_gst_number ?? '');
@@ -308,7 +308,7 @@ function BillForm({
       fd.set('description', description);
       fd.set('amount_cents', String(subtotalCents));
       fd.set('gst_cents', String(gstCents));
-      fd.set('budget_category_id', bucketId);
+      fd.set('budget_category_id', categoryId);
       if (costLineId) fd.set('cost_line_id', costLineId);
       fd.set('cost_code', costCode);
       fd.set('vendor_gst_number', vendorGstNumber);
@@ -347,22 +347,22 @@ function BillForm({
             required
           />
         </div>
-        {buckets.length > 0 && (
+        {categories.length > 0 && (
           <div>
-            <label htmlFor="bill-bucket" className="mb-1 block text-xs font-medium">
-              Bucket
+            <label htmlFor="bill-category" className="mb-1 block text-xs font-medium">
+              Category
             </label>
             <select
-              id="bill-bucket"
-              value={bucketId}
+              id="bill-category"
+              value={categoryId}
               onChange={(e) => {
-                setBucketId(e.target.value);
+                setCategoryId(e.target.value);
                 setCostLineId('');
               }}
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
             >
               <option value="">— none —</option>
-              {buckets.map((b) => (
+              {categories.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
@@ -371,8 +371,8 @@ function BillForm({
           </div>
         )}
         {(() => {
-          const lines = buckets.find((b) => b.id === bucketId)?.cost_lines ?? [];
-          if (!bucketId || lines.length === 0) return null;
+          const lines = categories.find((b) => b.id === categoryId)?.cost_lines ?? [];
+          if (!categoryId || lines.length === 0) return null;
           return (
             <div>
               <label htmlFor="bill-line" className="mb-1 block text-xs font-medium">
@@ -384,7 +384,7 @@ function BillForm({
                 onChange={(e) => setCostLineId(e.target.value)}
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="">— bucket only —</option>
+                <option value="">— category only —</option>
                 {lines.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.label}
@@ -556,14 +556,14 @@ export function CostsTab({
   bills,
   subQuotes,
   expenses,
-  buckets,
+  categories,
 }: {
   projectId: string;
   purchaseOrders: PurchaseOrderRow[];
   bills: ProjectBillRow[];
   subQuotes: SubQuoteRow[];
   expenses: ExpenseItem[];
-  buckets: Array<{
+  categories: Array<{
     id: string;
     name: string;
     section: 'interior' | 'exterior' | 'general';
@@ -616,7 +616,7 @@ export function CostsTab({
   })();
   const groupByCategory = searchParams.get('view') === 'category';
   // Drill-down filter: Budget tab links here with `?focus=<budget_category_id>`
-  // (bucket-level) or `?focus_line=<cost_line_id>` (line-level) so the operator
+  // (category-level) or `?focus_line=<cost_line_id>` (line-level) so the operator
   // lands on Spend already filtered. Bills, expenses, and vendor-quote
   // allocations carry budget_category_id directly. POs match through their
   // line items' cost_line.budget_category_id (resolved in
@@ -635,9 +635,9 @@ export function CostsTab({
       ? expenses.filter((e) => e.budget_category_id === focusCategoryId)
       : expenses;
   const filteredSubQuotes = focusLineId
-    ? // Sub-quote allocations are per-bucket only — hide all when filtering
+    ? // Sub-quote allocations are per-category only — hide all when filtering
       // to a single line. Honest empty state beats "every quote against this
-      // bucket also lights up under every line", which would be misleading.
+      // category also lights up under every line", which would be misleading.
       []
     : focusCategoryId
       ? subQuotes.filter((q) => q.allocations.some((a) => a.budget_category_id === focusCategoryId))
@@ -650,10 +650,10 @@ export function CostsTab({
         )
       : purchaseOrders;
   const focusCategoryName = focusCategoryId
-    ? buckets.find((b) => b.id === focusCategoryId)?.name
+    ? categories.find((b) => b.id === focusCategoryId)?.name
     : null;
   const focusLineLabel = focusLineId
-    ? buckets.flatMap((b) => b.cost_lines).find((l) => l.id === focusLineId)?.label
+    ? categories.flatMap((b) => b.cost_lines).find((l) => l.id === focusLineId)?.label
     : null;
   const subtabCounts: Record<CostsSubtabKey, number> = {
     quotes: filteredSubQuotes.length,
@@ -736,7 +736,7 @@ export function CostsTab({
 
       {groupByCategory ? (
         <CostsByCategoryView
-          buckets={buckets}
+          categories={categories}
           bills={filteredBills}
           expenses={filteredExpenses}
           subQuotes={filteredSubQuotes}
@@ -745,13 +745,17 @@ export function CostsTab({
       ) : null}
 
       {!groupByCategory && sub === 'quotes' ? (
-        <SubQuotesSection projectId={projectId} subQuotes={filteredSubQuotes} buckets={buckets} />
+        <SubQuotesSection
+          projectId={projectId}
+          subQuotes={filteredSubQuotes}
+          categories={categories}
+        />
       ) : null}
 
       {!groupByCategory && sub === 'expenses' ? (
         <ExpensesSection
           projectId={projectId}
-          buckets={buckets.map((b) => ({
+          categories={categories.map((b) => ({
             id: b.id,
             name: b.name,
             cost_lines: b.cost_lines,
@@ -858,7 +862,7 @@ export function CostsTab({
             <div className="mb-4">
               <BillForm
                 projectId={projectId}
-                buckets={buckets}
+                categories={categories}
                 initial={editingBill ?? undefined}
                 onDone={() => {
                   setShowBillForm(false);
@@ -879,7 +883,7 @@ export function CostsTab({
                   <tr className="border-b bg-muted/50">
                     <th className="px-3 py-2 text-left font-medium">Vendor</th>
                     <th className="px-3 py-2 text-left font-medium">Date</th>
-                    <th className="px-3 py-2 text-left font-medium">Bucket</th>
+                    <th className="px-3 py-2 text-left font-medium">Category</th>
                     <th className="px-3 py-2 text-left font-medium">Description</th>
                     <th className="px-3 py-2 text-left font-medium">Status</th>
                     <th className="px-3 py-2 text-right font-medium">Subtotal</th>

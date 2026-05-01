@@ -117,7 +117,7 @@ export function LeadIntakeForm({ parseModel = 'gpt-4.1' }: { parseModel?: ParseM
       // EVERY file rides via Supabase Storage — not through the server
       // action body. Vercel caps server-action bodies around 4.5 MB,
       // which two phone photos or one voice memo blow right past. The
-      // client uploads into the `intake-audio` bucket (yes, name now
+      // client uploads into the `intake-audio` storage bucket (yes, name now
       // covers images + PDFs too) under its own <tenant>/<uid>/ prefix;
       // the server downloads, processes, and deletes.
       if (useFiles.length > 0) {
@@ -131,7 +131,7 @@ export function LeadIntakeForm({ parseModel = 'gpt-4.1' }: { parseModel?: ParseM
         for (const raw of useFiles) {
           const prepared = await shrinkIfNeeded(raw);
           const ext = prepared.name.split('.').pop()?.toLowerCase() || 'bin';
-          // Path layout matches the bucket RLS: foldername[2] = auth.uid().
+          // Path layout matches the storage bucket RLS: foldername[2] = auth.uid().
           const path = `tenant/${userId}/${crypto.randomUUID()}.${ext}`;
           const { error: upErr } = await supabase.storage
             .from('intake-audio')
@@ -157,15 +157,15 @@ export function LeadIntakeForm({ parseModel = 'gpt-4.1' }: { parseModel?: ParseM
         toast.error(res.error);
         return;
       }
-      // Tag every bucket and line with a stable runtime key so React
+      // Tag every category and line with a stable runtime key so React
       // diffing stays sane through edits and removals.
       const stamped: ParsedIntake = {
         ...res.draft,
-        buckets: res.draft.buckets.map((b) => ({
+        categories: res.draft.categories.map((b) => ({
           ...b,
           _k: crypto.randomUUID(),
           lines: b.lines.map((l) => ({ ...l, _k: crypto.randomUUID() })),
-        })) as ParsedIntake['buckets'],
+        })) as ParsedIntake['categories'],
       };
       setDraft(stamped);
       setTranscript(res.transcript ?? null);
@@ -317,32 +317,32 @@ function ReviewDraft({
   function patchProject(patch: Partial<ParsedIntake['project']>) {
     onChange({ ...draft, project: { ...draft.project, ...patch } });
   }
-  function patchBucket(bi: number, patch: Partial<ParsedIntake['buckets'][number]>) {
-    const next = [...draft.buckets];
+  function patchCategory(bi: number, patch: Partial<ParsedIntake['categories'][number]>) {
+    const next = [...draft.categories];
     next[bi] = { ...next[bi], ...patch };
-    onChange({ ...draft, buckets: next });
+    onChange({ ...draft, categories: next });
   }
   function patchLine(
     bi: number,
     li: number,
-    patch: Partial<ParsedIntake['buckets'][number]['lines'][number]>,
+    patch: Partial<ParsedIntake['categories'][number]['lines'][number]>,
   ) {
-    const nextBuckets = [...draft.buckets];
-    const nextLines = [...nextBuckets[bi].lines];
+    const nextCategories = [...draft.categories];
+    const nextLines = [...nextCategories[bi].lines];
     nextLines[li] = { ...nextLines[li], ...patch };
-    nextBuckets[bi] = { ...nextBuckets[bi], lines: nextLines };
-    onChange({ ...draft, buckets: nextBuckets });
+    nextCategories[bi] = { ...nextCategories[bi], lines: nextLines };
+    onChange({ ...draft, categories: nextCategories });
   }
   function removeLine(bi: number, li: number) {
-    const nextBuckets = [...draft.buckets];
-    nextBuckets[bi] = {
-      ...nextBuckets[bi],
-      lines: nextBuckets[bi].lines.filter((_, i) => i !== li),
+    const nextCategories = [...draft.categories];
+    nextCategories[bi] = {
+      ...nextCategories[bi],
+      lines: nextCategories[bi].lines.filter((_, i) => i !== li),
     };
-    onChange({ ...draft, buckets: nextBuckets });
+    onChange({ ...draft, categories: nextCategories });
   }
-  function removeBucket(bi: number) {
-    onChange({ ...draft, buckets: draft.buckets.filter((_, i) => i !== bi) });
+  function removeCategory(bi: number) {
+    onChange({ ...draft, categories: draft.categories.filter((_, i) => i !== bi) });
   }
 
   const sig = draft.signals;
@@ -419,37 +419,37 @@ function ReviewDraft({
         </Field>
       </Section>
 
-      {/* Buckets + lines */}
+      {/* Categories + lines */}
       <Section
-        title={`Estimate draft (${draft.buckets.length} bucket${draft.buckets.length === 1 ? '' : 's'})`}
+        title={`Estimate draft (${draft.categories.length} categor${draft.categories.length === 1 ? 'y' : 'ies'})`}
       >
-        {draft.buckets.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No buckets extracted.</p>
+        {draft.categories.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No categories extracted.</p>
         ) : (
           <div className="space-y-4">
-            {draft.buckets.map((b, bi) => (
+            {draft.categories.map((b, bi) => (
               <div key={(b as unknown as { _k: string })._k} className="rounded-md border">
                 <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
                   <Input
                     value={b.section ?? ''}
-                    onChange={(e) => patchBucket(bi, { section: e.target.value || null })}
+                    onChange={(e) => patchCategory(bi, { section: e.target.value || null })}
                     placeholder="Section (optional)"
                     className="h-8 max-w-[180px] text-xs"
                   />
                   <Input
                     value={b.name}
-                    onChange={(e) => patchBucket(bi, { name: e.target.value })}
-                    placeholder="Bucket"
+                    onChange={(e) => patchCategory(bi, { name: e.target.value })}
+                    placeholder="Category"
                     className="h-8 text-sm font-semibold"
                   />
                   <Button
                     type="button"
                     size="xs"
                     variant="ghost"
-                    onClick={() => removeBucket(bi)}
+                    onClick={() => removeCategory(bi)}
                     className="text-destructive hover:text-destructive"
                   >
-                    Remove bucket
+                    Remove category
                   </Button>
                 </div>
                 <div className="divide-y">
@@ -602,7 +602,7 @@ function Chip({
 /**
  * Collapsible "What Henry heard" panel — shows the raw Whisper transcript(s)
  * above the customer block on the review screen. Lets the operator see
- * exactly what the model worked from when the bucket / line-item output
+ * exactly what the model worked from when the category / line-item output
  * comes back thin or wrong.
  */
 function TranscriptPanel({ transcript }: { transcript: string }) {

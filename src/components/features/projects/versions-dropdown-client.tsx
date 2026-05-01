@@ -217,7 +217,7 @@ function SnapshotViewer({ snapshot }: { snapshot: ProjectScopeSnapshot }) {
     <div className="max-h-[60vh] space-y-4 overflow-y-auto">
       {categories.length === 0 && snapshot.cost_lines.length === 0 ? (
         <p className="rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
-          No line items or buckets at signing.
+          No line items or categories at signing.
         </p>
       ) : null}
 

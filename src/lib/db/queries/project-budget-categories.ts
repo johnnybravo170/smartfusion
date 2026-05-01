@@ -1,7 +1,7 @@
 /**
- * Cost bucket queries for renovation projects.
+ * Budget category queries for renovation projects.
  *
- * `getBudgetVsActual` returns each bucket's estimate alongside its actual
+ * `getBudgetVsActual` returns each category's estimate alongside its actual
  * spend (labor from time_entries + expenses). Used by the project detail
  * page and the AI budget tool.
  */
@@ -69,7 +69,7 @@ export const listBudgetCategoriesForProject = cache(
       .order('name', { ascending: true });
 
     if (error) {
-      throw new Error(`Failed to list buckets: ${error.message}`);
+      throw new Error(`Failed to list categories: ${error.message}`);
     }
     return (data ?? []) as BudgetCategoryRow[];
   },
@@ -78,8 +78,8 @@ export const listBudgetCategoriesForProject = cache(
 export async function getBudgetVsActual(projectId: string): Promise<BudgetSummary> {
   const supabase = await createClient();
 
-  // 1. Load all buckets for this project
-  const buckets = await listBudgetCategoriesForProject(projectId);
+  // 1. Load all categories for this project
+  const categories = await listBudgetCategoriesForProject(projectId);
 
   // 2. Load time entries for this project, grouped by budget_category_id
   const { data: timeData, error: timeErr } = await supabase
@@ -200,7 +200,7 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
   }
 
   // Build budget lines
-  const lines: BudgetLine[] = buckets.map((b) => {
+  const lines: BudgetLine[] = categories.map((b) => {
     const labor_cents = laborByBudgetCategory.get(b.id) ?? 0;
     const expense_cents = expenseByBudgetCategory.get(b.id) ?? 0;
     const bills_cents = billsByBudgetCategory.get(b.id) ?? 0;

@@ -3,9 +3,8 @@
  *
  * Templates are JSON files in this folder, applied to fresh projects
  * via `applyStarterTemplateAction`. The action seeds
- * `project_budget_categories` (one per bucket) and `project_cost_lines`
- * (one per line) under the chosen project — no schema migration
- * needed.
+ * `project_budget_categories` and `project_cost_lines` under the
+ * chosen project — no schema migration needed.
  *
  * Pricing convention: ship without prices (no `unit_price_cents`,
  * no `unit_cost_cents`). Per the rollup, prices drift quickly and the
@@ -21,7 +20,7 @@ export type StarterTemplateLine = {
   notes?: string;
 };
 
-export type StarterTemplateBucket = {
+export type StarterTemplateCategory = {
   name: string;
   section: string;
   description?: string;
@@ -32,5 +31,5 @@ export type StarterTemplate = {
   slug: string;
   label: string;
   description: string;
-  buckets: StarterTemplateBucket[];
+  categories: StarterTemplateCategory[];
 };

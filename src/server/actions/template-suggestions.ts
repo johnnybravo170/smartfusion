@@ -4,7 +4,7 @@
  * Henry-suggested templates from quote history.
  *
  * Clusters the operator's recent projects by structural similarity
- * (shared bucket names + overlapping line labels). When a cluster
+ * (shared category names + overlapping line labels). When a cluster
  * of 3+ similar projects is found, surface a "save this pattern as a
  * template?" suggestion — operator-confirmed, never silent.
  *
@@ -22,7 +22,7 @@ import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export type TemplateSuggestionCluster = {
-  /** Stable hash of the bucket-name set so repeated runs return same cluster id. */
+  /** Stable hash of the category-name set so repeated runs return same cluster id. */
   cluster_id: string;
   /** Operator-facing label, e.g. "Bathroom-style projects". */
   label: string;
@@ -49,7 +49,7 @@ export async function getTemplateSuggestionsAction(): Promise<TemplateSuggestion
 
   const admin = createAdminClient();
 
-  // Pull the most recent N projects with their bucket structure.
+  // Pull the most recent N projects with their category structure.
   const { data: projects } = await admin
     .from('projects')
     .select('id, name, created_at')
@@ -64,7 +64,7 @@ export async function getTemplateSuggestionsAction(): Promise<TemplateSuggestion
 
   const projectIds = projectRows.map((p) => p.id);
 
-  const [bucketsRes, linesRes] = await Promise.all([
+  const [categoriesRes, linesRes] = await Promise.all([
     admin
       .from('project_budget_categories')
       .select('id, project_id, name, section, display_order')
@@ -75,7 +75,7 @@ export async function getTemplateSuggestionsAction(): Promise<TemplateSuggestion
       .in('project_id', projectIds),
   ]);
 
-  type BucketRow = {
+  type CategoryRow = {
     id: string;
     project_id: string;
     name: string;
@@ -92,11 +92,11 @@ export async function getTemplateSuggestionsAction(): Promise<TemplateSuggestion
     sort_order: number;
   };
 
-  const bucketsByProject = new Map<string, BucketRow[]>();
-  for (const b of (bucketsRes.data ?? []) as BucketRow[]) {
-    const arr = bucketsByProject.get(b.project_id) ?? [];
+  const categoriesByProject = new Map<string, CategoryRow[]>();
+  for (const b of (categoriesRes.data ?? []) as CategoryRow[]) {
+    const arr = categoriesByProject.get(b.project_id) ?? [];
     arr.push(b);
-    bucketsByProject.set(b.project_id, arr);
+    categoriesByProject.set(b.project_id, arr);
   }
   const linesByProject = new Map<string, LineRow[]>();
   for (const l of (linesRes.data ?? []) as LineRow[]) {
@@ -105,33 +105,33 @@ export async function getTemplateSuggestionsAction(): Promise<TemplateSuggestion
     linesByProject.set(l.project_id, arr);
   }
 
-  // Cluster signature: sorted bucket-name set. Two projects with the
-  // same set of bucket names are considered structurally similar
+  // Cluster signature: sorted category-name set. Two projects with the
+  // same set of category names are considered structurally similar
   // enough to be in the same cluster. v1 ignores section + line
   // labels for clustering; we'll add line-label overlap on top once
-  // bucket-set clustering shows real signal.
+  // category-set clustering shows real signal.
   type ClusterSig = string;
   const clustersBySig = new Map<
     ClusterSig,
-    { projects: string[]; bucketCounts: Map<string, number> }
+    { projects: string[]; categoryCounts: Map<string, number> }
   >();
   for (const p of projectRows) {
-    const buckets = bucketsByProject.get(p.id) ?? [];
-    if (buckets.length === 0) continue;
-    const sig = Array.from(new Set(buckets.map((b) => b.name.trim().toLowerCase())))
+    const categories = categoriesByProject.get(p.id) ?? [];
+    if (categories.length === 0) continue;
+    const sig = Array.from(new Set(categories.map((b) => b.name.trim().toLowerCase())))
       .sort()
       .join('|');
     if (!sig) continue;
-    const cluster: { projects: string[]; bucketCounts: Map<string, number> } = clustersBySig.get(
+    const cluster: { projects: string[]; categoryCounts: Map<string, number> } = clustersBySig.get(
       sig,
     ) ?? {
       projects: [],
-      bucketCounts: new Map<string, number>(),
+      categoryCounts: new Map<string, number>(),
     };
     cluster.projects.push(p.id);
-    for (const b of buckets) {
+    for (const b of categories) {
       const key = b.name.trim().toLowerCase();
-      cluster.bucketCounts.set(key, (cluster.bucketCounts.get(key) ?? 0) + 1);
+      cluster.categoryCounts.set(key, (cluster.categoryCounts.get(key) ?? 0) + 1);
     }
     clustersBySig.set(sig, cluster);
   }
@@ -142,7 +142,7 @@ export async function getTemplateSuggestionsAction(): Promise<TemplateSuggestion
     .slice(0, 3);
 
   // Skip clusters that have already been saved as a template — match
-  // on bucket-name set against existing quote_templates rows.
+  // on category-name set against existing quote_templates rows.
   const { data: existingTemplates } = await admin
     .from('quote_templates')
     .select('snapshot')
@@ -150,9 +150,13 @@ export async function getTemplateSuggestionsAction(): Promise<TemplateSuggestion
     .is('deleted_at', null);
   const existingSigs = new Set<string>();
   for (const t of (existingTemplates ?? []) as Array<{ snapshot: StarterTemplate }>) {
-    const buckets = t.snapshot?.buckets ?? [];
-    if (buckets.length === 0) continue;
-    const sig = Array.from(new Set(buckets.map((b) => b.name.trim().toLowerCase())))
+    // backcompat: pre-rename rows used `buckets` key
+    const categories =
+      t.snapshot?.categories ??
+      (t.snapshot as unknown as { buckets?: StarterTemplate['categories'] })?.buckets ??
+      [];
+    if (categories.length === 0) continue;
+    const sig = Array.from(new Set(categories.map((b) => b.name.trim().toLowerCase())))
       .sort()
       .join('|');
     existingSigs.add(sig);
@@ -163,31 +167,31 @@ export async function getTemplateSuggestionsAction(): Promise<TemplateSuggestion
     if (existingSigs.has(sig)) continue;
 
     // Build a scaffold from the most-recent project in the cluster.
-    // Future enhancement: take the union of buckets/lines across the
+    // Future enhancement: take the union of categories/lines across the
     // cluster instead of a single sample.
     const sampleProjectId = cluster.projects[0];
-    const sampleBuckets = (bucketsByProject.get(sampleProjectId) ?? [])
+    const sampleCategories = (categoriesByProject.get(sampleProjectId) ?? [])
       .slice()
       .sort((a, b) => a.display_order - b.display_order);
     const sampleLines = (linesByProject.get(sampleProjectId) ?? [])
       .slice()
       .sort((a, b) => a.sort_order - b.sort_order);
-    const linesByBucketId = new Map<string, LineRow[]>();
+    const linesByCategoryId = new Map<string, LineRow[]>();
     for (const l of sampleLines) {
       if (!l.budget_category_id) continue;
-      const arr = linesByBucketId.get(l.budget_category_id) ?? [];
+      const arr = linesByCategoryId.get(l.budget_category_id) ?? [];
       arr.push(l);
-      linesByBucketId.set(l.budget_category_id, arr);
+      linesByCategoryId.set(l.budget_category_id, arr);
     }
 
     const scaffold: StarterTemplate = {
       slug: '',
       label: titleCaseFromSig(sig),
       description: `Drafted from ${cluster.projects.length} similar projects you've quoted recently.`,
-      buckets: sampleBuckets.map((b) => ({
+      categories: sampleCategories.map((b) => ({
         name: b.name,
         section: b.section,
-        lines: (linesByBucketId.get(b.id) ?? []).map((l) => ({
+        lines: (linesByCategoryId.get(b.id) ?? []).map((l) => ({
           label: l.label,
           category: l.category as 'material' | 'labour' | 'sub' | 'equipment' | 'overhead',
           qty: l.qty,
@@ -264,7 +268,7 @@ export async function saveSuggestedTemplateAction(
 
 function titleCaseFromSig(sig: string): string {
   // sig is "bathroom|cabinets|drywall|..." — pick a couple anchor
-  // bucket names to form a label.
+  // category names to form a label.
   const parts = sig.split('|').filter(Boolean);
   if (parts.length === 0) return 'Project pattern';
   // Prefer well-known room/section anchors when present.
@@ -274,7 +278,7 @@ function titleCaseFromSig(sig: string): string {
       return `${a.charAt(0).toUpperCase() + a.slice(1)}-style projects`;
     }
   }
-  // Fallback: join first two bucket names.
+  // Fallback: join first two category names.
   const top = parts.slice(0, 2).map((p) => p.charAt(0).toUpperCase() + p.slice(1));
   return `${top.join(' + ')} pattern`;
 }

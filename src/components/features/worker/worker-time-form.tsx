@@ -15,11 +15,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import type { ProjectWithBuckets, WorkerTimeEntry } from '@/lib/db/queries/worker-time';
+import type { ProjectWithCategories, WorkerTimeEntry } from '@/lib/db/queries/worker-time';
 import { logWorkerTimeAction, updateWorkerTimeAction } from '@/server/actions/worker-time';
 
 type Props = {
-  projects: ProjectWithBuckets[];
+  projects: ProjectWithCategories[];
   /** When provided, the form edits this entry instead of creating a new one. */
   initial?: WorkerTimeEntry;
 };
@@ -37,19 +37,19 @@ export function WorkerTimeForm({ projects, initial }: Props) {
 
   const [pending, startTransition] = useTransition();
   const [projectId, setProjectId] = useState(initialProject);
-  const [bucketId, setBucketId] = useState(initial?.budget_category_id ?? '');
+  const [categoryId, setCategoryId] = useState(initial?.budget_category_id ?? '');
   const [costLineId, setCostLineId] = useState(initial?.cost_line_id ?? '');
   const [hours, setHours] = useState(initial ? String(initial.hours) : '');
   const [date, setDate] = useState(initialDate);
   const [notes, setNotes] = useState(initial?.notes ?? '');
 
-  const buckets = useMemo(
-    () => projects.find((p) => p.project_id === projectId)?.buckets ?? [],
+  const categories = useMemo(
+    () => projects.find((p) => p.project_id === projectId)?.categories ?? [],
     [projects, projectId],
   );
   const costLines = useMemo(
-    () => buckets.find((b) => b.id === bucketId)?.cost_lines ?? [],
-    [buckets, bucketId],
+    () => categories.find((b) => b.id === categoryId)?.cost_lines ?? [],
+    [categories, categoryId],
   );
 
   function handleSubmit(e: React.FormEvent) {
@@ -68,7 +68,7 @@ export function WorkerTimeForm({ projects, initial }: Props) {
         ? await updateWorkerTimeAction({
             id: initial?.id ?? '',
             project_id: projectId,
-            budget_category_id: bucketId || undefined,
+            budget_category_id: categoryId || undefined,
             cost_line_id: costLineId || undefined,
             hours: h,
             notes: notes || undefined,
@@ -76,7 +76,7 @@ export function WorkerTimeForm({ projects, initial }: Props) {
           })
         : await logWorkerTimeAction({
             project_id: projectId,
-            budget_category_id: bucketId || undefined,
+            budget_category_id: categoryId || undefined,
             cost_line_id: costLineId || undefined,
             hours: h,
             notes: notes || undefined,
@@ -107,7 +107,7 @@ export function WorkerTimeForm({ projects, initial }: Props) {
           value={projectId}
           onValueChange={(v) => {
             setProjectId(v);
-            setBucketId('');
+            setCategoryId('');
           }}
         >
           <SelectTrigger id="project">
@@ -123,21 +123,21 @@ export function WorkerTimeForm({ projects, initial }: Props) {
         </Select>
       </div>
 
-      {buckets.length > 0 ? (
+      {categories.length > 0 ? (
         <div className="space-y-1.5">
-          <Label htmlFor="bucket">Work area (optional)</Label>
+          <Label htmlFor="category">Work area (optional)</Label>
           <Select
-            value={bucketId}
+            value={categoryId}
             onValueChange={(v) => {
-              setBucketId(v);
+              setCategoryId(v);
               setCostLineId('');
             }}
           >
-            <SelectTrigger id="bucket">
+            <SelectTrigger id="category">
               <SelectValue placeholder="— none —" />
             </SelectTrigger>
             <SelectContent>
-              {buckets.map((b) => (
+              {categories.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
                   {b.name}
                 </SelectItem>
@@ -147,11 +147,11 @@ export function WorkerTimeForm({ projects, initial }: Props) {
         </div>
       ) : null}
 
-      {/* Cost line picker — only shows when a bucket is chosen and that
-          bucket has lines. Helps the office track labour at the line level
+      {/* Cost line picker — only shows when a category is chosen and that
+          category has lines. Helps the office track labour at the line level
           (e.g. "tile install" vs the whole bathroom). Optional — the
-          default is bucket-only. */}
-      {bucketId && costLines.length > 0 ? (
+          default is category-only. */}
+      {categoryId && costLines.length > 0 ? (
         <div className="space-y-1.5">
           <Label htmlFor="cost-line">Line item (optional)</Label>
           <Select
@@ -162,7 +162,7 @@ export function WorkerTimeForm({ projects, initial }: Props) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__none__">— none (whole bucket) —</SelectItem>
+              <SelectItem value="__none__">— none (whole category) —</SelectItem>
               {costLines.map((l) => (
                 <SelectItem key={l.id} value={l.id}>
                   {l.label}

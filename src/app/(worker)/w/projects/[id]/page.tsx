@@ -38,7 +38,7 @@ export default async function WorkerProjectDetailPage({
 
   if (!project) notFound();
 
-  const { data: buckets } = await admin
+  const { data: categories } = await admin
     .from('project_budget_categories')
     .select('id, name, section, description')
     .eq('project_id', id)
@@ -111,10 +111,10 @@ export default async function WorkerProjectDetailPage({
           <CardTitle className="text-base">Work areas</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          {(buckets ?? []).length === 0 ? (
+          {(categories ?? []).length === 0 ? (
             <p className="text-muted-foreground">No work areas defined yet.</p>
           ) : (
-            (buckets ?? []).map((b) => (
+            (categories ?? []).map((b) => (
               <div key={b.id as string}>
                 <p className="font-medium">{b.name as string}</p>
                 {b.description ? (

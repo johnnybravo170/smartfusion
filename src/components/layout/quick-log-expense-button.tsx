@@ -6,7 +6,7 @@
  * Smart intake:
  *   - Drop a receipt (image / PDF) → auto-fires extractReceiptFieldsAction
  *     and pre-fills vendor / amount / date / description / GST number.
- *   - Mode toggle between Project expense (picks project + bucket) and
+ *   - Mode toggle between Project expense (picks project + category) and
  *     Overhead (picks expense category).
  *   - Dropzone works via drag from anywhere OR click-to-pick. Voice
  *     memos not supported on this surface (receipts only).
@@ -40,14 +40,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import {
   listExpenseCategoryOptionsAction,
-  listProjectsWithBucketsForExpenseAction,
+  listProjectsWithCategoriesForExpenseAction,
   logExpenseWithReceiptAction,
 } from '@/server/actions/expenses';
 import { extractReceiptFieldsAction } from '@/server/actions/extract-receipt';
 import { logOverheadExpenseAction } from '@/server/actions/overhead-expenses';
 
 type Mode = 'project' | 'overhead';
-type ProjectOption = { id: string; name: string; buckets: Array<{ id: string; name: string }> };
+type ProjectOption = { id: string; name: string; categories: Array<{ id: string; name: string }> };
 type CategoryOption = { id: string; label: string; isParentHeader: boolean };
 
 const RECEIPT_ACCEPT = 'image/*,application/pdf';
@@ -84,8 +84,11 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
   const [loadingLookups, setLoadingLookups] = useState(true);
 
   const [projectId, setProjectId] = useState('');
-  const [bucketId, setBucketId] = useState('');
-  const [categoryId, setCategoryId] = useState('');
+  // Project mode: which budget category on the chosen project this expense maps to.
+  // Overhead mode: which expense_category (chart-of-accounts node) this overhead expense maps to.
+  // Two separate state slots so switching modes doesn't lose the other side.
+  const [budgetCategoryId, setBudgetCategoryId] = useState('');
+  const [overheadCategoryId, setOverheadCategoryId] = useState('');
 
   const [receipt, setReceipt] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
@@ -105,7 +108,7 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
     async function load() {
       setLoadingLookups(true);
       const [projectsRes, categoriesRes] = await Promise.all([
-        listProjectsWithBucketsForExpenseAction(),
+        listProjectsWithCategoriesForExpenseAction(),
         listExpenseCategoryOptionsAction(),
       ]);
       if (cancelled) return;
@@ -119,7 +122,7 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
     };
   }, []);
 
-  const buckets = projects.find((p) => p.id === projectId)?.buckets ?? [];
+  const projectCategories = projects.find((p) => p.id === projectId)?.categories ?? [];
 
   async function handleReceipt(file: File | null) {
     setReceipt(file);
@@ -184,7 +187,7 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
 
       if (mode === 'project') {
         fd.append('project_id', projectId);
-        if (bucketId) fd.append('budget_category_id', bucketId);
+        if (budgetCategoryId) fd.append('budget_category_id', budgetCategoryId);
         const res = await logExpenseWithReceiptAction(fd);
         if (!res.ok) {
           toast.error(res.error);
@@ -193,7 +196,7 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
         toast.success('Project expense logged.');
         onDone();
       } else {
-        fd.append('category_id', categoryId);
+        fd.append('category_id', overheadCategoryId);
         const res = await logOverheadExpenseAction(fd);
         if (!res.ok) {
           if ('duplicate' in res) {
@@ -224,7 +227,7 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
       toast.error('Pick a project.');
       return;
     }
-    if (mode === 'overhead' && !categoryId) {
+    if (mode === 'overhead' && !overheadCategoryId) {
       toast.error('Pick a category.');
       return;
     }
@@ -324,25 +327,27 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
           </div>
           <div>
             <Label
-              htmlFor="exp-bucket"
+              htmlFor="exp-category"
               className="mb-1 block text-xs font-medium text-muted-foreground"
             >
-              Bucket (optional)
+              Category (optional)
             </Label>
             <Select
-              value={bucketId}
-              onValueChange={setBucketId}
-              disabled={busy || buckets.length === 0}
+              value={budgetCategoryId}
+              onValueChange={setBudgetCategoryId}
+              disabled={busy || projectCategories.length === 0}
             >
-              <SelectTrigger id="exp-bucket">
+              <SelectTrigger id="exp-category">
                 <SelectValue
                   placeholder={
-                    buckets.length === 0 ? 'No buckets on this project' : 'Pick a bucket'
+                    projectCategories.length === 0
+                      ? 'No categories on this project'
+                      : 'Pick a category'
                   }
                 />
               </SelectTrigger>
               <SelectContent>
-                {buckets.map((b) => (
+                {projectCategories.map((b) => (
                   <SelectItem key={b.id} value={b.id}>
                     {b.name}
                   </SelectItem>
@@ -360,8 +365,8 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
             Category
           </Label>
           <Select
-            value={categoryId}
-            onValueChange={setCategoryId}
+            value={overheadCategoryId}
+            onValueChange={setOverheadCategoryId}
             disabled={busy || loadingLookups}
           >
             <SelectTrigger id="exp-category">
