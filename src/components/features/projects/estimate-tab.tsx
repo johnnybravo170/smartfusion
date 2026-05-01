@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-orders';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
+import { withFrom } from '@/lib/nav/from-link';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import {
   type ManualApprovalMethod,
@@ -391,7 +392,11 @@ export function EstimateTab({
                 className="flex items-baseline justify-between gap-3 rounded border border-blue-100 bg-background/60 px-2 py-1.5 dark:border-blue-900"
               >
                 <Link
-                  href={`/projects/${projectId}/change-orders/${c.id}`}
+                  href={withFrom(
+                    `/projects/${projectId}/change-orders/${c.id}`,
+                    `/projects/${projectId}?tab=budget`,
+                    'Budget',
+                  )}
                   className="min-w-0 flex-1 truncate hover:underline"
                 >
                   <span className="mr-2 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-blue-800">
@@ -478,7 +483,11 @@ export function EstimateTab({
                                   {lineContribs.map((c) => (
                                     <Link
                                       key={`${c.co_id}:${c.action}`}
-                                      href={`/projects/${projectId}/change-orders/${c.co_id}`}
+                                      href={withFrom(
+                                        `/projects/${projectId}/change-orders/${c.co_id}`,
+                                        `/projects/${projectId}?tab=budget`,
+                                        'Budget',
+                                      )}
                                       title={`${c.action === 'add' ? 'Added' : 'Modified'} by CO: ${c.co_title}`}
                                       className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-800 hover:bg-blue-200"
                                     >

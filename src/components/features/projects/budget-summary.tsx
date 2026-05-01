@@ -3,7 +3,24 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-orders';
+import { withFrom } from '@/lib/nav/from-link';
 import { formatCurrency } from '@/lib/pricing/calculator';
+
+/** Smart-back hint passed to CO chips so the CO detail page can label
+ * "Back to Budget" / "Back to Overview" rather than the generic referrer
+ * fallback. Callers default to Budget — pass `{ tab: 'overview', label:
+ * 'Overview' }` from overview-tab-server. */
+type FromTab = { tab: string; label: string };
+const DEFAULT_FROM_TAB: FromTab = { tab: 'budget', label: 'Budget' };
+
+function coHref(projectId: string | undefined, coId: string, fromTab: FromTab): string {
+  if (!projectId) return '#';
+  return withFrom(
+    `/projects/${projectId}/change-orders/${coId}`,
+    `/projects/${projectId}?tab=${fromTab.tab}`,
+    fromTab.label,
+  );
+}
 
 type VarianceData = {
   estimated_cents: number;
@@ -95,10 +112,12 @@ export function VarianceTab({
   allChangeOrders = [],
   coContributionsByCategoryId = {},
   categoryIdByName = {},
+  fromTab = DEFAULT_FROM_TAB,
 }: {
   variance: VarianceData;
   lifecycleStage?: string;
   projectId?: string;
+  fromTab?: FromTab;
   /** Audit lens — applied COs on this project. Used to (a) layer the
    *  total CO contribution into the Estimated Revenue stat, and (b)
    *  attach chips to category rows that were touched. */
@@ -254,7 +273,7 @@ export function VarianceTab({
                   ? `Applied CO: ${c.title} (${overridePct}% fee)`
                   : `Applied CO: ${c.title}`,
                 value: c.cost_impact_cents,
-                href: projectId ? `/projects/${projectId}/change-orders/${c.id}` : undefined,
+                href: projectId ? coHref(projectId, c.id, fromTab) : undefined,
                 badge: { kind: 'applied' as const },
               };
             }),
@@ -301,7 +320,7 @@ export function VarianceTab({
                       {legacy.map((c) => (
                         <li key={c.id} className="flex items-baseline justify-between gap-3">
                           <a
-                            href={projectId ? `/projects/${projectId}/change-orders/${c.id}` : '#'}
+                            href={coHref(projectId, c.id, fromTab)}
                             className="flex flex-1 items-baseline justify-between gap-2 hover:underline"
                           >
                             <span>
@@ -331,7 +350,7 @@ export function VarianceTab({
                       {pending.map((c) => (
                         <li key={c.id} className="flex items-baseline justify-between gap-3">
                           <a
-                            href={projectId ? `/projects/${projectId}/change-orders/${c.id}` : '#'}
+                            href={coHref(projectId, c.id, fromTab)}
                             className="flex flex-1 items-baseline justify-between gap-2 italic hover:underline"
                           >
                             <span>{c.title}</span>
@@ -477,7 +496,7 @@ export function VarianceTab({
                             {coChips.map((c) => (
                               <a
                                 key={c.co_id}
-                                href={`/projects/${projectId}/change-orders/${c.co_id}`}
+                                href={coHref(projectId, c.co_id, fromTab)}
                                 onClick={(e) => e.stopPropagation()}
                                 title={`Touched by CO: ${c.co_title}`}
                                 className="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-800 hover:bg-blue-200"
@@ -511,6 +530,7 @@ export function VarianceTab({
                               projectId={projectId}
                               budgetCategoryId={catId}
                               coContributions={contribs}
+                              fromTab={fromTab}
                             />
                           </td>
                         </tr>
@@ -629,11 +649,13 @@ function CategoryBreakdown({
   projectId,
   budgetCategoryId,
   coContributions,
+  fromTab = DEFAULT_FROM_TAB,
 }: {
   row: VarianceData['by_category'][number];
   projectId?: string;
   budgetCategoryId?: string;
   coContributions: AppliedChangeOrderContribution[];
+  fromTab?: FromTab;
 }) {
   const linkBase = projectId ? `/projects/${projectId}` : null;
   const focus = budgetCategoryId ? `&focus=${budgetCategoryId}` : '';
@@ -657,10 +679,7 @@ function CategoryBreakdown({
           <ul className="space-y-1">
             {Array.from(new Map(coContributions.map((c) => [c.co_id, c])).values()).map((c) => (
               <li key={c.co_id} className="flex items-baseline justify-between gap-2">
-                <a
-                  href={linkBase ? `${linkBase}/change-orders/${c.co_id}` : '#'}
-                  className="hover:underline"
-                >
+                <a href={coHref(projectId, c.co_id, fromTab)} className="hover:underline">
                   <span className="mr-1.5 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-800">
                     CO {c.co_short_id}
                   </span>

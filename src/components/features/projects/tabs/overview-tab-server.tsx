@@ -51,6 +51,7 @@ async function VarianceSection({ projectId }: { projectId: string }) {
       projectId={projectId}
       appliedChangeOrders={coContributions.appliedOrder}
       allChangeOrders={coContributions.all}
+      fromTab={{ tab: 'overview', label: 'Overview' }}
     />
   );
 }

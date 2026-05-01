@@ -30,6 +30,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { ProjectVersionListItem } from '@/lib/db/queries/project-versions';
+import { withFrom } from '@/lib/nav/from-link';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 
@@ -140,7 +141,11 @@ function VersionRow({
   //   - v1 estimate row → estimate preview
   //   - legacy rows without snapshot or CO → no link
   const href = version.change_order_id
-    ? `/projects/${projectId}/change-orders/${version.change_order_id}`
+    ? withFrom(
+        `/projects/${projectId}/change-orders/${version.change_order_id}`,
+        `/projects/${projectId}?tab=budget`,
+        'Budget',
+      )
     : version.version_number === 1
       ? `/projects/${projectId}/estimate/preview`
       : null;
