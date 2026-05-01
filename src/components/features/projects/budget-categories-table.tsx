@@ -8,8 +8,7 @@
  * from buckets" button that seeds cost lines from bucket estimates.
  */
 
-import { Check, ChevronDown, ChevronRight, FileEdit, X } from 'lucide-react';
-import Link from 'next/link';
+import { Check, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -39,10 +38,6 @@ type BudgetCategoriesTableProps = {
   projectId: string;
   costLines: CostLineRow[];
   catalog: MaterialsCatalogRow[];
-  /** Project's estimate status — when 'approved', surface a soft prompt
-   *  steering financial edits toward a Change Order. Direct edits stay
-   *  free; the banner just makes the recommended path visible. */
-  estimateStatus: 'draft' | 'pending_approval' | 'approved' | 'declined';
   /** Audit lens — categories touched by applied COs get a chip. */
   coContributionsByCategoryId?: Record<string, AppliedChangeOrderContribution[]>;
   /** Editing/Executing posture (decision 6790ef2b). Editing expands
@@ -56,7 +51,6 @@ export function BudgetCategoriesTable({
   projectId,
   costLines,
   catalog,
-  estimateStatus,
   coContributionsByCategoryId = {},
   mode = 'editing',
 }: BudgetCategoriesTableProps) {
@@ -265,24 +259,6 @@ export function BudgetCategoriesTable({
 
   return (
     <div className="space-y-4">
-      {estimateStatus === 'approved' ? (
-        <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950/20">
-          <div className="space-y-0.5">
-            <p className="font-medium text-amber-900 dark:text-amber-200">Estimate is approved</p>
-            <p className="text-amber-800/80 dark:text-amber-300/80">
-              Edits here update the working budget but won't update the customer's signed estimate.
-              To formally adjust the agreed scope, create a Change Order.
-            </p>
-          </div>
-          <Button asChild size="sm" variant="outline">
-            <Link href={`/projects/${projectId}/change-orders/new`}>
-              <FileEdit className="size-3.5" />
-              New Change Order
-            </Link>
-          </Button>
-        </div>
-      ) : null}
-
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => setShowAddBucket((v) => !v)}>
           {showAddBucket ? 'Cancel' : '+ Add category'}

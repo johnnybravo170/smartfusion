@@ -87,9 +87,11 @@ export default async function EstimateTabServer({ projectId }: { projectId: stri
   return (
     <div className="flex flex-col gap-6">
       <AppliedChangeOrdersBanner
+        estimateStatus={project.estimate_status ?? 'draft'}
         appliedCount={coContributions.appliedOrder.length}
         projectId={projectId}
         versions={[]}
+        mode="editing"
       />
       <div className="flex flex-wrap items-center justify-end gap-3 rounded-xl border bg-card px-4 py-2">
         <ProjectDocumentTypeToggle projectId={projectId} initialValue={project.document_type} />

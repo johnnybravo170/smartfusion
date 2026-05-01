@@ -6,7 +6,6 @@ import {
   BudgetModeToggle,
 } from '@/components/features/projects/budget-mode-toggle';
 import { EstimateSentBanner } from '@/components/features/projects/estimate-sent-banner';
-import { HenryInsightStrip } from '@/components/features/projects/henry-insight-strip';
 import { SaveAsTemplateButton } from '@/components/features/projects/save-as-template-button';
 import { ScopeScaffoldGenerator } from '@/components/features/projects/scope-scaffold-generator';
 import { StarterTemplatePicker } from '@/components/features/projects/starter-template-picker';
@@ -60,6 +59,14 @@ export default async function BudgetTabServer({
   const isEmptyScope = costLines.length === 0 && budget.lines.length === 0;
   const showStarterPicker = mode === 'editing' && isEmptyScope && isPreApproval;
 
+  // Right-side actions for the merged-banner / action row. Editing
+  // posture surfaces send + save-as-template; Executing has nothing
+  // CTA-worthy on this row (the merged banner already shows the
+  // change-order entry point).
+  const showSaveAsTemplate = mode === 'editing' && !isEmptyScope;
+  const showSendForApproval = mode === 'editing' && sendable;
+  const hasActionRow = showSaveAsTemplate || showSendForApproval;
+
   return (
     <div className="flex flex-col gap-3">
       <EstimateSentBanner
@@ -68,38 +75,30 @@ export default async function BudgetTabServer({
         customerName={project?.customer?.name ?? null}
         approvalCode={(project?.estimate_approval_code as string | null) ?? null}
       />
+
+      {/* Merged signed-estimate banner. Renders only when the estimate */}
+      {/* is approved; absorbs both the legacy "Estimate is approved" */}
+      {/* amber block and the "Reflects N applied COs" blue banner that */}
+      {/* used to live separately above and inside the table. */}
       <AppliedChangeOrdersBanner
+        estimateStatus={estimateStatus}
         appliedCount={coContributions.appliedOrder.length}
         projectId={projectId}
         versions={versions}
+        mode={mode}
       />
 
-      {/* Mode toggle — large, prominent, anchored at the top of the
-          tab so the operator always knows which posture they're in.
-          Editing = authoring; Executing = tracking. Each posture
-          shows different columns + different action density (see
-          BudgetCategoriesTable). */}
-      <BudgetModeToggle currentMode={mode} />
-
-      {/* Mode-specific actions row — only renders when there's
-          something to act on. Subordinate to the mode toggle above. */}
-      {(mode === 'editing' && (sendable || !isEmptyScope)) || mode === 'executing' ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span>
-            {mode === 'editing'
-              ? 'Build the scope. Send to the customer when ready.'
-              : 'Track actuals against the signed estimate. Edits flow through change orders.'}
-          </span>
-          <div className="flex items-center gap-2">
-            {mode === 'editing' && !isEmptyScope ? (
-              <SaveAsTemplateButton projectId={projectId} />
-            ) : null}
-            {mode === 'editing' && sendable ? (
-              <Button asChild size="sm">
-                <Link href={`/projects/${projectId}/estimate/preview`}>Send for approval</Link>
-              </Button>
-            ) : null}
-          </div>
+      {/* Action row — only renders when there's a CTA to surface. */}
+      {/* Subtitle text dropped (was redundant with the merged banner */}
+      {/* above and the mode toggle below). */}
+      {hasActionRow ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {showSaveAsTemplate ? <SaveAsTemplateButton projectId={projectId} /> : null}
+          {showSendForApproval ? (
+            <Button asChild size="sm">
+              <Link href={`/projects/${projectId}/estimate/preview`}>Send for approval</Link>
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -110,18 +109,15 @@ export default async function BudgetTabServer({
         </>
       ) : null}
 
-      {/* Henry insight strip — Executing mode only. Reads variance +
-          diff signals, surfaces up to 2 actionable observations as
-          clickable rows. Hidden in Editing mode where the operator is
-          authoring scope, not tracking status. */}
-      {mode === 'executing' ? <HenryInsightStrip projectId={projectId} /> : null}
+      {/* Mode toggle — anchored right above the table so the operator */}
+      {/* knows which posture controls the data they're about to read. */}
+      <BudgetModeToggle currentMode={mode} />
 
       <BudgetCategoriesTable
         lines={budget.lines}
         projectId={projectId}
         costLines={costLines}
         catalog={catalog}
-        estimateStatus={estimateStatus}
         coContributionsByCategoryId={Object.fromEntries(coContributions.byCategoryId)}
         mode={mode}
       />

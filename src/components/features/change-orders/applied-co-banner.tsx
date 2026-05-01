@@ -1,59 +1,101 @@
 'use client';
 
 /**
- * Inline banner shown above the Budget tab when at least one v2
- * change order has been applied. Makes it obvious that the numbers
- * reflect post-CO state without renaming the tab — the original
- * signed estimate is unchanged.
+ * Merged signed-estimate banner on the Budget tab. One slim row that
+ * covers two states the older UI surfaced as separate banners:
  *
- * Click "See history" to expand the banner inline into a chronological
- * timeline of every signed version (estimate v1 + each applied CO).
- * Click again to collapse. Same eye position, no floating popover.
+ *   1. The estimate is signed → working budget edits don't touch the
+ *      customer's signed scope. (Was an amber "Estimate is approved"
+ *      block inside the table.)
+ *   2. N change orders have been applied → the visible numbers reflect
+ *      post-CO state. (Was a separate blue "Reflects X applied COs"
+ *      banner above.)
  *
- * Hidden when no applied COs exist so we don't add noise to projects
- * that haven't gone through any change-order activity yet.
+ * Both messages collapse into a single row:
+ *
+ *   ✓ Estimate signed · 2 applied COs   [See history ▾]   [+ Change Order]
+ *
+ * Mode-aware:
+ *   - Editing mode: show the [+ Change Order] CTA on the right.
+ *   - Executing mode: drop the CTA — operator is tracking, not authoring.
+ *
+ * Click "See history" to inline-expand the version timeline (every
+ * signed estimate + applied CO).
+ *
+ * Hidden entirely when the estimate isn't approved yet.
  */
 
-import { ChevronDown, ChevronUp, ExternalLink, Info } from 'lucide-react';
+import { ChevronDown, ChevronUp, ExternalLink, FileEdit, Info } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import type { ProjectVersionListItem } from '@/lib/db/queries/project-versions';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 
 export function AppliedChangeOrdersBanner({
+  estimateStatus,
   appliedCount,
   projectId,
   versions,
+  mode,
 }: {
+  estimateStatus: string;
   appliedCount: number;
   projectId: string;
   versions: ProjectVersionListItem[];
+  mode: 'editing' | 'executing';
 }) {
   const [expanded, setExpanded] = useState(false);
 
-  if (appliedCount <= 0) return null;
+  // Banner only meaningful once the estimate is signed. Pre-approval
+  // states have their own banners (EstimateSentBanner for pending).
+  if (estimateStatus !== 'approved') return null;
+
+  const hasHistory = appliedCount > 0;
+  const showCta = mode === 'editing';
 
   return (
-    <div className="mb-4 overflow-hidden rounded-md border border-blue-200 bg-blue-50/60 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-blue-100/60 dark:hover:bg-blue-950/60"
-      >
+    <div className="overflow-hidden rounded-md border border-blue-200 bg-blue-50/60 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
         <Info className="size-3.5 shrink-0" />
-        <span className="flex-1">
-          Reflects <span className="font-semibold">{appliedCount}</span> applied change{' '}
-          {appliedCount === 1 ? 'order' : 'orders'}. The original signed estimate is unchanged.
+        <span className="flex-1 min-w-0">
+          <span className="font-semibold">Estimate signed</span>
+          {hasHistory ? (
+            <>
+              {' · '}
+              <span className="font-semibold">{appliedCount}</span> applied change{' '}
+              {appliedCount === 1 ? 'order' : 'orders'}
+            </>
+          ) : null}
+          {showCta ? (
+            <span className="hidden text-blue-800/80 sm:inline dark:text-blue-200/80">
+              {' · '}edits update the working budget; scope changes go through a Change Order
+            </span>
+          ) : null}
         </span>
-        <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide">
-          {expanded ? 'Hide history' : 'See history'}
-          {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-        </span>
-      </button>
+        {hasHistory ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide hover:bg-blue-100/60 dark:hover:bg-blue-950/60"
+          >
+            {expanded ? 'Hide history' : 'See history'}
+            {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+          </button>
+        ) : null}
+        {showCta ? (
+          <Button asChild size="xs" variant="outline" className="bg-background">
+            <Link href={`/projects/${projectId}/change-orders/new`}>
+              <FileEdit className="size-3" />
+              Change Order
+            </Link>
+          </Button>
+        ) : null}
+      </div>
 
-      {expanded ? (
+      {expanded && hasHistory ? (
         <div className="border-t border-blue-200/60 bg-blue-50/30 px-3 py-2 dark:border-blue-900/60 dark:bg-blue-950/20">
           {versions.length === 0 ? (
             <p className="py-2 text-blue-800 dark:text-blue-200">
