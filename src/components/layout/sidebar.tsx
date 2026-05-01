@@ -77,7 +77,7 @@ export function SidebarNav({ navItems }: { navItems: VerticalNavItem[] }) {
       data-collapsed={collapsed ? 'true' : undefined}
       className={cn(
         'hidden shrink-0 border-r bg-background transition-[width] duration-200 md:flex md:flex-col',
-        collapsed ? 'w-14' : 'w-64',
+        collapsed ? 'w-14' : 'w-52',
         // Avoid a flash of expanded-then-collapsed on first paint by hiding
         // until we've checked localStorage.
         !hydrated && 'invisible',
@@ -132,7 +132,7 @@ export function MobileSidebarToggle({ navItems }: { navItems: VerticalNavItem[] 
             onClick={() => setOpen(false)}
           />
           <div
-            className="absolute inset-y-0 left-0 w-64 border-r bg-background shadow-lg"
+            className="absolute inset-y-0 left-0 w-56 border-r bg-background shadow-lg"
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"

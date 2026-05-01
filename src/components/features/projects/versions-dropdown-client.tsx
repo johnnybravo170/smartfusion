@@ -128,7 +128,7 @@ export function VersionsDropdownClient({
           }
         }}
       >
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="sm:max-w-3xl lg:max-w-4xl">
           <DialogHeader>
             <DialogTitle>{activeVersion?.label ?? 'Version'}</DialogTitle>
             <DialogDescription>
