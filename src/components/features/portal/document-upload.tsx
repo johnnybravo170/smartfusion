@@ -114,7 +114,9 @@ export function DocumentUpload({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label htmlFor="doc-type">Category</Label>
+          <Label htmlFor="doc-type" className="mb-1.5 block">
+            Category
+          </Label>
           <select
             id="doc-type"
             value={type}
@@ -130,7 +132,9 @@ export function DocumentUpload({
           </select>
         </div>
         <div>
-          <Label htmlFor="doc-title">Title (optional)</Label>
+          <Label htmlFor="doc-title" className="mb-1.5 block">
+            Title (optional)
+          </Label>
           <Input
             id="doc-title"
             value={title}
@@ -143,7 +147,9 @@ export function DocumentUpload({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label htmlFor="doc-expires">Expires (optional)</Label>
+          <Label htmlFor="doc-expires" className="mb-1.5 block">
+            Expires (optional)
+          </Label>
           <Input
             id="doc-expires"
             type="date"
@@ -153,7 +159,9 @@ export function DocumentUpload({
           />
         </div>
         <div>
-          <Label htmlFor="doc-notes">Notes (optional)</Label>
+          <Label htmlFor="doc-notes" className="mb-1.5 block">
+            Notes (optional)
+          </Label>
           <Input
             id="doc-notes"
             value={notes}
@@ -165,7 +173,9 @@ export function DocumentUpload({
 
       {suppliers.length > 0 ? (
         <div>
-          <Label htmlFor="doc-supplier">Sub-trade / vendor (optional)</Label>
+          <Label htmlFor="doc-supplier" className="mb-1.5 block">
+            Sub-trade / vendor (optional)
+          </Label>
           <select
             id="doc-supplier"
             value={supplierId}
