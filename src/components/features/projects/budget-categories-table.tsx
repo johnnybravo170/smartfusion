@@ -341,11 +341,13 @@ export function BudgetCategoriesTable({
                 </thead>
                 <tbody>
                   {sectionLines.map((line) => {
-                    const progress =
-                      line.estimate_cents > 0
-                        ? Math.min(Math.round((line.actual_cents / line.estimate_cents) * 100), 100)
-                        : 0;
-                    const isOver = line.remaining_cents < 0;
+                    // Split "over" into actual vs projected. Spent alone
+                    // > estimate is real overage (red). Spent ≤ estimate
+                    // but spent+committed > estimate is projection — the
+                    // POs/quotes haven't realized yet, so amber, not red.
+                    const totalUsed = line.actual_cents + line.committed_cents;
+                    const isActuallyOver = line.actual_cents > line.estimate_cents;
+                    const isProjectedOver = !isActuallyOver && totalUsed > line.estimate_cents;
                     const isExpanded = expanded.has(line.budget_category_id);
                     const bucketLines = linesByBudgetCategory.get(line.budget_category_id) ?? [];
 
@@ -353,8 +355,8 @@ export function BudgetCategoriesTable({
                       <BudgetCategoryRow
                         key={line.budget_category_id}
                         line={line}
-                        progress={progress}
-                        isOver={isOver}
+                        isActuallyOver={isActuallyOver}
+                        isProjectedOver={isProjectedOver}
                         isExpanded={isExpanded}
                         bucketLines={bucketLines}
                         editingId={editingId}
@@ -404,11 +406,23 @@ export function BudgetCategoriesTable({
                         <td className="px-3 py-1.5 text-right text-muted-foreground">
                           {sectionCommitted > 0 ? formatCurrencyCompact(sectionCommitted) : ''}
                         </td>
-                        <td className="px-3 py-1.5 text-right">
+                        <td
+                          className={cn(
+                            'px-3 py-1.5 text-right',
+                            sectionActual > sectionTotal && 'text-red-600',
+                            sectionActual <= sectionTotal &&
+                              sectionActual + sectionCommitted > sectionTotal &&
+                              'text-amber-600',
+                          )}
+                        >
                           {formatCurrencyCompact(
                             Math.abs(sectionTotal - sectionActual - sectionCommitted),
                           )}
-                          {sectionTotal - sectionActual - sectionCommitted < 0 ? ' over' : ''}
+                          {sectionActual > sectionTotal
+                            ? ' over'
+                            : sectionActual + sectionCommitted > sectionTotal
+                              ? ' projected over'
+                              : ''}
                         </td>
                       </>
                     ) : null}
@@ -424,10 +438,64 @@ export function BudgetCategoriesTable({
   );
 }
 
+/**
+ * Multi-segment budget progress bar.
+ *
+ * Width basis = max(estimate, spent + committed) so the bar always fills
+ * its track when the project is at or over budget. Segments left → right:
+ *   1. spent within estimate    — solid green
+ *   2. spent over estimate      — solid red       (only if actuals blew past)
+ *   3. committed within estimate — light green/hatched
+ *   4. committed over estimate   — light red      (the "projected over" portion)
+ */
+function BudgetProgressBar({
+  estimateCents,
+  spentCents,
+  committedCents,
+}: {
+  estimateCents: number;
+  spentCents: number;
+  committedCents: number;
+}) {
+  const totalUsed = spentCents + committedCents;
+  const basis = Math.max(estimateCents, totalUsed, 1);
+
+  const spentWithin = Math.min(spentCents, estimateCents);
+  const spentOver = Math.max(0, spentCents - estimateCents);
+  const remainingBudgetAfterSpent = Math.max(0, estimateCents - spentCents);
+  const committedWithin = Math.min(committedCents, remainingBudgetAfterSpent);
+  const committedOver = Math.max(0, committedCents - remainingBudgetAfterSpent);
+
+  const pct = (n: number) => `${(n / basis) * 100}%`;
+
+  const tooltip = [
+    `Spent ${formatCurrencyCompact(spentCents)}`,
+    committedCents > 0 ? `Committed ${formatCurrencyCompact(committedCents)}` : null,
+    `Estimate ${formatCurrencyCompact(estimateCents)}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <div className="mt-1 flex h-1 w-full overflow-hidden rounded-full bg-gray-200" title={tooltip}>
+      {spentWithin > 0 ? (
+        <div className="bg-green-500" style={{ width: pct(spentWithin) }} />
+      ) : null}
+      {spentOver > 0 ? <div className="bg-red-500" style={{ width: pct(spentOver) }} /> : null}
+      {committedWithin > 0 ? (
+        <div className="bg-green-300" style={{ width: pct(committedWithin) }} />
+      ) : null}
+      {committedOver > 0 ? (
+        <div className="bg-red-300" style={{ width: pct(committedOver) }} />
+      ) : null}
+    </div>
+  );
+}
+
 type BudgetCategoryRowProps = {
   line: BudgetLine;
-  progress: number;
-  isOver: boolean;
+  isActuallyOver: boolean;
+  isProjectedOver: boolean;
   isExpanded: boolean;
   bucketLines: CostLineRow[];
   editingId: string | null;
@@ -461,8 +529,8 @@ type BudgetCategoryRowProps = {
 function BudgetCategoryRow(props: BudgetCategoryRowProps) {
   const {
     line,
-    progress,
-    isOver,
+    isActuallyOver,
+    isProjectedOver,
     isExpanded,
     bucketLines,
     editingId,
@@ -664,21 +732,27 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
               {line.committed_cents > 0 ? formatCurrencyCompact(line.committed_cents) : ''}
             </td>
             {/* Remaining + progress merged: dollar amount on top, thin */}
-            {/* bar underneath. One column instead of two. */}
-            <td className={cn('px-3 py-1.5 text-right', isOver && 'font-medium text-red-600')}>
+            {/* bar underneath. The bar is multi-segment so the operator */}
+            {/* can tell at a glance how much of the row is real spend */}
+            {/* vs. committed-but-not-yet-realized. Without the split a */}
+            {/* row reads as "blown the budget" when in fact actuals are */}
+            {/* under and the overage is purely projected from POs. */}
+            <td
+              className={cn(
+                'px-3 py-1.5 text-right',
+                isActuallyOver && 'font-medium text-red-600',
+                isProjectedOver && 'font-medium text-amber-600',
+              )}
+            >
               <div>
                 {formatCurrencyCompact(Math.abs(line.remaining_cents))}
-                {isOver ? ' over' : ''}
+                {isActuallyOver ? ' over' : isProjectedOver ? ' projected over' : ''}
               </div>
-              <div className="mt-1 h-1 w-full rounded-full bg-gray-200">
-                <div
-                  className={cn(
-                    'h-full rounded-full',
-                    isOver ? 'bg-red-500' : progress > 80 ? 'bg-yellow-500' : 'bg-green-500',
-                  )}
-                  style={{ width: `${Math.min(progress, 100)}%` }}
-                />
-              </div>
+              <BudgetProgressBar
+                estimateCents={line.estimate_cents}
+                spentCents={line.actual_cents}
+                committedCents={line.committed_cents}
+              />
             </td>
           </>
         ) : null}
@@ -848,26 +922,30 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                               <td className="px-2 py-1.5 text-right align-top font-medium tabular-nums">
                                 {formatCurrencyCompact(cl.line_price_cents)}
                               </td>
-                              <td className="px-2 py-1.5 align-top">
-                                <div className="flex items-center justify-end gap-1">
-                                  <Button
-                                    size="xs"
-                                    variant="ghost"
+                              {/* Plain text-link buttons (not Button size="xs") */}
+                              {/* so the baseline lines up with the numeric */}
+                              {/* cells in the same row. xs Button adds */}
+                              {/* height + padding that visibly drifts off */}
+                              {/* the text baseline of $X,XXX cells. */}
+                              <td className="px-2 py-1.5 text-right align-top tabular-nums">
+                                <div className="inline-flex items-center gap-3">
+                                  <button
+                                    type="button"
                                     onClick={() => {
                                       setEditingLine(cl);
                                       setAddingLineFor(null);
                                     }}
+                                    className="hover:underline"
                                   >
                                     Edit
-                                  </Button>
-                                  <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    className="text-destructive hover:text-destructive"
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => deleteLine(cl.id)}
+                                    className="text-destructive hover:underline"
                                   >
                                     Delete
-                                  </Button>
+                                  </button>
                                 </div>
                               </td>
                             </tr>
