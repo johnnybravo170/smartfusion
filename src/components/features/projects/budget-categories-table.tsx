@@ -9,6 +9,7 @@
  */
 
 import { Check, ChevronDown, ChevronRight, X } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -20,7 +21,7 @@ import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-ord
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import type { BudgetLine } from '@/lib/db/queries/project-budget-categories';
-import { formatCurrency, formatCurrencyCompact } from '@/lib/pricing/calculator';
+import { formatCurrencyCompact } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 import {
   addBudgetCategoryAction,
@@ -698,72 +699,60 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         ) : null}
       </tr>
       {isExpanded && (
-        <tr className="border-b bg-muted/20">
+        // Stronger bg + a left accent stripe that visually attaches the
+        // expanded detail to its parent bucket row above. Eyes can follow
+        // "this content belongs to that bucket" without re-reading.
+        <tr className="border-b bg-muted/40">
           <td />
-          <td colSpan={mode === 'executing' ? 5 : 2} className="px-3 py-3">
+          <td
+            colSpan={mode === 'executing' ? 5 : 2}
+            className="border-l-2 border-primary/40 px-3 py-3"
+          >
             <div className="space-y-3">
-              {/* Actuals breakdown by source — synthesized from time_entries,
-                  expenses, project_bills. Each row deep-links to the tab
-                  where the underlying records live. */}
-              {(line.labor_cents > 0 || line.bills_cents > 0 || line.expense_cents > 0) && (
-                <div className="rounded border bg-background">
-                  <div className="border-b bg-muted/30 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Spent on this category
-                  </div>
-                  <table className="w-full text-xs">
-                    <tbody>
-                      {line.labor_cents > 0 ? (
-                        <tr className="border-t first:border-0">
-                          <td className="px-2 py-1.5">Labour</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">
-                            {formatCurrencyCompact(line.labor_cents)}
-                          </td>
-                          <td className="w-16 px-2 py-1.5 text-right">
-                            <a
-                              href={`/projects/${projectId}?tab=time&focus=${line.budget_category_id}`}
-                              className="text-primary hover:underline"
-                            >
-                              View
-                            </a>
-                          </td>
-                        </tr>
-                      ) : null}
-                      {line.bills_cents > 0 ? (
-                        <tr className="border-t">
-                          <td className="px-2 py-1.5">Bills</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">
-                            {formatCurrencyCompact(line.bills_cents)}
-                          </td>
-                          <td className="px-2 py-1.5 text-right">
-                            <a
-                              href={`/projects/${projectId}?tab=costs&focus=${line.budget_category_id}`}
-                              className="text-primary hover:underline"
-                            >
-                              View
-                            </a>
-                          </td>
-                        </tr>
-                      ) : null}
-                      {line.expense_cents > 0 ? (
-                        <tr className="border-t">
-                          <td className="px-2 py-1.5">Expenses</td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">
-                            {formatCurrencyCompact(line.expense_cents)}
-                          </td>
-                          <td className="px-2 py-1.5 text-right">
-                            <a
-                              href={`/projects/${projectId}?tab=costs&focus=${line.budget_category_id}`}
-                              className="text-primary hover:underline"
-                            >
-                              View
-                            </a>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
+              {/* Actuals breakdown by source — synthesized from */}
+              {/* time_entries, expenses, project_bills. Slim inline */}
+              {/* strip rather than a panel; each chunk deep-links to */}
+              {/* the tab where the underlying records live. */}
+              {line.labor_cents > 0 || line.bills_cents > 0 || line.expense_cents > 0 ? (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-background/60 px-3 py-1.5 text-xs">
+                  <span className="font-medium uppercase tracking-wide text-[10px] text-muted-foreground">
+                    Spent
+                  </span>
+                  {line.labor_cents > 0 ? (
+                    <Link
+                      href={`/projects/${projectId}?tab=time&focus=${line.budget_category_id}`}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      Labour{' '}
+                      <span className="font-medium tabular-nums text-foreground">
+                        {formatCurrencyCompact(line.labor_cents)}
+                      </span>
+                    </Link>
+                  ) : null}
+                  {line.bills_cents > 0 ? (
+                    <Link
+                      href={`/projects/${projectId}?tab=costs&focus=${line.budget_category_id}`}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      Bills{' '}
+                      <span className="font-medium tabular-nums text-foreground">
+                        {formatCurrencyCompact(line.bills_cents)}
+                      </span>
+                    </Link>
+                  ) : null}
+                  {line.expense_cents > 0 ? (
+                    <Link
+                      href={`/projects/${projectId}?tab=costs&focus=${line.budget_category_id}`}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      Expenses{' '}
+                      <span className="font-medium tabular-nums text-foreground">
+                        {formatCurrencyCompact(line.expense_cents)}
+                      </span>
+                    </Link>
+                  ) : null}
                 </div>
-              )}
+              ) : null}
 
               {bucketLines.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No line items in this category yet.</p>
@@ -774,8 +763,8 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                 // the Label col and clip Total. Local overflow-x-auto + a
                 // table-level min-w keeps the collapsed table tidy and lets
                 // only this sub-table scroll horizontally when expanded.
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[560px] table-fixed text-xs">
+                <div className="overflow-x-auto rounded-md border bg-background">
+                  <table className="w-full min-w-[600px] table-fixed text-xs">
                     <colgroup>
                       <col />
                       <col className="w-12" />
@@ -783,17 +772,17 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                       <col className="w-20" />
                       <col className="w-20" />
                       <col className="w-24" />
-                      <col className="w-10" />
+                      <col className="w-24" />
                     </colgroup>
                     <thead>
-                      <tr className="text-muted-foreground">
-                        <th className="px-2 py-1 text-left font-medium">Label</th>
-                        <th className="px-2 py-1 text-right font-medium">Qty</th>
-                        <th className="px-2 py-1 text-left font-medium">Unit</th>
-                        <th className="px-2 py-1 text-right font-medium">Cost</th>
-                        <th className="px-2 py-1 text-right font-medium">Price</th>
-                        <th className="px-2 py-1 text-right font-medium">Total</th>
-                        <th className="px-2 py-1" />
+                      <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <th className="px-2 py-1.5 text-left font-medium">Label</th>
+                        <th className="px-2 py-1.5 text-right font-medium">Qty</th>
+                        <th className="px-2 py-1.5 text-left font-medium">Unit</th>
+                        <th className="px-2 py-1.5 text-right font-medium">Cost</th>
+                        <th className="px-2 py-1.5 text-right font-medium">Price</th>
+                        <th className="px-2 py-1.5 text-right font-medium">Total</th>
+                        <th className="px-2 py-1.5" />
                       </tr>
                     </thead>
                     <tbody>
@@ -801,75 +790,88 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                         const isLineExpanded = expandedLineIds.has(cl.id);
                         return (
                           <Fragment key={cl.id}>
-                            <tr className="border-t">
-                              <td className="px-2 py-1">
-                                {/* Executing mode: clicking the label
-                                  toggles the inline spend breakdown
-                                  for this specific line. Editing mode
-                                  has nothing meaningful to drill into. */}
-                                {mode === 'executing' ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleLineSpend(cl.id)}
-                                    className="inline-flex items-center gap-1 text-left hover:text-foreground"
-                                    aria-expanded={isLineExpanded}
-                                    title={
-                                      isLineExpanded
-                                        ? 'Hide spend on this line'
-                                        : 'See spend on this line'
-                                    }
-                                  >
-                                    {isLineExpanded ? (
-                                      <ChevronDown className="size-3.5 text-muted-foreground" />
-                                    ) : (
-                                      <ChevronRight className="size-3.5 text-muted-foreground" />
-                                    )}
-                                    {cl.label}
-                                  </button>
-                                ) : (
-                                  cl.label
-                                )}
-                                {cl.notes && (
-                                  <span className="ml-1 text-muted-foreground">— {cl.notes}</span>
-                                )}
+                            <tr className="border-t hover:bg-muted/40">
+                              <td className="px-2 py-1.5 align-top">
+                                {/* Label on its own line; description */}
+                                {/* drops to muted text-xs underneath */}
+                                {/* (clamped to 2 lines, full text on */}
+                                {/* hover via title). Executing mode: */}
+                                {/* the label toggles the inline spend */}
+                                {/* breakdown for this specific line. */}
+                                <div className="flex flex-col gap-0.5">
+                                  {mode === 'executing' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleLineSpend(cl.id)}
+                                      className="inline-flex items-start gap-1 text-left font-medium hover:text-foreground"
+                                      aria-expanded={isLineExpanded}
+                                      title={
+                                        isLineExpanded
+                                          ? 'Hide spend on this line'
+                                          : 'See spend on this line'
+                                      }
+                                    >
+                                      {isLineExpanded ? (
+                                        <ChevronDown className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                                      ) : (
+                                        <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                                      )}
+                                      <span>{cl.label}</span>
+                                    </button>
+                                  ) : (
+                                    <span className="font-medium">{cl.label}</span>
+                                  )}
+                                  {cl.notes ? (
+                                    <span
+                                      className="line-clamp-2 text-[11px] text-muted-foreground"
+                                      title={cl.notes}
+                                    >
+                                      {cl.notes}
+                                    </span>
+                                  ) : null}
+                                </div>
                               </td>
-                              <td className="px-2 py-1 text-right tabular-nums">
+                              <td className="px-2 py-1.5 text-right align-top tabular-nums">
                                 {Number(cl.qty)}
                               </td>
-                              <td className="px-2 py-1 text-muted-foreground">{cl.unit}</td>
-                              <td className="px-2 py-1 text-right tabular-nums text-muted-foreground">
+                              <td className="px-2 py-1.5 align-top text-muted-foreground">
+                                {cl.unit}
+                              </td>
+                              <td className="px-2 py-1.5 text-right align-top tabular-nums text-muted-foreground">
                                 {formatCurrencyCompact(cl.unit_cost_cents)}
                               </td>
-                              <td className="px-2 py-1 text-right tabular-nums">
+                              <td className="px-2 py-1.5 text-right align-top tabular-nums">
                                 {formatCurrencyCompact(cl.unit_price_cents)}
                               </td>
-                              <td className="px-2 py-1 text-right font-medium tabular-nums">
+                              <td className="px-2 py-1.5 text-right align-top font-medium tabular-nums">
                                 {formatCurrencyCompact(cl.line_price_cents)}
                               </td>
-                              <td className="px-2 py-1 text-right">
-                                <Button
-                                  size="xs"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    setEditingLine(cl);
-                                    setAddingLineFor(null);
-                                  }}
-                                >
-                                  Edit
-                                </Button>
-                                <Button
-                                  size="xs"
-                                  variant="ghost"
-                                  className="text-destructive hover:text-destructive"
-                                  onClick={() => deleteLine(cl.id)}
-                                >
-                                  Del
-                                </Button>
+                              <td className="px-2 py-1.5 align-top">
+                                <div className="flex items-center justify-end gap-0.5">
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setEditingLine(cl);
+                                      setAddingLineFor(null);
+                                    }}
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => deleteLine(cl.id)}
+                                  >
+                                    Delete
+                                  </Button>
+                                </div>
                               </td>
                             </tr>
                             {mode === 'executing' && isLineExpanded ? (
                               <tr>
-                                <td colSpan={7} className="bg-background px-2 py-2">
+                                <td colSpan={7} className="bg-muted/30 px-3 py-2">
                                   <CostLineActualsInline
                                     projectId={projectId}
                                     costLineId={cl.id}
