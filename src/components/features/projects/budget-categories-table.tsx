@@ -21,6 +21,7 @@ import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-ord
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import type { BudgetLine } from '@/lib/db/queries/project-budget-categories';
+import { withFrom } from '@/lib/nav/from-link';
 import { formatCurrencyCompact } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 import {
@@ -622,7 +623,11 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
             {coChips.map((c) => (
               <a
                 key={c.co_id}
-                href={`/projects/${projectId}/change-orders/${c.co_id}`}
+                href={withFrom(
+                  `/projects/${projectId}/change-orders/${c.co_id}`,
+                  `/projects/${projectId}?tab=budget`,
+                  'Budget',
+                )}
                 title={`Touched by CO: ${c.co_title}`}
                 className="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-800 hover:bg-blue-200"
               >

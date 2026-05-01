@@ -1,7 +1,6 @@
-import { ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ChangeOrderDetail } from '@/components/features/change-orders/change-order-detail';
+import { DetailPageNav } from '@/components/layout/detail-page-nav';
 import { getChangeOrder, listChangeOrderLines } from '@/lib/db/queries/change-orders';
 import { getProject } from '@/lib/db/queries/projects';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -47,13 +46,9 @@ export default async function ChangeOrderDetailPage({
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      <Link
-        href={`/projects/${id}?tab=change-orders`}
-        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-3.5" />
-        Change Orders
-      </Link>
+      <div className="mb-4">
+        <DetailPageNav homeHref={`/projects/${id}?tab=budget`} homeLabel="Project budget" />
+      </div>
 
       <ChangeOrderDetail
         changeOrder={changeOrder}
