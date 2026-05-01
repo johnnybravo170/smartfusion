@@ -1,4 +1,4 @@
-import { Upload } from 'lucide-react';
+import { Info, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
@@ -49,6 +49,27 @@ export default async function BusinessHealthPage() {
       </Suspense>
 
       <OwnerDrawsPanel initialRows={draws} year={year} />
+
+      <aside className="rounded-md border bg-muted/30 p-4 text-xs text-muted-foreground">
+        <div className="mb-1 flex items-center gap-1.5 font-medium text-foreground">
+          <Info className="size-3.5" />
+          How this fits with your bookkeeping
+        </div>
+        <p>
+          This page is your <strong>operational view</strong> — fast snapshots so you can see where
+          you stand today. Your books still live in QuickBooks (or wherever your bookkeeper works);
+          HeyHenry pushes the important transactions over so they see clean data without re-entering
+          anything. We don't try to replace bank reconciliation in QBO.
+        </p>
+        <p className="mt-2">
+          Tip: instead of clicking "mark paid" on every invoice, drop your monthly bank statement
+          into{' '}
+          <Link href="/business-health/bank-import" className="underline hover:text-foreground">
+            Import bank statement
+          </Link>{' '}
+          — we'll find your unpaid invoices and expenses inside it and mark them paid in one go.
+        </p>
+      </aside>
     </div>
   );
 }

@@ -30,6 +30,48 @@ a card to ops.
 
 ---
 
+## 1.5 Strategic line — what HeyHenry is NOT
+
+The integration only works if HH has a clear lane. **HH is the operational
+truth — what happened in the business. QBO is the bookkeeper's truth — what
+the books say.** HH captures rich operational data (estimates, projects,
+expenses, time, owner draws) and pushes clean transactions to QBO. HH never
+tries to *be* the GL.
+
+This means a hard NO on the following, no matter how often they get
+suggested:
+
+- **Don't replicate the QBO ledger inside HH.** Bank statement import is a
+  *payment-mark assist* — it matches bank lines to existing invoices /
+  expenses / bills so the GC doesn't manually mark each one paid. The
+  unmatched pile (transfers, fees, interest) is QBO's problem, not ours.
+- **Don't push bank_transactions themselves to QBO.** They're an HH-internal
+  cache for matching. QBO has its own bank feed — duplicating it would just
+  cause reconciliation conflicts.
+- **Don't build a multi-account ledger, balance-forwarding, or "reconcile
+  this account" reports.** Bookkeeper-grade work; needs accounting standards
+  HH doesn't have.
+- **Don't add a real chart of accounts in HH.** The existing
+  `coa-mapping.ts` is a *mapping table* against the bookkeeper's QBO chart.
+  Keep it that way; do not expand into a real COA.
+- **Don't add tax categorization on owner draws.** Salary vs dividend has
+  tax consequences resolved at year-end by the accountant. HH records the
+  operator's intent ("paid $X as salary on Y date"); the JE we push reflects
+  that. The accountant adjusts on close.
+- **Don't add journal-entry editing in HH.** Owner draws and similar are
+  *facts* in HH that become journal entries on push. Edit the fact, not the
+  JE.
+- **Don't add tax-return outputs (T2125, GST/HST returns, year-end close,
+  retained earnings, T4s, T5s).** These are QBO's job and the accountant's
+  job. Building them = competing with QBO on its home turf, requiring AICPA
+  / CPA Canada compliance HH will never own.
+
+If a feature ask doesn't fit the operational-truth lane, it goes to the QBO
+bridge instead — model it as a new sync target rather than a new HH module.
+Bookkeepers staying happy is a top-3 retention lever.
+
+---
+
 ## 2. Testing Strategy
 
 This is the part to think hardest about up front, because QBO has no good
@@ -457,6 +499,19 @@ Spawn these as separate cards once the V1 card moves to done:
    Attachments. ~2 pts.
 5. **Token storage migration to Supabase Vault** — before customer #20. ~3 pts.
 6. **QBO Payroll Canada hours sync** — separate spec already written. ~13 pts.
+7. **Owner draws → QBO `JournalEntry` push.** Each new `owner_draws` row
+   becomes a journal entry: debit Owner's Equity (or Shareholder Loan,
+   depending on entity type), credit the operating bank account. Mapping is
+   per-tenant and one-time during onboarding. Includes draw_type in
+   `PrivateNote` for the bookkeeper. The accountant adjusts the equity vs
+   loan classification at year-end — HH records the fact, not the tax
+   treatment. ~5 pts.
+8. **Bank-import payment-confirm → existing Payment sync.** When a bank
+   transaction is matched to an unpaid invoice and the GC confirms in the
+   review queue, the existing `markInvoicePaidAction` fires — which already
+   triggers the §4.2 Payment push to QBO. **No new sync code needed**, but
+   verify the chain end-to-end on first bank-recon launch. ~1 pt (verification
+   only).
 
 ---
 
