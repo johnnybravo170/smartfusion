@@ -295,11 +295,17 @@ export function BudgetCategoriesTable({
               {/* can run longer before clamping. Executing also drops the */}
               {/* trailing actions col (no per-row × in Executing). */}
               <table
-                className={`table-fixed text-sm ${mode === 'executing' ? 'w-full min-w-[660px]' : 'w-full'}`}
+                className={`table-fixed text-sm ${mode === 'executing' ? 'w-full min-w-[760px]' : 'w-full'}`}
               >
                 <colgroup>
                   <col className="w-7" />
-                  <col className={mode === 'executing' ? 'w-56' : ''} />
+                  {/* Executing mode: leave Category undefined so table-fixed */}
+                  {/* hands it ALL the leftover width (rather than fixing it */}
+                  {/* at w-56 and proportionally scaling — that left 40-50% of */}
+                  {/* description col empty after the 2-line clamp on wide */}
+                  {/* viewports). All other cols stay fixed-width so numbers */}
+                  {/* don't dance when a description is long. */}
+                  <col />
                   <col className="w-28" />
                   {mode === 'executing' ? <col className="w-24" /> : null}
                   {mode === 'executing' ? <col className="w-24" /> : null}
