@@ -22,7 +22,7 @@ function NavList({
   return (
     <nav
       aria-label="Primary"
-      className={cn('flex flex-col gap-1', collapsed ? 'px-2 py-3' : 'p-3')}
+      className={cn('flex flex-col gap-0.5', collapsed ? 'px-2 py-2' : 'p-2')}
     >
       {navItems.map((item) => {
         const Icon = resolveIcon(item.icon);
@@ -85,7 +85,7 @@ export function SidebarNav({ navItems }: { navItems: VerticalNavItem[] }) {
     >
       <div
         className={cn(
-          'flex h-14 items-center border-b',
+          'flex h-12 items-center border-b',
           collapsed ? 'justify-center px-2' : 'justify-between px-4',
         )}
       >
