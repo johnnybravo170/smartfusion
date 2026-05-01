@@ -311,22 +311,23 @@ export function BudgetCategoriesTable({
               {section}
             </h3>
             <div className="overflow-x-auto rounded-md border">
-              {/* Executing-mode fixed cols (Estimate + Spent + Committed */}
-              {/* + Remaining/Progress + actions) sum to ~536px after */}
-              {/* merging the Progress bar into the Remaining cell. Add */}
-              {/* the w-56 Category col and we need ~760px minimum so the */}
-              {/* category text doesn't get crushed on narrow viewports. */}
-              {/* Parent has overflow-x-auto for mobile horizontal scroll. */}
+              {/* Number columns sized for typical values ($X,XXX) rather */}
+              {/* than worst-case ($XXX,XXX.XX). Combined with */}
+              {/* formatCurrencyCompact (drops .00 on whole dollars), this */}
+              {/* frees ~64px of width back into the Category column so */}
+              {/* descriptions can run longer before clamping. Executing */}
+              {/* fixed cols total ~488px now; with the w-56 Category */}
+              {/* col, min-w-[700px] keeps mobile scrolling honest. */}
               <table
-                className={`table-fixed text-sm ${mode === 'executing' ? 'w-full min-w-[760px]' : 'w-full'}`}
+                className={`table-fixed text-sm ${mode === 'executing' ? 'w-full min-w-[700px]' : 'w-full'}`}
               >
                 <colgroup>
                   <col className="w-8" />
                   <col className={mode === 'executing' ? 'w-56' : ''} />
-                  <col className="w-32" />
+                  <col className="w-28" />
+                  {mode === 'executing' ? <col className="w-24" /> : null}
+                  {mode === 'executing' ? <col className="w-24" /> : null}
                   {mode === 'executing' ? <col className="w-28" /> : null}
-                  {mode === 'executing' ? <col className="w-28" /> : null}
-                  {mode === 'executing' ? <col className="w-32" /> : null}
                   <col className="w-10" />
                 </colgroup>
                 <thead>
@@ -413,15 +414,19 @@ export function BudgetCategoriesTable({
                     <td className="px-3 py-1.5">
                       {section.charAt(0).toUpperCase() + section.slice(1)} Total
                     </td>
-                    <td className="px-3 py-1.5 text-right">{formatCurrency(sectionTotal)}</td>
+                    <td className="px-3 py-1.5 text-right">
+                      {formatCurrencyCompact(sectionTotal)}
+                    </td>
                     {mode === 'executing' ? (
                       <>
-                        <td className="px-3 py-1.5 text-right">{formatCurrency(sectionActual)}</td>
+                        <td className="px-3 py-1.5 text-right">
+                          {formatCurrencyCompact(sectionActual)}
+                        </td>
                         <td className="px-3 py-1.5 text-right text-muted-foreground">
-                          {sectionCommitted > 0 ? formatCurrency(sectionCommitted) : ''}
+                          {sectionCommitted > 0 ? formatCurrencyCompact(sectionCommitted) : ''}
                         </td>
                         <td className="px-3 py-1.5 text-right">
-                          {formatCurrency(
+                          {formatCurrencyCompact(
                             Math.abs(sectionTotal - sectionActual - sectionCommitted),
                           )}
                           {sectionTotal - sectionActual - sectionCommitted < 0 ? ' over' : ''}
@@ -669,21 +674,21 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
               className="cursor-pointer hover:underline"
               onClick={() => startEdit(line)}
             >
-              {formatCurrency(line.estimate_cents)}
+              {formatCurrencyCompact(line.estimate_cents)}
             </button>
           )}
         </td>
         {mode === 'executing' ? (
           <>
-            <td className="px-3 py-1.5 text-right">{formatCurrency(line.actual_cents)}</td>
+            <td className="px-3 py-1.5 text-right">{formatCurrencyCompact(line.actual_cents)}</td>
             <td className="px-3 py-1.5 text-right text-muted-foreground">
-              {line.committed_cents > 0 ? formatCurrency(line.committed_cents) : ''}
+              {line.committed_cents > 0 ? formatCurrencyCompact(line.committed_cents) : ''}
             </td>
             {/* Remaining + progress merged: dollar amount on top, thin */}
             {/* bar underneath. One column instead of two. */}
             <td className={cn('px-3 py-1.5 text-right', isOver && 'font-medium text-red-600')}>
               <div>
-                {formatCurrency(Math.abs(line.remaining_cents))}
+                {formatCurrencyCompact(Math.abs(line.remaining_cents))}
                 {isOver ? ' over' : ''}
               </div>
               <div className="mt-1 h-1 w-full rounded-full bg-gray-200">
