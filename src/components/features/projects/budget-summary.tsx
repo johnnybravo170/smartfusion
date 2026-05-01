@@ -186,8 +186,13 @@ export function VarianceTab({
     : actual_total_cents > estimated_cents * 0.8;
 
   const marginPositive = margin_at_risk_cents > 0;
-  const marginLabel = isComplete ? 'Realized Margin' : 'Margin at Risk';
-  const marginSubLabel = isComplete ? 'final margin' : 'remaining margin';
+  // "Projected Margin" while in flight (= revenue − spent − committed,
+  // i.e. what you'll keep if commitments land at the committed cost).
+  // "Realized Margin" once complete — same number, different framing.
+  // Old label was "Margin at Risk" which sounded like *the slice
+  // threatened*, but the math gives you the slice still safely yours.
+  const marginLabel = isComplete ? 'Realized Margin' : 'Projected Margin';
+  const marginSubLabel = isComplete ? 'final margin' : 'projected take-home';
 
   // Estimated stat sub-line shows the composition: scope subtotal + mgmt
   // fee, plus CO contribution if any have been applied. Uses scope
@@ -468,7 +473,7 @@ export function VarianceTab({
                   <th className="px-3 py-2 text-right font-medium">Estimated</th>
                   <th className="px-3 py-2 text-right font-medium">Committed</th>
                   <th className="px-3 py-2 text-right font-medium">Actual</th>
-                  <th className="px-3 py-2 text-right font-medium">Margin Left</th>
+                  <th className="px-3 py-2 text-right font-medium">Projected Margin</th>
                 </tr>
               </thead>
               <tbody>
@@ -666,7 +671,7 @@ function CategoryBreakdown({
         <BreakdownStat label="Committed" value={formatCurrency(row.committed_cents)} />
         <BreakdownStat label="Actual" value={formatCurrency(row.actual_cents)} />
         <BreakdownStat
-          label="Margin Left"
+          label="Projected Margin"
           value={formatCurrency(row.margin_at_risk_cents)}
           danger={row.margin_at_risk_cents < 0}
         />
