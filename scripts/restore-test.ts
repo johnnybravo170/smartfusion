@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Restore drill. Downloads the latest encrypted dump from R2, decrypts,
+ * Restore drill. Downloads the latest encrypted dump from S3, decrypts,
  * restores into DRILL_DATABASE_URL, asserts expected tables exist and
  * hold non-trivial row counts. Fails loudly — untested backups are no
  * backups.
@@ -11,14 +11,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import postgres from 'postgres';
 
-const { BACKUP_ENCRYPTION_KEY, R2_ACCOUNT_ID, R2_BUCKET, DRILL_DATABASE_URL } = process.env;
+const { BACKUP_ENCRYPTION_KEY, S3_BUCKET, DRILL_DATABASE_URL } = process.env;
 
-if (!BACKUP_ENCRYPTION_KEY || !R2_ACCOUNT_ID || !R2_BUCKET || !DRILL_DATABASE_URL) {
+if (!BACKUP_ENCRYPTION_KEY || !S3_BUCKET || !DRILL_DATABASE_URL) {
   console.error('Missing required env vars');
   process.exit(1);
 }
 
-const ENDPOINT = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
 const work = mkdtempSync(join(tmpdir(), 'restore-drill-'));
 
 function sh(cmd: string, opts: { env?: NodeJS.ProcessEnv } = {}) {
@@ -32,7 +31,7 @@ function shOut(cmd: string): string {
 try {
   console.log('→ Listing daily/ to find latest dump...');
   const list = shOut(
-    `aws s3api list-objects-v2 --bucket "${R2_BUCKET}" --prefix daily/ --endpoint-url "${ENDPOINT}" --query "sort_by(Contents, &LastModified)[-1].Key" --output text`,
+    `aws s3api list-objects-v2 --bucket "${S3_BUCKET}" --prefix daily/ --query "sort_by(Contents, &LastModified)[-1].Key" --output text`,
   ).trim();
   if (!list || list === 'None') throw new Error('No backups found in daily/');
   console.log(`  latest: ${list}`);
@@ -41,7 +40,7 @@ try {
   const dumpPath = join(work, 'latest.dump');
 
   console.log('→ Downloading...');
-  sh(`aws s3 cp "s3://${R2_BUCKET}/${list}" "${encPath}" --endpoint-url "${ENDPOINT}"`);
+  sh(`aws s3 cp "s3://${S3_BUCKET}/${list}" "${encPath}"`);
 
   console.log('→ Decrypting...');
   sh(
