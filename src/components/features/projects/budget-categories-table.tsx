@@ -764,7 +764,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                 // table-level min-w keeps the collapsed table tidy and lets
                 // only this sub-table scroll horizontally when expanded.
                 <div className="overflow-x-auto rounded-md border bg-background">
-                  <table className="w-full min-w-[600px] table-fixed text-xs">
+                  <table className="w-full min-w-[640px] table-fixed text-xs">
                     <colgroup>
                       <col />
                       <col className="w-12" />
@@ -772,7 +772,9 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                       <col className="w-20" />
                       <col className="w-20" />
                       <col className="w-24" />
-                      <col className="w-24" />
+                      {/* Actions: Edit + Delete at size="xs" need ~110px */}
+                      {/* + gap. w-24 was overflowing into the Total col. */}
+                      <col className="w-32" />
                     </colgroup>
                     <thead>
                       <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -847,7 +849,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                                 {formatCurrencyCompact(cl.line_price_cents)}
                               </td>
                               <td className="px-2 py-1.5 align-top">
-                                <div className="flex items-center justify-end gap-0.5">
+                                <div className="flex items-center justify-end gap-1">
                                   <Button
                                     size="xs"
                                     variant="ghost"
