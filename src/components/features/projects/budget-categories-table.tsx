@@ -714,7 +714,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
               {/* strip rather than a panel; each chunk deep-links to */}
               {/* the tab where the underlying records live. */}
               {line.labor_cents > 0 || line.bills_cents > 0 || line.expense_cents > 0 ? (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 text-xs dark:border-slate-800/60 dark:bg-slate-900/40">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-blue-200 bg-blue-50/80 px-3 py-1.5 text-xs dark:border-blue-900/60 dark:bg-blue-950/30">
                   <span className="font-medium uppercase tracking-wide text-[10px] text-muted-foreground">
                     Spent
                   </span>
