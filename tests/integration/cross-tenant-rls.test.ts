@@ -252,6 +252,32 @@ const RLS_TABLE_CASES: RlsCase[] = [
     updatePayload: { wording_shown: 'cross-tenant tamper' },
     skipInsertReject: true,
   },
+  {
+    table: 'owner_draws',
+    seed: async ({ admin, tenant, stamp }) => {
+      const r = await admin
+        .from('owner_draws')
+        .insert({
+          tenant_id: tenant.tenantId,
+          paid_at: '2026-01-15',
+          amount_cents: 100000,
+          draw_type: 'salary',
+          note: `seed-${stamp}`,
+        })
+        .select('id')
+        .single();
+      if (r.error || !r.data) throw new Error(r.error?.message ?? 'owner_draws seed failed');
+      return r.data.id as string;
+    },
+    updatePayload: { note: 'cross-tenant tamper' },
+    insertAcrossTenants: ({ tenant, stamp }) => ({
+      tenant_id: tenant.tenantId,
+      paid_at: '2026-01-15',
+      amount_cents: 50000,
+      draw_type: 'dividend',
+      note: `inject-${stamp}`,
+    }),
+  },
 ];
 
 async function provisionTenant(
