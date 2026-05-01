@@ -28,7 +28,7 @@ function shOut(cmd: string): string {
   return execSync(cmd, { encoding: 'utf8' });
 }
 
-try {
+async function main() {
   console.log('→ Listing daily/ to find latest dump...');
   const list = shOut(
     `aws s3api list-objects-v2 --bucket "${S3_BUCKET}" --prefix daily/ --query "sort_by(Contents, &LastModified)[-1].Key" --output text`,
@@ -53,7 +53,7 @@ try {
   );
 
   console.log('→ Verifying...');
-  const sql = postgres(DRILL_DATABASE_URL, { max: 1 });
+  const sql = postgres(DRILL_DATABASE_URL!, { max: 1 });
 
   const expectedTables = ['tenants', 'customers', 'projects', 'jobs'];
   for (const t of expectedTables) {
@@ -69,6 +69,13 @@ try {
 
   await sql.end();
   console.log('✓ Restore drill passed');
-} finally {
-  rmSync(work, { recursive: true, force: true });
 }
+
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  })
+  .finally(() => {
+    rmSync(work, { recursive: true, force: true });
+  });
