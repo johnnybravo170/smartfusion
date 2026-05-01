@@ -59,13 +59,14 @@ export default async function BudgetTabServer({
   const isEmptyScope = costLines.length === 0 && budget.lines.length === 0;
   const showStarterPicker = mode === 'editing' && isEmptyScope && isPreApproval;
 
-  // Right-side actions for the merged-banner / action row. Editing
-  // posture surfaces send + save-as-template; Executing has nothing
-  // CTA-worthy on this row (the merged banner already shows the
-  // change-order entry point).
+  // Right-side actions. Save-as-template is rendered down inside the
+  // table's own action row (next to Add category / Generate Estimate)
+  // so it lives with the other budget-authoring tools. Send-for-approval
+  // stays in its own top-of-tab row — it's a strong CTA that deserves
+  // top placement when the estimate is sendable.
   const showSaveAsTemplate = mode === 'editing' && !isEmptyScope;
   const showSendForApproval = mode === 'editing' && sendable;
-  const hasActionRow = showSaveAsTemplate || showSendForApproval;
+  const hasActionRow = showSendForApproval;
 
   return (
     <div className="flex flex-col gap-3">
@@ -93,7 +94,6 @@ export default async function BudgetTabServer({
       {/* above and the mode toggle below). */}
       {hasActionRow ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {showSaveAsTemplate ? <SaveAsTemplateButton projectId={projectId} /> : null}
           {showSendForApproval ? (
             <Button asChild size="sm">
               <Link href={`/projects/${projectId}/estimate/preview`}>Send for approval</Link>
@@ -120,6 +120,7 @@ export default async function BudgetTabServer({
         catalog={catalog}
         coContributionsByCategoryId={Object.fromEntries(coContributions.byCategoryId)}
         mode={mode}
+        headerActions={showSaveAsTemplate ? <SaveAsTemplateButton projectId={projectId} /> : null}
       />
     </div>
   );

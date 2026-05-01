@@ -47,6 +47,10 @@ type BudgetCategoriesTableProps = {
    * sections by default; Executing collapses them. Defaults to 'editing'
    * so the prop is optional for legacy callers. */
   mode?: 'editing' | 'executing';
+  /** Extra buttons rendered in the action row alongside Add category +
+   * Generate Estimate. Used by the budget tab to inline Save as template
+   * here instead of in a separate row above the table. */
+  headerActions?: React.ReactNode;
 };
 
 export function BudgetCategoriesTable({
@@ -56,6 +60,7 @@ export function BudgetCategoriesTable({
   catalog,
   coContributionsByCategoryId = {},
   mode = 'editing',
+  headerActions,
 }: BudgetCategoriesTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -269,6 +274,7 @@ export function BudgetCategoriesTable({
         <Button size="sm" variant="outline" onClick={generateEstimate} disabled={isPending}>
           Generate Estimate
         </Button>
+        {headerActions}
       </div>
 
       {showAddBucket && (
