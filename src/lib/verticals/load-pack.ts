@@ -25,6 +25,7 @@ export type VerticalPack = {
 
 const FALLBACK_NAV: VerticalNavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+  { href: '/business-health', label: 'Business Health', icon: 'TrendingUp' },
   { href: '/contacts', label: 'Contacts', icon: 'Users' },
   { href: '/inbox', label: 'Inbox', icon: 'Inbox' },
   { href: '/settings', label: 'Settings', icon: 'Settings' },
