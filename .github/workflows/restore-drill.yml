@@ -54,6 +54,10 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
+          # pgdg installs versioned binaries at /usr/lib/postgresql/17/bin.
+          # Prepend to PATH so `pg_restore` resolves to v17, not Ubuntu's stock v16.
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_restore --version
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
