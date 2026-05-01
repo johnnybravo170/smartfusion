@@ -278,6 +278,67 @@ const RLS_TABLE_CASES: RlsCase[] = [
       note: `inject-${stamp}`,
     }),
   },
+  {
+    table: 'bank_statements',
+    seed: async ({ admin, tenant, stamp }) => {
+      const r = await admin
+        .from('bank_statements')
+        .insert({
+          tenant_id: tenant.tenantId,
+          source_label: `seed-${stamp}`,
+          bank_preset: 'generic',
+          filename: `seed-${stamp}.csv`,
+        })
+        .select('id')
+        .single();
+      if (r.error || !r.data) throw new Error(r.error?.message ?? 'bank_statements seed failed');
+      return r.data.id as string;
+    },
+    updatePayload: { source_label: 'cross-tenant tamper' },
+    insertAcrossTenants: ({ tenant, stamp }) => ({
+      tenant_id: tenant.tenantId,
+      source_label: `inject-${stamp}`,
+      bank_preset: 'generic',
+    }),
+  },
+  {
+    table: 'bank_transactions',
+    seed: async ({ admin, tenant, stamp }) => {
+      // Need a parent statement first. Seed one inline.
+      const stmt = await admin
+        .from('bank_statements')
+        .insert({
+          tenant_id: tenant.tenantId,
+          source_label: `tx-parent-${stamp}`,
+          bank_preset: 'generic',
+        })
+        .select('id')
+        .single();
+      if (stmt.error || !stmt.data) {
+        throw new Error(stmt.error?.message ?? 'bank_statements parent seed failed');
+      }
+      const r = await admin
+        .from('bank_transactions')
+        .insert({
+          tenant_id: tenant.tenantId,
+          statement_id: stmt.data.id,
+          posted_at: '2026-03-15',
+          amount_cents: -12345,
+          description: `seed-${stamp}`,
+          raw_row: { stamp },
+          dedup_hash: `seed-hash-${stamp}`,
+        })
+        .select('id')
+        .single();
+      if (r.error || !r.data) throw new Error(r.error?.message ?? 'bank_transactions seed failed');
+      return r.data.id as string;
+    },
+    updatePayload: { description: 'cross-tenant tamper' },
+    // The cross-tenant insert attempt skips the FK to a real bank_statements
+    // row (which would fail with FK violation, not RLS). RLS WITH CHECK is
+    // exercised on bank_statements above; that's enough.
+    skipInsertReject: true,
+  },
 ];
 
 async function provisionTenant(
