@@ -339,11 +339,7 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
             >
               <SelectTrigger id="exp-category">
                 <SelectValue
-                  placeholder={
-                    projectCategories.length === 0
-                      ? 'No categories on this project'
-                      : 'Pick a category'
-                  }
+                  placeholder={projectCategories.length === 0 ? 'None yet' : 'Pick a category'}
                 />
               </SelectTrigger>
               <SelectContent>
