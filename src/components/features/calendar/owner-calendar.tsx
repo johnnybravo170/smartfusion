@@ -36,6 +36,7 @@ import {
 import type {
   CalendarAssignment,
   CalendarProject,
+  CalendarTimeSummary,
   CalendarUnavailability,
   CalendarWorker,
 } from '@/lib/db/queries/owner-calendar';
@@ -116,6 +117,7 @@ export function OwnerCalendar({
   workers,
   assignments,
   unavailability,
+  timeSummaryByKey = {},
 }: {
   view: View;
   anchorDate: string;
@@ -125,6 +127,7 @@ export function OwnerCalendar({
   workers: CalendarWorker[];
   assignments: CalendarAssignment[];
   unavailability: CalendarUnavailability[];
+  timeSummaryByKey?: Record<string, CalendarTimeSummary>;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -391,12 +394,20 @@ export function OwnerCalendar({
             if (!a) return null;
             const proj = projectById.get(a.project_id);
             const w = workerById.get(a.worker_profile_id);
+            const summary =
+              timeSummaryByKey[`${a.worker_profile_id}:${a.project_id}:${a.scheduled_date}`] ??
+              null;
             return (
               <ChipActionSheet
                 projectName={proj?.name ?? 'Project'}
                 projectId={a.project_id}
                 workerName={w?.display_name ?? 'Worker'}
                 date={a.scheduled_date}
+                notes={a.notes}
+                hourlyRateCents={a.hourly_rate_cents}
+                chargeRateCents={a.charge_rate_cents}
+                hoursLogged={summary?.hours ?? null}
+                categoryNames={summary?.categoryNames ?? []}
                 onClose={() => setActiveChip(null)}
                 onRemove={() => {
                   handleRemove(a.id);
@@ -804,6 +815,9 @@ function TwoWeekGrid({
                     project_id: p.id,
                     worker_profile_id: bar.workerProfileId,
                     scheduled_date: bar.startDate,
+                    notes: null,
+                    hourly_rate_cents: null,
+                    charge_rate_cents: null,
                   })
                 }
               />
@@ -1137,6 +1151,11 @@ function ChipActionSheet({
   projectId,
   workerName,
   date,
+  notes,
+  hourlyRateCents,
+  chargeRateCents,
+  hoursLogged,
+  categoryNames,
   onClose,
   onRemove,
   pending,
@@ -1145,13 +1164,31 @@ function ChipActionSheet({
   projectId: string;
   workerName: string;
   date: string;
+  notes: string | null;
+  hourlyRateCents: number | null;
+  chargeRateCents: number | null;
+  /** Hours actually logged on time_entries for this (worker, project, date).
+   *  Null = no entries; the dialog shows a muted "no time logged" hint. */
+  hoursLogged: number | null;
+  /** Distinct budget-category names this worker logged time against on
+   *  this day. Empty when nothing logged or when entries had no
+   *  category. */
+  categoryNames: string[];
   onClose: () => void;
   onRemove: () => void;
   pending: boolean;
 }) {
+  const fmtRate = (cents: number) => `$${(cents / 100).toFixed(2).replace(/\.00$/, '')}/h`;
+  const hasDetails =
+    notes ||
+    hourlyRateCents != null ||
+    chargeRateCents != null ||
+    hoursLogged != null ||
+    categoryNames.length > 0;
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{workerName}</DialogTitle>
           <DialogDescription>
@@ -1164,6 +1201,55 @@ function ChipActionSheet({
             })}
           </DialogDescription>
         </DialogHeader>
+
+        {hasDetails ? (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+            {hoursLogged != null ? (
+              <>
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Hours logged
+                </dt>
+                <dd className="tabular-nums">{hoursLogged.toFixed(2).replace(/\.00$/, '')} h</dd>
+              </>
+            ) : null}
+
+            {categoryNames.length > 0 ? (
+              <>
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {categoryNames.length === 1 ? 'Category' : 'Categories'}
+                </dt>
+                <dd>{categoryNames.join(', ')}</dd>
+              </>
+            ) : null}
+
+            {hourlyRateCents != null || chargeRateCents != null ? (
+              <>
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">Rate</dt>
+                <dd className="tabular-nums">
+                  {hourlyRateCents != null ? fmtRate(hourlyRateCents) : '—'}
+                  {chargeRateCents != null ? (
+                    <span className="text-muted-foreground">
+                      {' '}
+                      · charged at {fmtRate(chargeRateCents)}
+                    </span>
+                  ) : null}
+                </dd>
+              </>
+            ) : null}
+
+            {notes ? (
+              <>
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">Notes</dt>
+                <dd className="whitespace-pre-wrap">{notes}</dd>
+              </>
+            ) : null}
+          </dl>
+        ) : (
+          <p className="text-xs italic text-muted-foreground">
+            Nothing else recorded for this day yet.
+          </p>
+        )}
+
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
           <Link href={`/projects/${projectId}`} className="w-full sm:w-auto">
             <Button type="button" variant="outline" className="w-full">
