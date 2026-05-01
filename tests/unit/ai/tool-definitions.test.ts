@@ -72,7 +72,6 @@ describe('AI tool definitions', () => {
       'create_todo',
       'complete_todo',
       'search_worklog',
-      'add_worklog_note',
       'list_catalog',
       'send_sms',
       // Renovation tools

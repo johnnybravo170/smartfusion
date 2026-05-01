@@ -33,7 +33,7 @@ supabase/migrations/0023_chat_messages.sql
 ```
 
 ### 17 tools (adapted from MCP)
-get_dashboard, list_customers, get_customer, create_customer, list_quotes, get_quote, list_jobs, get_job, update_job_status, list_invoices, get_revenue_summary, list_todos, create_todo, complete_todo, search_worklog, add_worklog_note, list_catalog
+get_dashboard, list_customers, get_customer, create_customer, list_quotes, get_quote, list_jobs, get_job, update_job_status, list_invoices, get_revenue_summary, list_todos, create_todo, complete_todo, search_worklog, create_worklog_note, list_catalog
 
 ### Parallel work streams
 - Stream 1 (backend): SDK install → types → tool defs → tool index → system prompt → API route → rate limiting

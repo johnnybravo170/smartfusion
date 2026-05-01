@@ -58,7 +58,7 @@ export const worklogTools: AiTool[] = [
   },
   {
     definition: {
-      name: 'add_worklog_note',
+      name: 'create_worklog_note',
       description:
         'Add a note to the work log. Use for recording conversations, observations, reminders, or anything worth remembering.',
       input_schema: {

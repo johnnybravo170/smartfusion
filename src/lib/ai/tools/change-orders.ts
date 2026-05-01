@@ -157,7 +157,7 @@ export const changeOrderTools: AiTool[] = [
   },
   {
     definition: {
-      name: 'add_portal_update',
+      name: 'create_portal_update',
       description:
         'Post an update to the homeowner portal. Types: progress, photo, milestone, message.',
       input_schema: {

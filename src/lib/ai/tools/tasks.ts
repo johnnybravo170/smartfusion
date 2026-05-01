@@ -38,7 +38,7 @@ async function stampHenryCreatedBy(taskId: string): Promise<void> {
 export const taskTools: AiTool[] = [
   {
     definition: {
-      name: 'add_task',
+      name: 'create_task',
       description:
         'Create a task. Defaults to a personal todo for the current user. Pass scope="project" with a job_id to attach the task to a job. Henry stamps created_by="henry" for audit.',
       input_schema: {

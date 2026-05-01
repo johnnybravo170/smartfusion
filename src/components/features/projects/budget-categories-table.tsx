@@ -311,18 +311,14 @@ export function BudgetCategoriesTable({
               {section}
             </h3>
             <div className="overflow-x-auto rounded-md border">
-              {/* In Executing mode the fixed cols (Estimate + Spent + */}
-              {/* Committed + Remaining + Progress + actions) sum to ~664px. */}
-              {/* On a ~390px mobile viewport that crushes the auto-width */}
-              {/* Category col into negative space → header text overlaps */}
-              {/* and the cell content jumbles. min-w-[820px] keeps the */}
-              {/* table at least wide enough for a sensible Category */}
-              {/* column; the parent's overflow-x-auto handles horizontal */}
-              {/* scroll on narrow screens (Jonathan: "I don't mind */}
-              {/* scrolling for now"). Editing mode has only 4 cols and */}
-              {/* fits mobile natively, so no min-w there. */}
+              {/* Executing-mode fixed cols (Estimate + Spent + Committed */}
+              {/* + Remaining/Progress + actions) sum to ~536px after */}
+              {/* merging the Progress bar into the Remaining cell. Add */}
+              {/* the w-56 Category col and we need ~760px minimum so the */}
+              {/* category text doesn't get crushed on narrow viewports. */}
+              {/* Parent has overflow-x-auto for mobile horizontal scroll. */}
               <table
-                className={`table-fixed text-sm ${mode === 'executing' ? 'w-full min-w-[820px]' : 'w-full'}`}
+                className={`table-fixed text-sm ${mode === 'executing' ? 'w-full min-w-[760px]' : 'w-full'}`}
               >
                 <colgroup>
                   <col className="w-8" />
@@ -330,39 +326,37 @@ export function BudgetCategoriesTable({
                   <col className="w-32" />
                   {mode === 'executing' ? <col className="w-28" /> : null}
                   {mode === 'executing' ? <col className="w-28" /> : null}
-                  {mode === 'executing' ? <col className="w-28" /> : null}
                   {mode === 'executing' ? <col className="w-32" /> : null}
                   <col className="w-10" />
                 </colgroup>
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    <th className="px-2 py-2" />
-                    <th className="px-3 py-2 text-left font-medium">Category</th>
-                    <th className="px-3 py-2 text-right font-medium">Estimate</th>
+                    <th className="px-2 py-1.5" />
+                    <th className="px-3 py-1.5 text-left font-medium">Category</th>
+                    <th className="px-3 py-1.5 text-right font-medium">Estimate</th>
                     {mode === 'executing' ? (
                       <>
                         <th
-                          className="px-3 py-2 text-right font-medium"
+                          className="px-3 py-1.5 text-right font-medium"
                           title="Realized cost: labour + bills + expenses"
                         >
                           Spent
                         </th>
                         <th
-                          className="px-3 py-2 text-right font-medium"
+                          className="px-3 py-1.5 text-right font-medium"
                           title="Promised but not yet realized: accepted vendor quotes + active POs"
                         >
                           Committed
                         </th>
                         <th
-                          className="px-3 py-2 text-right font-medium"
-                          title="Estimate − Spent − Committed. Negative = over budget."
+                          className="px-3 py-1.5 text-right font-medium"
+                          title="Estimate − Spent − Committed. Bar shows progress; negative = over budget."
                         >
                           Remaining
                         </th>
-                        <th className="px-3 py-2 text-right font-medium">Progress</th>
                       </>
                     ) : null}
-                    <th className="px-2 py-2" />
+                    <th className="px-2 py-1.5" />
                   </tr>
                 </thead>
                 <tbody>
@@ -416,23 +410,22 @@ export function BudgetCategoriesTable({
                 <tfoot>
                   <tr className="bg-muted/30 font-medium">
                     <td />
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-1.5">
                       {section.charAt(0).toUpperCase() + section.slice(1)} Total
                     </td>
-                    <td className="px-3 py-2 text-right">{formatCurrency(sectionTotal)}</td>
+                    <td className="px-3 py-1.5 text-right">{formatCurrency(sectionTotal)}</td>
                     {mode === 'executing' ? (
                       <>
-                        <td className="px-3 py-2 text-right">{formatCurrency(sectionActual)}</td>
-                        <td className="px-3 py-2 text-right text-muted-foreground">
-                          {sectionCommitted > 0 ? formatCurrency(sectionCommitted) : '—'}
+                        <td className="px-3 py-1.5 text-right">{formatCurrency(sectionActual)}</td>
+                        <td className="px-3 py-1.5 text-right text-muted-foreground">
+                          {sectionCommitted > 0 ? formatCurrency(sectionCommitted) : ''}
                         </td>
-                        <td className="px-3 py-2 text-right">
+                        <td className="px-3 py-1.5 text-right">
                           {formatCurrency(
                             Math.abs(sectionTotal - sectionActual - sectionCommitted),
                           )}
                           {sectionTotal - sectionActual - sectionCommitted < 0 ? ' over' : ''}
                         </td>
-                        <td />
                       </>
                     ) : null}
                     <td />
@@ -560,12 +553,12 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
             {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </button>
         </td>
-        <td className="px-3 py-2">
+        <td className="px-3 py-1.5">
           <div className="flex flex-wrap items-center gap-1.5">
             <span>{line.budget_category_name}</span>
             {bucketLines.length > 0 && (
               <span className="text-xs text-muted-foreground">
-                ({bucketLines.length} line{bucketLines.length === 1 ? '' : 's'})
+                {bucketLines.length} line{bucketLines.length === 1 ? '' : 's'}
               </span>
             )}
             {coChips.map((c) => (
@@ -578,19 +571,6 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                 CO {c.co_short_id}
               </a>
             ))}
-            {/* Drill into actuals for this bucket on the Spend tab.
-                Executing mode only — in Editing posture there's no
-                meaningful spend yet, and a row of identical "Spend →"
-                links was just visual noise (Jonathan, 2026-04-30). */}
-            {mode === 'executing' ? (
-              <Link
-                href={`/projects/${projectId}?tab=costs&focus=${encodeURIComponent(line.budget_category_name)}`}
-                className="ml-auto inline-flex items-center text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
-                title="See spend for this bucket"
-              >
-                Spend →
-              </Link>
-            ) : null}
           </div>
           {editingDescId === line.budget_category_id ? (
             <div className="mt-1 flex items-start gap-1">
@@ -624,17 +604,23 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
             <button
               type="button"
               onClick={() => startEditDesc(line)}
+              title={line.budget_category_description ?? undefined}
               className="mt-0.5 block w-full text-left text-xs text-muted-foreground hover:text-foreground"
             >
               {line.budget_category_description ? (
-                <span className="whitespace-pre-wrap">{line.budget_category_description}</span>
+                // Clamp to 2 lines so each row is predictable height.
+                // Full text available via title tooltip on hover, or by
+                // clicking to edit.
+                <span className="line-clamp-2 whitespace-pre-wrap">
+                  {line.budget_category_description}
+                </span>
               ) : (
                 <span className="italic opacity-60">+ Add description</span>
               )}
             </button>
           )}
         </td>
-        <td className="px-3 py-2 text-right">
+        <td className="px-3 py-1.5 text-right">
           {editingId === line.budget_category_id ? (
             <div className="flex items-center justify-end gap-1">
               <div className="relative flex-1">
@@ -689,16 +675,18 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         </td>
         {mode === 'executing' ? (
           <>
-            <td className="px-3 py-2 text-right">{formatCurrency(line.actual_cents)}</td>
-            <td className="px-3 py-2 text-right text-muted-foreground">
-              {line.committed_cents > 0 ? formatCurrency(line.committed_cents) : '—'}
+            <td className="px-3 py-1.5 text-right">{formatCurrency(line.actual_cents)}</td>
+            <td className="px-3 py-1.5 text-right text-muted-foreground">
+              {line.committed_cents > 0 ? formatCurrency(line.committed_cents) : ''}
             </td>
-            <td className={cn('px-3 py-2 text-right', isOver && 'font-medium text-red-600')}>
-              {formatCurrency(Math.abs(line.remaining_cents))}
-              {isOver ? ' over' : ''}
-            </td>
-            <td className="px-3 py-2">
-              <div className="h-1.5 w-full rounded-full bg-gray-200">
+            {/* Remaining + progress merged: dollar amount on top, thin */}
+            {/* bar underneath. One column instead of two. */}
+            <td className={cn('px-3 py-1.5 text-right', isOver && 'font-medium text-red-600')}>
+              <div>
+                {formatCurrency(Math.abs(line.remaining_cents))}
+                {isOver ? ' over' : ''}
+              </div>
+              <div className="mt-1 h-1 w-full rounded-full bg-gray-200">
                 <div
                   className={cn(
                     'h-full rounded-full',
@@ -710,7 +698,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
             </td>
           </>
         ) : null}
-        <td className="px-2 py-2 text-right">
+        <td className="px-2 py-1.5 text-right">
           {/* Remove-category is an authoring action — only available in
               Editing mode. In Executing mode operators are tracking and
               shouldn't blow away a signed bucket on the way past. */}
@@ -729,7 +717,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
       {isExpanded && (
         <tr className="border-b bg-muted/20">
           <td />
-          <td colSpan={mode === 'executing' ? 6 : 2} className="px-3 py-3">
+          <td colSpan={mode === 'executing' ? 5 : 2} className="px-3 py-3">
             <div className="space-y-3">
               {/* Actuals breakdown by source — synthesized from time_entries,
                   expenses, project_bills. Each row deep-links to the tab
