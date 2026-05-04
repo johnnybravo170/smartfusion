@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import { Toaster } from '@/components/ui/sonner';
+import { StaleDeployRecovery } from '@/lib/client/stale-deploy-recovery';
 import './globals.css';
 
 const inter = Inter({
@@ -49,6 +50,7 @@ export default function RootLayout({
       <body className="flex flex-col">
         {children}
         <Toaster />
+        <StaleDeployRecovery />
       </body>
     </html>
   );
