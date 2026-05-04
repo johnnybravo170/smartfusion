@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/table';
 import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { formatDate } from '@/lib/date/format';
-import { type InvoiceWithCustomer, invoiceTotalCents } from '@/lib/db/queries/invoices';
+import type { InvoiceWithCustomer } from '@/lib/db/queries/invoices';
+import { invoiceTotalCents } from '@/lib/invoices/totals';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 
 function formatCad(cents: number): string {
