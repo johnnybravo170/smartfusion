@@ -87,6 +87,7 @@ export type StructuredRequest<T = unknown> = AiRequestBase & {
   /** Validates the parsed JSON. Defaults to identity cast. */
   parse?: (raw: unknown) => T;
   temperature?: number;
+  max_tokens?: number;
 };
 
 // ---------------------------------------------------------------------------

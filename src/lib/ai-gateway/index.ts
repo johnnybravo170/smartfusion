@@ -11,8 +11,13 @@
 
 export type { AiErrorKind, ProviderName } from './errors';
 export { AiError, defaultRetryable, isAiError } from './errors';
+export { AnthropicProvider } from './providers/anthropic';
+export { GeminiProvider } from './providers/gemini';
+export type { ApiKey } from './providers/keys';
+export { parseKeyEnv } from './providers/keys';
 export type { NoopMode } from './providers/noop';
 export { NoopProvider } from './providers/noop';
+export { OpenAiProvider } from './providers/openai';
 export type { KnownTask } from './tasks';
 export { KNOWN_TASKS } from './tasks';
 export type {
