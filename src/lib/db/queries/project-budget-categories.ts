@@ -111,6 +111,22 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
     throw new Error(`Failed to load bills: ${billErr.message}`);
   }
 
+  // 4a. Load cost lines summed per category. Used as a fallback when a
+  // category's stored envelope is 0 but priced lines exist under it
+  // (e.g. AI-scaffolded projects always insert categories with
+  // estimate_cents=0; if the operator prices the lines and never sets
+  // an envelope, the Budget tab would otherwise display $0 totals
+  // while the Estimate tab + project Overview correctly show the lines
+  // sum via scope_subtotal_cents in cost-lines.ts).
+  const { data: costLineData, error: costLineErr } = await supabase
+    .from('project_cost_lines')
+    .select('budget_category_id, line_price_cents')
+    .eq('project_id', projectId);
+
+  if (costLineErr) {
+    throw new Error(`Failed to load cost lines: ${costLineErr.message}`);
+  }
+
   // 5. Committed: accepted vendor quote allocations + active PO line items.
   // Vendor quotes have direct budget_category_id on allocations. POs have
   // it indirectly via PO line items → cost_lines.budget_category_id.
@@ -166,6 +182,17 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
     );
   }
 
+  // Aggregate cost lines by budget_category_id (envelope fallback source)
+  const linesByBudgetCategory = new Map<string, number>();
+  for (const entry of costLineData ?? []) {
+    const e = entry as { budget_category_id: string | null; line_price_cents: number | null };
+    if (!e.budget_category_id) continue;
+    linesByBudgetCategory.set(
+      e.budget_category_id,
+      (linesByBudgetCategory.get(e.budget_category_id) ?? 0) + (e.line_price_cents ?? 0),
+    );
+  }
+
   // Aggregate accepted-quote allocations by budget_category_id
   const committedByBudgetCategory = new Map<string, number>();
   for (const entry of subQuoteAllocs ?? []) {
@@ -207,12 +234,18 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
     const actual_cents = labor_cents + expense_cents + bills_cents;
     const committed_cents = committedByBudgetCategory.get(b.id) ?? 0;
     const spent_committed_cents = actual_cents + committed_cents;
+    // Display estimate falls back to the lines sum when the stored
+    // envelope is 0. Operators with a deliberate envelope (>0) keep
+    // their headroom intact; operators who skipped the envelope and
+    // priced lines see their lines roll up.
+    const lines_total_cents = linesByBudgetCategory.get(b.id) ?? 0;
+    const estimate_cents = b.estimate_cents > 0 ? b.estimate_cents : lines_total_cents;
     return {
       budget_category_id: b.id,
       budget_category_name: b.name,
       budget_category_description: b.description,
       section: b.section,
-      estimate_cents: b.estimate_cents,
+      estimate_cents,
       labor_cents,
       expense_cents,
       bills_cents,
@@ -221,7 +254,7 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
       spent_committed_cents,
       // Remaining now subtracts both spent AND committed — committed money
       // is effectively reserved against the envelope.
-      remaining_cents: b.estimate_cents - spent_committed_cents,
+      remaining_cents: estimate_cents - spent_committed_cents,
       is_visible_in_report: b.is_visible_in_report,
     };
   });
