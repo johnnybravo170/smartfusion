@@ -211,6 +211,13 @@ export function useHenry(): UseHenryReturn {
   const currentAssistantIdRef = useRef<string | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
 
+  // Auto-reconnect plumbing. The onclose handler runs inside `connect`, so we
+  // can't reference `connect`/`startMicCapture` directly without a ref hop.
+  const voiceEnabledRef = useRef(false);
+  const reconnectAttemptedRef = useRef(false);
+  const connectRef = useRef<(() => Promise<void>) | null>(null);
+  const startMicCaptureRef = useRef<(() => Promise<void>) | null>(null);
+
   useEffect(() => {
     setIsSupported(
       typeof window !== 'undefined' &&
@@ -580,18 +587,50 @@ export function useHenry(): UseHenryReturn {
 
     ws.onclose = (e) => {
       console.warn('[Henry] WS closed:', e.code, e.reason);
-      if (e.code !== 1000 && e.code !== 1005) {
-        setError(`Connection closed (${e.code}): ${e.reason || 'no reason given'}`);
-      }
       wsRef.current = null;
       // If the socket dies (idle timeout, mobile background, network drop)
-      // we must also release the mic and audio output, otherwise the UI
-      // shows "off" while the mic is still engaged and the toggle button
-      // ends up reconnecting instead of turning voice off.
+      // we must release the mic and audio output regardless of whether we
+      // try to reconnect — the next connect() will rebuild them.
       stopMicCapture();
       outputAudioCtxRef.current?.close().catch(() => {});
       outputAudioCtxRef.current = null;
       playbackCursorRef.current = 0;
+
+      const isAbnormal = e.code !== 1000 && e.code !== 1005;
+      const userWantedVoice = voiceEnabledRef.current;
+      const canReconnect = isAbnormal && userWantedVoice && !reconnectAttemptedRef.current;
+
+      if (canReconnect) {
+        // One transparent reconnect attempt. Mobile Safari backgrounding,
+        // wifi/cell handoffs, and OpenAI idle timeouts all surface as 1006;
+        // re-minting a session and reopening usually picks voice back up
+        // without the operator having to tap anything.
+        reconnectAttemptedRef.current = true;
+        setVoiceState('idle');
+        void (async () => {
+          try {
+            await connectRef.current?.();
+            await new Promise((r) => setTimeout(r, 50));
+            await startMicCaptureRef.current?.();
+            // Allow another auto-reconnect after the link has been stable
+            // for 30s — prevents tight loops if the next drop is immediate.
+            setTimeout(() => {
+              reconnectAttemptedRef.current = false;
+            }, 30_000);
+          } catch (err) {
+            console.error('[Henry] auto-reconnect failed:', err);
+            setError('Voice disconnected. Tap the mic to resume.');
+            setVoiceEnabled(false);
+            setVoiceState('off');
+            setIsLoading(false);
+          }
+        })();
+        return;
+      }
+
+      if (isAbnormal) {
+        setError('Voice disconnected. Tap the mic to resume.');
+      }
       setVoiceEnabled(false);
       setVoiceState('off');
       setIsLoading(false);
@@ -609,6 +648,9 @@ export function useHenry(): UseHenryReturn {
   }, [handleServerEvent, stopMicCapture]);
 
   const disconnect = useCallback(() => {
+    // User-initiated teardown — clear the auto-reconnect lockout so the next
+    // session can also auto-recover from its first abnormal close.
+    reconnectAttemptedRef.current = false;
     wsRef.current?.close();
     wsRef.current = null;
     stopMicCapture();
@@ -619,6 +661,14 @@ export function useHenry(): UseHenryReturn {
     setVoiceState('off');
     setIsLoading(false);
   }, [stopMicCapture]);
+
+  // Keep refs current so the WS onclose closure (which captures `connect`
+  // before it's fully defined) can call the latest versions.
+  connectRef.current = connect;
+  startMicCaptureRef.current = startMicCapture;
+  useEffect(() => {
+    voiceEnabledRef.current = voiceEnabled;
+  }, [voiceEnabled]);
 
   // ─── Public voice controls ─────────────────────────────────────────────
   const toggleVoice = useCallback(async () => {
