@@ -3,12 +3,25 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import {
+  SubQuoteForm,
+  type SubQuoteInitialValues,
+} from '@/components/features/projects/sub-quote-form';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { formatCurrency } from '@/lib/pricing/calculator';
+import { createClient } from '@/lib/supabase/client';
 import {
   reclassifyInboundEmailAction,
   rejectInboundEmailAction,
 } from '@/server/actions/inbound-email';
+import { StagedBillConfirmDialog, type StagedBillExtracted } from './staged-bill-confirm-dialog';
 
 export type InboundEmailRow = {
   id: string;
@@ -28,6 +41,8 @@ export type InboundEmailRow = {
 };
 
 export type ProjectOption = { id: string; name: string };
+
+type SubQuoteCategory = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
 
 const STATUS_COLOURS: Record<string, string> = {
   pending: 'bg-muted text-muted-foreground',
@@ -51,14 +66,54 @@ export function InboundEmailCard({
   const [pending, startTransition] = useTransition();
   const [selectedProject, setSelectedProject] = useState(email.project_id ?? '');
 
+  // Bill dialog state
+  const [billDialogOpen, setBillDialogOpen] = useState(false);
+
+  // Sub-quote dialog state — categories load on demand because the inbox
+  // page doesn't ship them per-project.
+  const [subQuoteDialogOpen, setSubQuoteDialogOpen] = useState(false);
+  const [subQuoteProjectId, setSubQuoteProjectId] = useState<string | null>(null);
+  const [subQuoteCategories, setSubQuoteCategories] = useState<SubQuoteCategory[]>([]);
+  const [loadingSubQuoteSetup, setLoadingSubQuoteSetup] = useState(false);
+
   const canApply = email.classification === 'sub_quote' || email.classification === 'vendor_bill';
   const isTerminal = email.status === 'applied' || email.status === 'auto_applied';
   const needsReview = email.status === 'needs_review';
 
+  async function loadCategoriesAndOpenSubQuote(projectId: string) {
+    setLoadingSubQuoteSetup(true);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('project_budget_categories')
+        .select('id, name, section')
+        .eq('project_id', projectId)
+        .order('display_order');
+      if (error) throw new Error(error.message);
+      setSubQuoteCategories((data as SubQuoteCategory[]) ?? []);
+      setSubQuoteProjectId(projectId);
+      setSubQuoteDialogOpen(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load project categories.');
+    } finally {
+      setLoadingSubQuoteSetup(false);
+    }
+  }
+
   function handleConfirm() {
-    // Real wiring lands in B2 (bills) and B3 (sub-quotes) — these open the
-    // existing review dialogs (StagedBillConfirmDialog / SubQuoteForm).
-    toast('Confirm dialog wiring lands in the next deploy.');
+    const projectId = selectedProject || email.project_id;
+    if (!projectId) {
+      toast.error('Pick a project first.');
+      return;
+    }
+    if (email.classification === 'vendor_bill') {
+      setBillDialogOpen(true);
+      return;
+    }
+    if (email.classification === 'sub_quote') {
+      void loadCategoriesAndOpenSubQuote(projectId);
+      return;
+    }
   }
 
   function handleReject() {
@@ -103,6 +158,16 @@ export function InboundEmailCard({
   const vendor =
     extracted && typeof extracted === 'object' && 'vendor' in extracted
       ? String((extracted as { vendor: string }).vendor)
+      : null;
+
+  const subQuoteInitialValues: SubQuoteInitialValues | null =
+    email.classification === 'sub_quote' && extracted && typeof extracted === 'object'
+      ? {
+          vendor_name: (extracted as { vendor?: string }).vendor ?? '',
+          total_cents: (extracted as { total_cents?: number }).total_cents ?? null,
+          scope_description: (extracted as { notes?: string }).notes ?? '',
+          quote_date: (extracted as { quote_date?: string }).quote_date ?? '',
+        }
       : null;
 
   return (
@@ -153,46 +218,6 @@ export function InboundEmailCard({
         <p className="text-xs text-muted-foreground italic">{email.classifier_notes}</p>
       )}
 
-      {/* Extracted preview */}
-      {canApply &&
-        extracted &&
-        typeof extracted === 'object' &&
-        'items' in extracted &&
-        Array.isArray((extracted as { items: unknown[] }).items) && (
-          <div className="rounded-md border bg-muted/30 p-3">
-            <p className="mb-2 text-xs font-semibold">Line items</p>
-            <table className="w-full text-xs">
-              <tbody>
-                {(
-                  extracted as {
-                    items: {
-                      description: string;
-                      qty: number;
-                      unit: string;
-                      unit_cost_cents: number;
-                    }[];
-                  }
-                ).items
-                  .slice(0, 10)
-                  .map((item) => (
-                    <tr
-                      key={`${item.description}-${item.qty}-${item.unit_cost_cents}`}
-                      className="border-b last:border-0"
-                    >
-                      <td className="py-1">{item.description}</td>
-                      <td className="py-1 text-right text-muted-foreground">
-                        {item.qty} {item.unit}
-                      </td>
-                      <td className="py-1 text-right">
-                        {formatCurrency(item.qty * item.unit_cost_cents)}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
       {email.attachment_names.length > 0 && (
         <p className="text-xs text-muted-foreground">📎 {email.attachment_names.join(', ')}</p>
       )}
@@ -216,8 +241,8 @@ export function InboundEmailCard({
         </select>
 
         {needsReview && canApply && (
-          <Button size="sm" onClick={handleConfirm} disabled={pending}>
-            Review &amp; confirm
+          <Button size="sm" onClick={handleConfirm} disabled={pending || loadingSubQuoteSetup}>
+            {loadingSubQuoteSetup ? 'Loading…' : 'Review & confirm'}
           </Button>
         )}
 
@@ -237,6 +262,51 @@ export function InboundEmailCard({
           </Button>
         )}
       </div>
+
+      {/* Bill confirm dialog */}
+      {email.classification === 'vendor_bill' && (
+        <StagedBillConfirmDialog
+          open={billDialogOpen}
+          onOpenChange={setBillDialogOpen}
+          emailId={email.id}
+          extracted={extracted as StagedBillExtracted | null}
+          projects={projects}
+          defaultProjectId={selectedProject || email.project_id}
+          onApplied={() => router.refresh()}
+        />
+      )}
+
+      {/* Sub-quote confirm dialog (re-uses the canonical SubQuoteForm) */}
+      {email.classification === 'sub_quote' && subQuoteDialogOpen && subQuoteProjectId && (
+        <Dialog
+          open={subQuoteDialogOpen}
+          onOpenChange={(next) => {
+            setSubQuoteDialogOpen(next);
+            if (!next) setSubQuoteProjectId(null);
+          }}
+        >
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl lg:max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Confirm vendor quote</DialogTitle>
+              <DialogDescription>
+                Henry pre-filled this from the forwarded email. Adjust anything that looks off, then
+                save.
+              </DialogDescription>
+            </DialogHeader>
+            <SubQuoteForm
+              projectId={subQuoteProjectId}
+              categories={subQuoteCategories}
+              initialValues={subQuoteInitialValues ?? undefined}
+              linkToInboundEmail={{ emailId: email.id }}
+              onDone={() => {
+                setSubQuoteDialogOpen(false);
+                setSubQuoteProjectId(null);
+                router.refresh();
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

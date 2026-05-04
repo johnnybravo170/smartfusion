@@ -87,6 +87,7 @@ export function SubQuoteForm({
   categories: initialCategories,
   initialValues,
   editingQuoteId,
+  linkToInboundEmail,
   onDone,
 }: {
   projectId: string;
@@ -95,6 +96,12 @@ export function SubQuoteForm({
   initialValues?: SubQuoteInitialValues;
   /** When set, the form updates this quote instead of creating a new one. */
   editingQuoteId?: string;
+  /**
+   * When set, the form was opened from a forwarded inbound email. After
+   * a successful create we mark that email applied + link it to the new
+   * sub_quote via linkInboundEmailToSubQuoteAction.
+   */
+  linkToInboundEmail?: { emailId: string };
   onDone: () => void;
 }) {
   const [categories, setCategories] = useState<Category[]>(initialCategories);
@@ -277,6 +284,22 @@ export function SubQuoteForm({
         toast.error(result.error);
         return;
       }
+
+      // If this form was opened from a forwarded email, link the email
+      // row to the new sub_quote so the inbox marks it applied. We don't
+      // surface failures to the user — the quote is saved either way.
+      if (linkToInboundEmail) {
+        const { linkInboundEmailToSubQuoteAction } = await import('@/server/actions/inbound-email');
+        const linkResult = await linkInboundEmailToSubQuoteAction({
+          emailId: linkToInboundEmail.emailId,
+          subQuoteId: result.id,
+          projectId,
+        });
+        if (!linkResult.ok) {
+          console.warn('[sub-quote-form] inbound email link failed', linkResult.error);
+        }
+      }
+
       toast.success('Vendor quote saved.');
       onDone();
     });
