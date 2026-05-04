@@ -26,6 +26,7 @@ import { NoopProvider } from './providers/noop';
 import { OpenAiProvider } from './providers/openai';
 import type { RouteConfig, RouterHooks } from './router-types';
 import { lookupRoute } from './routing';
+import { createTelemetryHook } from './telemetry';
 import type {
   AiProvider,
   ChatRequest,
@@ -267,13 +268,14 @@ let _default: Gateway | null = null;
  * Lazy singleton. Avoids instantiating providers (which read env vars)
  * at module load — important for tests + cold-start tracing. Wires the
  * AG-5 telemetry hook so every attempt logs to `ai_calls`.
+ *
+ * Static-imports `createTelemetryHook` (ESM-safe). Tests that build
+ * their own Gateway via createGateway() with explicit providers don't
+ * touch this path, so the admin client never gets imported in test
+ * runtimes.
  */
 export function gateway(): Gateway {
   if (!_default) {
-    // Lazy-import to avoid telemetry pulling in supabase admin in
-    // contexts that don't need it (e.g. test files that only use
-    // createGateway with explicit providers).
-    const { createTelemetryHook } = require('./telemetry') as typeof import('./telemetry');
     _default = createGateway({ hooks: createTelemetryHook() });
   }
   return _default;
