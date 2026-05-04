@@ -306,16 +306,15 @@ export async function transcribeMemoAction(memoId: string): Promise<MemoActionRe
       .update({ transcript, status: 'extracting' })
       .eq('id', memoId);
 
-    // Stage 2 — extract work items from transcript + photos with Sonnet 4.6.
-    // Sonnet handles the schema-constrained extraction near-Opus quality at
-    // ~5x lower cost and ~2-3x faster. Opus 4.7 + extended thinking is the
-    // "Have another think" escalation, not the default.
+    // Stage 2 — extract work items from transcript + photos. Model is
+    // pinned in the route config (Sonnet 4.6 — near-Opus quality on
+    // schema-constrained tasks, 5x cheaper, 2-3x faster). Opus 4.7 +
+    // extended thinking is the "Have another think" escalation only.
     const photoFiles = await loadMemoPhotoFiles(supabase, memoId);
     const extractRes = await gateway().runStructured<MemoExtraction>({
       kind: 'structured',
       task: 'project_memo_extract',
       tenant_id: tenant.id,
-      model_override: 'claude-sonnet-4-6',
       prompt: buildExtractionPrompt(transcript, photoFiles.length),
       schema: EXTRACTION_SCHEMA,
       files: photoFiles,
@@ -384,7 +383,6 @@ export async function reExtractMemoAction(memoId: string): Promise<MemoActionRes
       kind: 'structured',
       task: 'project_memo_extract_thinking',
       tenant_id: tenant.id,
-      model_override: 'claude-opus-4-7',
       prompt: buildExtractionPrompt(transcript, photoFiles.length),
       schema: EXTRACTION_SCHEMA,
       files: photoFiles,

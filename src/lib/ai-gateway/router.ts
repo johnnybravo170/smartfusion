@@ -24,7 +24,7 @@ import { AnthropicProvider } from './providers/anthropic';
 import { GeminiProvider } from './providers/gemini';
 import { NoopProvider } from './providers/noop';
 import { OpenAiProvider } from './providers/openai';
-import type { RouteConfig, RouterHooks } from './router-types';
+import type { RouteConfig, RoutePick, RouterHooks } from './router-types';
 import { lookupRoute } from './routing';
 import { createTelemetryHook } from './telemetry';
 import type {
@@ -68,19 +68,19 @@ export class Gateway {
   }
 
   async runChat(req: ChatRequest): Promise<ChatResponse> {
-    return this.run(req, (p) => p.callChat(req));
+    return this.run(req, (p, pick) => p.callChat(applyRouteModel(req, pick)));
   }
 
   async runVision(req: VisionRequest): Promise<VisionResponse> {
-    return this.run(req, (p) => p.callVision(req));
+    return this.run(req, (p, pick) => p.callVision(applyRouteModel(req, pick)));
   }
 
   async runStructured<T = unknown>(req: StructuredRequest<T>): Promise<StructuredResponse<T>> {
-    return this.run(req, (p) => p.callStructured<T>(req));
+    return this.run(req, (p, pick) => p.callStructured<T>(applyRouteModel(req, pick)));
   }
 
   async runTranscribe(req: TranscribeRequest): Promise<TranscribeResponse> {
-    return this.run(req, (p) => p.callTranscribe(req));
+    return this.run(req, (p, pick) => p.callTranscribe(applyRouteModel(req, pick)));
   }
 
   /**
@@ -107,9 +107,10 @@ export class Gateway {
     },
   >(
     req: { task: string; tenant_id?: string | null; provider_override?: ProviderName },
-    call: (provider: AiProvider) => Promise<R>,
+    call: (provider: AiProvider, pick: RoutePick) => Promise<R>,
   ): Promise<R> {
-    // Hard override path: single attempt, no fallback.
+    // Hard override path: single attempt, no fallback. No route lookup
+    // either — caller takes full responsibility for model selection.
     if (req.provider_override) {
       const provider = this.providers[req.provider_override];
       if (!provider) {
@@ -119,7 +120,8 @@ export class Gateway {
           message: `Provider "${req.provider_override}" not configured.`,
         });
       }
-      return this.attempt(req, provider, req.provider_override, 0, call);
+      const pick: RoutePick = { provider: req.provider_override };
+      return this.attempt(req, provider, req.provider_override, 0, pick, call);
     }
 
     const route = lookupRoute(req.task, this.routing);
@@ -128,16 +130,16 @@ export class Gateway {
     let lastError: unknown;
     let allSkippedByBreaker = true;
     for (let i = 0; i < order.length; i++) {
-      const providerName = order[i];
-      const provider = this.providers[providerName];
+      const pick = order[i];
+      const provider = this.providers[pick.provider];
       if (!provider) continue;
       // Breaker: if open for this provider, skip without firing the call.
       // We don't even emit a hook event for skipped attempts — they're
       // "we knew not to bother" rather than "we tried and failed."
-      if (this.breaker.shouldSkip(providerName)) continue;
+      if (this.breaker.shouldSkip(pick.provider)) continue;
       allSkippedByBreaker = false;
       try {
-        return await this.attempt(req, provider, providerName, i, call);
+        return await this.attempt(req, provider, pick.provider, i, pick, call);
       } catch (err) {
         lastError = err;
         if (!isAiError(err)) throw err;
@@ -181,10 +183,11 @@ export class Gateway {
      *  across slots. In production they're identical. */
     slot: ProviderName,
     attempt_index: number,
-    call: (provider: AiProvider) => Promise<R>,
+    pick: RoutePick,
+    call: (provider: AiProvider, pick: RoutePick) => Promise<R>,
   ): Promise<R> {
     try {
-      const res = await call(provider);
+      const res = await call(provider, pick);
       this.breaker.recordSuccess(slot);
       this.fireHook({
         task: req.task,
@@ -219,15 +222,18 @@ export class Gateway {
   }
 
   /**
-   * Build the ordered list of providers to try, deduped.
-   *   1. Primary (or secondary if weighted-random selects it)
-   *   2. fallback_chain (skipping the already-chosen one)
+   * Build the ordered list of picks (provider + optional model) to try,
+   * deduped by provider.
+   *   1. Primary (or secondary if weighted-random selects it) — keeps
+   *      its `model` from the route config.
+   *   2. Each entry in fallback_chain — provider name only; adapter
+   *      defaults pick the model.
    */
-  private buildAttemptOrder(route: RouteConfig): ProviderName[] {
-    const first = pickPrimary(route);
-    const order: ProviderName[] = [first];
-    for (const p of route.fallback_chain) {
-      if (!order.includes(p)) order.push(p);
+  private buildAttemptOrder(route: RouteConfig): RoutePick[] {
+    const first = pickPrimaryPick(route);
+    const order: RoutePick[] = [first];
+    for (const provider of route.fallback_chain) {
+      if (!order.some((p) => p.provider === provider)) order.push({ provider });
     }
     return order;
   }
@@ -248,11 +254,24 @@ export class Gateway {
   }
 }
 
-function pickPrimary(route: RouteConfig): ProviderName {
-  if (!route.secondary) return route.primary.provider;
+function pickPrimaryPick(route: RouteConfig): RoutePick {
+  if (!route.secondary) return route.primary;
   const w = clamp01(route.secondary.weight);
-  if (Math.random() < w) return route.secondary.provider;
-  return route.primary.provider;
+  if (Math.random() < w) {
+    const { weight: _w, ...pick } = route.secondary;
+    return pick;
+  }
+  return route.primary;
+}
+
+/**
+ * Merge a per-route `pick.model` into a request as `model_override` —
+ * but only when the caller hasn't set their own. Caller-set
+ * `model_override` always wins, preserving the manual escape hatch.
+ */
+function applyRouteModel<T extends { model_override?: string }>(req: T, pick: RoutePick): T {
+  if (req.model_override || !pick.model) return req;
+  return { ...req, model_override: pick.model };
 }
 
 function clamp01(n: number): number {
