@@ -4,24 +4,23 @@
  * OCR + structured extraction for receipt uploads.
  *
  * Worker (and owner) expense forms drop a receipt image/PDF; we run it
- * through Gemini's vision model to pre-fill amount / vendor / date /
- * description. The user reviews and can correct before submitting — we
- * never silently overwrite values they've already typed.
+ * through the AI gateway for vision + structured extraction. The user
+ * reviews and can correct before submitting — we never silently overwrite
+ * values they've already typed.
  *
  * Guiding principle: if the user is already uploading the file, don't
  * make them type what the file already tells us.
  *
- * Provider: Gemini 2.5 Flash via @google/genai. Originally OpenAI; moved
- * after a quota cliff blocked extraction in production for the only paying
- * tenant. Gemini has no per-org hard quota at our volume and we already
- * use it for invoice payment-receipt OCR (see actions/invoices.ts).
+ * Routing: see `routing.ts → receipt_ocr`. Gemini primary, 30% OpenAI
+ * tier-climb traffic, fallback chain ['gemini', 'openai', 'anthropic'].
+ * The original direct-Gemini code with hand-rolled retry / quota
+ * fallback was migrated to the gateway in AG-7.
  */
 
-import { GoogleGenAI } from '@google/genai';
+import { gateway, isAiError } from '@/lib/ai-gateway';
 import { requireTenant } from '@/lib/auth/helpers';
 
 const MAX_BYTES = 10 * 1024 * 1024;
-const MODEL = 'gemini-2.5-flash';
 
 export type ReceiptExtractionResult =
   | {
@@ -49,23 +48,44 @@ const PROMPT = `You extract structured fields from receipt photos or PDFs for a 
 
 Note: Canadian receipts commonly show GST/HST as "GST 5%", "HST 13%", "GST incl.", "GST INCLUDED", or "GST/HST". The amount_cents field is always the receipt total with tax included.`;
 
+const RECEIPT_SCHEMA = {
+  type: 'object',
+  properties: {
+    amount_cents: { type: ['integer', 'null'] },
+    vendor: { type: ['string', 'null'] },
+    vendor_gst_number: { type: ['string', 'null'] },
+    expense_date: { type: ['string', 'null'] },
+    description: { type: ['string', 'null'] },
+  },
+  required: ['amount_cents', 'vendor', 'vendor_gst_number', 'expense_date', 'description'],
+};
+
+type RawReceipt = {
+  amount_cents: unknown;
+  vendor: unknown;
+  vendor_gst_number: unknown;
+  expense_date: unknown;
+  description: unknown;
+};
+
 /**
- * Strip provider error verbosity (HTTP bodies, "OpenAI 429: { ... }",
- * stack traces) and return a user-safe message. Never expose raw JSON to
- * the toast layer.
+ * Translate gateway errors to user-safe messages. Never leaks provider
+ * response bodies. Now that the gateway falls through to the next
+ * provider on quota / overload, the user-facing error appears only when
+ * EVERY provider has failed — much rarer than before.
  */
-function userSafeError(raw: unknown): string {
-  const msg = raw instanceof Error ? raw.message : String(raw ?? '');
-  if (/quota|insufficient_quota|RESOURCE_EXHAUSTED/i.test(msg)) {
-    return 'Receipt scanning is temporarily unavailable. Please fill the form manually.';
+function userSafeError(err: unknown): string {
+  if (isAiError(err)) {
+    if (err.kind === 'quota') {
+      return 'Receipt scanning is temporarily unavailable across all providers. Please fill the form manually.';
+    }
+    if (err.kind === 'overload' || err.kind === 'rate_limit') {
+      return 'Receipt scanning is busy right now. Please try again in a moment.';
+    }
+    if (err.kind === 'timeout') {
+      return 'Receipt scanning timed out. Please try again or fill the form manually.';
+    }
   }
-  if (/503|UNAVAILABLE|overload/i.test(msg)) {
-    return 'Receipt scanning is busy right now. Please try again in a moment.';
-  }
-  if (/timeout|ETIMEDOUT/i.test(msg)) {
-    return 'Receipt scanning timed out. Please try again or fill the form manually.';
-  }
-  // Safe generic — never leak provider response bodies.
   return 'Could not read receipt. Please fill the form manually.';
 }
 
@@ -74,12 +94,7 @@ export async function extractReceiptFieldsAction(
 ): Promise<ReceiptExtractionResult> {
   // Auth: any worker, owner, or admin with a tenant can extract. The
   // extraction doesn't touch the DB, so we only gate on tenancy, not role.
-  await requireTenant();
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return { ok: false, error: 'Receipt scanning is not configured on this server.' };
-  }
+  const { tenant } = await requireTenant();
 
   const file = formData.get('receipt');
   if (!(file instanceof File) || file.size === 0) {
@@ -99,56 +114,20 @@ export async function extractReceiptFieldsAction(
   const buf = Buffer.from(await file.arrayBuffer());
   const base64 = buf.toString('base64');
 
-  const ai = new GoogleGenAI({ apiKey });
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
-  let lastErr: unknown = null;
-
-  // Retry only on transient overload (503/UNAVAILABLE). Quota and bad
-  // requests fail fast — retrying won't help.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      response = await ai.models.generateContent({
-        model: MODEL,
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: PROMPT }, { inlineData: { mimeType: mime, data: base64 } }],
-          },
-        ],
-        config: { responseMimeType: 'application/json', temperature: 0.1 },
-      });
-      break;
-    } catch (err) {
-      lastErr = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      const transient = /503|UNAVAILABLE|overload/i.test(msg);
-      if (!transient) {
-        return { ok: false, error: userSafeError(err) };
-      }
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1) ** 2));
-    }
-  }
-
-  if (!response) {
-    return { ok: false, error: userSafeError(lastErr) };
-  }
-
-  const content = response.text ?? '';
-  if (!content) {
-    return { ok: false, error: 'Could not read receipt. Please fill the form manually.' };
-  }
-
-  let parsed: {
-    amount_cents: unknown;
-    vendor: unknown;
-    vendor_gst_number: unknown;
-    expense_date: unknown;
-    description: unknown;
-  };
+  let parsed: RawReceipt;
   try {
-    parsed = JSON.parse(content);
-  } catch {
-    return { ok: false, error: 'Could not read receipt. Please fill the form manually.' };
+    const res = await gateway().runStructured<RawReceipt>({
+      kind: 'structured',
+      task: 'receipt_ocr',
+      tenant_id: tenant.id,
+      prompt: PROMPT,
+      schema: RECEIPT_SCHEMA,
+      file: { mime, base64, filename: file.name },
+      temperature: 0.1,
+    });
+    parsed = res.data;
+  } catch (err) {
+    return { ok: false, error: userSafeError(err) };
   }
 
   const amountCents =

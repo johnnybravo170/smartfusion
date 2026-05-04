@@ -68,7 +68,9 @@ export class NoopProvider implements AiProvider {
       tokens_out: estimateTokens(this.mode.canned_text ?? ''),
       cost_micros: BigInt(0),
       latency_ms: this.mode.latency_ms ?? 0,
-      text: this.mode.canned_text ?? `[noop vision: ${req.file.mime}, ${req.prompt.slice(0, 32)}]`,
+      text:
+        this.mode.canned_text ??
+        `[noop vision: ${req.file?.mime ?? req.files?.[0]?.mime ?? 'no-file'}, ${req.prompt.slice(0, 32)}]`,
     };
   }
 

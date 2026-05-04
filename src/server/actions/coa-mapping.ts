@@ -21,6 +21,7 @@
 
 import * as XLSX from 'xlsx';
 import { z } from 'zod';
+import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -416,9 +417,6 @@ export async function runCoaMappingAction(input: {
 
   const mappable = categories.filter((c) => !c.isParentWithChildren);
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { ok: false, error: 'Server missing OPENAI_API_KEY.' };
-
   const prompt = `You are mapping a contractor's expense categories to their bookkeeper's chart of accounts.
 
 Categories to map (${mappable.length}):
@@ -429,70 +427,7 @@ ${accounts.map((a) => `${a.code} — ${a.name}`).join('\n')}
 
 For each category, pick the best-matching account code and name, or null if nothing fits well. Confidence: "high" if the names clearly align (e.g. "Fuel" → "Motor Vehicle - Fuel"), "medium" if a plausible guess, "low" if uncertain, null if no match. Reason: a short phrase why (max 10 words).`;
 
-  let res: Response;
-  try {
-    res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'You return structured JSON only.' },
-          { role: 'user', content: prompt },
-        ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'coa_mapping',
-            strict: true,
-            schema: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                mappings: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    additionalProperties: false,
-                    properties: {
-                      category_id: { type: 'string' },
-                      suggested_code: { type: ['string', 'null'] },
-                      suggested_name: { type: ['string', 'null'] },
-                      confidence: {
-                        type: ['string', 'null'],
-                        enum: ['high', 'medium', 'low', null],
-                      },
-                      reason: { type: ['string', 'null'] },
-                    },
-                    required: [
-                      'category_id',
-                      'suggested_code',
-                      'suggested_name',
-                      'confidence',
-                      'reason',
-                    ],
-                  },
-                },
-              },
-              required: ['mappings'],
-            },
-          },
-        },
-      }),
-    });
-  } catch (e) {
-    return { ok: false, error: `Network: ${e instanceof Error ? e.message : String(e)}` };
-  }
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    return { ok: false, error: `OpenAI ${res.status}: ${txt || res.statusText}` };
-  }
-
-  const payload = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) return { ok: false, error: 'OpenAI returned no content.' };
-
-  let parsedMap: {
+  type ParsedMap = {
     mappings: Array<{
       category_id: string;
       suggested_code: string | null;
@@ -501,10 +436,49 @@ For each category, pick the best-matching account code and name, or null if noth
       reason: string | null;
     }>;
   };
+
+  let parsedMap: ParsedMap;
   try {
-    parsedMap = JSON.parse(content);
-  } catch {
-    return { ok: false, error: 'OpenAI returned non-JSON.' };
+    const res = await gateway().runStructured<ParsedMap>({
+      kind: 'structured',
+      task: 'coa_account_suggest',
+      tenant_id: tenant.id,
+      prompt,
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          mappings: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                category_id: { type: 'string' },
+                suggested_code: { type: ['string', 'null'] },
+                suggested_name: { type: ['string', 'null'] },
+                confidence: {
+                  type: ['string', 'null'],
+                  enum: ['high', 'medium', 'low', null],
+                },
+                reason: { type: ['string', 'null'] },
+              },
+              required: ['category_id', 'suggested_code', 'suggested_name', 'confidence', 'reason'],
+            },
+          },
+        },
+        required: ['mappings'],
+      },
+    });
+    parsedMap = res.data;
+  } catch (err) {
+    if (isAiError(err)) {
+      if (err.kind === 'quota')
+        return { ok: false, error: 'AI mapping is temporarily unavailable across providers.' };
+      if (err.kind === 'overload' || err.kind === 'rate_limit')
+        return { ok: false, error: 'AI mapping is busy right now. Try again in a moment.' };
+    }
+    return { ok: false, error: 'AI mapping failed. Try again.' };
   }
 
   const byCatId = new Map(parsedMap.mappings.map((m) => [m.category_id, m]));

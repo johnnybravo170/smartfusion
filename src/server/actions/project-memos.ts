@@ -8,8 +8,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { GoogleGenAI } from '@google/genai';
 import { revalidatePath } from 'next/cache';
+import { type AttachedFile, gateway } from '@/lib/ai-gateway';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import {
   deleteFromStorage as deletePhotoFromStorage,
@@ -226,27 +226,21 @@ export async function transcribeMemoAction(memoId: string): Promise<MemoActionRe
       .eq('memo_id', memoId)
       .order('created_at', { ascending: true });
 
-    type PhotoPart = { mimeType: string; data: string };
-    const photoParts: PhotoPart[] = [];
+    const photoFiles: AttachedFile[] = [];
     for (const p of memoPhotos ?? []) {
       const path = p.storage_path as string;
       const { data: photoData } = await supabase.storage.from('photos').download(path);
       if (!photoData) continue;
       const photoBuf = await photoData.arrayBuffer();
-      photoParts.push({
-        mimeType: (p.mime as string) || 'image/jpeg',
-        data: Buffer.from(photoBuf).toString('base64'),
+      photoFiles.push({
+        mime: (p.mime as string) || 'image/jpeg',
+        base64: Buffer.from(photoBuf).toString('base64'),
       });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
-
-    const ai = new GoogleGenAI({ apiKey });
-
     const photoInstruction =
-      photoParts.length > 0
-        ? `\n\n${photoParts.length} site-walk ${photoParts.length === 1 ? 'photo is' : 'photos are'} attached (in order, 0-indexed). For each work item, include a "referenced_photo_indexes" array listing the indexes of photos that show the area or condition you're describing. Empty array if none are relevant.`
+      photoFiles.length > 0
+        ? `\n\n${photoFiles.length} site-walk ${photoFiles.length === 1 ? 'photo is' : 'photos are'} attached (in order, 0-indexed). For each work item, include a "referenced_photo_indexes" array listing the indexes of photos that show the area or condition you're describing. Empty array if none are relevant.`
         : '';
 
     const prompt = `You are a renovation project assistant. Transcribe this renovation site walk-through audio. Then extract work items and map them to standard renovation budget categories.
@@ -265,63 +259,23 @@ Respond with ONLY valid JSON in this exact format:
   "uncertainty_flags": ["anything unclear or that needs clarification"]
 }`;
 
-    // Gemini's free tier throws 503 "model overloaded" on busy periods.
-    // Retry with backoff, then fall back to the lite model.
-    const models = ['gemini-2.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-    const delays = [0, 2000, 5000];
+    // Loose schema — the prompt does most of the work; we want
+    // everything-or-nothing JSON validity, not strict field policing.
+    const SCHEMA = { type: 'object' };
 
-    let text = '';
-    let lastErr: unknown = null;
-    for (let i = 0; i < models.length; i++) {
-      if (delays[i] > 0) await new Promise((r) => setTimeout(r, delays[i]));
-      try {
-        const response = await ai.models.generateContent({
-          model: models[i],
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: prompt },
-                { inlineData: { mimeType: mediaType, data: base64Audio } },
-                ...photoParts.map((p) => ({ inlineData: p })),
-              ],
-            },
-          ],
-          config: {
-            responseMimeType: 'application/json',
-            temperature: 0.1,
-          },
-        });
-        text = response.text ?? '';
-        if (text) {
-          lastErr = null;
-          break;
-        }
-        lastErr = new Error('Empty response from Gemini.');
-      } catch (err) {
-        lastErr = err;
-        const msg = err instanceof Error ? err.message : String(err);
-        const retryable = /\b(503|429|overload|unavailable|rate)/i.test(msg);
-        if (!retryable) throw err;
-      }
-    }
-    if (lastErr || !text) {
-      throw new Error(
-        `Gemini overloaded after retries: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
-      );
-    }
+    const audioFile: AttachedFile = { mime: mediaType, base64: base64Audio };
 
-    let extraction: MemoExtraction;
-    try {
-      extraction = JSON.parse(text);
-    } catch {
-      const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        extraction = JSON.parse(jsonMatch[1]);
-      } else {
-        throw new Error('Failed to parse AI response as JSON.');
-      }
-    }
+    const res = await gateway().runStructured<MemoExtraction>({
+      kind: 'structured',
+      task: 'project_memo_generate',
+      tenant_id: tenant.id,
+      prompt,
+      schema: SCHEMA,
+      file: audioFile,
+      files: photoFiles,
+      temperature: 0.1,
+    });
+    const extraction = res.data;
 
     // Update memo with results
     await supabase

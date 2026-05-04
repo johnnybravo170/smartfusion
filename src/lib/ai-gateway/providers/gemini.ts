@@ -82,6 +82,7 @@ export class GeminiProvider implements AiProvider {
 
   async callVision(req: VisionRequest): Promise<VisionResponse> {
     const model = req.model_override ?? DEFAULT_MODELS.vision;
+    const allFiles = filesOf(req);
     const { response, key, latency_ms } = await this.run(async (ai) => {
       return ai.models.generateContent({
         model,
@@ -90,7 +91,7 @@ export class GeminiProvider implements AiProvider {
             role: 'user',
             parts: [
               { text: req.prompt },
-              { inlineData: { mimeType: req.file.mime, data: req.file.base64 } },
+              ...allFiles.map((f) => ({ inlineData: { mimeType: f.mime, data: f.base64 } })),
             ],
           },
         ],
@@ -104,9 +105,10 @@ export class GeminiProvider implements AiProvider {
 
   async callStructured<T = unknown>(req: StructuredRequest<T>): Promise<StructuredResponse<T>> {
     const model = req.model_override ?? DEFAULT_MODELS.structured;
+    const allFiles = filesOf(req);
     const { response, key, latency_ms } = await this.run(async (ai) => {
       const parts: Array<Record<string, unknown>> = [{ text: req.prompt }];
-      if (req.file) parts.push({ inlineData: { mimeType: req.file.mime, data: req.file.base64 } });
+      for (const f of allFiles) parts.push({ inlineData: { mimeType: f.mime, data: f.base64 } });
       return ai.models.generateContent({
         model,
         contents: [{ role: 'user', parts }],
@@ -198,6 +200,21 @@ export class GeminiProvider implements AiProvider {
       throw classifyGeminiError(cause);
     }
   }
+}
+
+/**
+ * Combine `file` (singular) + `files` (multi) into one ordered list.
+ * Singular comes first so the existing single-file callers see the
+ * same behavior; multi-file callers should use `files` exclusively.
+ */
+function filesOf(req: {
+  file?: { mime: string; base64: string };
+  files?: Array<{ mime: string; base64: string }>;
+}) {
+  const out: Array<{ mime: string; base64: string }> = [];
+  if (req.file) out.push(req.file);
+  if (req.files) out.push(...req.files);
+  return out;
 }
 
 type GenerateContentResponse = {

@@ -5,7 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { RouterAttemptEvent } from '@/lib/ai-gateway/router-types';
-import { createTelemetryHook } from '@/lib/ai-gateway/telemetry';
+import { type AiCallRow, createTelemetryHook } from '@/lib/ai-gateway/telemetry';
 
 const baseEvent: RouterAttemptEvent = {
   task: 'receipt_ocr',
@@ -23,7 +23,7 @@ const baseEvent: RouterAttemptEvent = {
 
 describe('createTelemetryHook', () => {
   it('writes a success row mapping every field', async () => {
-    const writer = vi.fn(async () => {});
+    const writer = vi.fn<(row: AiCallRow) => Promise<void>>(async () => {});
     const hook = createTelemetryHook({ writer });
     hook.onAttempt?.(baseEvent);
     // Hook is fire-and-forget; flush microtasks.
@@ -45,7 +45,7 @@ describe('createTelemetryHook', () => {
   });
 
   it('maps outcome=error + error_kind to status', async () => {
-    const writer = vi.fn(async () => {});
+    const writer = vi.fn<(row: AiCallRow) => Promise<void>>(async () => {});
     const hook = createTelemetryHook({ writer });
     hook.onAttempt?.({
       ...baseEvent,
@@ -65,7 +65,7 @@ describe('createTelemetryHook', () => {
   });
 
   it('falls back to status=unknown when error_kind is missing', async () => {
-    const writer = vi.fn(async () => {});
+    const writer = vi.fn<(row: AiCallRow) => Promise<void>>(async () => {});
     const hook = createTelemetryHook({ writer });
     hook.onAttempt?.({ ...baseEvent, outcome: 'error', error_kind: undefined });
     await new Promise((r) => setTimeout(r, 0));
@@ -73,7 +73,7 @@ describe('createTelemetryHook', () => {
   });
 
   it('null tenant_id when event has none (cron / system jobs)', async () => {
-    const writer = vi.fn(async () => {});
+    const writer = vi.fn<(row: AiCallRow) => Promise<void>>(async () => {});
     const hook = createTelemetryHook({ writer });
     hook.onAttempt?.({ ...baseEvent, tenant_id: null });
     await new Promise((r) => setTimeout(r, 0));
@@ -81,7 +81,7 @@ describe('createTelemetryHook', () => {
   });
 
   it('writer failures are swallowed — caller never sees them', async () => {
-    const writer = vi.fn(async () => {
+    const writer = vi.fn<(row: AiCallRow) => Promise<void>>(async () => {
       throw new Error('db down');
     });
     const hook = createTelemetryHook({ writer });

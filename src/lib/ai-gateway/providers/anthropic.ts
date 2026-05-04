@@ -97,24 +97,7 @@ export class AnthropicProvider implements AiProvider {
 
   async callVision(req: VisionRequest): Promise<VisionResponse> {
     const model = req.model_override ?? DEFAULT_MODELS.vision;
-    const isPdf = req.file.mime === 'application/pdf';
-    const fileBlock = isPdf
-      ? {
-          type: 'document' as const,
-          source: {
-            type: 'base64' as const,
-            media_type: 'application/pdf' as const,
-            data: req.file.base64,
-          },
-        }
-      : {
-          type: 'image' as const,
-          source: {
-            type: 'base64' as const,
-            media_type: req.file.mime as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-            data: req.file.base64,
-          },
-        };
+    const fileBlocks = filesOf(req).map(toAnthropicFileBlock);
     const { msg, key, latency_ms } = await this.run((client) =>
       client.messages.create({
         model,
@@ -122,7 +105,8 @@ export class AnthropicProvider implements AiProvider {
         messages: [
           {
             role: 'user',
-            content: [fileBlock, { type: 'text', text: req.prompt }],
+            // biome-ignore lint/suspicious/noExplicitAny: Anthropic SDK content block typing isn't worth fighting here
+            content: [...fileBlocks, { type: 'text', text: req.prompt }] as any,
           },
         ],
       }),
@@ -147,21 +131,11 @@ export class AnthropicProvider implements AiProvider {
   async callStructured<T = unknown>(req: StructuredRequest<T>): Promise<StructuredResponse<T>> {
     const model = req.model_override ?? DEFAULT_MODELS.structured;
     const schemaPrompt = `${req.prompt}\n\nReturn ONLY JSON matching this schema, no prose, no markdown fences:\n${JSON.stringify(req.schema)}`;
-    const userContent: Array<Record<string, unknown>> = [{ type: 'text', text: schemaPrompt }];
-    if (req.file) {
-      const isPdf = req.file.mime === 'application/pdf';
-      if (isPdf) {
-        userContent.unshift({
-          type: 'document',
-          source: { type: 'base64', media_type: 'application/pdf', data: req.file.base64 },
-        });
-      } else {
-        userContent.unshift({
-          type: 'image',
-          source: { type: 'base64', media_type: req.file.mime, data: req.file.base64 },
-        });
-      }
-    }
+    const fileBlocks = filesOf(req).map(toAnthropicFileBlock);
+    const userContent: Array<Record<string, unknown>> = [
+      ...fileBlocks,
+      { type: 'text', text: schemaPrompt },
+    ];
     const { msg, key, latency_ms } = await this.run((client) =>
       client.messages.create({
         model,
@@ -239,6 +213,29 @@ function extractText(msg: { content: Array<{ type: string; text?: string }> }): 
     .filter((c) => c.type === 'text')
     .map((c) => c.text ?? '')
     .join('');
+}
+
+function filesOf(req: {
+  file?: { mime: string; base64: string };
+  files?: Array<{ mime: string; base64: string }>;
+}) {
+  const out: Array<{ mime: string; base64: string }> = [];
+  if (req.file) out.push(req.file);
+  if (req.files) out.push(...req.files);
+  return out;
+}
+
+function toAnthropicFileBlock(f: { mime: string; base64: string }): Record<string, unknown> {
+  if (f.mime === 'application/pdf') {
+    return {
+      type: 'document',
+      source: { type: 'base64', media_type: 'application/pdf', data: f.base64 },
+    };
+  }
+  return {
+    type: 'image',
+    source: { type: 'base64', media_type: f.mime, data: f.base64 },
+  };
 }
 
 function classifyAnthropicError(cause: unknown): AiError {

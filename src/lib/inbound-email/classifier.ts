@@ -1,12 +1,15 @@
 /**
- * Gemini-based classifier for inbound emails.
+ * AI gateway-backed classifier for inbound emails.
  *
  * Given raw email content + attachments + the tenant's active projects,
  * returns: classification (sub_quote | vendor_bill | other), extracted
  * structured data, and best-guess project match with confidence.
+ *
+ * Routes via the gateway under task='email_classify' — Gemini primary,
+ * OpenAI fallback. See routing.ts.
  */
 
-import { GoogleGenAI } from '@google/genai';
+import { type AttachedFile, gateway } from '@/lib/ai-gateway';
 
 export type Classification = 'sub_quote' | 'vendor_bill' | 'other';
 
@@ -59,17 +62,11 @@ export type EmailContext = {
   attachments: { filename: string; contentType: string; base64: string }[];
 };
 
-const MODEL = 'gemini-2.5-flash';
-
 export async function classifyInboundEmail(
   email: EmailContext,
   projects: ProjectContext[],
+  tenantId?: string | null,
 ): Promise<ClassifierResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
-
-  const ai = new GoogleGenAI({ apiKey });
-
   const projectList = projects
     .map(
       (p) =>
@@ -125,52 +122,20 @@ Return ONLY valid JSON matching this schema (no markdown, no prose):
   "notes": "short explanation of your classification and match reasoning"
 }`;
 
-  const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
-    { text: prompt },
-  ];
+  // Filter attachments to image / PDF (the only types the providers
+  // accept inline). Drop everything else silently.
+  const files: AttachedFile[] = email.attachments
+    .filter((a) => a.contentType === 'application/pdf' || a.contentType.startsWith('image/'))
+    .map((a) => ({ mime: a.contentType, base64: a.base64, filename: a.filename }));
 
-  for (const att of email.attachments) {
-    if (att.contentType === 'application/pdf' || att.contentType.startsWith('image/')) {
-      parts.push({
-        inlineData: {
-          mimeType: att.contentType,
-          data: att.base64,
-        },
-      });
-    }
-  }
-
-  // Retry on 503 UNAVAILABLE (Gemini overload). 3 attempts w/ exponential backoff.
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
-  let lastErr: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      response = await ai.models.generateContent({
-        model: MODEL,
-        contents: [{ role: 'user', parts }],
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-      });
-      break;
-    } catch (err) {
-      lastErr = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('503') && !msg.includes('UNAVAILABLE') && !msg.includes('overload'))
-        throw err;
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1) ** 2));
-    }
-  }
-  if (!response) throw lastErr ?? new Error('Classifier failed after retries');
-
-  const text = response.text ?? '';
-  let parsed: ClassifierResult;
-  try {
-    parsed = JSON.parse(text) as ClassifierResult;
-  } catch {
-    throw new Error(`Gemini returned non-JSON response: ${text.slice(0, 200)}`);
-  }
-
-  return parsed;
+  const res = await gateway().runStructured<ClassifierResult>({
+    kind: 'structured',
+    task: 'email_classify',
+    tenant_id: tenantId,
+    prompt,
+    schema: { type: 'object' },
+    files,
+    temperature: 0.1,
+  });
+  return res.data;
 }

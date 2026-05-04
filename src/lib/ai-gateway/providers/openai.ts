@@ -104,22 +104,9 @@ export class OpenAiProvider implements AiProvider {
 
   async callVision(req: VisionRequest): Promise<VisionResponse> {
     const model = req.model_override ?? DEFAULT_MODELS.vision;
-    const isPdf = req.file.mime === 'application/pdf';
+    const allFiles = filesOf(req);
     const userContent: Array<Record<string, unknown>> = [{ type: 'text', text: req.prompt }];
-    if (isPdf) {
-      userContent.push({
-        type: 'file',
-        file: {
-          filename: req.file.filename ?? 'input.pdf',
-          file_data: `data:application/pdf;base64,${req.file.base64}`,
-        },
-      });
-    } else {
-      userContent.push({
-        type: 'image_url',
-        image_url: { url: `data:${req.file.mime};base64,${req.file.base64}` },
-      });
-    }
+    for (const f of allFiles) userContent.push(toOpenAiFilePart(f));
     const { json, key, latency_ms } = await this.post({
       model,
       messages: [{ role: 'user', content: userContent }],
@@ -147,23 +134,7 @@ export class OpenAiProvider implements AiProvider {
   async callStructured<T = unknown>(req: StructuredRequest<T>): Promise<StructuredResponse<T>> {
     const model = req.model_override ?? DEFAULT_MODELS.structured;
     const userContent: Array<Record<string, unknown>> = [{ type: 'text', text: req.prompt }];
-    if (req.file) {
-      const isPdf = req.file.mime === 'application/pdf';
-      if (isPdf) {
-        userContent.push({
-          type: 'file',
-          file: {
-            filename: req.file.filename ?? 'input.pdf',
-            file_data: `data:application/pdf;base64,${req.file.base64}`,
-          },
-        });
-      } else {
-        userContent.push({
-          type: 'image_url',
-          image_url: { url: `data:${req.file.mime};base64,${req.file.base64}` },
-        });
-      }
-    }
+    for (const f of filesOf(req)) userContent.push(toOpenAiFilePart(f));
     const { json, key, latency_ms } = await this.post({
       model,
       messages: [{ role: 'user', content: userContent }],
@@ -270,6 +241,36 @@ export class OpenAiProvider implements AiProvider {
     const json = await res.json();
     return { json, key, latency_ms };
   }
+}
+
+function filesOf(req: {
+  file?: { mime: string; base64: string; filename?: string };
+  files?: Array<{ mime: string; base64: string; filename?: string }>;
+}) {
+  const out: Array<{ mime: string; base64: string; filename?: string }> = [];
+  if (req.file) out.push(req.file);
+  if (req.files) out.push(...req.files);
+  return out;
+}
+
+function toOpenAiFilePart(f: {
+  mime: string;
+  base64: string;
+  filename?: string;
+}): Record<string, unknown> {
+  if (f.mime === 'application/pdf') {
+    return {
+      type: 'file',
+      file: {
+        filename: f.filename ?? 'input.pdf',
+        file_data: `data:application/pdf;base64,${f.base64}`,
+      },
+    };
+  }
+  return {
+    type: 'image_url',
+    image_url: { url: `data:${f.mime};base64,${f.base64}` },
+  };
 }
 
 function classifyOpenAiError(status: number, body: string): AiError {

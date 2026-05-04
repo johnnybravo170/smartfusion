@@ -68,7 +68,10 @@ export type VisionRequest = AiRequestBase & {
   kind: 'vision';
   /** Instruction describing what to extract. */
   prompt: string;
-  file: AttachedFile;
+  /** Single inline file. For multi-file requests use `files`. */
+  file?: AttachedFile;
+  /** Multiple files (e.g. audio + photos). Adapters concatenate in order. */
+  files?: AttachedFile[];
   max_tokens?: number;
 };
 
@@ -84,6 +87,8 @@ export type StructuredRequest<T = unknown> = AiRequestBase & {
   schema: Record<string, unknown>;
   /** Optional inline file (vision + structured combined — receipt OCR uses this). */
   file?: AttachedFile;
+  /** Multiple files (e.g. audio transcript + photos for project memos). */
+  files?: AttachedFile[];
   /** Validates the parsed JSON. Defaults to identity cast. */
   parse?: (raw: unknown) => T;
   temperature?: number;

@@ -68,6 +68,7 @@ export async function processInboundEmail(emailId: string): Promise<void> {
         attachments,
       },
       projects,
+      email.tenant_id as string | null,
     );
   } catch (err) {
     await admin

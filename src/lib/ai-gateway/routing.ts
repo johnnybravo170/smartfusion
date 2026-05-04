@@ -36,12 +36,13 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     fallback_chain: ['gemini', 'anthropic', 'openai'],
   },
 
-  // Quality-sensitive: project memos go to a customer-facing email.
-  // Anthropic primary for tone; Gemini fallback to keep the latency cap.
+  // Project memos are multimodal (audio + photos). Pre-AG-7 the direct
+  // caller used Gemini exclusively; we keep Gemini primary to avoid a
+  // behavior change at migration time. Re-evaluate quality vs cost
+  // against Anthropic after a week of telemetry.
   project_memo_generate: {
-    primary: { provider: 'anthropic' },
-    secondary: { provider: 'gemini', weight: 0.5 },
-    fallback_chain: ['anthropic', 'gemini', 'openai'],
+    primary: { provider: 'gemini' },
+    fallback_chain: ['gemini', 'anthropic', 'openai'],
   },
 
   // High-volume but throwaway (one classification per inbound email).

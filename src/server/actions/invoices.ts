@@ -10,8 +10,8 @@
  * See PHASE_1_PLAN.md Phase 1C.
  */
 
-import { GoogleGenAI } from '@google/genai';
 import { revalidatePath } from 'next/cache';
+import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import type { InvoiceLineItem } from '@/lib/db/queries/invoices';
 import { formatCurrency } from '@/lib/pricing/calculator';
@@ -1181,9 +1181,6 @@ export async function extractPaymentReceiptAction(
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return { ok: false, error: 'OCR not configured.' };
-
   const buf = Buffer.from(await file.arrayBuffer());
   const base64 = buf.toString('base64');
 
@@ -1207,55 +1204,53 @@ Extract these fields and return strict JSON:
 
 Return ONLY valid JSON, no prose, no markdown fences.`;
 
-  const ai = new GoogleGenAI({ apiKey });
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
-  let lastErr: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }, { inlineData: { mimeType: file.type, data: base64 } }],
-          },
-        ],
-        config: { responseMimeType: 'application/json', temperature: 0.1 },
-      });
-      break;
-    } catch (err) {
-      lastErr = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('503') && !msg.includes('UNAVAILABLE') && !msg.includes('overload')) {
-        return { ok: false, error: `OCR failed: ${msg}` };
-      }
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1) ** 2));
+  const SCHEMA = {
+    type: 'object',
+    properties: {
+      amount_cents: { type: ['integer', 'null'] },
+      reference: { type: ['string', 'null'] },
+      paid_on: { type: ['string', 'null'] },
+      payer_name: { type: ['string', 'null'] },
+      notes: { type: ['string', 'null'] },
+    },
+    required: ['amount_cents', 'reference', 'paid_on', 'payer_name', 'notes'],
+  };
+
+  let raw: Record<string, unknown>;
+  try {
+    const res = await gateway().runStructured<Record<string, unknown>>({
+      kind: 'structured',
+      task: 'invoice_payment_ocr',
+      tenant_id: tenant.id,
+      prompt,
+      schema: SCHEMA,
+      file: { mime: file.type, base64 },
+      temperature: 0.1,
+    });
+    raw = res.data;
+  } catch (err) {
+    if (isAiError(err)) {
+      if (err.kind === 'quota')
+        return { ok: false, error: 'OCR is temporarily unavailable across providers.' };
+      if (err.kind === 'overload' || err.kind === 'rate_limit')
+        return { ok: false, error: 'OCR is busy right now. Try again in a moment.' };
+      if (err.kind === 'timeout') return { ok: false, error: 'OCR timed out.' };
     }
-  }
-  if (!response) {
-    const msg = lastErr instanceof Error ? lastErr.message : 'OCR unavailable';
-    return { ok: false, error: msg };
+    return { ok: false, error: 'OCR failed. Fill the form manually.' };
   }
 
-  const text = response.text ?? '';
-  let parsed: ReceiptExtraction;
-  try {
-    const raw = JSON.parse(text) as Record<string, unknown>;
-    parsed = {
-      amount_cents: typeof raw.amount_cents === 'number' ? Math.round(raw.amount_cents) : null,
-      reference:
-        typeof raw.reference === 'string' && raw.reference.trim() ? raw.reference.trim() : null,
-      paid_on:
-        typeof raw.paid_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.paid_on)
-          ? raw.paid_on
-          : null,
-      payer_name:
-        typeof raw.payer_name === 'string' && raw.payer_name.trim() ? raw.payer_name.trim() : null,
-      notes: typeof raw.notes === 'string' && raw.notes.trim() ? raw.notes.trim() : null,
-    };
-  } catch {
-    return { ok: false, error: 'OCR returned invalid JSON.' };
-  }
+  const parsed: ReceiptExtraction = {
+    amount_cents: typeof raw.amount_cents === 'number' ? Math.round(raw.amount_cents) : null,
+    reference:
+      typeof raw.reference === 'string' && raw.reference.trim() ? raw.reference.trim() : null,
+    paid_on:
+      typeof raw.paid_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.paid_on)
+        ? raw.paid_on
+        : null,
+    payer_name:
+      typeof raw.payer_name === 'string' && raw.payer_name.trim() ? raw.payer_name.trim() : null,
+    notes: typeof raw.notes === 'string' && raw.notes.trim() ? raw.notes.trim() : null,
+  };
 
   return { ok: true, data: parsed };
 }
