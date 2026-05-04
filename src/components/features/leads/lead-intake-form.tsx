@@ -24,13 +24,16 @@ import {
   FileQuestion,
   FileText,
   Image as ImageIcon,
+  Lightbulb,
   Loader2,
   MessageSquare,
   Mic,
   Pencil,
+  Plus,
   Receipt,
   RefreshCcw,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
@@ -49,6 +52,7 @@ import {
   acceptInboundLeadAction,
   type IntakeArtifact,
   type IntakeArtifactKind,
+  type IntakeAugmentation,
   type ParseModelChoice,
   parseInboundLeadAction,
   parseIntakeDraftAction,
@@ -95,6 +99,70 @@ const ARTIFACT_KIND_META: Record<
   inspiration_photo: { Icon: Sparkles, label: 'Inspiration' },
   other: { Icon: FileQuestion, label: 'Artifact' },
 };
+
+const CONFIDENCE_TONE: Record<IntakeAugmentation['confidence'], string> = {
+  high: 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200',
+  medium:
+    'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200',
+  low: 'border-muted-foreground/30 bg-muted text-muted-foreground',
+};
+
+function SuggestionsBlock({
+  suggestions,
+  onAccept,
+  onDismiss,
+}: {
+  suggestions: IntakeAugmentation[];
+  onAccept: (s: IntakeAugmentation) => void;
+  onDismiss: (s: IntakeAugmentation) => void;
+}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="rounded-md border bg-card p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <Lightbulb className="size-4 text-amber-500" />
+        <p className="text-sm font-medium">Henry suggests you might be missing:</p>
+      </div>
+      <ul className="space-y-2">
+        {suggestions.map((s) => (
+          <li
+            key={s.id}
+            className="flex flex-col gap-2 rounded-md border bg-background p-3 sm:flex-row sm:items-start sm:justify-between"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{s.title}</span>
+                <span
+                  className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${CONFIDENCE_TONE[s.confidence]}`}
+                >
+                  {s.confidence}
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  → {s.suggested_section} / {s.suggested_category}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{s.reasoning}</p>
+            </div>
+            <div className="flex shrink-0 gap-1">
+              <Button size="sm" variant="outline" onClick={() => onAccept(s)}>
+                <Plus className="mr-1 size-3" />
+                Add
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onDismiss(s)}
+                aria-label="Dismiss suggestion"
+              >
+                <X className="size-3.5" />
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function ArtifactChipRow({ artifacts }: { artifacts: IntakeArtifact[] | null }) {
   if (!artifacts || artifacts.length === 0) return null;
@@ -215,6 +283,7 @@ export function LeadIntakeForm({
     initialDraft?.error_message ?? null,
   );
   const [duplicates, setDuplicates] = useState<ContactMatch[]>([]);
+  const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<Set<string>>(new Set());
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
   const [isRetrying, startRetrying] = useTransition();
@@ -370,6 +439,63 @@ export function LeadIntakeForm({
     runParse({ files: nextFiles });
   }
 
+  /**
+   * Add a Henry suggestion as a new line on the editable draft. Lands
+   * in the matching category by name (case-insensitive); creates a new
+   * category at the right section if none matches.
+   */
+  function handleAcceptSuggestion(s: IntakeAugmentation) {
+    if (!draft) return;
+    const targetName = s.suggested_category.trim();
+    const targetSection = s.suggested_section;
+    const targetLower = targetName.toLowerCase();
+    const existingIdx = draft.categories.findIndex(
+      (c) => c.name.trim().toLowerCase() === targetLower,
+    );
+    type Line = ParsedIntake['categories'][number]['lines'][number];
+    // Same pattern as the rest of the form: append `_k` at runtime, cast
+    // through unknown — `_k` lives on rendered objects but isn't in the
+    // ParsedIntake schema (it's a React-keying concern, not data).
+    const newLine = {
+      label: s.title,
+      notes: s.reasoning,
+      qty: 1,
+      unit: 'lot',
+      unit_price_cents: null,
+      source_image_indexes: [],
+      _k: crypto.randomUUID(),
+    } as unknown as Line;
+    let nextCategories: ParsedIntake['categories'];
+    if (existingIdx >= 0) {
+      nextCategories = draft.categories.map((c, i) =>
+        i === existingIdx ? { ...c, lines: [...c.lines, newLine] } : c,
+      );
+    } else {
+      const newCategory = {
+        name: targetName,
+        section: targetSection,
+        lines: [newLine],
+        _k: crypto.randomUUID(),
+      } as unknown as ParsedIntake['categories'][number];
+      nextCategories = [...draft.categories, newCategory];
+    }
+    setDraft({ ...draft, categories: nextCategories });
+    setDismissedSuggestionIds((prev) => {
+      const next = new Set(prev);
+      next.add(s.id);
+      return next;
+    });
+    toast.success(`Added "${s.title}" to ${targetName}`);
+  }
+
+  function handleDismissSuggestion(s: IntakeAugmentation) {
+    setDismissedSuggestionIds((prev) => {
+      const next = new Set(prev);
+      next.add(s.id);
+      return next;
+    });
+  }
+
   function handleAccept(options?: { useExistingContactId?: string; confirmCreate?: boolean }) {
     if (!draft) return;
     startAccepting(async () => {
@@ -483,6 +609,13 @@ export function LeadIntakeForm({
           />
         ) : null}
         <ArtifactChipRow artifacts={initialDraft?.artifacts ?? null} />
+        <SuggestionsBlock
+          suggestions={(initialDraft?.augmentations ?? []).filter(
+            (s) => !dismissedSuggestionIds.has(s.id),
+          )}
+          onAccept={handleAcceptSuggestion}
+          onDismiss={handleDismissSuggestion}
+        />
         {transcript ? <TranscriptPanel transcript={transcript} /> : null}
         {parsedBy ? <p className="text-xs text-muted-foreground">Parsed by: {parsedBy}</p> : null}
         <ReviewDraft

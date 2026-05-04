@@ -36,6 +36,7 @@ export const KNOWN_TASKS = [
   'audio_transcribe_intake', // Whisper transcription of intake voice memo
   'intake_full_parse', // Anthropic tool-use intake → estimate + tasks
   'intake_artifact_classify', // Gemini Flash batch classification of intake artifacts (per-artifact chip row)
+  'intake_scope_augment', // post-parse "what's likely missing from this scope?" pass
 ] as const;
 
 export type KnownTask = (typeof KNOWN_TASKS)[number];

@@ -158,6 +158,16 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     primary: { provider: 'gemini' },
     fallback_chain: ['gemini', 'openai'],
   },
+
+  // Post-parse scope augmentation — "what's likely missing from this
+  // scope?". Pure reasoning over the parsed extraction (no images),
+  // similar caliber of work to the parse itself but a smaller payload.
+  // Sonnet 4.6 is the right level — this is real inference (renovation
+  // pattern matching) but doesn't need Opus's depth.
+  intake_scope_augment: {
+    primary: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+    fallback_chain: ['anthropic', 'openai'],
+  },
 };
 
 export function lookupRoute(task: string, custom?: Record<string, RouteConfig>): RouteConfig {

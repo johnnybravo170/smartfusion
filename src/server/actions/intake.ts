@@ -25,6 +25,7 @@
  * through the existing photo strip UI.
  */
 
+import { randomUUID } from 'node:crypto';
 import * as Sentry from '@sentry/nextjs';
 import { revalidatePath } from 'next/cache';
 import {
@@ -125,6 +126,73 @@ export type IntakeArtifact = {
   kind: IntakeArtifactKind | null;
   label: string | null;
 };
+
+/**
+ * A scope-augmentation suggestion. Henry surfaces these after the
+ * parse — common renovation items the operator may have missed
+ * (transition strips, casing alongside baseboards, disposal lines, etc.).
+ *
+ * The operator accepts (line gets added to the editable draft) or
+ * dismisses (suggestion drops off the list). Local-only state in the
+ * UI for this slice; the persisted list is informational.
+ */
+export type IntakeAugmentation = {
+  id: string;
+  title: string;
+  reasoning: string;
+  suggested_category: string;
+  suggested_section: 'interior' | 'exterior';
+  confidence: 'high' | 'medium' | 'low';
+};
+
+const AUGMENT_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    suggestions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          reasoning: { type: 'string' },
+          suggested_category: { type: 'string' },
+          suggested_section: { type: 'string', enum: ['interior', 'exterior'] },
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+        },
+        required: ['title', 'reasoning', 'suggested_category', 'suggested_section', 'confidence'],
+      },
+    },
+  },
+  required: ['suggestions'],
+};
+
+const AUGMENT_PROMPT = `You're a senior Canadian general contractor reviewing an intake estimate Henry just drafted from a homeowner conversation.
+
+Your job: surface 0–5 line items that are LIKELY MISSING from the draft based on standard renovation patterns. These are the kinds of things contractors regularly forget to mention but always end up doing — and homeowners are surprised to be charged for if they aren't quoted up front.
+
+Examples of what to look for:
+- Transition strips / reducers wherever flooring meets a different surface, especially at doorways
+- Door casing whenever baseboards are being replaced (same trim work, sourced together)
+- Disposal / dump fees alongside any meaningful demo
+- Patching + painting wherever drywall, framing, or electrical work cuts into walls
+- Plumbing rough-in adjustments when fixtures move
+- Final caulking + fill scope alongside any millwork install
+- Permit fees for work that needs them (electrical, plumbing, structural)
+- Plywood underlayment when running new flooring over existing subfloor with height changes
+- Stair-edge mitered returns when flooring carries to a stair top
+
+Rules:
+1. Only suggest items where there's REAL evidence in the scope to back it (e.g. "baseboards in scope but no casing" → suggest casing). Don't guess at things the scope doesn't imply.
+2. Each suggestion needs a CONCRETE reasoning sentence pointing to what in the draft made you think it's missing.
+3. If the scope already covers the item (even loosely), do NOT suggest it. Read the existing categories + lines carefully first.
+4. Match suggested_category to one of the EXISTING category names in the draft when possible. Only invent a new category name when nothing existing fits.
+5. Confidence:
+   - high: contractor would always add this if doing the rest of the scope
+   - medium: usually included, depends on specifics
+   - low: worth a heads-up, but easy to skip
+6. Empty list is fine — better than padding suggestions just to fill the array.
+
+Title is short (max ~50 chars). Reasoning is one sentence. Return JSON via the schema.`;
 
 const ARTIFACT_CLASSIFY_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -406,6 +474,11 @@ export async function parseInboundLeadAction(
     return c ? { ...a, kind: c.kind, label: c.label } : a;
   });
 
+  // Post-parse scope augmentation. Runs sequentially because it depends
+  // on the parsed extraction. Best-effort — empty list on failure.
+  // ~3-5 s typical; well within the 120 s page budget after a parse.
+  const augmentations = await augmentScope(draft, transcript, tenant.id);
+
   // Persist the extraction in the same envelope shape used by
   // project_memos (migration 0174). Lets the second-pass / thinking
   // button drop in unchanged when we wire it for intake.
@@ -415,6 +488,7 @@ export async function parseInboundLeadAction(
     ai_extraction: envelope,
     parsed_by: model_override,
     artifacts: finalArtifacts,
+    augmentations,
   });
 
   return { ok: true, draftId, draft, transcript, parsedBy: model_override };
@@ -511,9 +585,18 @@ export async function parseIntakeDraftAction(
 
   if (customerName) draft.customer.name = customerName;
   const envelope: IntakeExtractionEnvelope = { v1: draft, v2: null, active: 'v1' };
+  // Re-run augmentation against the fresh parse — best-effort, empty
+  // on failure. The previous augmentations are stale once the parse
+  // changes, so overwrite rather than merge.
+  const augmentations = await augmentScope(draft, transcript || null, tenant.id);
   await supabase
     .from('intake_drafts')
-    .update({ status: 'ready', ai_extraction: envelope, parsed_by: model_override })
+    .update({
+      status: 'ready',
+      ai_extraction: envelope,
+      parsed_by: model_override,
+      augmentations,
+    })
     .eq('id', draftId);
 
   return { ok: true, draftId, draft, transcript: transcript || null, parsedBy: model_override };
@@ -818,4 +901,57 @@ function mimeDefaultLabel(
 ): string {
   const match = visualFiles.find((v) => v.index === index);
   return match?.file.name || 'Artifact';
+}
+
+/**
+ * Post-parse scope augmentation. Looks at the parsed extraction +
+ * transcript and suggests items the operator may have missed based on
+ * standard renovation patterns. Best-effort: failures return an empty
+ * list rather than blocking the parse.
+ */
+async function augmentScope(
+  parsed: ParsedIntake,
+  transcript: string | null,
+  tenantId: string,
+): Promise<IntakeAugmentation[]> {
+  try {
+    const scopeSummary = parsed.categories
+      .map((c) => {
+        const lines = c.lines.map((l) => `    - ${l.label}${l.notes ? ` (${l.notes})` : ''}`);
+        return `  ${c.section ?? 'General'} / ${c.name}:\n${lines.join('\n')}`;
+      })
+      .join('\n\n');
+
+    const intro = [
+      'PARSED DRAFT (current categories + lines):',
+      scopeSummary || '  (no categories yet)',
+      '',
+      transcript ? `TRANSCRIPT (for context):\n${transcript}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    type AugmentResponse = {
+      suggestions: Array<Omit<IntakeAugmentation, 'id'>>;
+    };
+    const res = await gateway().runStructured<AugmentResponse>({
+      kind: 'structured',
+      task: 'intake_scope_augment',
+      tenant_id: tenantId,
+      prompt: `${AUGMENT_PROMPT}\n\n${intro}`,
+      schema: AUGMENT_SCHEMA,
+      temperature: 0.1,
+      max_tokens: 1500,
+    });
+    return (res.data.suggestions ?? []).slice(0, 5).map((s) => ({
+      id: randomUUID(),
+      title: (s.title ?? '').slice(0, 120),
+      reasoning: (s.reasoning ?? '').slice(0, 400),
+      suggested_category: s.suggested_category ?? 'General',
+      suggested_section: s.suggested_section ?? 'interior',
+      confidence: s.confidence ?? 'medium',
+    }));
+  } catch {
+    return [];
+  }
 }
