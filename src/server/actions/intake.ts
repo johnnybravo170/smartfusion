@@ -36,6 +36,10 @@ import {
 import { type AttachedFile, gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { type ContactMatch, findContactMatches } from '@/lib/db/queries/contact-matches';
+import {
+  loadIntakeCustomerContext,
+  renderCustomerContextForPrompt,
+} from '@/lib/db/queries/intake-customer-context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -387,19 +391,37 @@ export async function parseInboundLeadAction(
     }
   }
   const transcript = transcriptParts.length > 0 ? transcriptParts.join('\n\n---\n\n') : null;
-  await updateDraft({ status: 'extracting', transcript, artifacts: allArtifacts });
+
+  // Customer-context fold-in. If the operator typed a name that matches
+  // an existing customer, hydrate their last few projects' shape and
+  // inject as prompt context so the parse skews toward known patterns
+  // and the reply reads as a continuation, not a stranger intro.
+  // Persist recognized_customer_id on the row for the UI's recognition
+  // pill + future eval correlation.
+  const customerContext = customerName ? await loadIntakeCustomerContext(customerName) : null;
+  const customerContextBlock = renderCustomerContextForPrompt(customerContext);
+
+  await updateDraft({
+    status: 'extracting',
+    transcript,
+    artifacts: allArtifacts,
+    recognized_customer_id: customerContext?.customerId ?? null,
+  });
 
   // Build the prompt + the typed file list.
   const intro = [
     `Tenant: ${tenant.name ?? 'Contractor'}`,
     `Customer (operator-supplied): ${customerName || '(not provided)'}`,
+    customerContextBlock ?? '',
     pastedText
       ? `Pasted message text:\n${pastedText}`
       : '(No pasted text — extract everything from the screenshots.)',
     files.length
       ? `${files.length} artifact(s) follow (images and/or PDFs), indexed 0..${files.length - 1}.`
       : '(No artifacts.)',
-  ].join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   const attachedFiles: AttachedFile[] = [];
   for (const f of files) {
@@ -536,9 +558,20 @@ export async function parseIntakeDraftAction(
   const provider_override = modelChoice === 'claude-sonnet' ? 'anthropic' : 'openai';
   const model_override = modelChoice === 'claude-sonnet' ? CLAUDE_PARSE_MODEL : PARSE_MODEL;
 
+  // Re-load customer context for the retry — same logic as the
+  // initial parse. Stamps recognized_customer_id alongside the
+  // status flip in case the customer name has been edited since
+  // the original run (or recognition was missed first time).
+  const customerContext = customerName ? await loadIntakeCustomerContext(customerName) : null;
+  const customerContextBlock = renderCustomerContextForPrompt(customerContext);
+
   await supabase
     .from('intake_drafts')
-    .update({ status: 'extracting', error_message: null })
+    .update({
+      status: 'extracting',
+      error_message: null,
+      recognized_customer_id: customerContext?.customerId ?? null,
+    })
     .eq('id', draftId);
 
   const transcriptBlock = transcript ? `Voice memo transcript:\n${transcript}` : '';
@@ -546,10 +579,13 @@ export async function parseIntakeDraftAction(
   const intro = [
     `Tenant: ${tenant.name ?? 'Contractor'}`,
     `Customer (operator-supplied): ${customerName || '(not provided)'}`,
+    customerContextBlock ?? '',
     [transcriptBlock, pastedBlock].filter(Boolean).join('\n\n') ||
       '(No transcript or pasted text — degraded retry.)',
     '(No artifacts on retry — photos/PDFs from the original upload were not persisted.)',
-  ].join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   let draft: ParsedIntake;
   try {

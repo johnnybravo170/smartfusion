@@ -220,6 +220,28 @@ function ReasoningReceipt({
   );
 }
 
+function RecognizedCustomerPill({
+  customerName,
+  customerId,
+}: {
+  customerName: string | null;
+  customerId: string | null;
+}) {
+  if (!customerId) return null;
+  const displayName = (customerName ?? '').trim() || 'this customer';
+  return (
+    <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-800 dark:bg-emerald-900/20">
+      <p className="flex flex-wrap items-center gap-1.5 text-emerald-900 dark:text-emerald-200">
+        <Sparkles className="size-3.5 shrink-0" />
+        <span>
+          Henry recognized <strong>{displayName}</strong> from prior projects — folded context into
+          the draft.
+        </span>
+      </p>
+    </div>
+  );
+}
+
 function AppendMoreZone({
   files,
   onFilesAdded,
@@ -755,6 +777,10 @@ export function LeadIntakeForm({
           <Loader2 className="size-4 animate-spin" />
           {processingMessage(draftStatus ?? 'extracting')}
         </p>
+        <RecognizedCustomerPill
+          customerName={initialDraft?.customer_name ?? customerName}
+          customerId={initialDraft?.recognized_customer_id ?? null}
+        />
         <ArtifactChipRow artifacts={initialDraft?.artifacts ?? null} />
         {transcript ? <TranscriptPanel transcript={transcript} /> : null}
         <p className="text-xs text-muted-foreground">
@@ -840,6 +866,10 @@ export function LeadIntakeForm({
             useLabel="Use this contact for the new project"
           />
         ) : null}
+        <RecognizedCustomerPill
+          customerName={initialDraft?.customer_name ?? customerName}
+          customerId={initialDraft?.recognized_customer_id ?? null}
+        />
         <ArtifactChipRow artifacts={initialDraft?.artifacts ?? null} />
         <SuggestionsBlock
           suggestions={(initialDraft?.augmentations ?? []).filter(

@@ -30,6 +30,7 @@ export type IntakeDraftRow = {
   } | null;
   parsed_by: string | null;
   error_message: string | null;
+  recognized_customer_id: string | null;
   accepted_project_id: string | null;
   created_at: string;
   updated_at: string;
@@ -44,7 +45,7 @@ export async function loadIntakeDraft(id: string): Promise<IntakeDraftRow | null
   const { data, error } = await supabase
     .from('intake_drafts')
     .select(
-      'id, status, customer_name, pasted_text, transcript, artifacts, augmentations, ai_extraction, parsed_by, error_message, accepted_project_id, created_at, updated_at',
+      'id, status, customer_name, pasted_text, transcript, artifacts, augmentations, ai_extraction, parsed_by, error_message, recognized_customer_id, accepted_project_id, created_at, updated_at',
     )
     .eq('id', id)
     .maybeSingle();
