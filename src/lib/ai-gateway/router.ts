@@ -18,6 +18,7 @@
  * single-attempt-per-provider so the algorithm stays readable.
  */
 
+import { CircuitBreaker } from './circuit-breaker';
 import { AiError, isAiError, type ProviderName } from './errors';
 import { AnthropicProvider } from './providers/anthropic';
 import { GeminiProvider } from './providers/gemini';
@@ -40,12 +41,16 @@ export type GatewayOptions = {
   /** Override / extend per-task routing. Key wins over the default. */
   routing?: Record<string, RouteConfig>;
   hooks?: RouterHooks;
+  /** Provide a custom breaker (tests can pass a clock). Defaults to a
+   *  fresh one per Gateway. */
+  breaker?: CircuitBreaker;
 };
 
 export class Gateway {
   private providers: Record<ProviderName, AiProvider | undefined>;
   private routing: Record<string, RouteConfig> | undefined;
   private hooks: RouterHooks | undefined;
+  private breaker: CircuitBreaker;
 
   constructor(opts: GatewayOptions = {}) {
     this.providers = {
@@ -56,6 +61,7 @@ export class Gateway {
     };
     this.routing = opts.routing;
     this.hooks = opts.hooks;
+    this.breaker = opts.breaker ?? new CircuitBreaker();
   }
 
   async runChat(req: ChatRequest): Promise<ChatResponse> {
@@ -98,23 +104,40 @@ export class Gateway {
           message: `Provider "${req.provider_override}" not configured.`,
         });
       }
-      return this.attempt(req, provider, 0, call);
+      return this.attempt(req, provider, req.provider_override, 0, call);
     }
 
     const route = lookupRoute(req.task, this.routing);
     const order = this.buildAttemptOrder(route);
 
     let lastError: unknown;
+    let allSkippedByBreaker = true;
     for (let i = 0; i < order.length; i++) {
-      const provider = this.providers[order[i]];
+      const providerName = order[i];
+      const provider = this.providers[providerName];
       if (!provider) continue;
+      // Breaker: if open for this provider, skip without firing the call.
+      // We don't even emit a hook event for skipped attempts — they're
+      // "we knew not to bother" rather than "we tried and failed."
+      if (this.breaker.shouldSkip(providerName)) continue;
+      allSkippedByBreaker = false;
       try {
-        return await this.attempt(req, provider, i, call);
+        return await this.attempt(req, provider, providerName, i, call);
       } catch (err) {
         lastError = err;
         if (!isAiError(err)) throw err;
         if (!err.retryable) throw err;
       }
+    }
+
+    // If every provider in the chain was breaker-open, surface a
+    // user-visible error rather than silently throwing nothing.
+    if (allSkippedByBreaker) {
+      throw new AiError({
+        kind: 'overload',
+        provider: 'noop',
+        message: `All providers for task "${req.task}" are circuit-broken. Recovery in progress.`,
+      });
     }
 
     if (lastError) throw lastError;
@@ -138,11 +161,16 @@ export class Gateway {
   >(
     req: { task: string; tenant_id?: string | null },
     provider: AiProvider,
+    /** Routing slot identity. Use this (not provider.name) for breaker
+     *  keying so test stand-ins like NoopProvider don't share state
+     *  across slots. In production they're identical. */
+    slot: ProviderName,
     attempt_index: number,
     call: (provider: AiProvider) => Promise<R>,
   ): Promise<R> {
     try {
       const res = await call(provider);
+      this.breaker.recordSuccess(slot);
       this.fireHook({
         task: req.task,
         tenant_id: req.tenant_id,
@@ -159,11 +187,12 @@ export class Gateway {
       return res;
     } catch (err) {
       if (isAiError(err)) {
+        this.breaker.recordFailure(slot, err.kind);
         this.fireHook({
           task: req.task,
           tenant_id: req.tenant_id,
           attempt_index,
-          provider: provider.name,
+          provider: slot,
           model: '<unknown>',
           outcome: 'error',
           error_kind: err.kind,

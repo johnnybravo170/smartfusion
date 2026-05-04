@@ -9,6 +9,7 @@
  * to `import { gateway } from '@/lib/ai-gateway'` once AG-3 lands.
  */
 
+export { CircuitBreaker } from './circuit-breaker';
 export type { AiErrorKind, ProviderName } from './errors';
 export { AiError, defaultRetryable, isAiError } from './errors';
 export { AnthropicProvider } from './providers/anthropic';

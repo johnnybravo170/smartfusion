@@ -8,8 +8,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AiError,
-  type AiErrorKind,
   type AiProvider,
+  CircuitBreaker,
   createGateway,
   NoopProvider,
   type RouteConfig,
@@ -309,6 +309,70 @@ describe('hooks — failure isolation', () => {
       messages: [{ role: 'user', content: 'x' }],
     });
     expect(res.text).toBe('still-works');
+  });
+});
+
+describe('routing — circuit breaker integration', () => {
+  it('skips a breaker-open provider entirely (no call, no event)', async () => {
+    const events: RouterAttemptEvent[] = [];
+    const failQuota = new NoopProvider({ kind: 'fail', error_kind: 'quota' });
+    const ok = new NoopProvider({ kind: 'echo', canned_text: 'recovered' });
+    const gw = createGateway({
+      providers: { gemini: failQuota, openai: ok },
+      routing: {
+        my_task: {
+          primary: { provider: 'gemini' },
+          fallback_chain: ['gemini', 'openai'],
+        },
+      },
+      hooks: { onAttempt: (e) => events.push(e) },
+    });
+
+    // First call: gemini quota → trips breaker, then falls through to openai.
+    await gw.runChat({
+      kind: 'chat',
+      task: 'my_task',
+      messages: [{ role: 'user', content: 'first' }],
+    });
+    expect(events).toHaveLength(2); // gemini error + openai success
+    events.length = 0;
+
+    // Second call: gemini is breaker-open → skipped without firing.
+    // Only openai gets a hook event.
+    const res = await gw.runChat({
+      kind: 'chat',
+      task: 'my_task',
+      messages: [{ role: 'user', content: 'second' }],
+    });
+    expect(res.text).toBe('recovered');
+    expect(events).toHaveLength(1);
+    expect(events[0].outcome).toBe('success');
+  });
+
+  it('throws when every provider in the chain is breaker-open', async () => {
+    const breaker = new CircuitBreaker();
+    breaker.recordFailure('gemini', 'quota');
+    breaker.recordFailure('openai', 'quota');
+    const gw = createGateway({
+      providers: {
+        gemini: new NoopProvider({ kind: 'echo', canned_text: 'never' }),
+        openai: new NoopProvider({ kind: 'echo', canned_text: 'never' }),
+      },
+      routing: {
+        my_task: {
+          primary: { provider: 'gemini' },
+          fallback_chain: ['gemini', 'openai'],
+        },
+      },
+      breaker,
+    });
+    await expect(
+      gw.runChat({
+        kind: 'chat',
+        task: 'my_task',
+        messages: [{ role: 'user', content: 'x' }],
+      }),
+    ).rejects.toMatchObject({ message: expect.stringMatching(/circuit-broken/i) });
   });
 });
 
