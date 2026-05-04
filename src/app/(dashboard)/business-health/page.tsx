@@ -36,12 +36,17 @@ export default async function BusinessHealthPage() {
             Where your business stands this year — revenue in, money out, owner pay.
           </p>
         </div>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/business-health/bank-import">
-            <Upload className="size-4" />
-            <span className="ml-1">Import bank statement</span>
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/business-health/bank-review">Review matches</Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/business-health/bank-import">
+              <Upload className="size-4" />
+              <span className="ml-1">Import bank statement</span>
+            </Link>
+          </Button>
+        </div>
       </header>
 
       <Suspense fallback={<div className="h-32 animate-pulse rounded-md bg-muted" />}>
