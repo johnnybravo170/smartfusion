@@ -53,17 +53,17 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     fallback_chain: ['gemini'],
   },
 
-  // Stage 2 — transcript + photos → structured work items. Opus 4.7 on
-  // text + images is materially stronger at the extraction half than
-  // Gemini was at the unified audio call. Cost is ~$0.10–0.30/call but
-  // these are user-triggered after a real walkthrough, not high-volume.
+  // Stage 2 — transcript + photos → structured work items. Sonnet 4.6
+  // is the default: schema-constrained extraction at near-Opus quality
+  // for ~5x less cost and 2-3x the speed. ~$0.03/call typical.
   project_memo_extract: {
-    primary: { provider: 'anthropic', model: 'claude-opus-4-7' },
+    primary: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
     fallback_chain: ['anthropic', 'gemini'],
   },
 
-  // Stage 2 second pass — same shape, with extended thinking turned on
-  // by the caller. User-triggered ("Try with deeper thinking" button).
+  // Stage 2 second pass — Opus 4.7 with extended thinking. User-
+  // triggered ("Have another think" button). Two real lifts over the
+  // first pass: bigger model + thinking on. ~$0.15-0.30/call.
   project_memo_extract_thinking: {
     primary: { provider: 'anthropic', model: 'claude-opus-4-7' },
     fallback_chain: ['anthropic'],

@@ -38,6 +38,10 @@ const RATES: Record<string, ModelRates> = {
     input_micros_per_token: usdPerMillionToMicros(3),
     output_micros_per_token: usdPerMillionToMicros(15),
   },
+  'claude-sonnet-4-6': {
+    input_micros_per_token: usdPerMillionToMicros(3),
+    output_micros_per_token: usdPerMillionToMicros(15),
+  },
   'claude-3-7-sonnet': {
     input_micros_per_token: usdPerMillionToMicros(3),
     output_micros_per_token: usdPerMillionToMicros(15),
