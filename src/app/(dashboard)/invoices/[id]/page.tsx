@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime } from '@/lib/date/format';
 import { getInvoice } from '@/lib/db/queries/invoices';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { getSignedUrls } from '@/lib/storage/photos';
 import { createClient } from '@/lib/supabase/server';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
@@ -59,7 +60,20 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   const lineItems = invoice.line_items ?? [];
   const lineItemsTotal = lineItems.reduce((sum, li) => sum + li.total_cents, 0);
-  const totalCents = invoice.amount_cents + lineItemsTotal + invoice.tax_cents;
+  // Mirror the customer-facing public view: for tax-inclusive draws,
+  // amount_cents IS the total and line_items are a breakdown summing to it;
+  // tax_cents is the embedded GST shown for transparency. Otherwise add on top.
+  const taxInclusive = Boolean(invoice.tax_inclusive);
+  const totalCents = taxInclusive
+    ? invoice.amount_cents
+    : invoice.amount_cents + lineItemsTotal + invoice.tax_cents;
+  const subtotalCents = taxInclusive
+    ? invoice.amount_cents - invoice.tax_cents
+    : invoice.amount_cents;
+  const showSubtotalRow = !(taxInclusive && lineItems.length > 0);
+  const taxCtx = tenant ? await canadianTax.getContext(tenant.id) : null;
+  const ratePct = taxCtx ? Math.round(taxCtx.totalRate * 100) : 5;
+  const taxLabel = taxInclusive ? `GST (${ratePct}%, included)` : `GST (${ratePct}%)`;
   const isDraft = invoice.status === 'draft';
 
   return (
@@ -86,13 +100,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       {/* Amount breakdown */}
       <section className="rounded-xl border bg-card p-5">
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Subtotal</span>
-            <span>{formatCad(invoice.amount_cents)}</span>
-          </div>
+          {showSubtotalRow ? (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Subtotal</span>
+              <span>{formatCad(subtotalCents)}</span>
+            </div>
+          ) : null}
           <InvoiceLineItems invoiceId={invoice.id} lineItems={lineItems} isDraft={isDraft} />
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">GST (5%)</span>
+            <span className="text-muted-foreground">{taxLabel}</span>
             <span>{formatCad(invoice.tax_cents)}</span>
           </div>
           <div className="border-t pt-2">

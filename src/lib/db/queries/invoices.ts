@@ -33,6 +33,8 @@ export type InvoiceRow = {
   status: InvoiceStatus;
   amount_cents: number;
   tax_cents: number;
+  tax_inclusive: boolean;
+  doc_type: 'invoice' | 'draw';
   stripe_invoice_id: string | null;
   stripe_payment_intent_id: string | null;
   pdf_url: string | null;
@@ -65,7 +67,7 @@ export type InvoiceListFilters = {
 };
 
 const INVOICE_COLUMNS =
-  'id, tenant_id, job_id, customer_id, status, amount_cents, tax_cents, stripe_invoice_id, stripe_payment_intent_id, pdf_url, sent_at, paid_at, payment_method, payment_reference, payment_notes, payment_receipt_paths, customer_note, line_items, created_at, updated_at, deleted_at';
+  'id, tenant_id, job_id, customer_id, status, amount_cents, tax_cents, tax_inclusive, doc_type, stripe_invoice_id, stripe_payment_intent_id, pdf_url, sent_at, paid_at, payment_method, payment_reference, payment_notes, payment_receipt_paths, customer_note, line_items, created_at, updated_at, deleted_at';
 
 function extractRelation<T>(raw: unknown): T | null {
   if (!raw) return null;
