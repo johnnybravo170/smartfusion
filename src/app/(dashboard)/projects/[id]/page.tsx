@@ -9,6 +9,7 @@ import { ProjectNameEditor } from '@/components/features/projects/project-name-e
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
 import { ProjectTabSelect } from '@/components/features/projects/project-tab-select';
 import { ScopeDiffReview } from '@/components/features/projects/scope-diff-review';
+import { StagedEmailsBanner } from '@/components/features/projects/staged-emails-banner';
 import BudgetTabServer from '@/components/features/projects/tabs/budget-tab-server';
 import CostsTabServer from '@/components/features/projects/tabs/costs-tab-server';
 import CrewTabServer from '@/components/features/projects/tabs/crew-tab-server';
@@ -260,6 +261,11 @@ export default async function ProjectDetailPage({
       {/* Diff review modal — opens when ?review=diff is in the URL. */}
       <Suspense fallback={null}>
         <ScopeDiffReview projectId={id} />
+      </Suspense>
+
+      {/* Forwarded emails staged on this project, awaiting confirmation. */}
+      <Suspense fallback={null}>
+        <StagedEmailsBanner projectId={id} />
       </Suspense>
 
       {/* Tab navigation: <select> dropdown on narrow screens, full row above
