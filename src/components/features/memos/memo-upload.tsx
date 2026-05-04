@@ -115,7 +115,15 @@ export function MemoUpload({ projectId, memos, categories }: MemoUploadProps) {
   async function startRecording() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      // Pick a mime the browser will actually accept. iOS Safari rejects
+      // audio/webm and produces audio/mp4 (AAC); Chrome/Android prefer
+      // audio/webm. Probe in preference order, fall back to the browser
+      // default when none of our candidates are supported.
+      const ext = pickRecordingExt();
+      const mime = extToMime(ext);
+      const mediaRecorder = mime
+        ? new MediaRecorder(stream, { mimeType: mime })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
@@ -124,9 +132,12 @@ export function MemoUpload({ projectId, memos, categories }: MemoUploadProps) {
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        // The browser may strip mime parameters or pick a different
+        // codec — trust `mediaRecorder.mimeType` over our request.
+        const actualMime = mediaRecorder.mimeType || mime || 'audio/webm';
+        const blob = new Blob(chunksRef.current, { type: actualMime });
         for (const t of stream.getTracks()) t.stop();
-        uploadBlob(blob, 'recording.webm');
+        uploadBlob(blob, `recording.${ext}`);
       };
 
       mediaRecorder.start();
@@ -432,6 +443,22 @@ export function MemoUpload({ projectId, memos, categories }: MemoUploadProps) {
       )}
     </div>
   );
+}
+
+/**
+ * Return the file extension to use for a freshly recorded blob, based
+ * on what the current browser's MediaRecorder actually supports. iOS
+ * Safari produces m4a; everywhere else we prefer webm.
+ */
+function pickRecordingExt(): 'webm' | 'm4a' {
+  if (typeof MediaRecorder === 'undefined') return 'webm';
+  if (MediaRecorder.isTypeSupported('audio/webm')) return 'webm';
+  if (MediaRecorder.isTypeSupported('audio/mp4')) return 'm4a';
+  return 'webm';
+}
+
+function extToMime(ext: 'webm' | 'm4a'): string {
+  return ext === 'webm' ? 'audio/webm' : 'audio/mp4';
 }
 
 function statusMessage(status: string): string {
