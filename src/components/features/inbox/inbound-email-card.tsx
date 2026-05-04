@@ -6,8 +6,6 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import {
-  applyInboundEmailAction,
-  reassignInboundEmailAction,
   reclassifyInboundEmailAction,
   rejectInboundEmailAction,
 } from '@/server/actions/inbound-email';
@@ -39,6 +37,7 @@ const STATUS_COLOURS: Record<string, string> = {
   applied: 'bg-emerald-100 text-emerald-700',
   rejected: 'bg-muted text-muted-foreground line-through',
   error: 'bg-destructive/10 text-destructive',
+  bounced: 'bg-muted text-muted-foreground line-through',
 };
 
 export function InboundEmailCard({
@@ -56,18 +55,10 @@ export function InboundEmailCard({
   const isTerminal = email.status === 'applied' || email.status === 'auto_applied';
   const needsReview = email.status === 'needs_review';
 
-  function handleApply() {
-    if (!selectedProject) {
-      toast.error('Pick a project first.');
-      return;
-    }
-    startTransition(async () => {
-      const res = await applyInboundEmailAction({ emailId: email.id, projectId: selectedProject });
-      if (res.ok) {
-        toast.success('Applied to project.');
-        router.refresh();
-      } else toast.error(res.error);
-    });
+  function handleConfirm() {
+    // Real wiring lands in B2 (bills) and B3 (sub-quotes) — these open the
+    // existing review dialogs (StagedBillConfirmDialog / SubQuoteForm).
+    toast('Confirm dialog wiring lands in the next deploy.');
   }
 
   function handleReject() {
@@ -75,20 +66,6 @@ export function InboundEmailCard({
       const res = await rejectInboundEmailAction(email.id);
       if (res.ok) {
         toast.success('Dismissed.');
-        router.refresh();
-      } else toast.error(res.error);
-    });
-  }
-
-  function handleReassign() {
-    if (!selectedProject || selectedProject === email.project_id) return;
-    startTransition(async () => {
-      const res = await reassignInboundEmailAction({
-        emailId: email.id,
-        newProjectId: selectedProject,
-      });
-      if (res.ok) {
-        toast.success('Reassigned.');
         router.refresh();
       } else toast.error(res.error);
     });
@@ -239,14 +216,8 @@ export function InboundEmailCard({
         </select>
 
         {needsReview && canApply && (
-          <Button size="sm" onClick={handleApply} disabled={pending || !selectedProject}>
-            {pending ? 'Applying…' : 'Apply to project'}
-          </Button>
-        )}
-
-        {isTerminal && selectedProject && selectedProject !== email.project_id && (
-          <Button size="sm" variant="outline" onClick={handleReassign} disabled={pending}>
-            Move here
+          <Button size="sm" onClick={handleConfirm} disabled={pending}>
+            Review &amp; confirm
           </Button>
         )}
 
