@@ -1,19 +1,20 @@
 /**
  * Postmark inbound email webhook.
  *
- * Flow:
- *   1. Verify HTTP Basic Auth (Postmark → our endpoint).
- *   2. Parse the To address to resolve tenant by slug.
- *   3. Persist raw email row.
- *   4. Fire-and-forget classify + auto-action.
+ * Single shared inbox `henry@heyhenry.io`. Tenant resolved from the From
+ * header against tenant_members.role IN ('owner', 'admin'). Unknown or
+ * ambiguous senders get a polite bounce; we still persist a row with
+ * status='bounced' for abuse visibility.
  *
- * Postmark retries non-2xx responses for 24h, so we return 200 as soon as
- * the row is persisted; classification errors are recorded on the row
- * rather than surfaced back to Postmark.
+ * Recognised senders → row in 'pending' status, processor runs inline,
+ * row ends in 'needs_review' (or 'rejected' for classification='other').
+ * Postmark tolerates up to 30s for the response.
  */
 
 import { NextResponse } from 'next/server';
+import { sendUnknownSenderBounce } from '@/lib/inbound-email/bounce';
 import { processInboundEmail } from '@/lib/inbound-email/processor';
+import { resolveSenderToTenant } from '@/lib/inbound-email/sender-resolver';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const runtime = 'nodejs';
@@ -41,14 +42,7 @@ type PostmarkInbound = {
 function verifyToken(url: string): boolean {
   const expected = process.env.POSTMARK_INBOUND_TOKEN;
   if (!expected) return false;
-  const token = new URL(url).searchParams.get('token');
-  return token === expected;
-}
-
-/** Extract the tenant slug from a `slug@quotes.heyhenry.io` address. */
-function extractSlug(address: string): string | null {
-  const match = address.match(/^([^@+]+)(?:\+[^@]*)?@/);
-  return match ? match[1].toLowerCase() : null;
+  return new URL(url).searchParams.get('token') === expected;
 }
 
 export async function POST(request: Request) {
@@ -63,19 +57,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const toAddress = payload.OriginalRecipient || payload.To;
-  const slug = extractSlug(toAddress);
-
+  const tenantId = await resolveSenderToTenant(payload.From);
   const admin = createAdminClient();
 
-  let tenantId: string | null = null;
-  if (slug) {
-    const { data: tenant } = await admin
-      .from('tenants')
-      .select('id')
-      .eq('slug', slug)
-      .maybeSingle();
-    tenantId = (tenant?.id as string) ?? null;
+  // Unknown / ambiguous sender — bounce, persist for visibility, return 200.
+  if (!tenantId) {
+    try {
+      await sendUnknownSenderBounce({
+        to: payload.From,
+        originalSubject: payload.Subject ?? '(no subject)',
+      });
+    } catch (err) {
+      console.error('[inbound-email] bounce send failed', err);
+    }
+
+    await admin.from('inbound_emails').insert({
+      tenant_id: null,
+      postmark_message_id: payload.MessageID,
+      to_address: payload.OriginalRecipient || payload.To,
+      from_address: payload.From,
+      from_name: payload.FromName ?? null,
+      subject: payload.Subject ?? null,
+      body_text: payload.TextBody ?? null,
+      body_html: payload.HtmlBody ?? null,
+      // Strip base64 from bounced rows to keep the table small.
+      attachments: (payload.Attachments ?? []).map((a) => ({
+        filename: a.Name,
+        contentType: a.ContentType,
+        size: a.ContentLength,
+      })),
+      raw_payload: null,
+      status: 'bounced',
+      error_message: 'Sender not allowlisted (must be a tenant owner/admin email)',
+    });
+
+    return NextResponse.json({ ok: true, bounced: true });
   }
 
   const attachments = (payload.Attachments ?? []).map((a) => ({
@@ -90,7 +106,7 @@ export async function POST(request: Request) {
     .insert({
       tenant_id: tenantId,
       postmark_message_id: payload.MessageID,
-      to_address: toAddress,
+      to_address: payload.OriginalRecipient || payload.To,
       from_address: payload.From,
       from_name: payload.FromName ?? null,
       subject: payload.Subject ?? null,
@@ -98,25 +114,22 @@ export async function POST(request: Request) {
       body_html: payload.HtmlBody ?? null,
       attachments,
       raw_payload: payload as unknown as Record<string, unknown>,
-      status: tenantId ? 'pending' : 'error',
-      error_message: tenantId ? null : `No tenant matches slug "${slug}"`,
+      status: 'pending',
     })
     .select('id')
     .single();
 
   if (error || !inserted) {
-    console.error('[inbound-email] failed to persist', error);
+    console.error('[inbound-email] persist failed', error);
     return NextResponse.json({ error: error?.message ?? 'Insert failed' }, { status: 500 });
   }
 
-  if (tenantId) {
-    // Await inline — Vercel serverless terminates fire-and-forget work the
-    // moment we return. Postmark tolerates up to 30s.
-    try {
-      await processInboundEmail(inserted.id as string);
-    } catch (err) {
-      console.error('[inbound-email] processing failed', inserted.id, err);
-    }
+  // Await inline — Vercel serverless terminates fire-and-forget work the
+  // moment we return. Postmark tolerates up to 30s.
+  try {
+    await processInboundEmail(inserted.id as string);
+  } catch (err) {
+    console.error('[inbound-email] processing failed', inserted.id, err);
   }
 
   return NextResponse.json({ ok: true, id: inserted.id });
