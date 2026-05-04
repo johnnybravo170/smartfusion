@@ -1,12 +1,15 @@
 /**
- * Process an inbound email row: classify with Gemini, auto-apply at
- * high confidence, or flag for manual review.
+ * Process an inbound email row: classify with the AI gateway, match to a
+ * project if possible, and stage for operator confirmation.
+ *
+ * No auto-apply — every staged item must be confirmed by the operator
+ * via the inbox UI before anything is written to project_bills or
+ * project_sub_quotes. The classifier's `extracted` JSON sits on the
+ * inbound_emails row until the operator reviews it.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { type ClassifierResult, classifyInboundEmail, type ProjectContext } from './classifier';
-
-const AUTO_APPLY_THRESHOLD = 0.8;
 
 export async function processInboundEmail(emailId: string): Promise<void> {
   const admin = createAdminClient();
@@ -23,7 +26,7 @@ export async function processInboundEmail(emailId: string): Promise<void> {
       .from('inbound_emails')
       .update({
         status: 'error',
-        error_message: 'No tenant resolved from address',
+        error_message: 'No tenant resolved from sender',
         processed_at: new Date().toISOString(),
       })
       .eq('id', emailId);
@@ -32,7 +35,6 @@ export async function processInboundEmail(emailId: string): Promise<void> {
 
   await admin.from('inbound_emails').update({ status: 'processing' }).eq('id', emailId);
 
-  // Load active projects for this tenant.
   const { data: projectsRaw } = await admin
     .from('projects')
     .select('id, name, description, customers:customer_id (name)')
@@ -68,7 +70,7 @@ export async function processInboundEmail(emailId: string): Promise<void> {
         attachments,
       },
       projects,
-      email.tenant_id as string | null,
+      email.tenant_id as string,
     );
   } catch (err) {
     await admin
@@ -82,125 +84,11 @@ export async function processInboundEmail(emailId: string): Promise<void> {
     return;
   }
 
-  const matchedProjectId = result.project_match?.id ?? null;
-  const matchConfidence = result.project_match?.confidence ?? null;
-
-  const canAutoApply =
-    (result.classification === 'sub_quote' || result.classification === 'vendor_bill') &&
-    result.confidence >= AUTO_APPLY_THRESHOLD &&
-    matchedProjectId !== null &&
-    (matchConfidence ?? 0) >= AUTO_APPLY_THRESHOLD;
-
-  if (canAutoApply && result.extracted) {
-    try {
-      if (result.classification === 'vendor_bill') {
-        const bill = result.extracted as {
-          vendor: string;
-          vendor_gst_number?: string;
-          bill_date: string;
-          description?: string;
-          amount_cents: number;
-          cost_code?: string;
-        };
-        const { data: created, error: billErr } = await admin
-          .from('project_bills')
-          .insert({
-            tenant_id: email.tenant_id,
-            project_id: matchedProjectId,
-            vendor: bill.vendor,
-            vendor_gst_number: bill.vendor_gst_number?.trim() || null,
-            bill_date: bill.bill_date,
-            description: bill.description ?? null,
-            amount_cents: bill.amount_cents,
-            cost_code: bill.cost_code ?? null,
-            inbound_email_id: emailId,
-          })
-          .select('id')
-          .single();
-        if (billErr || !created) throw new Error(billErr?.message ?? 'Failed to create bill');
-
-        await admin
-          .from('inbound_emails')
-          .update({
-            classification: result.classification,
-            confidence: result.confidence,
-            extracted: result.extracted,
-            classifier_notes: result.notes,
-            project_id: matchedProjectId,
-            project_match_confidence: matchConfidence,
-            status: 'auto_applied',
-            applied_bill_id: created.id,
-            processed_at: new Date().toISOString(),
-          })
-          .eq('id', emailId);
-        return;
-      }
-
-      if (result.classification === 'sub_quote') {
-        const quote = result.extracted as {
-          vendor: string;
-          items: { description: string; qty: number; unit: string; unit_cost_cents: number }[];
-          total_cents: number;
-          notes?: string;
-        };
-        const lineRows = quote.items.map((item, idx) => ({
-          project_id: matchedProjectId,
-          category: 'sub',
-          label: `${quote.vendor}: ${item.description}`,
-          qty: item.qty,
-          unit: item.unit,
-          unit_cost_cents: item.unit_cost_cents,
-          unit_price_cents: item.unit_cost_cents,
-          markup_pct: 0,
-          line_cost_cents: Math.round(item.qty * item.unit_cost_cents),
-          line_price_cents: Math.round(item.qty * item.unit_cost_cents),
-          sort_order: idx,
-          notes: quote.notes ?? null,
-        }));
-
-        const { data: createdLines, error: linesErr } = await admin
-          .from('project_cost_lines')
-          .insert(lineRows)
-          .select('id');
-        if (linesErr) throw new Error(linesErr.message);
-
-        await admin
-          .from('inbound_emails')
-          .update({
-            classification: result.classification,
-            confidence: result.confidence,
-            extracted: result.extracted,
-            classifier_notes: result.notes,
-            project_id: matchedProjectId,
-            project_match_confidence: matchConfidence,
-            status: 'auto_applied',
-            applied_cost_line_ids: (createdLines ?? []).map((r) => r.id as string),
-            processed_at: new Date().toISOString(),
-          })
-          .eq('id', emailId);
-        return;
-      }
-    } catch (err) {
-      await admin
-        .from('inbound_emails')
-        .update({
-          classification: result.classification,
-          confidence: result.confidence,
-          extracted: result.extracted,
-          classifier_notes: result.notes,
-          project_id: matchedProjectId,
-          project_match_confidence: matchConfidence,
-          status: 'error',
-          error_message: err instanceof Error ? err.message : String(err),
-          processed_at: new Date().toISOString(),
-        })
-        .eq('id', emailId);
-      return;
-    }
-  }
-
-  // Not auto-applied — route to review inbox.
+  // No auto-apply path — stage everything for operator confirmation.
+  // 'other' classifications get auto-rejected; the rest go to needs_review
+  // regardless of confidence. The operator decides.
   const status = result.classification === 'other' ? 'rejected' : 'needs_review';
+
   await admin
     .from('inbound_emails')
     .update({
@@ -208,8 +96,8 @@ export async function processInboundEmail(emailId: string): Promise<void> {
       confidence: result.confidence,
       extracted: result.extracted,
       classifier_notes: result.notes,
-      project_id: matchedProjectId,
-      project_match_confidence: matchConfidence,
+      project_id: result.project_match?.id ?? null,
+      project_match_confidence: result.project_match?.confidence ?? null,
       status,
       processed_at: new Date().toISOString(),
     })
