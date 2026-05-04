@@ -12,7 +12,7 @@
 
 import { ChevronDown, ChevronsUpDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CloneProjectDialog } from '@/components/features/projects/clone-project-dialog';
 import { ProjectNameEditor } from '@/components/features/projects/project-name-editor';
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
@@ -56,6 +56,37 @@ export function ProjectsTable({
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [hydrated, setHydrated] = useState(false);
+
+  // Hydrate sort preference from localStorage on mount. Per-browser; sort
+  // prefs are personal + volatile, no value in syncing across devices.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('heyhenry.projects.sort');
+      if (raw) {
+        const parsed = JSON.parse(raw) as { key?: SortKey; dir?: SortDir };
+        if (parsed.key) setSortKey(parsed.key);
+        if (parsed.dir) setSortDir(parsed.dir);
+      }
+    } catch {
+      // Corrupted entry — ignore and fall back to defaults.
+    }
+    setHydrated(true);
+  }, []);
+
+  // Persist after hydration so we don't overwrite the saved value on first
+  // render with the component's defaults.
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(
+        'heyhenry.projects.sort',
+        JSON.stringify({ key: sortKey, dir: sortDir }),
+      );
+    } catch {
+      // localStorage may be unavailable (private mode, quota) — best-effort only.
+    }
+  }, [hydrated, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) {
