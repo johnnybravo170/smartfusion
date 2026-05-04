@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { withFrom } from '@/lib/nav/from-link';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import {
+  createInvoiceFromEstimateAction,
   createMilestoneInvoiceAction,
   generateFinalInvoiceAction,
 } from '@/server/actions/invoices';
@@ -197,6 +198,7 @@ export function InvoicesTab({
   projectId,
   invoices,
   contractRevenueCents,
+  estimateApproved,
 }: {
   projectId: string;
   invoices: InvoiceSummary[];
@@ -204,10 +206,15 @@ export function InvoicesTab({
    *  for each draw + the running total. Zero if the project hasn't been
    *  estimated yet. */
   contractRevenueCents: number;
+  /** Estimate is signed/accepted by the customer. Gates the
+   *  "Convert estimate to invoice" shortcut — the action itself doesn't
+   *  enforce approval, but offering it on a draft would be misleading. */
+  estimateApproved: boolean;
 }) {
   const router = useRouter();
   const [showDrawForm, setShowDrawForm] = useState(false);
   const [finalPending, startFinalTransition] = useTransition();
+  const [convertPending, startConvertTransition] = useTransition();
 
   function handleFinalInvoice() {
     startFinalTransition(async () => {
@@ -222,6 +229,28 @@ export function InvoicesTab({
           ),
         );
       } else {
+        toast.error(res.error);
+      }
+    });
+  }
+
+  function handleConvertEstimate() {
+    if (
+      !confirm('Create a draft invoice for the full estimate amount? You can edit before sending.')
+    )
+      return;
+    startConvertTransition(async () => {
+      const res = await createInvoiceFromEstimateAction({ projectId });
+      if (res.ok && res.id) {
+        toast.success('Invoice created from estimate.');
+        router.push(
+          withFrom(
+            `/invoices/${res.id}`,
+            `/projects/${projectId}?tab=invoices`,
+            'Customer Billing',
+          ),
+        );
+      } else if (!res.ok) {
         toast.error(res.error);
       }
     });
@@ -261,6 +290,17 @@ export function InvoicesTab({
             + New draw
           </Button>
         )}
+        {estimateApproved && contractRevenueCents > 0 ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleConvertEstimate}
+            disabled={convertPending}
+            title="Create one invoice for the full estimate (lump-sum, no draws)"
+          >
+            {convertPending ? 'Creating…' : 'Invoice full estimate'}
+          </Button>
+        ) : null}
         <Button size="sm" variant="outline" onClick={handleFinalInvoice} disabled={finalPending}>
           {finalPending ? 'Generating…' : 'Generate final invoice'}
         </Button>

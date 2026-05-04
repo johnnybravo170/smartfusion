@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 
 export default async function InvoicesTabServer({ projectId }: { projectId: string }) {
   const supabase = await createClient();
-  const [invoicesRes, variance] = await Promise.all([
+  const [invoicesRes, variance, projectRes] = await Promise.all([
     supabase
       .from('invoices')
       .select(
@@ -14,12 +14,16 @@ export default async function InvoicesTabServer({ projectId }: { projectId: stri
       .is('deleted_at', null)
       .order('created_at', { ascending: false }),
     getVarianceReport(projectId),
+    supabase.from('projects').select('estimate_status').eq('id', projectId).maybeSingle(),
   ]);
+
+  const estimateStatus = (projectRes.data?.estimate_status as string | null) ?? 'draft';
 
   return (
     <InvoicesTab
       projectId={projectId}
       contractRevenueCents={variance.estimated_cents}
+      estimateApproved={estimateStatus === 'approved'}
       invoices={(invoicesRes.data ?? []).map((inv) => ({
         id: inv.id as string,
         status: inv.status as string,
