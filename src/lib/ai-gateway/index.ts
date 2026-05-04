@@ -18,6 +18,15 @@ export { parseKeyEnv } from './providers/keys';
 export type { NoopMode } from './providers/noop';
 export { NoopProvider } from './providers/noop';
 export { OpenAiProvider } from './providers/openai';
+export type { GatewayOptions } from './router';
+export { createGateway, Gateway, gateway, resetGatewayForTests } from './router';
+export type {
+  RouteConfig,
+  RoutePick,
+  RouterAttemptEvent,
+  RouterHooks,
+} from './router-types';
+export { DEFAULT_ROUTE, lookupRoute, ROUTING } from './routing';
 export type { KnownTask } from './tasks';
 export { KNOWN_TASKS } from './tasks';
 export type {
