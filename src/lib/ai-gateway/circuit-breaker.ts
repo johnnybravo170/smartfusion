@@ -140,6 +140,30 @@ export class CircuitBreaker {
     return this.states.get(provider);
   }
 
+  /**
+   * Snapshot of every currently-open breaker. Used by AG-8's admin
+   * dashboard to render the "circuit-broken right now" list.
+   */
+  openSnapshot(): Array<{
+    provider: ProviderName;
+    open_until_iso: string;
+    last_window_ms: number;
+  }> {
+    const now = this.clock();
+    const out: Array<{ provider: ProviderName; open_until_iso: string; last_window_ms: number }> =
+      [];
+    for (const [provider, s] of this.states.entries()) {
+      if (s.open_until > now) {
+        out.push({
+          provider,
+          open_until_iso: new Date(s.open_until).toISOString(),
+          last_window_ms: s.last_window_ms,
+        });
+      }
+    }
+    return out;
+  }
+
   /** Test-only: reset all state. */
   reset(): void {
     this.states.clear();

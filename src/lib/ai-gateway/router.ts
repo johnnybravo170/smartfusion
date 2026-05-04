@@ -76,6 +76,14 @@ export class Gateway {
     return this.run(req, (p) => p.callStructured<T>(req));
   }
 
+  /**
+   * Read-through to the breaker for the admin dashboard. Returns only
+   * currently-open entries; empty array means "everything healthy."
+   */
+  openBreakers() {
+    return this.breaker.openSnapshot();
+  }
+
   // ------------------------------------------------------------------
   // Core orchestration
   // ------------------------------------------------------------------
