@@ -74,6 +74,8 @@ type Stage =
         inserted: number;
         skipped_duplicates: number;
         warnings: number;
+        auto_matched: number;
+        auto_matched_high_confidence: number;
       };
     };
 
@@ -232,6 +234,8 @@ function PreviewStage({
     inserted: number;
     skipped_duplicates: number;
     warnings: number;
+    auto_matched: number;
+    auto_matched_high_confidence: number;
   }) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -277,6 +281,8 @@ function PreviewStage({
         inserted: res.inserted,
         skipped_duplicates: res.skipped_duplicates,
         warnings: res.warnings,
+        auto_matched: res.auto_matched,
+        auto_matched_high_confidence: res.auto_matched_high_confidence,
       });
     });
   }
@@ -580,9 +586,17 @@ function DoneStage({
   result,
   onReset,
 }: {
-  result: { total_rows: number; inserted: number; skipped_duplicates: number; warnings: number };
+  result: {
+    total_rows: number;
+    inserted: number;
+    skipped_duplicates: number;
+    warnings: number;
+    auto_matched: number;
+    auto_matched_high_confidence: number;
+  };
   onReset: () => void;
 }) {
+  const ignored = Math.max(0, result.inserted - result.auto_matched);
   return (
     <Card>
       <CardHeader>
@@ -594,6 +608,25 @@ function DoneStage({
             <strong className="tabular-nums">{result.inserted}</strong> new transaction
             {result.inserted === 1 ? '' : 's'} added
           </li>
+          {result.auto_matched > 0 ? (
+            <li>
+              <strong className="tabular-nums text-emerald-700 dark:text-emerald-400">
+                {result.auto_matched}
+              </strong>{' '}
+              matched to existing invoices, expenses, or bills
+              {result.auto_matched_high_confidence > 0 ? (
+                <span className="text-muted-foreground">
+                  {' '}
+                  ({result.auto_matched_high_confidence} high-confidence)
+                </span>
+              ) : null}
+            </li>
+          ) : null}
+          {ignored > 0 && result.auto_matched > 0 ? (
+            <li className="text-muted-foreground">
+              {ignored} unmatched (transfers, fees, etc — those belong in QBO)
+            </li>
+          ) : null}
           {result.skipped_duplicates > 0 ? (
             <li className="text-muted-foreground">
               {result.skipped_duplicates} already imported (skipped)
@@ -604,8 +637,9 @@ function DoneStage({
           ) : null}
         </ul>
         <p className="text-xs text-muted-foreground">
-          Auto-matching against unpaid invoices and expenses lands in BR-5; for now your
-          transactions are saved and queued for review.
+          {result.auto_matched > 0
+            ? 'Open the review queue to confirm matches and bulk-mark invoices paid.'
+            : 'No matches found yet. Once you confirm them in the review queue (BR-7), the matched invoices/bills get marked paid in one click.'}
         </p>
         <div className="flex gap-2">
           <Button asChild variant="outline">

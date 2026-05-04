@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { type BankPreset, type ParsedStatement, parseBankStatement } from '@/lib/bank-recon';
 import { createClient } from '@/lib/supabase/server';
+import { runAutoMatchAction } from './bank-match';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -119,6 +120,8 @@ export type ImportBankStatementResult =
       inserted: number;
       skipped_duplicates: number;
       warnings: number;
+      auto_matched: number;
+      auto_matched_high_confidence: number;
     }
   | { ok: false; error: string };
 
@@ -201,6 +204,30 @@ export async function importBankStatementAction(
     await supabase.from('bank_statements').update({ row_count: inserted }).eq('id', stmt.id);
   }
 
+  // 5. Run BR-5 auto-match against the freshly inserted transactions.
+  // Failure here is non-fatal — the statement is still imported; the
+  // operator can re-run matching from the review queue. We don't want a
+  // matcher hiccup to roll back a clean import.
+  let autoMatched = 0;
+  let autoMatchedHigh = 0;
+  if (inserted > 0) {
+    try {
+      const matchRes = await runAutoMatchAction({ statement_id: stmt.id });
+      if (matchRes.ok) {
+        autoMatched = matchRes.matched;
+        autoMatchedHigh = matchRes.high_confidence;
+        if (autoMatched > 0) {
+          await supabase
+            .from('bank_statements')
+            .update({ matched_count: autoMatched })
+            .eq('id', stmt.id);
+        }
+      }
+    } catch {
+      // swallowed — see comment above
+    }
+  }
+
   revalidatePath('/business-health');
   revalidatePath('/business-health/bank-import');
 
@@ -211,6 +238,8 @@ export async function importBankStatementAction(
     inserted,
     skipped_duplicates: txRows.length - inserted,
     warnings: parsed.data.warnings.length,
+    auto_matched: autoMatched,
+    auto_matched_high_confidence: autoMatchedHigh,
   };
 }
 
