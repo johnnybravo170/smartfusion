@@ -69,16 +69,21 @@ export default async function PublicInvoiceViewPage({
   ].filter(Boolean);
   const lineItems = ((invoice.line_items as LineItem[] | null) ?? []) as LineItem[];
   const lineItemsTotal = lineItems.reduce((sum, li) => sum + li.total_cents, 0);
-  // tax_inclusive: amount_cents IS the total (tax_cents is the embedded
-  // GST portion, shown for transparency but not added). Otherwise the
-  // legacy add-on-top math.
+  // tax_inclusive (draws): amount_cents IS the customer total. line_items,
+  // when present (milestone draws), are a breakdown summing to amount_cents,
+  // not added on top. tax_cents is the embedded GST portion shown for
+  // transparency. Otherwise (legacy invoices): line items and tax add on top.
   const taxInclusive = Boolean(invoice.tax_inclusive);
   const totalCents = taxInclusive
-    ? invoice.amount_cents + lineItemsTotal
+    ? invoice.amount_cents
     : invoice.amount_cents + lineItemsTotal + invoice.tax_cents;
   const subtotalCents = taxInclusive
     ? invoice.amount_cents - invoice.tax_cents
     : invoice.amount_cents;
+  // For inclusive draws with a line-item breakdown, the line items already
+  // serve as the subtotal — hide the standalone Subtotal row to avoid an
+  // apparent double-count in the customer-facing breakdown.
+  const showSubtotalRow = !(taxInclusive && lineItems.length > 0);
 
   const invoiceDate = invoice.sent_at
     ? new Date(invoice.sent_at).toLocaleDateString('en-CA', {
@@ -172,10 +177,12 @@ export default async function PublicInvoiceViewPage({
           </span>
         </div>
         <div className="px-5 py-3">
-          <div className="flex justify-between text-sm text-gray-600">
-            <span>Subtotal</span>
-            <span>{formatCurrency(subtotalCents)}</span>
-          </div>
+          {showSubtotalRow ? (
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Subtotal</span>
+              <span>{formatCurrency(subtotalCents)}</span>
+            </div>
+          ) : null}
 
           {/* Line items */}
           {lineItems.map((li) => (

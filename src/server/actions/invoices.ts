@@ -185,7 +185,9 @@ export async function sendInvoiceAction(input: {
   // Load invoice.
   const { data: invoice, error: invErr } = await supabase
     .from('invoices')
-    .select('id, status, amount_cents, tax_cents, line_items, customer_note, job_id, customer_id')
+    .select(
+      'id, status, amount_cents, tax_cents, tax_inclusive, line_items, customer_note, job_id, customer_id',
+    )
     .eq('id', parsed.data.invoice_id)
     .is('deleted_at', null)
     .single();
@@ -217,7 +219,12 @@ export async function sendInvoiceAction(input: {
   const invoiceLineItems = ((invoice.line_items as InvoiceLineItem[] | null) ??
     []) as InvoiceLineItem[];
   const lineItemsTotal = invoiceLineItems.reduce((sum, li) => sum + li.total_cents, 0);
-  const totalCents = invoice.amount_cents + lineItemsTotal + invoice.tax_cents;
+  // tax_inclusive (draws): amount_cents IS the total, line_items are a
+  // breakdown summing to it, tax_cents is the embedded GST portion.
+  // Otherwise (legacy invoices): add line items and tax on top.
+  const totalCents = invoice.tax_inclusive
+    ? invoice.amount_cents
+    : invoice.amount_cents + lineItemsTotal + invoice.tax_cents;
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
   const publicViewUrl = `${appUrl}/view/invoice/${invoice.id}`;
@@ -357,7 +364,7 @@ export async function resendInvoiceAction(input: {
   const { data: invoice, error: invErr } = await supabase
     .from('invoices')
     .select(
-      'id, status, amount_cents, tax_cents, line_items, customer_note, job_id, customer_id, pdf_url',
+      'id, status, amount_cents, tax_cents, tax_inclusive, line_items, customer_note, job_id, customer_id, pdf_url',
     )
     .eq('id', input.invoiceId)
     .is('deleted_at', null)
@@ -386,7 +393,9 @@ export async function resendInvoiceAction(input: {
   const resendLineItems = ((invoice.line_items as InvoiceLineItem[] | null) ??
     []) as InvoiceLineItem[];
   const resendLineItemsTotal = resendLineItems.reduce((sum, li) => sum + li.total_cents, 0);
-  const totalCents = invoice.amount_cents + resendLineItemsTotal + invoice.tax_cents;
+  const totalCents = invoice.tax_inclusive
+    ? invoice.amount_cents
+    : invoice.amount_cents + resendLineItemsTotal + invoice.tax_cents;
 
   // Update sent_at timestamp.
   const now = new Date().toISOString();
