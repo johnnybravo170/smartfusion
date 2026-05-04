@@ -28,10 +28,28 @@ export type {
   RouterHooks,
 } from './router-types';
 export { DEFAULT_ROUTE, lookupRoute, ROUTING } from './routing';
+export type { SpendWindow } from './spend-tracker';
+export {
+  getProviderHealth,
+  getProviderLifetime,
+  getProviderSpendMicros,
+  getRecentFailures,
+  getTierProgress,
+  getTopTasksByCostMtd,
+} from './spend-tracker';
 export type { KnownTask } from './tasks';
 export { KNOWN_TASKS } from './tasks';
 export type { AiCallRow, TelemetryHookOptions } from './telemetry';
 export { createTelemetryHook } from './telemetry';
+export type { TierProgress, TierStep } from './tier-ladders';
+export {
+  ANTHROPIC_LADDER,
+  computeTierProgress,
+  GEMINI_LADDER,
+  getLadder,
+  microsToUsd,
+  OPENAI_LADDER,
+} from './tier-ladders';
 export type {
   AiProvider,
   AiRequestBase,

@@ -325,7 +325,11 @@ describe('routing — circuit breaker integration', () => {
           fallback_chain: ['gemini', 'openai'],
         },
       },
-      hooks: { onAttempt: (e) => events.push(e) },
+      hooks: {
+        onAttempt: (e) => {
+          events.push(e);
+        },
+      },
     });
 
     // First call: gemini quota → trips breaker, then falls through to openai.
