@@ -366,6 +366,28 @@ const RLS_TABLE_CASES: RlsCase[] = [
     updatePayload: { task: 'cross-tenant tamper' },
     skipInsertReject: true, // RLS uses authenticated=false policy; anon cannot insert at all
   },
+  {
+    table: 'intake_drafts',
+    seed: async ({ admin, tenant, stamp }) => {
+      const r = await admin
+        .from('intake_drafts')
+        .insert({
+          tenant_id: tenant.tenantId,
+          status: 'pending',
+          customer_name: `intake-${stamp}`,
+        })
+        .select('id')
+        .single();
+      if (r.error || !r.data) throw new Error(r.error?.message ?? 'intake_drafts seed failed');
+      return r.data.id as string;
+    },
+    updatePayload: { customer_name: 'cross-tenant tamper' },
+    insertAcrossTenants: ({ tenant, stamp }) => ({
+      tenant_id: tenant.tenantId,
+      status: 'pending',
+      customer_name: `intake-inject-${stamp}`,
+    }),
+  },
 ];
 
 async function provisionTenant(

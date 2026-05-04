@@ -1,17 +1,28 @@
 'use server';
 
 /**
- * Inbound lead intake — V1.
+ * Inbound lead intake.
  *
- * `parseInboundLeadAction` runs vision over uploaded screenshots /
- * photos and a pasted message. It returns a draft estimate the
- * operator can review. It does NOT mutate.
+ * `parseInboundLeadAction` runs Whisper over any voice memos, then
+ * Opus / GPT-4.1 over the resulting transcript + screenshots / photos.
+ * It returns a draft estimate the operator can review. It does NOT
+ * mutate any project state.
+ *
+ * Every run persists to `intake_drafts` (migration 0176). The row
+ * captures customer name, pasted text, transcript, ai_extraction
+ * (envelope-shaped {v1,v2,active} for the second-pass thinking button
+ * once it's wired), parsed_by, status, and error_message. This means:
+ *
+ *   - Stage B (Opus parse) can fail without losing the transcript
+ *   - `parseIntakeDraftAction(draftId)` retries Stage B against the
+ *     persisted transcript without re-Whispering
+ *   - Every successful intake leaves a fixture for the eval set
  *
  * `acceptInboundLeadAction` takes the (possibly edited) draft and
  * creates the customer, project, budget categories, and cost lines.
  * Reference-photo upload to project storage is intentionally out of
- * V1 — the operator can attach photos to lines after creation through
- * the existing photo strip UI.
+ * scope here — the operator can attach photos to lines after creation
+ * through the existing photo strip UI.
  */
 
 import * as Sentry from '@sentry/nextjs';
@@ -47,6 +58,11 @@ export type ParseModelChoice = 'gpt-4.1' | 'claude-sonnet';
 export type ParseInboundResult =
   | {
       ok: true;
+      /**
+       * The persisted intake_drafts row id. Carries through accept so we
+       * can mark accepted_project_id once the project is created.
+       */
+      draftId: string;
       draft: ParsedIntake;
       /**
        * Concatenated Whisper transcript(s) from any audio attachments.
@@ -63,7 +79,23 @@ export type ParseInboundResult =
        */
       parsedBy: string;
     }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /**
+       * Set when the draft row was created but a later stage failed.
+       * The caller can hand this to `parseIntakeDraftAction` to retry
+       * the parse against the persisted transcript without burning
+       * Whisper again.
+       */
+      draftId?: string;
+    };
+
+type IntakeExtractionEnvelope = {
+  v1: ParsedIntake | null;
+  v2: ParsedIntake | null;
+  active: 'v1' | 'v2';
+};
 
 export async function parseInboundLeadAction(
   formData: FormData,
@@ -107,6 +139,29 @@ export async function parseInboundLeadAction(
     return { ok: false, error: `Too many files (max ${MAX_IMAGES}).` };
   }
 
+  // Create the persisted draft row up front. Every state transition
+  // below writes to this row so a Stage B failure (Opus timeout, rate
+  // limit, etc.) doesn't lose the transcript — the operator can retry
+  // via parseIntakeDraftAction(draftId) against the persisted state.
+  const supabaseRls = await createClient();
+  const { data: draftRow, error: draftErr } = await supabaseRls
+    .from('intake_drafts')
+    .insert({
+      tenant_id: tenant.id,
+      status: 'pending',
+      customer_name: customerName || null,
+      pasted_text: pastedText || null,
+    })
+    .select('id')
+    .single();
+  if (draftErr || !draftRow) {
+    return { ok: false, error: `Failed to create intake draft: ${draftErr?.message ?? 'unknown'}` };
+  }
+  const draftId = draftRow.id as string;
+  const updateDraft = async (patch: Record<string, unknown>) => {
+    await supabaseRls.from('intake_drafts').update(patch).eq('id', draftId);
+  };
+
   // Download each staged file via the service-role client (bypasses RLS
   // — the storage bucket is auth-scoped but the admin client skips that). Audio
   // goes to Whisper and its transcript is folded into pastedText AND
@@ -115,6 +170,10 @@ export async function parseInboundLeadAction(
   // downstream vision pass. Best-effort cleanup of each staging file.
   const files: File[] = [];
   const transcriptParts: string[] = [];
+  const hasAudio = storageEntries.some(({ name }) =>
+    /\.(m4a|mp3|mp4|wav|webm|ogg|aac|flac)$/i.test(name),
+  );
+  if (hasAudio) await updateDraft({ status: 'transcribing' });
   if (storageEntries.length > 0) {
     const admin = createAdminClient();
     for (const { path, name: originalName } of storageEntries) {
@@ -147,11 +206,16 @@ export async function parseInboundLeadAction(
               : String(err);
           Sentry.captureException(err, {
             tags: { stage: 'intake.transcribe', task: 'audio_transcribe_intake' },
-            extra: { filename: originalName },
+            extra: { filename: originalName, draftId },
+          });
+          await updateDraft({
+            status: 'failed',
+            error_message: `Transcription failed: ${detail}`,
           });
           return {
             ok: false,
             error: `Voice memo couldn't be transcribed: ${detail}. The artifact has been cleared — try again once resolved.`,
+            draftId,
           };
         }
         if (transcript) {
@@ -171,6 +235,7 @@ export async function parseInboundLeadAction(
     }
   }
   const transcript = transcriptParts.length > 0 ? transcriptParts.join('\n\n---\n\n') : null;
+  await updateDraft({ status: 'extracting', transcript });
 
   // Build the prompt + the typed file list.
   const intro = [
@@ -217,23 +282,137 @@ export async function parseInboundLeadAction(
     });
     draft = res.data;
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { stage: 'intake.parse', task: 'intake_full_parse' },
+      extra: { draftId, model_override, provider_override },
+    });
+    let userMessage: string;
     if (isAiError(err)) {
-      if (err.kind === 'quota')
-        return { ok: false, error: 'Intake parsing temporarily unavailable.' };
-      if (err.kind === 'overload' || err.kind === 'rate_limit')
-        return { ok: false, error: 'Intake parsing is busy right now. Try again in a moment.' };
+      if (err.kind === 'quota') userMessage = 'Intake parsing temporarily unavailable.';
+      else if (err.kind === 'overload' || err.kind === 'rate_limit')
+        userMessage = 'Intake parsing is busy right now. Try again in a moment.';
+      else userMessage = `Intake parse failed: ${err.message}`;
+    } else {
+      userMessage = `Intake parse failed: ${err instanceof Error ? err.message : String(err)}`;
     }
-    return {
-      ok: false,
-      error: `Intake parse failed: ${err instanceof Error ? err.message : String(err)}`,
-    };
+    await updateDraft({ status: 'failed', error_message: userMessage });
+    return { ok: false, error: userMessage, draftId };
   }
 
   // If operator typed a customer name, prefer it over whatever the model
   // pulled from the messages.
   if (customerName) draft.customer.name = customerName;
 
-  return { ok: true, draft, transcript, parsedBy: model_override };
+  // Persist the extraction in the same envelope shape used by
+  // project_memos (migration 0174). Lets the second-pass / thinking
+  // button drop in unchanged when we wire it for intake.
+  const envelope: IntakeExtractionEnvelope = { v1: draft, v2: null, active: 'v1' };
+  await updateDraft({
+    status: 'ready',
+    ai_extraction: envelope,
+    parsed_by: model_override,
+  });
+
+  return { ok: true, draftId, draft, transcript, parsedBy: model_override };
+}
+
+/**
+ * Stage B retry — re-runs the parse against the persisted transcript +
+ * pasted text on a draft row. Used after a parse failure (timeout, rate
+ * limit, transient model error) so the operator can recover without
+ * re-uploading audio + paying for Whisper again.
+ *
+ * Photos / PDFs are NOT retried in this slice — those weren't persisted
+ * past the original action. If the operator needs them on the retry,
+ * they should re-upload via the normal flow (which creates a fresh
+ * draft). Acceptable trade for the simplicity gain; revisit if it
+ * matters in practice.
+ */
+export async function parseIntakeDraftAction(
+  draftId: string,
+  options?: { model?: ParseModelChoice },
+): Promise<ParseInboundResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+  const { data: row, error: loadErr } = await supabase
+    .from('intake_drafts')
+    .select('id, tenant_id, status, customer_name, pasted_text, transcript, ai_extraction')
+    .eq('id', draftId)
+    .maybeSingle();
+  if (loadErr || !row) return { ok: false, error: 'Draft not found.' };
+
+  const customerName = (row.customer_name as string | null)?.trim() ?? '';
+  const transcript = (row.transcript as string | null)?.trim() ?? '';
+  const pasted = (row.pasted_text as string | null)?.trim() ?? '';
+  if (!transcript && !pasted) {
+    return {
+      ok: false,
+      error: 'Draft has no transcript or pasted text to retry — re-upload via the form.',
+      draftId,
+    };
+  }
+
+  const modelChoice: ParseModelChoice = options?.model ?? 'gpt-4.1';
+  const provider_override = modelChoice === 'claude-sonnet' ? 'anthropic' : 'openai';
+  const model_override = modelChoice === 'claude-sonnet' ? CLAUDE_PARSE_MODEL : PARSE_MODEL;
+
+  await supabase
+    .from('intake_drafts')
+    .update({ status: 'extracting', error_message: null })
+    .eq('id', draftId);
+
+  const transcriptBlock = transcript ? `Voice memo transcript:\n${transcript}` : '';
+  const pastedBlock = pasted ? `Pasted message text:\n${pasted}` : '';
+  const intro = [
+    `Tenant: ${tenant.name ?? 'Contractor'}`,
+    `Customer (operator-supplied): ${customerName || '(not provided)'}`,
+    [transcriptBlock, pastedBlock].filter(Boolean).join('\n\n') ||
+      '(No transcript or pasted text — degraded retry.)',
+    '(No artifacts on retry — photos/PDFs from the original upload were not persisted.)',
+  ].join('\n\n');
+
+  let draft: ParsedIntake;
+  try {
+    const res = await gateway().runStructured<ParsedIntake>({
+      kind: 'structured',
+      task: 'intake_full_parse',
+      tenant_id: tenant.id,
+      provider_override,
+      model_override,
+      prompt: `${INTAKE_SYSTEM_PROMPT}\n\n${intro}`,
+      schema: INTAKE_JSON_SCHEMA.schema,
+      temperature: 0.2,
+      max_tokens: 8000,
+    });
+    draft = res.data;
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { stage: 'intake.reparse', task: 'intake_full_parse' },
+      extra: { draftId, model_override, provider_override },
+    });
+    const message =
+      isAiError(err) && err.kind === 'quota'
+        ? 'Intake parsing temporarily unavailable.'
+        : isAiError(err) && (err.kind === 'overload' || err.kind === 'rate_limit')
+          ? 'Intake parsing is busy right now. Try again in a moment.'
+          : `Intake parse failed: ${err instanceof Error ? err.message : String(err)}`;
+    await supabase
+      .from('intake_drafts')
+      .update({ status: 'failed', error_message: message })
+      .eq('id', draftId);
+    return { ok: false, error: message, draftId };
+  }
+
+  if (customerName) draft.customer.name = customerName;
+  const envelope: IntakeExtractionEnvelope = { v1: draft, v2: null, active: 'v1' };
+  await supabase
+    .from('intake_drafts')
+    .update({ status: 'ready', ai_extraction: envelope, parsed_by: model_override })
+    .eq('id', draftId);
+
+  return { ok: true, draftId, draft, transcript: transcript || null, parsedBy: model_override };
 }
 
 export type AcceptInboundResult =
@@ -247,6 +426,13 @@ export async function acceptInboundLeadAction(
     useExistingContactId?: string;
     /** Skip the dedup check. Set after operator clicks "Create anyway". */
     confirmCreate?: boolean;
+    /**
+     * Persisted intake_drafts row id this acceptance is consuming. When
+     * provided, the draft row gets `accepted_project_id` stamped on
+     * success so we can correlate drafts to their resulting projects
+     * for eval / quality work.
+     */
+    draftId?: string;
   },
 ): Promise<AcceptInboundResult> {
   const tenant = await getCurrentTenant();
@@ -377,6 +563,17 @@ export async function acceptInboundLeadAction(
     related_type: 'project',
     related_id: proj.id,
   });
+
+  // Stamp the draft row so we can trace project → draft → transcript
+  // for evals and quality work. Best-effort — don't fail acceptance
+  // if the stamp fails (the project is created and shouldn't roll back
+  // for a metadata write).
+  if (options?.draftId) {
+    await supabase
+      .from('intake_drafts')
+      .update({ accepted_project_id: proj.id })
+      .eq('id', options.draftId);
+  }
 
   revalidatePath('/projects');
   return { ok: true, projectId: proj.id };
