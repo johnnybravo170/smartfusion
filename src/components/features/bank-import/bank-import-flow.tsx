@@ -639,9 +639,16 @@ function DoneStage({
         <p className="text-xs text-muted-foreground">
           {result.auto_matched > 0
             ? 'Open the review queue to confirm matches and bulk-mark invoices paid.'
-            : 'No matches found yet. Once you confirm them in the review queue (BR-7), the matched invoices/bills get marked paid in one click.'}
+            : "No matches found yet — that's normal if you haven't entered the corresponding invoices/expenses yet. Re-run matching after entering them."}
         </p>
         <div className="flex gap-2">
+          {result.auto_matched > 0 ? (
+            <Button asChild>
+              <Link href="/business-health/bank-review">
+                Review {result.auto_matched} match{result.auto_matched === 1 ? '' : 'es'}
+              </Link>
+            </Button>
+          ) : null}
           <Button asChild variant="outline">
             <Link href="/business-health">Back to Business Health</Link>
           </Button>
