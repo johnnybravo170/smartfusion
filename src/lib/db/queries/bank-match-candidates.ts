@@ -38,7 +38,7 @@ export async function getMatchPool(window: MatchPoolWindow): Promise<MatchPool> 
     supabase
       .from('invoices')
       .select(
-        'id, amount_cents, tax_cents, tax_inclusive, sent_at, created_at, customer:customers(name)',
+        'id, amount_cents, tax_cents, tax_inclusive, line_items, sent_at, created_at, customer:customers(name)',
       )
       .eq('status', 'sent')
       .is('paid_at', null)

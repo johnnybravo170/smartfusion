@@ -240,7 +240,7 @@ export const invoiceTools: AiTool[] = [
         const result = await resolveByShortId<InvoiceRow>(
           'invoices',
           input.invoice_id as string,
-          'id, status, amount_cents, tax_cents, tax_inclusive, customer_id, customers:customer_id (name, email)',
+          'id, status, amount_cents, tax_cents, tax_inclusive, line_items, customer_id, customers:customer_id (name, email)',
         );
         if (typeof result === 'string') return result;
 
@@ -333,7 +333,7 @@ export const invoiceTools: AiTool[] = [
         const result = await resolveByShortId<InvoiceRow>(
           'invoices',
           input.invoice_id as string,
-          'id, status, amount_cents, tax_cents, tax_inclusive, customers:customer_id (name)',
+          'id, status, amount_cents, tax_cents, tax_inclusive, line_items, customers:customer_id (name)',
         );
         if (typeof result === 'string') return result;
 

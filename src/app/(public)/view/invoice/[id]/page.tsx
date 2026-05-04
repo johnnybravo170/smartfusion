@@ -72,14 +72,16 @@ export default async function PublicInvoiceViewPage({
   // tax_inclusive (draws): amount_cents IS the customer total. line_items,
   // when present (milestone draws), are a breakdown summing to amount_cents,
   // not added on top. tax_cents is the embedded GST portion shown for
-  // transparency. Otherwise (legacy invoices): line items and tax add on top.
+  // transparency. Otherwise (tax_exclusive): line_items are additive on top
+  // of amount_cents (matches addInvoiceLineItemAction). Estimate-derived
+  // drafts write amount_cents=0 and the full breakdown in line_items;
+  // legacy invoices had amount_cents=subtotal with line_items=[] — both
+  // render correctly under amount + items.
   const taxInclusive = Boolean(invoice.tax_inclusive);
-  const totalCents = taxInclusive
-    ? invoice.amount_cents
-    : invoice.amount_cents + lineItemsTotal + invoice.tax_cents;
   const subtotalCents = taxInclusive
     ? invoice.amount_cents - invoice.tax_cents
-    : invoice.amount_cents;
+    : invoice.amount_cents + lineItemsTotal;
+  const totalCents = taxInclusive ? invoice.amount_cents : subtotalCents + invoice.tax_cents;
   // For inclusive draws with a line-item breakdown, the line items already
   // serve as the subtotal — hide the standalone Subtotal row to avoid an
   // apparent double-count in the customer-facing breakdown.

@@ -1011,7 +1011,7 @@ export async function createInvoiceFromEstimateAction(input: {
     });
   }
 
-  const subtotalCents = lineSubtotal + mgmtFeeCents;
+  const subtotalCents = items.reduce((s, i) => s + i.total_cents, 0);
 
   // Province-aware tax via the provider, honoring customer tax-exempt flag.
   // Estimate-derived invoices stay tax-exclusive (legacy add-on-top): the
@@ -1026,6 +1026,11 @@ export async function createInvoiceFromEstimateAction(input: {
   const taxCtx = await canadianTax.getContext(tenant.id);
   const taxCents = taxExempt ? 0 : Math.round(subtotalCents * taxCtx.totalRate);
 
+  // amount_cents=0 + breakdown in line_items lets the operator
+  // see and prune individual lines on the draft (e.g. remove an
+  // optional that the customer skipped) — the existing
+  // addInvoiceLineItemAction / removeInvoiceLineItemAction treats
+  // line_items as additive on top of amount_cents.
   const { data, error } = await supabase
     .from('invoices')
     .insert({
@@ -1033,7 +1038,7 @@ export async function createInvoiceFromEstimateAction(input: {
       project_id: input.projectId,
       customer_id: project.customer_id,
       status: 'draft',
-      amount_cents: subtotalCents,
+      amount_cents: 0,
       tax_cents: taxCents,
       line_items: items,
       customer_note: `Estimate for ${project.name}`,
@@ -1110,13 +1115,44 @@ export async function generateFinalInvoiceAction(input: {
   const lineItems: InvoiceLineItem[] = [];
 
   if (contractCents > 0) {
-    // Contracted job: balance owing = contract − prior draws.
-    lineItems.push({
-      description: `Contract balance (contracted ${formatCurrency(contractCents)})`,
-      quantity: 1,
-      unit_price_cents: contractCents,
-      total_cents: contractCents,
-    });
+    // Contracted job: itemize the cost lines + mgmt fee, then credit
+    // any prior draws. Per-line breakdown (rather than a single
+    // "Contract balance" rollup) lets the operator prune optional
+    // lines the customer skipped, directly on the draft invoice.
+    const { data: scopeLines } = await supabase
+      .from('project_cost_lines')
+      .select('label, qty, unit_price_cents, line_price_cents, notes')
+      .eq('project_id', input.projectId)
+      .gt('line_price_cents', 0)
+      .order('sort_order')
+      .order('created_at');
+
+    for (const l of (scopeLines ?? []) as {
+      label: string;
+      qty: number;
+      unit_price_cents: number;
+      line_price_cents: number;
+      notes: string | null;
+    }[]) {
+      lineItems.push({
+        description: l.notes ? `${l.label} — ${l.notes}` : l.label,
+        quantity: Number(l.qty),
+        unit_price_cents: l.unit_price_cents,
+        total_cents: l.line_price_cents,
+      });
+    }
+
+    const lineSubtotal = lineItems.reduce((s, li) => s + li.total_cents, 0);
+    const mgmtFeeCents = Math.round(lineSubtotal * mgmtRate);
+    if (mgmtFeeCents > 0) {
+      lineItems.push({
+        description: `Management fee (${Math.round(mgmtRate * 100)}%)`,
+        quantity: 1,
+        unit_price_cents: mgmtFeeCents,
+        total_cents: mgmtFeeCents,
+      });
+    }
+
     if (priorBilledCents > 0) {
       lineItems.push({
         description: 'Less: Prior Invoices',
@@ -1194,6 +1230,10 @@ export async function generateFinalInvoiceAction(input: {
   const taxCtx = await canadianTax.getContext(tenant.id);
   const taxCents = taxExempt ? 0 : Math.round(subtotalCents * taxCtx.totalRate);
 
+  // amount_cents=0 + breakdown in line_items: matches the convention
+  // used by addInvoiceLineItemAction (line_items additive on top of
+  // amount_cents), and lets the operator prune optional/skipped lines
+  // directly on the draft.
   const { data, error } = await supabase
     .from('invoices')
     .insert({
@@ -1201,7 +1241,7 @@ export async function generateFinalInvoiceAction(input: {
       project_id: input.projectId,
       customer_id: project.customer_id,
       status: 'draft',
-      amount_cents: subtotalCents,
+      amount_cents: 0,
       tax_cents: taxCents,
       line_items: lineItems,
       customer_note: 'Final invoice',

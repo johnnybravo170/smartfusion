@@ -60,16 +60,20 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   const lineItems = invoice.line_items ?? [];
   const lineItemsTotal = lineItems.reduce((sum, li) => sum + li.total_cents, 0);
-  // Mirror the customer-facing public view: for tax-inclusive draws,
-  // amount_cents IS the total and line_items are a breakdown summing to it;
-  // tax_cents is the embedded GST shown for transparency. Otherwise add on top.
+  // Mirror the customer-facing public view:
+  //  - tax_inclusive: amount_cents IS the customer total; line_items
+  //    are a breakdown summing to it; tax_cents is embedded GST.
+  //  - tax_exclusive: line_items are additive on top of amount_cents
+  //    (per addInvoiceLineItemAction's contract), so subtotal sums
+  //    both. New estimate-derived drafts write amount_cents=0 and
+  //    everything in line_items; legacy drafts had amount_cents=full
+  //    subtotal and line_items=[] until additions — both render
+  //    correctly under amount + items.
   const taxInclusive = Boolean(invoice.tax_inclusive);
-  const totalCents = taxInclusive
-    ? invoice.amount_cents
-    : invoice.amount_cents + lineItemsTotal + invoice.tax_cents;
   const subtotalCents = taxInclusive
     ? invoice.amount_cents - invoice.tax_cents
-    : invoice.amount_cents;
+    : invoice.amount_cents + lineItemsTotal;
+  const totalCents = taxInclusive ? invoice.amount_cents : subtotalCents + invoice.tax_cents;
   const showSubtotalRow = !(taxInclusive && lineItems.length > 0);
   const taxCtx = tenant ? await canadianTax.getContext(tenant.id) : null;
   const ratePct = taxCtx ? Math.round(taxCtx.totalRate * 100) : 5;

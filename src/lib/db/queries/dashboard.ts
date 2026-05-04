@@ -12,6 +12,7 @@ type InvoiceTotalRow = {
   amount_cents: number | null;
   tax_cents: number | null;
   tax_inclusive: boolean | null;
+  line_items: { total_cents: number | null }[] | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -191,14 +192,14 @@ export async function getKeyMetrics(timezone: string): Promise<KeyMetrics> {
     // Revenue this month: sum of paid invoices
     supabase
       .from('invoices')
-      .select('amount_cents, tax_cents, tax_inclusive')
+      .select('amount_cents, tax_cents, tax_inclusive, line_items')
       .eq('status', 'paid')
       .gte('paid_at', monthStart)
       .is('deleted_at', null),
     // Outstanding: sent but unpaid invoices
     supabase
       .from('invoices')
-      .select('amount_cents, tax_cents, tax_inclusive')
+      .select('amount_cents, tax_cents, tax_inclusive, line_items')
       .eq('status', 'sent')
       .is('deleted_at', null),
     // Open jobs count
@@ -425,7 +426,9 @@ export async function getAttentionItems(timezone: string): Promise<AttentionItem
     // Overdue invoices (sent > 14 days ago, unpaid)
     supabase
       .from('invoices')
-      .select('id, amount_cents, tax_cents, tax_inclusive, sent_at, customers:customer_id (name)')
+      .select(
+        'id, amount_cents, tax_cents, tax_inclusive, line_items, sent_at, customers:customer_id (name)',
+      )
       .eq('status', 'sent')
       .lt('sent_at', fourteenDaysAgo)
       .is('deleted_at', null)
@@ -469,6 +472,7 @@ export async function getAttentionItems(timezone: string): Promise<AttentionItem
         amount_cents: row.amount_cents as number | null,
         tax_cents: row.tax_cents as number | null,
         tax_inclusive: row.tax_inclusive as boolean | null,
+        line_items: row.line_items as { total_cents: number | null }[] | null,
       }),
       daysSinceSent: daysBetween(row.sent_at as string, now),
     });
@@ -604,7 +608,7 @@ export async function getRevenueYtd(timezone: string): Promise<number> {
 
   const { data, error } = await supabase
     .from('invoices')
-    .select('amount_cents, tax_cents, tax_inclusive')
+    .select('amount_cents, tax_cents, tax_inclusive, line_items')
     .eq('status', 'paid')
     .gte('paid_at', start)
     .is('deleted_at', null);
