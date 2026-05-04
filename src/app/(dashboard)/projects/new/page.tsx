@@ -9,9 +9,12 @@ export const metadata = {
   title: 'New project — HeyHenry',
 };
 
-// Voice-memo intake may run Whisper transcription inside the server action
-// invoked from this page; 60 s keeps big audio drops from timing out.
-export const maxDuration = 60;
+// Voice-memo intake runs both Whisper transcription AND an Opus parse on
+// the resulting transcript inside the same server action. On a typical
+// 2-3 min walkthrough we measure ~30s Whisper + ~30s Opus, so 60s left no
+// headroom and was timing out mid-parse (losing the transcript). Bumped
+// to 120s while we move toward a persisted-transcript two-stage flow.
+export const maxDuration = 120;
 
 type RawSearchParams = Record<string, string | string[] | undefined>;
 
