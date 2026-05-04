@@ -8,7 +8,7 @@
  * mapped to budget categories.
  */
 
-import { ImagePlus, Loader2, Mic, MicOff, Trash2, Upload, X } from 'lucide-react';
+import { ImagePlus, Loader2, Mic, MicOff, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -33,6 +33,8 @@ import {
   addMemoItemToCostLinesAction,
   deleteMemoAction,
   dismissMemoItemAction,
+  reExtractMemoAction,
+  setActiveMemoVersionAction,
   transcribeMemoAction,
   uploadMemoAction,
 } from '@/server/actions/project-memos';
@@ -98,7 +100,11 @@ export function MemoUpload({ projectId, memos, categories }: MemoUploadProps) {
   // This decouples the UI from the original fetch's lifetime — if the server
   // action finishes after the client has moved on, we still pick up the result.
   const hasInFlight = memos.some(
-    (m) => m.status === 'pending' || m.status === 'transcribing' || m.status === 'extracting',
+    (m) =>
+      m.status === 'pending' ||
+      m.status === 'transcribing' ||
+      m.status === 'extracting' ||
+      m.status === 'rethinking',
   );
   useEffect(() => {
     if (!hasInFlight) return;
@@ -354,9 +360,6 @@ export function MemoUpload({ projectId, memos, categories }: MemoUploadProps) {
                   })}
                 </span>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs font-medium uppercase tracking-wider">
-                    {memo.status}
-                  </span>
                   <Button
                     size="icon"
                     variant="ghost"
@@ -372,9 +375,10 @@ export function MemoUpload({ projectId, memos, categories }: MemoUploadProps) {
 
               {memo.status === 'pending' ||
               memo.status === 'transcribing' ||
-              memo.status === 'extracting' ? (
+              memo.status === 'extracting' ||
+              memo.status === 'rethinking' ? (
                 <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Loader2 className="size-3 animate-spin" /> Transcribing...
+                  <Loader2 className="size-3 animate-spin" /> {statusMessage(memo.status)}
                 </p>
               ) : null}
 
@@ -411,31 +415,11 @@ export function MemoUpload({ projectId, memos, categories }: MemoUploadProps) {
                     <p className="text-sm whitespace-pre-wrap">{memo.transcript}</p>
                   </div>
 
-                  {memo.ai_extraction &&
-                  Array.isArray((memo.ai_extraction as Record<string, unknown>).work_items) &&
-                  ((memo.ai_extraction as Record<string, unknown>).work_items as unknown[]).length >
-                    0 ? (
-                    <div>
-                      <h4 className="text-xs font-medium text-muted-foreground mb-2">
-                        Extracted Work Items — review, edit, and add to estimate
-                      </h4>
-                      <div className="space-y-2">
-                        {(
-                          (memo.ai_extraction as Record<string, unknown>).work_items as WorkItem[]
-                        ).map((item, index) => (
-                          <WorkItemRow
-                            key={`${memo.id}-${item.section}-${item.suggested_category}-${item.area}-${item.description}`}
-                            memoId={memo.id}
-                            itemIndex={index}
-                            item={item}
-                            categories={categories}
-                            memoPhotos={memo.photos}
-                            onDone={() => router.refresh()}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+                  <ExtractedWorkItems
+                    memo={memo}
+                    categories={categories}
+                    onRefresh={() => router.refresh()}
+                  />
                 </div>
               ) : null}
             </div>
@@ -444,6 +428,152 @@ export function MemoUpload({ projectId, memos, categories }: MemoUploadProps) {
       ) : (
         <p className="text-sm text-muted-foreground">
           No memos yet. Record or upload audio from a site walk-through.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function statusMessage(status: string): string {
+  if (status === 'pending') return 'Saving your walkthrough…';
+  if (status === 'transcribing') return 'Listening to your walkthrough…';
+  if (status === 'extracting') return "Henry's making sense of it…";
+  if (status === 'rethinking') return "Henry's having another think — this can take a minute…";
+  return 'Working…';
+}
+
+type ExtractionView = {
+  v1: { work_items: WorkItem[] } | null;
+  v2: { work_items: WorkItem[] } | null;
+  active: 'v1' | 'v2';
+};
+
+function readExtractionEnvelope(raw: Record<string, unknown> | null): ExtractionView | null {
+  if (!raw) return null;
+  // Versioned envelope (post-migration 0174).
+  if ('v1' in raw || 'v2' in raw || 'active' in raw) {
+    const v1 = (raw.v1 as { work_items?: WorkItem[] } | null) ?? null;
+    const v2 = (raw.v2 as { work_items?: WorkItem[] } | null) ?? null;
+    const active: 'v1' | 'v2' = raw.active === 'v2' ? 'v2' : 'v1';
+    return {
+      v1: v1 && Array.isArray(v1.work_items) ? { work_items: v1.work_items } : null,
+      v2: v2 && Array.isArray(v2.work_items) ? { work_items: v2.work_items } : null,
+      active,
+    };
+  }
+  // Legacy flat shape — treat as v1.
+  if (Array.isArray((raw as { work_items?: unknown }).work_items)) {
+    return {
+      v1: { work_items: (raw as { work_items: WorkItem[] }).work_items },
+      v2: null,
+      active: 'v1',
+    };
+  }
+  return null;
+}
+
+function ExtractedWorkItems({
+  memo,
+  categories,
+  onRefresh,
+}: {
+  memo: MemoRow;
+  categories: CategoryOption[];
+  onRefresh: () => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const view = readExtractionEnvelope(memo.ai_extraction);
+  if (!view) return null;
+
+  const activeSlot = view[view.active];
+  const items = activeSlot?.work_items ?? [];
+  const hasV2 = !!view.v2;
+
+  function rethink() {
+    startTransition(async () => {
+      const result = await reExtractMemoAction(memo.id);
+      if (!result.ok) toast.error(result.error);
+      onRefresh();
+    });
+  }
+
+  function switchTo(version: 'v1' | 'v2') {
+    if (version === view?.active) return;
+    startTransition(async () => {
+      const result = await setActiveMemoVersionAction(memo.id, version);
+      if (!result.ok) toast.error(result.error);
+      onRefresh();
+    });
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <h4 className="text-xs font-medium text-muted-foreground">
+          Extracted Work Items — review, edit, and add to estimate
+        </h4>
+        <div className="flex items-center gap-2">
+          {hasV2 ? (
+            <div
+              className="inline-flex rounded-md border bg-muted p-0.5 text-xs"
+              role="tablist"
+              aria-label="Extraction version"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view.active === 'v1'}
+                onClick={() => switchTo('v1')}
+                disabled={isPending}
+                className={`px-2 py-0.5 rounded ${
+                  view.active === 'v1' ? 'bg-background shadow-sm' : 'text-muted-foreground'
+                }`}
+              >
+                First take
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view.active === 'v2'}
+                onClick={() => switchTo('v2')}
+                disabled={isPending}
+                className={`px-2 py-0.5 rounded ${
+                  view.active === 'v2' ? 'bg-background shadow-sm' : 'text-muted-foreground'
+                }`}
+              >
+                Second think
+              </button>
+            </div>
+          ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={rethink}
+            disabled={isPending}
+            title="Have Henry think harder about the transcript. Takes a bit longer."
+          >
+            <Sparkles className="mr-1.5 size-3" />
+            {hasV2 ? 'Think again' : 'Have another think'}
+          </Button>
+        </div>
+      </div>
+      {items.length > 0 ? (
+        <div className="space-y-2">
+          {items.map((item, index) => (
+            <WorkItemRow
+              key={`${memo.id}-${view.active}-${item.section}-${item.suggested_category}-${item.area}-${item.description}`}
+              memoId={memo.id}
+              itemIndex={index}
+              item={item}
+              categories={categories}
+              memoPhotos={memo.photos}
+              onDone={onRefresh}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground italic">
+          No work items in this version. Try "Have another think" if the first pass missed things.
         </p>
       )}
     </div>

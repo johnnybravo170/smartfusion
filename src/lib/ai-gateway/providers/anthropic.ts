@@ -46,6 +46,10 @@ const RATES: Record<string, ModelRates> = {
     input_micros_per_token: usdPerMillionToMicros(15),
     output_micros_per_token: usdPerMillionToMicros(75),
   },
+  'claude-opus-4-7': {
+    input_micros_per_token: usdPerMillionToMicros(15),
+    output_micros_per_token: usdPerMillionToMicros(75),
+  },
   '*': {
     input_micros_per_token: usdPerMillionToMicros(0.8),
     output_micros_per_token: usdPerMillionToMicros(4),
@@ -149,17 +153,33 @@ export class AnthropicProvider implements AiProvider {
       input_schema: req.schema,
     };
 
+    // Extended thinking + tool use has two hard constraints: forced
+    // tool-choice (`type: 'tool'`) is rejected — must be `any` or `auto`;
+    // and temperature must be 1. We also need `max_tokens` to exceed
+    // `thinking.budget_tokens`, so bump the default when thinking is on.
+    const thinkingOn = !!req.thinking;
+    const maxTokens =
+      req.max_tokens ??
+      (thinkingOn ? Math.max(8192, (req.thinking?.budget_tokens ?? 0) + 2048) : DEFAULT_MAX_TOKENS);
+    const toolChoice = thinkingOn ? { type: 'any' } : { type: 'tool', name: toolName };
+    const temperature = thinkingOn ? 1 : (req.temperature ?? 0.1);
+    const thinkingConfig = thinkingOn
+      ? { type: 'enabled', budget_tokens: req.thinking?.budget_tokens ?? 4096 }
+      : undefined;
+
     const { msg, key, latency_ms } = await this.run((client) =>
       client.messages.create({
         model,
-        max_tokens: req.max_tokens ?? DEFAULT_MAX_TOKENS,
+        max_tokens: maxTokens,
         // biome-ignore lint/suspicious/noExplicitAny: Anthropic SDK content block + tool typing isn't worth fighting here
         messages: [{ role: 'user', content: userContent as any }],
         // biome-ignore lint/suspicious/noExplicitAny: tool schema is provider-portable JSON Schema
         tools: [tool] as any,
         // biome-ignore lint/suspicious/noExplicitAny: tool_choice typing
-        tool_choice: { type: 'tool', name: toolName } as any,
-        temperature: req.temperature ?? 0.1,
+        tool_choice: toolChoice as any,
+        temperature,
+        // biome-ignore lint/suspicious/noExplicitAny: thinking config typing
+        ...(thinkingConfig ? { thinking: thinkingConfig as any } : {}),
       }),
     );
 

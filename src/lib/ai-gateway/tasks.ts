@@ -17,7 +17,10 @@ export const KNOWN_TASKS = [
   // AG-7 originals
   'receipt_ocr', // worker/owner expense form receipt extraction
   'invoice_payment_ocr', // cheque / e-transfer screenshot OCR for invoice payments
-  'project_memo_generate', // project memo drafting from notes + photos
+  'project_memo_generate', // (legacy unified call — kept for back-compat / telemetry)
+  'project_memo_transcribe', // stage 1: audio → transcript only
+  'project_memo_extract', // stage 2: transcript + photos → structured work items
+  'project_memo_extract_thinking', // stage 2 second pass with extended thinking
   'email_classify', // inbound email type classification
   'coa_account_suggest', // chart-of-accounts category suggestions
   'inbound_lead_enrich', // intake lead enrichment from raw text

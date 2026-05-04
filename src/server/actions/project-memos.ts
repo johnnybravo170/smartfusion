@@ -3,8 +3,15 @@
 /**
  * Server actions for voice memo upload, transcription, and extraction.
  *
- * Flow: upload audio → create memo row (pending) → call Claude with audio
- * content block → extract work items + map to budget categories → update memo row.
+ * Two-stage pipeline (split Apr 2026 — was a unified Gemini call before):
+ *   Stage 1 — audio → transcript. Gemini Flash, plain vision call, text out.
+ *   Stage 2 — transcript + photos → structured work items. Opus 4.7,
+ *             tool-use structured output. Optional extended thinking on
+ *             a user-triggered second pass.
+ *
+ * `ai_extraction` is a versioned envelope so v1 (first pass) and v2 (second
+ * pass with thinking) can sit side by side and the UI can flip between
+ * them. See migration 0174.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -21,7 +28,6 @@ export type MemoActionResult = { ok: true; id: string } | { ok: false; error: st
 export type MemoDeleteResult = { ok: true } | { ok: false; error: string };
 
 export type MemoExtraction = {
-  transcript: string;
   work_items: {
     area: string;
     description: string;
@@ -32,6 +38,14 @@ export type MemoExtraction = {
   customer_preferences: string[];
   uncertainty_flags: string[];
 };
+
+export type MemoExtractionEnvelope = {
+  v1: MemoExtraction | null;
+  v2: MemoExtraction | null;
+  active: 'v1' | 'v2';
+};
+
+export type MemoVersion = 'v1' | 'v2';
 
 const PHOTO_EXT_MIME_MAP: Record<string, string> = {
   jpg: 'image/jpeg',
@@ -151,9 +165,83 @@ export async function uploadMemoAction(formData: FormData): Promise<MemoActionRe
   return { ok: true, id: memo.id };
 }
 
+const EXTRACTION_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    work_items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          area: { type: 'string' },
+          description: { type: 'string' },
+          suggested_category: { type: 'string' },
+          section: { type: 'string', enum: ['interior', 'exterior'] },
+          referenced_photo_indexes: { type: 'array', items: { type: 'integer' } },
+        },
+        required: ['area', 'description', 'suggested_category', 'section'],
+      },
+    },
+    customer_preferences: { type: 'array', items: { type: 'string' } },
+    uncertainty_flags: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['work_items', 'customer_preferences', 'uncertainty_flags'],
+};
+
+function buildExtractionPrompt(transcript: string, photoCount: number): string {
+  const photoInstruction =
+    photoCount > 0
+      ? `\n\n${photoCount} site-walk ${photoCount === 1 ? 'photo is' : 'photos are'} attached after this prompt (in order, 0-indexed). For each work item, set "referenced_photo_indexes" to the indexes of photos that show the area or condition you're describing. Empty array if none are relevant.`
+      : '';
+
+  return `You are a renovation project assistant. The walkthrough below was just transcribed from audio recorded on-site. Extract concrete work items from the transcript and map each to a standard renovation budget category. Use the photos to ground area names and confirm conditions when relevant.
+
+Standard interior categories: Demo, Disposal, Framing, Plumbing, Plumbing Fixtures, HVAC, Insulation, Drywall, Flooring, Doors & Mouldings, Windows & Doors, Railings, Electrical, Painting, Kitchen, Contingency.
+
+Standard exterior categories: Demo, Disposal, Framing, Siding, Sheathing, Painting, Gutters, Front Garden, Front Door, Rot Repair, Garage Doors, Contingency.${photoInstruction}
+
+--- TRANSCRIPT ---
+${transcript}
+--- END TRANSCRIPT ---
+
+Return work_items, customer_preferences, and uncertainty_flags via the submit_response tool.`;
+}
+
+async function loadMemoPhotoFiles(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  memoId: string,
+): Promise<AttachedFile[]> {
+  const { data: memoPhotos } = await supabase
+    .from('photos')
+    .select('id, storage_path, mime')
+    .eq('memo_id', memoId)
+    .order('created_at', { ascending: true });
+
+  const out: AttachedFile[] = [];
+  for (const p of memoPhotos ?? []) {
+    const path = p.storage_path as string;
+    const { data: photoData } = await supabase.storage.from('photos').download(path);
+    if (!photoData) continue;
+    const photoBuf = await photoData.arrayBuffer();
+    out.push({
+      mime: (p.mime as string) || 'image/jpeg',
+      base64: Buffer.from(photoBuf).toString('base64'),
+    });
+  }
+  return out;
+}
+
 /**
- * Transcribe a memo's audio using Claude's audio content block and extract
- * work items mapped to renovation budget categories.
+ * Stage 1 + Stage 2 of the memo pipeline, chained.
+ *
+ * Stage 1 — Gemini transcribes the audio. Plain vision call, text only.
+ * Stage 2 — Opus 4.7 turns the transcript (+ photos) into structured
+ *           work items. No audio in this call — the transcript is the
+ *           input. Result is stored as `ai_extraction.v1` with
+ *           `active = 'v1'`.
+ *
+ * Triggered automatically by `uploadMemoAction` and re-runnable via the
+ * "Retry" button if the first attempt fails.
  */
 export async function transcribeMemoAction(memoId: string): Promise<MemoActionResult> {
   const tenant = await getCurrentTenant();
@@ -161,37 +249,25 @@ export async function transcribeMemoAction(memoId: string): Promise<MemoActionRe
 
   const supabase = await createClient();
 
-  // Load the memo
   const { data: memo, error: loadErr } = await supabase
     .from('project_memos')
     .select('id, project_id, audio_url, status')
     .eq('id', memoId)
     .maybeSingle();
 
-  if (loadErr || !memo) {
-    return { ok: false, error: 'Memo not found.' };
-  }
+  if (loadErr || !memo) return { ok: false, error: 'Memo not found.' };
+  if (!memo.audio_url) return { ok: false, error: 'No audio file attached to this memo.' };
 
-  if (!memo.audio_url) {
-    return { ok: false, error: 'No audio file attached to this memo.' };
-  }
-
-  // Update status to transcribing
   await supabase.from('project_memos').update({ status: 'transcribing' }).eq('id', memoId);
 
   try {
-    // Download the audio file from storage
     const audioUrl = memo.audio_url as string;
     const storagePath = audioUrl.split('/project-memos/')[1];
-
-    if (!storagePath) {
-      throw new Error('Invalid audio URL format.');
-    }
+    if (!storagePath) throw new Error('Invalid audio URL format.');
 
     const { data: fileData, error: downloadErr } = await supabase.storage
       .from('project-memos')
       .download(storagePath);
-
     if (downloadErr || !fileData) {
       throw new Error(`Failed to download audio: ${downloadErr?.message}`);
     }
@@ -199,7 +275,6 @@ export async function transcribeMemoAction(memoId: string): Promise<MemoActionRe
     const audioBuffer = await fileData.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString('base64');
 
-    // Gemini accepts these audio mime types for inline_data.
     const ext = storagePath.split('.').pop()?.toLowerCase();
     const mediaTypeMap: Record<string, string> = {
       webm: 'audio/webm',
@@ -212,77 +287,48 @@ export async function transcribeMemoAction(memoId: string): Promise<MemoActionRe
       flac: 'audio/flac',
     };
     const mediaType = mediaTypeMap[ext ?? 'webm'] ?? 'audio/webm';
-
-    // Update status to extracting
-    await supabase.from('project_memos').update({ status: 'extracting' }).eq('id', memoId);
-
-    // Load any photos attached to this memo — the operator typically snaps
-    // a few as they talk through the walkthrough. Send them to Gemini as
-    // additional inline parts so it can cross-reference what it heard with
-    // what it sees.
-    const { data: memoPhotos } = await supabase
-      .from('photos')
-      .select('id, storage_path, mime')
-      .eq('memo_id', memoId)
-      .order('created_at', { ascending: true });
-
-    const photoFiles: AttachedFile[] = [];
-    for (const p of memoPhotos ?? []) {
-      const path = p.storage_path as string;
-      const { data: photoData } = await supabase.storage.from('photos').download(path);
-      if (!photoData) continue;
-      const photoBuf = await photoData.arrayBuffer();
-      photoFiles.push({
-        mime: (p.mime as string) || 'image/jpeg',
-        base64: Buffer.from(photoBuf).toString('base64'),
-      });
-    }
-
-    const photoInstruction =
-      photoFiles.length > 0
-        ? `\n\n${photoFiles.length} site-walk ${photoFiles.length === 1 ? 'photo is' : 'photos are'} attached (in order, 0-indexed). For each work item, include a "referenced_photo_indexes" array listing the indexes of photos that show the area or condition you're describing. Empty array if none are relevant.`
-        : '';
-
-    const prompt = `You are a renovation project assistant. Transcribe this renovation site walk-through audio. Then extract work items and map them to standard renovation budget categories.
-
-Standard interior categories: Demo, Disposal, Framing, Plumbing, Plumbing Fixtures, HVAC, Insulation, Drywall, Flooring, Doors & Mouldings, Windows & Doors, Railings, Electrical, Painting, Kitchen, Contingency.
-
-Standard exterior categories: Demo, Disposal, Framing, Siding, Sheathing, Painting, Gutters, Front Garden, Front Door, Rot Repair, Garage Doors, Contingency.${photoInstruction}
-
-Respond with ONLY valid JSON in this exact format:
-{
-  "transcript": "full transcription of the audio",
-  "work_items": [
-    { "area": "room or location", "description": "what needs to be done", "suggested_category": "category name", "section": "interior or exterior", "referenced_photo_indexes": [] }
-  ],
-  "customer_preferences": ["any customer preferences mentioned"],
-  "uncertainty_flags": ["anything unclear or that needs clarification"]
-}`;
-
-    // Loose schema — the prompt does most of the work; we want
-    // everything-or-nothing JSON validity, not strict field policing.
-    const SCHEMA = { type: 'object' };
-
     const audioFile: AttachedFile = { mime: mediaType, base64: base64Audio };
 
-    const res = await gateway().runStructured<MemoExtraction>({
-      kind: 'structured',
-      task: 'project_memo_generate',
+    // Stage 1 — transcribe.
+    const transcribeRes = await gateway().runVision({
+      kind: 'vision',
+      task: 'project_memo_transcribe',
       tenant_id: tenant.id,
-      prompt,
-      schema: SCHEMA,
+      prompt:
+        'Transcribe this renovation site walkthrough audio. Return only the transcript text — no preamble, no commentary, no JSON. Preserve filler words and false starts only when they carry meaning; otherwise produce a clean, readable transcript.',
       file: audioFile,
-      files: photoFiles,
-      temperature: 0.1,
     });
-    const extraction = res.data;
+    const transcript = (transcribeRes.text ?? '').trim();
+    if (!transcript) throw new Error('Transcription returned empty text.');
 
-    // Update memo with results
+    await supabase
+      .from('project_memos')
+      .update({ transcript, status: 'extracting' })
+      .eq('id', memoId);
+
+    // Stage 2 — extract work items from transcript + photos with Opus 4.7.
+    const photoFiles = await loadMemoPhotoFiles(supabase, memoId);
+    const extractRes = await gateway().runStructured<MemoExtraction>({
+      kind: 'structured',
+      task: 'project_memo_extract',
+      tenant_id: tenant.id,
+      model_override: 'claude-opus-4-7',
+      prompt: buildExtractionPrompt(transcript, photoFiles.length),
+      schema: EXTRACTION_SCHEMA,
+      files: photoFiles,
+      temperature: 0,
+    });
+
+    const envelope: MemoExtractionEnvelope = {
+      v1: extractRes.data,
+      v2: null,
+      active: 'v1',
+    };
+
     await supabase
       .from('project_memos')
       .update({
-        transcript: extraction.transcript,
-        ai_extraction: extraction as unknown as Record<string, unknown>,
+        ai_extraction: envelope as unknown as Record<string, unknown>,
         status: 'ready',
       })
       .eq('id', memoId);
@@ -290,9 +336,7 @@ Respond with ONLY valid JSON in this exact format:
     revalidatePath(`/projects/${memo.project_id}`);
     return { ok: true, id: memoId };
   } catch (err) {
-    // Mark as failed
     await supabase.from('project_memos').update({ status: 'failed' }).eq('id', memoId);
-
     return {
       ok: false,
       error: `Transcription failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -301,9 +345,126 @@ Respond with ONLY valid JSON in this exact format:
 }
 
 /**
- * Rewrite a memo's ai_extraction.work_items array, dropping the item at
- * `itemIndex`. Used when a work item is either added to cost lines or
- * dismissed.
+ * User-triggered second pass — re-runs Stage 2 with extended thinking.
+ * Result lands in `ai_extraction.v2` and `active` flips to `v2` so the
+ * user sees the new attempt by default; they can flip back to v1 via
+ * `setActiveMemoVersionAction` if they prefer the original.
+ *
+ * Requires v1 to already exist (i.e. a prior successful run). The
+ * transcript is read from the memo row, so no audio handling here.
+ */
+export async function reExtractMemoAction(memoId: string): Promise<MemoActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+
+  const { data: memo, error: loadErr } = await supabase
+    .from('project_memos')
+    .select('id, project_id, transcript, ai_extraction')
+    .eq('id', memoId)
+    .maybeSingle();
+
+  if (loadErr || !memo) return { ok: false, error: 'Memo not found.' };
+  const transcript = (memo.transcript as string | null)?.trim() ?? '';
+  if (!transcript) {
+    return { ok: false, error: 'No transcript yet — run the first pass first.' };
+  }
+  const existing = (memo.ai_extraction as Record<string, unknown> | null) ?? null;
+
+  await supabase.from('project_memos').update({ status: 'rethinking' }).eq('id', memoId);
+
+  try {
+    const photoFiles = await loadMemoPhotoFiles(supabase, memoId);
+
+    const extractRes = await gateway().runStructured<MemoExtraction>({
+      kind: 'structured',
+      task: 'project_memo_extract_thinking',
+      tenant_id: tenant.id,
+      model_override: 'claude-opus-4-7',
+      prompt: buildExtractionPrompt(transcript, photoFiles.length),
+      schema: EXTRACTION_SCHEMA,
+      files: photoFiles,
+      thinking: { budget_tokens: 4000 },
+      max_tokens: 8000,
+    });
+
+    const v1 =
+      existing && typeof existing === 'object' && 'v1' in existing
+        ? ((existing as { v1: unknown }).v1 as MemoExtraction | null)
+        : (existing as unknown as MemoExtraction | null);
+
+    const envelope: MemoExtractionEnvelope = {
+      v1: v1 ?? null,
+      v2: extractRes.data,
+      active: 'v2',
+    };
+
+    await supabase
+      .from('project_memos')
+      .update({
+        ai_extraction: envelope as unknown as Record<string, unknown>,
+        status: 'ready',
+      })
+      .eq('id', memoId);
+
+    revalidatePath(`/projects/${memo.project_id}`);
+    return { ok: true, id: memoId };
+  } catch (err) {
+    // Don't mark the memo as failed — v1 is still valid. Just bounce
+    // back to ready so the UI exits the "rethinking" state.
+    await supabase.from('project_memos').update({ status: 'ready' }).eq('id', memoId);
+    return {
+      ok: false,
+      error: `Second pass failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
+/**
+ * Flip which extraction version the UI shows + work-item edits target.
+ */
+export async function setActiveMemoVersionAction(
+  memoId: string,
+  version: MemoVersion,
+): Promise<MemoDeleteResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+  const { data: memo, error: loadErr } = await supabase
+    .from('project_memos')
+    .select('id, project_id, ai_extraction')
+    .eq('id', memoId)
+    .maybeSingle();
+
+  if (loadErr || !memo) return { ok: false, error: 'Memo not found.' };
+
+  const envelope = (memo.ai_extraction as Record<string, unknown> | null) ?? null;
+  if (!envelope || !('v1' in envelope)) {
+    return { ok: false, error: 'Memo extraction is not in versioned shape.' };
+  }
+  if (version === 'v2' && !envelope.v2) {
+    return { ok: false, error: 'No v2 extraction to switch to yet.' };
+  }
+
+  const { error: updateErr } = await supabase
+    .from('project_memos')
+    .update({ ai_extraction: { ...envelope, active: version } })
+    .eq('id', memoId);
+
+  if (updateErr) return { ok: false, error: updateErr.message };
+  revalidatePath(`/projects/${memo.project_id as string}`);
+  return { ok: true };
+}
+
+/**
+ * Rewrite the work_items array of the memo's *active* extraction version,
+ * dropping the item at `itemIndex`. Used when a work item is either added
+ * to cost lines or dismissed.
+ *
+ * Tolerates the legacy flat shape (pre-migration-0174 rows): if
+ * ai_extraction has a top-level `work_items`, treat it as v1.
  */
 async function removeWorkItemAtIndex(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -318,18 +479,33 @@ async function removeWorkItemAtIndex(
 
   if (error || !memo) return { ok: false, error: 'Memo not found.' };
 
-  const extraction = (memo.ai_extraction as Record<string, unknown>) ?? {};
-  const items = Array.isArray(extraction.work_items)
-    ? [...(extraction.work_items as unknown[])]
-    : [];
+  const raw = (memo.ai_extraction as Record<string, unknown> | null) ?? {};
+  const isVersioned = 'v1' in raw || 'v2' in raw || 'active' in raw;
+  const envelope: MemoExtractionEnvelope = isVersioned
+    ? {
+        v1: (raw.v1 as MemoExtraction | null) ?? null,
+        v2: (raw.v2 as MemoExtraction | null) ?? null,
+        active: (raw.active as MemoVersion) ?? 'v1',
+      }
+    : { v1: raw as unknown as MemoExtraction, v2: null, active: 'v1' };
+
+  const slot = envelope[envelope.active];
+  if (!slot) return { ok: false, error: 'Active extraction is empty.' };
+
+  const items = Array.isArray(slot.work_items) ? [...slot.work_items] : [];
   if (itemIndex < 0 || itemIndex >= items.length) {
     return { ok: false, error: 'Work item index out of range.' };
   }
   items.splice(itemIndex, 1);
 
+  const updated: MemoExtractionEnvelope = {
+    ...envelope,
+    [envelope.active]: { ...slot, work_items: items },
+  };
+
   const { error: updateErr } = await supabase
     .from('project_memos')
-    .update({ ai_extraction: { ...extraction, work_items: items } })
+    .update({ ai_extraction: updated as unknown as Record<string, unknown> })
     .eq('id', memoId);
 
   if (updateErr) return { ok: false, error: updateErr.message };

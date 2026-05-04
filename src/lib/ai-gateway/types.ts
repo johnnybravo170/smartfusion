@@ -117,6 +117,14 @@ export type StructuredRequest<T = unknown> = AiRequestBase & {
   parse?: (raw: unknown) => T;
   temperature?: number;
   max_tokens?: number;
+  /**
+   * Enable extended thinking on providers that support it (Anthropic only
+   * today). `budget_tokens` must be ≥1024 and less than `max_tokens`.
+   * Adapters that don't support thinking ignore this field. When set, the
+   * Anthropic adapter forces `temperature: 1` and switches forced
+   * tool-choice to `any` — both required by extended thinking + tool use.
+   */
+  thinking?: { budget_tokens: number };
 };
 
 // ---------------------------------------------------------------------------

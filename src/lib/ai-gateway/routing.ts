@@ -36,13 +36,37 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     fallback_chain: ['gemini', 'anthropic', 'openai'],
   },
 
-  // Project memos are multimodal (audio + photos). Pre-AG-7 the direct
-  // caller used Gemini exclusively; we keep Gemini primary to avoid a
-  // behavior change at migration time. Re-evaluate quality vs cost
-  // against Anthropic after a week of telemetry.
+  // Legacy unified call (audio → transcript + extraction in one shot).
+  // Kept for back-compat with rows still on the old shape, but new
+  // memos go through the split pipeline below.
   project_memo_generate: {
     primary: { provider: 'gemini' },
     fallback_chain: ['gemini', 'anthropic', 'openai'],
+  },
+
+  // Stage 1 — audio → transcript. Gemini Flash is the only option that
+  // accepts webm inline today (Anthropic's audio path was 400ing on
+  // non-PDF document blocks pre-Apr 2026); also basically free. The
+  // call is plain vision with prompt = "transcribe only", text out.
+  project_memo_transcribe: {
+    primary: { provider: 'gemini' },
+    fallback_chain: ['gemini'],
+  },
+
+  // Stage 2 — transcript + photos → structured work items. Opus 4.7 on
+  // text + images is materially stronger at the extraction half than
+  // Gemini was at the unified audio call. Cost is ~$0.10–0.30/call but
+  // these are user-triggered after a real walkthrough, not high-volume.
+  project_memo_extract: {
+    primary: { provider: 'anthropic', model: 'claude-opus-4-7' },
+    fallback_chain: ['anthropic', 'gemini'],
+  },
+
+  // Stage 2 second pass — same shape, with extended thinking turned on
+  // by the caller. User-triggered ("Try with deeper thinking" button).
+  project_memo_extract_thinking: {
+    primary: { provider: 'anthropic', model: 'claude-opus-4-7' },
+    fallback_chain: ['anthropic'],
   },
 
   // High-volume but throwaway (one classification per inbound email).
