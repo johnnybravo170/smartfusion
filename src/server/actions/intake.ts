@@ -602,6 +602,215 @@ export async function parseIntakeDraftAction(
   return { ok: true, draftId, draft, transcript: transcript || null, parsedBy: model_override };
 }
 
+export type AppendInboundResult =
+  | { ok: true; draftId: string; addedSuggestionCount: number; addedArtifactCount: number }
+  | { ok: false; error: string; draftId?: string };
+
+/**
+ * Iterate-on-draft. The operator already has a ready draft on the
+ * review screen and drops MORE stuff in (another voice memo, a photo,
+ * pasted text, a sub-trade quote PDF). Henry takes the new inputs +
+ * the existing draft and surfaces additional suggestions for the
+ * operator to accept or dismiss.
+ *
+ * Behavior:
+ *   - Whisper any new audio → append to the row's transcript.
+ *   - Classify any new visual artifacts → append to the row's
+ *     artifacts column (chip row updates).
+ *   - Re-run augmentScope against the cumulative transcript +
+ *     existing draft; dedupe new suggestions against the existing
+ *     augmentations (case-insensitive title match) and append the
+ *     fresh ones.
+ *   - Operator's edits to the draft are NOT overwritten — the parsed
+ *     extraction (envelope.v1) is unchanged. Only suggestions and
+ *     artifacts grow.
+ *
+ * Returns counts of what was added so the UI can toast a useful
+ * message ("Henry added 2 more suggestions, classified 1 photo").
+ */
+export async function appendToIntakeDraftAction(
+  draftId: string,
+  formData: FormData,
+): Promise<AppendInboundResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+  const { data: row, error: loadErr } = await supabase
+    .from('intake_drafts')
+    .select(
+      'id, status, transcript, pasted_text, artifacts, augmentations, ai_extraction, customer_name',
+    )
+    .eq('id', draftId)
+    .maybeSingle();
+  if (loadErr || !row) return { ok: false, error: 'Draft not found.' };
+  if (row.status !== 'ready' && row.status !== 'failed') {
+    return {
+      ok: false,
+      error: `Can't append while Henry is still working (status: ${row.status as string}).`,
+      draftId,
+    };
+  }
+
+  const newPastedText = String(formData.get('pastedText') ?? '').trim();
+  const newStorageEntries: Array<{ path: string; name: string }> = [];
+  for (const entry of formData.getAll('storageEntries')) {
+    if (typeof entry !== 'string') continue;
+    try {
+      const parsed = JSON.parse(entry) as { path?: unknown; name?: unknown };
+      if (typeof parsed.path === 'string' && parsed.path.length > 0) {
+        newStorageEntries.push({
+          path: parsed.path,
+          name: typeof parsed.name === 'string' && parsed.name.length > 0 ? parsed.name : 'file',
+        });
+      }
+    } catch {
+      // Skip malformed
+    }
+  }
+
+  if (!newPastedText && newStorageEntries.length === 0) {
+    return { ok: false, error: 'Nothing to add — drop a file or paste some text.', draftId };
+  }
+  if (newStorageEntries.length > MAX_IMAGES) {
+    return { ok: false, error: `Too many files (max ${MAX_IMAGES}).`, draftId };
+  }
+
+  const existingArtifacts = (row.artifacts as IntakeArtifact[] | null) ?? [];
+  const existingAugmentations = (row.augmentations as IntakeAugmentation[] | null) ?? [];
+  const existingTranscript = (row.transcript as string | null) ?? '';
+  const baseIndex = existingArtifacts.length;
+  const envelope = row.ai_extraction as {
+    v1: ParsedIntake | null;
+    v2: ParsedIntake | null;
+    active: 'v1' | 'v2';
+  } | null;
+  const existingDraft = envelope?.[envelope.active] ?? envelope?.v1 ?? null;
+
+  await supabase
+    .from('intake_drafts')
+    .update({ status: 'extracting', error_message: null })
+    .eq('id', draftId);
+
+  const newTranscriptParts: string[] = [];
+  const newArtifacts: IntakeArtifact[] = [];
+  const newVisualFilesForClassify: Array<{ index: number; file: File }> = [];
+  const newAudioIndexesForClassify: number[] = [];
+  let cursorIndex = baseIndex;
+
+  if (newStorageEntries.length > 0) {
+    const admin = createAdminClient();
+    for (const { path, name: originalName } of newStorageEntries) {
+      const { data: blob, error: dlErr } = await admin.storage.from('intake-audio').download(path);
+      if (dlErr || !blob) continue;
+      if (blob.size > MAX_BYTES) {
+        await admin.storage.from('intake-audio').remove([path]);
+        await supabase
+          .from('intake_drafts')
+          .update({ status: 'ready', error_message: 'A staged file was larger than 25MB.' })
+          .eq('id', draftId);
+        return { ok: false, error: `A staged file is larger than 25MB.`, draftId };
+      }
+      const type = blob.type || 'application/octet-stream';
+      const f = new File([blob], originalName, { type });
+      const thisIndex = cursorIndex++;
+      newArtifacts.push({
+        path,
+        name: originalName,
+        mime: type,
+        size: blob.size,
+        kind: null,
+        label: null,
+      });
+      if (type.startsWith('audio/')) {
+        newAudioIndexesForClassify.push(thisIndex);
+        try {
+          const t = await transcribeAudio(f, tenant.id);
+          if (t) {
+            newTranscriptParts.push(`Voice memo (file: "${originalName}"):\n${t}`);
+          }
+        } catch (err) {
+          Sentry.captureException(err, {
+            tags: { stage: 'intake.append.transcribe', task: 'audio_transcribe_intake' },
+            extra: { filename: originalName, draftId },
+          });
+          // Keep going — the operator's other inputs may still produce
+          // useful suggestions. Surface a soft warning at the end.
+        }
+      } else if (type.startsWith('image/') || type === 'application/pdf') {
+        newVisualFilesForClassify.push({ index: thisIndex, file: f });
+      }
+      await admin.storage.from('intake-audio').remove([path]);
+    }
+  }
+
+  const newClassifications = await classifyArtifacts(
+    newVisualFilesForClassify,
+    newAudioIndexesForClassify,
+    cursorIndex,
+    tenant.id,
+  );
+  const classifiedNewArtifacts: IntakeArtifact[] = newArtifacts.map((a, i) => {
+    const globalIdx = baseIndex + i;
+    const c = newClassifications.find((row) => row.index === globalIdx);
+    return c ? { ...a, kind: c.kind, label: c.label } : a;
+  });
+
+  const fullTranscriptParts: string[] = [];
+  if (existingTranscript) fullTranscriptParts.push(existingTranscript);
+  if (newTranscriptParts.length > 0)
+    fullTranscriptParts.push(newTranscriptParts.join('\n\n---\n\n'));
+  if (newPastedText) fullTranscriptParts.push(`Operator added (pasted):\n${newPastedText}`);
+  const fullTranscript = fullTranscriptParts.join('\n\n=== APPENDED ===\n\n');
+
+  // Run augmentation against the cumulative state. Best-effort.
+  let freshSuggestions: IntakeAugmentation[] = [];
+  if (existingDraft) {
+    freshSuggestions = await augmentScope(existingDraft, fullTranscript, tenant.id);
+  }
+
+  // Dedupe new suggestions against existing ones (case-insensitive
+  // title match). Operator's existing dismissals stay valid because
+  // dismissed ids are preserved client-side.
+  const existingTitles = new Set(
+    existingAugmentations.map((s) => (s.title ?? '').trim().toLowerCase()),
+  );
+  const dedupedFresh = freshSuggestions.filter(
+    (s) => !existingTitles.has((s.title ?? '').trim().toLowerCase()),
+  );
+
+  const mergedAugmentations = [...existingAugmentations, ...dedupedFresh];
+  const mergedArtifacts = [...existingArtifacts, ...classifiedNewArtifacts];
+  const mergedPasted = newPastedText
+    ? `${(row.pasted_text as string | null) ?? ''}${row.pasted_text ? '\n\n' : ''}${newPastedText}`
+    : ((row.pasted_text as string | null) ?? null);
+  const mergedTranscriptStored =
+    newTranscriptParts.length > 0
+      ? [existingTranscript, newTranscriptParts.join('\n\n---\n\n')]
+          .filter(Boolean)
+          .join('\n\n=== APPENDED ===\n\n')
+      : existingTranscript || null;
+
+  await supabase
+    .from('intake_drafts')
+    .update({
+      status: 'ready',
+      artifacts: mergedArtifacts,
+      augmentations: mergedAugmentations,
+      transcript: mergedTranscriptStored,
+      pasted_text: mergedPasted,
+    })
+    .eq('id', draftId);
+
+  revalidatePath(`/projects/new?draft=${draftId}`);
+  return {
+    ok: true,
+    draftId,
+    addedSuggestionCount: dedupedFresh.length,
+    addedArtifactCount: classifiedNewArtifacts.length,
+  };
+}
+
 export type AcceptInboundResult =
   | { ok: true; projectId: string }
   | { ok: false; error: string; duplicates?: ContactMatch[] };

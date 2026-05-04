@@ -36,7 +36,7 @@ import {
   X,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { ExistingMatchesBanner } from '@/components/features/contacts/existing-matches-banner';
 import { IntakeDropzone } from '@/components/features/contacts/intake-dropzone';
@@ -50,6 +50,7 @@ import { resizeImage } from '@/lib/storage/resize-image';
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client';
 import {
   acceptInboundLeadAction,
+  appendToIntakeDraftAction,
   type IntakeArtifact,
   type IntakeArtifactKind,
   type IntakeAugmentation,
@@ -160,6 +161,70 @@ function SuggestionsBlock({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function AppendMoreZone({
+  files,
+  onFilesAdded,
+  onRemoveFile,
+  text,
+  onTextChange,
+  onSend,
+  isPending,
+  hasContent,
+}: {
+  files: File[];
+  onFilesAdded: (picked: File[]) => void;
+  onRemoveFile: (i: number) => void;
+  text: string;
+  onTextChange: (next: string) => void;
+  onSend: () => void;
+  isPending: boolean;
+  hasContent: boolean;
+}) {
+  return (
+    <div className="rounded-md border border-dashed bg-muted/30 p-4">
+      <p className="mb-2 text-sm font-medium">Drop more for Henry</p>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Another voice memo, a sub-trade quote PDF, a damage photo you just took, or a quick text
+        note — Henry incorporates it into the existing draft without losing your edits.
+      </p>
+      <div className="space-y-3">
+        <IntakeDropzone
+          files={files}
+          onFilesAdded={onFilesAdded}
+          onRemove={onRemoveFile}
+          accept="image/*,application/pdf,audio/*"
+          multiple
+          disabled={isPending}
+          inputId="append-files"
+          hint="Drop or click to choose"
+        />
+        <Textarea
+          rows={3}
+          value={text}
+          onChange={(e) => onTextChange(e.target.value)}
+          placeholder="Or paste another note for Henry to consider…"
+          disabled={isPending}
+        />
+        <div className="flex items-center justify-end">
+          <Button onClick={onSend} disabled={isPending || !hasContent}>
+            {isPending ? (
+              <>
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                Henry's reading…
+              </>
+            ) : (
+              <>
+                <Plus className="mr-1.5 size-3.5" />
+                Have Henry take another look
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -287,11 +352,27 @@ export function LeadIntakeForm({
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
   const [isRetrying, startRetrying] = useTransition();
+  const [isAppending, startAppending] = useTransition();
+  const [appendFiles, setAppendFiles] = useState<File[]>([]);
+  const [appendText, setAppendText] = useState('');
 
-  // Re-sync from the server whenever a fresh initialDraft lands (e.g.
-  // polling fired router.refresh() and the page re-rendered with an
-  // updated row). Keying on id + status + updated_at means we only
-  // re-init on a real change, not every render.
+  // Tracks which draft-id we've already synced the editable draft from.
+  // Prevents the polling effect from overwriting operator edits when
+  // the server pushes incremental updates (new chips, new suggestions
+  // during iterate-on-draft). Initial value matches whatever was
+  // server-rendered into `draft` so we don't double-sync on first
+  // mount. Reset to null on explicit retry to force a re-sync against
+  // the fresh extraction.
+  const syncedDraftIdRef = useRef<string | null>(
+    initialDraft?.status === 'ready' && initialDraft?.ai_extraction ? initialDraft.id : null,
+  );
+
+  // Re-sync metadata from the server on every poll (status, transcript,
+  // parsed_by, error_message). The editable draft is only re-synced
+  // ONCE per draft id — see syncedDraftIdRef — to protect operator
+  // edits from being clobbered when iterate-on-draft appends new
+  // augmentations or artifacts to the row. Artifacts + augmentations
+  // are rendered directly from initialDraft prop, no client-state mirror.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see comment
   useEffect(() => {
     if (!initialDraft) return;
@@ -303,10 +384,20 @@ export function LeadIntakeForm({
     setParsedBy(initialDraft.parsed_by ?? null);
     setCustomerName((prev) => prev || (initialDraft.customer_name ?? ''));
     setPastedText((prev) => prev || (initialDraft.pasted_text ?? ''));
-    if (initialDraft.ai_extraction) {
+
+    // Guarded one-shot draft sync: only when status hits 'ready' for a
+    // draft id we haven't synced yet.
+    if (
+      initialDraft.status === 'ready' &&
+      initialDraft.ai_extraction &&
+      syncedDraftIdRef.current !== initialDraft.id
+    ) {
       const env = initialDraft.ai_extraction;
       const next = env[env.active] ?? env.v2 ?? env.v1 ?? null;
-      if (next) setDraft(stampDraft(next));
+      if (next) {
+        setDraft(stampDraft(next));
+        syncedDraftIdRef.current = initialDraft.id;
+      }
     }
   }, [initialDraft?.id, initialDraft?.status, initialDraft?.updated_at]);
 
@@ -412,6 +503,11 @@ export function LeadIntakeForm({
 
   function handleRetry() {
     if (!draftId) return;
+    // Reset the sync guard so the polling effect re-syncs the editable
+    // draft from the fresh extraction. The setDraft() below also runs,
+    // but the ref reset keeps things consistent if the effect fires
+    // afterward with newer row data.
+    syncedDraftIdRef.current = null;
     startRetrying(async () => {
       const res = await parseIntakeDraftAction(draftId, { model: parseModel });
       if (!res.ok) {
@@ -423,6 +519,7 @@ export function LeadIntakeForm({
       setParsedBy(res.parsedBy ?? null);
       setErrorMessage(null);
       setPhase('review');
+      syncedDraftIdRef.current = draftId;
     });
   }
 
@@ -493,6 +590,82 @@ export function LeadIntakeForm({
       const next = new Set(prev);
       next.add(s.id);
       return next;
+    });
+  }
+
+  /**
+   * Iterate-on-draft. Operator drops more files / pastes more text on
+   * the review screen; we ship them to appendToIntakeDraftAction which
+   * Whispers any new audio, classifies new artifacts, re-runs the
+   * augmentation pass with the cumulative inputs, and appends fresh
+   * suggestions to the row. Operator's local edits to `draft` are
+   * preserved (the syncedDraftIdRef guard blocks the polling effect
+   * from overwriting).
+   */
+  function handleAppend() {
+    if (!draftId) return;
+    if (appendFiles.length === 0 && !appendText.trim()) {
+      toast.error('Drop a file or paste some text first.');
+      return;
+    }
+    const filesToSend = appendFiles;
+    const textToSend = appendText.trim();
+    startAppending(async () => {
+      const fd = new FormData();
+      if (textToSend) fd.set('pastedText', textToSend);
+
+      if (filesToSend.length > 0) {
+        const supabase = createBrowserSupabase();
+        const { data: auth } = await supabase.auth.getUser();
+        const userId = auth.user?.id;
+        if (!userId) {
+          toast.error('Please sign in again before dropping files.');
+          return;
+        }
+        for (const raw of filesToSend) {
+          const prepared = await shrinkIfNeeded(raw);
+          const ext = prepared.name.split('.').pop()?.toLowerCase() || 'bin';
+          const path = `tenant/${userId}/${crypto.randomUUID()}.${ext}`;
+          const { error: upErr } = await supabase.storage
+            .from('intake-audio')
+            .upload(path, prepared, {
+              contentType: prepared.type || 'application/octet-stream',
+            });
+          if (upErr) {
+            toast.error(`Upload failed: ${upErr.message}`);
+            return;
+          }
+          fd.append(
+            'storageEntries',
+            JSON.stringify({ path, name: prepared.name || raw.name || 'file' }),
+          );
+        }
+      }
+
+      const res = await appendToIntakeDraftAction(draftId, fd);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setAppendFiles([]);
+      setAppendText('');
+      const parts: string[] = [];
+      if (res.addedArtifactCount > 0) {
+        parts.push(
+          `${res.addedArtifactCount} new ${res.addedArtifactCount === 1 ? 'artifact' : 'artifacts'}`,
+        );
+      }
+      if (res.addedSuggestionCount > 0) {
+        parts.push(
+          `${res.addedSuggestionCount} new ${res.addedSuggestionCount === 1 ? 'suggestion' : 'suggestions'}`,
+        );
+      }
+      toast.success(
+        parts.length > 0
+          ? `Henry added ${parts.join(' and ')}.`
+          : 'Henry took a look — nothing new to add.',
+      );
+      router.refresh();
     });
   }
 
@@ -624,6 +797,16 @@ export function LeadIntakeForm({
           onBack={() => setPhase('upload')}
           onAccept={() => handleAccept()}
           isAccepting={isAccepting}
+        />
+        <AppendMoreZone
+          files={appendFiles}
+          onFilesAdded={(picked) => setAppendFiles((prev) => [...prev, ...picked])}
+          onRemoveFile={(i) => setAppendFiles((prev) => prev.filter((_, j) => j !== i))}
+          text={appendText}
+          onTextChange={setAppendText}
+          onSend={handleAppend}
+          isPending={isAppending}
+          hasContent={appendFiles.length > 0 || appendText.trim().length > 0}
         />
       </div>
     );
