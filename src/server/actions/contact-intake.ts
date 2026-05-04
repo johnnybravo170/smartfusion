@@ -21,6 +21,7 @@ import {
   CONTACT_INTAKE_SYSTEM_PROMPT,
   type ParsedContact,
 } from '@/lib/ai/contact-intake-prompt';
+import { type AttachedFile, gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { type ContactMatch, findContactMatches } from '@/lib/db/queries/contact-matches';
 import { createClient } from '@/lib/supabase/server';
@@ -40,9 +41,6 @@ export type ParseContactResult =
 export async function parseInboundContactAction(formData: FormData): Promise<ParseContactResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { ok: false, error: 'Server missing OPENAI_API_KEY' };
 
   const kind = String(formData.get('kind') ?? '') as NonCustomerKind;
   const pastedText = String(formData.get('pastedText') ?? '').trim();
@@ -66,7 +64,6 @@ export async function parseInboundContactAction(formData: FormData): Promise<Par
     }
   }
 
-  const userContent: Array<Record<string, unknown>> = [];
   const intro = [
     `Tenant: ${tenant.name ?? 'Contractor'}`,
     `Contact kind: ${kind}`,
@@ -76,66 +73,37 @@ export async function parseInboundContactAction(formData: FormData): Promise<Par
       ? `${files.length} artifact(s) follow (images/PDFs), indexed 0..${files.length - 1}.`
       : '(No artifacts.)',
   ].join('\n\n');
-  userContent.push({ type: 'text', text: intro });
 
+  const attachedFiles: AttachedFile[] = [];
   for (const f of files) {
     const buf = Buffer.from(await f.arrayBuffer());
-    const b64 = buf.toString('base64');
-    if (f.type === 'application/pdf') {
-      userContent.push({
-        type: 'file',
-        file: {
-          filename: f.name || 'document.pdf',
-          file_data: `data:application/pdf;base64,${b64}`,
-        },
-      });
-    } else {
-      userContent.push({
-        type: 'image_url',
-        image_url: { url: `data:${f.type};base64,${b64}` },
-      });
-    }
-  }
-
-  const body = {
-    model: PARSE_MODEL,
-    messages: [
-      { role: 'system', content: CONTACT_INTAKE_SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
-    ],
-    response_format: { type: 'json_schema', json_schema: CONTACT_INTAKE_JSON_SCHEMA },
-  };
-
-  let res: Response;
-  try {
-    res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
+    attachedFiles.push({
+      mime: f.type,
+      base64: buf.toString('base64'),
+      filename: f.name || undefined,
     });
-  } catch (e) {
-    return { ok: false, error: `Network error: ${e instanceof Error ? e.message : String(e)}` };
   }
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    return { ok: false, error: `OpenAI ${res.status}: ${txt || res.statusText}` };
-  }
-
-  const payload = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) return { ok: false, error: 'OpenAI returned no content.' };
 
   let draft: ParsedContact;
   try {
-    draft = JSON.parse(content) as ParsedContact;
-  } catch {
-    return { ok: false, error: 'OpenAI returned non-JSON.' };
+    const res = await gateway().runStructured<ParsedContact>({
+      kind: 'structured',
+      task: 'contact_parse_intake',
+      tenant_id: tenant.id,
+      model_override: PARSE_MODEL,
+      prompt: `${CONTACT_INTAKE_SYSTEM_PROMPT}\n\n${intro}`,
+      schema: CONTACT_INTAKE_JSON_SCHEMA.schema,
+      files: attachedFiles,
+    });
+    draft = res.data;
+  } catch (err) {
+    if (isAiError(err)) {
+      if (err.kind === 'quota')
+        return { ok: false, error: 'Contact parsing temporarily unavailable across providers.' };
+      if (err.kind === 'overload' || err.kind === 'rate_limit')
+        return { ok: false, error: 'Contact parsing is busy right now. Try again in a moment.' };
+    }
+    return { ok: false, error: 'Could not parse the contact. Try again.' };
   }
 
   // Operator-supplied name hint wins over whatever the model pulled.

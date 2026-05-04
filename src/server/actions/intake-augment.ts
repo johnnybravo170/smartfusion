@@ -13,6 +13,7 @@ import {
   AUGMENT_SYSTEM_PROMPT,
   type AugmentResult,
 } from '@/lib/ai/intake-augment-prompt';
+import { type AttachedFile, gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { uploadToStorage } from '@/lib/storage/photos';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -39,9 +40,6 @@ export type ParseAugmentResult =
 export async function parseProjectAugmentAction(formData: FormData): Promise<ParseAugmentResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { ok: false, error: 'Server missing OPENAI_API_KEY' };
 
   const projectId = String(formData.get('projectId') ?? '');
   if (!projectId) return { ok: false, error: 'Missing projectId.' };
@@ -114,65 +112,36 @@ export async function parseProjectAugmentAction(formData: FormData): Promise<Par
     `${files.length} new artifact(s) follow (images and/or PDFs), indexed 0..${files.length - 1}.`,
   ].join('\n');
 
-  const userContent: Array<Record<string, unknown>> = [{ type: 'text', text: intro }];
+  const attachedFiles: AttachedFile[] = [];
   for (const f of files) {
     const buf = Buffer.from(await f.arrayBuffer());
-    const b64 = buf.toString('base64');
-    if (f.type === 'application/pdf') {
-      userContent.push({
-        type: 'file',
-        file: {
-          filename: f.name || 'document.pdf',
-          file_data: `data:application/pdf;base64,${b64}`,
-        },
-      });
-    } else {
-      userContent.push({
-        type: 'image_url',
-        image_url: { url: `data:${f.type};base64,${b64}` },
-      });
-    }
-  }
-
-  const body = {
-    model: PARSE_MODEL,
-    messages: [
-      { role: 'system', content: AUGMENT_SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
-    ],
-    response_format: { type: 'json_schema', json_schema: AUGMENT_JSON_SCHEMA },
-  };
-
-  let res: Response;
-  try {
-    res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
+    attachedFiles.push({
+      mime: f.type,
+      base64: buf.toString('base64'),
+      filename: f.name || undefined,
     });
-  } catch (e) {
-    return { ok: false, error: `Network error: ${e instanceof Error ? e.message : String(e)}` };
   }
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    return { ok: false, error: `OpenAI ${res.status}: ${txt || res.statusText}` };
-  }
-
-  const payload = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) return { ok: false, error: 'OpenAI returned no content.' };
 
   let suggestions: AugmentResult;
   try {
-    suggestions = JSON.parse(content) as AugmentResult;
-  } catch {
-    return { ok: false, error: 'OpenAI returned non-JSON.' };
+    const res = await gateway().runStructured<AugmentResult>({
+      kind: 'structured',
+      task: 'intake_augment_suggest',
+      tenant_id: tenant.id,
+      model_override: PARSE_MODEL,
+      prompt: `${AUGMENT_SYSTEM_PROMPT}\n\n${intro}`,
+      schema: AUGMENT_JSON_SCHEMA.schema,
+      files: attachedFiles,
+    });
+    suggestions = res.data;
+  } catch (err) {
+    if (isAiError(err)) {
+      if (err.kind === 'quota')
+        return { ok: false, error: 'AI parsing temporarily unavailable across providers.' };
+      if (err.kind === 'overload' || err.kind === 'rate_limit')
+        return { ok: false, error: 'AI parsing is busy right now. Try again in a moment.' };
+    }
+    return { ok: false, error: 'Could not parse the artifacts. Try again.' };
   }
 
   return {

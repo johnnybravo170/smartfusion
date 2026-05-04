@@ -14,6 +14,7 @@
  */
 
 export const KNOWN_TASKS = [
+  // AG-7 originals
   'receipt_ocr', // worker/owner expense form receipt extraction
   'invoice_payment_ocr', // cheque / e-transfer screenshot OCR for invoice payments
   'project_memo_generate', // project memo drafting from notes + photos
@@ -22,6 +23,16 @@ export const KNOWN_TASKS = [
   'inbound_lead_enrich', // intake lead enrichment from raw text
   'sub_quote_parse', // sub-trade quote PDF → structured line items
   'scope_scaffold', // project scope scaffold from intake notes
+  // AG-7b additions
+  'pulse_progress_draft', // homeowner-friendly job progress summary
+  'document_type_classify', // single-word document type classification
+  'decision_suggest', // 0–3 homeowner decisions from job state
+  'photo_classify_internal', // job-site photo classification (internal docs)
+  'photo_label_homeowner', // homeowner-portal photo caption + labels
+  'overhead_expense_extract', // overhead-mode receipt extraction (OpenAI legacy)
+  'contact_parse_intake', // intake artifact → structured contact
+  'intake_augment_suggest', // suggest project amendments from intake notes
+  'note_reply_draft', // Henry Q&A reply draft on project notes
 ] as const;
 
 export type KnownTask = (typeof KNOWN_TASKS)[number];

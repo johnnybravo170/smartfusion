@@ -11,7 +11,7 @@
  * Henry's suggestions are optional polish, not a hard dependency.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { gateway } from '@/lib/ai-gateway';
 
 export type DecisionSuggestion = {
   label: string;
@@ -64,7 +64,6 @@ function clip(arr: string[], n: number, maxChars = 800): string[] {
 
 export async function suggestDecisions(
   ctx: DecisionSuggesterContext,
-  client?: Anthropic,
 ): Promise<DecisionSuggestion[]> {
   // Bail early if there's nothing for the model to chew on — saves
   // the call and avoids hallucinated-from-thin-air suggestions.
@@ -110,18 +109,17 @@ export async function suggestDecisions(
     'What homeowner decisions should the contractor queue right now? Return 0-3 suggestions in JSON.',
   );
 
-  const c = client ?? new Anthropic();
-
   let text = '';
   try {
-    const response = await c.messages.create({
-      model: SUGGESTER_MODEL,
-      max_tokens: 800,
+    const res = await gateway().runChat({
+      kind: 'chat',
+      task: 'decision_suggest',
+      model_override: SUGGESTER_MODEL,
       system: DECISION_SUGGESTER_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userBlocks.join('\n\n') }],
+      max_tokens: 800,
     });
-    const block = response.content.find((b) => b.type === 'text');
-    if (block && block.type === 'text') text = block.text.trim();
+    text = res.text.trim();
   } catch {
     return [];
   }

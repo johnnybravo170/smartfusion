@@ -20,6 +20,7 @@
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -293,9 +294,6 @@ export async function extractOverheadReceiptAction(
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { ok: false, error: 'Server missing OPENAI_API_KEY.' };
-
   const file = formData.get('receipt');
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: 'No receipt uploaded.' };
@@ -366,33 +364,7 @@ export async function extractOverheadReceiptAction(
           .join('\n')}`
       : '';
 
-  const userContent: Array<Record<string, unknown>> = [
-    {
-      type: 'text',
-      text: `Extract the fields from this Canadian contractor receipt.\n\n${rateHint}\n\nAvailable categories (pick the most appropriate id, or null if nothing fits):\n${catLines}${vendorHintBlock}`,
-    },
-  ];
-  if (isPdf) {
-    userContent.push({
-      type: 'file',
-      file: {
-        filename: file.name || 'receipt.pdf',
-        file_data: `data:application/pdf;base64,${b64}`,
-      },
-    });
-  } else {
-    userContent.push({
-      type: 'image_url',
-      image_url: { url: `data:${mime};base64,${b64}` },
-    });
-  }
-
-  const body = {
-    model: EXTRACT_MODEL,
-    messages: [
-      {
-        role: 'system',
-        content: `You extract structured fields from receipts for a Canadian contractor. Return ONLY JSON matching the schema. Use null when you cannot read with confidence.
+  const SYSTEM_PROMPT = `You extract structured fields from receipts for a Canadian contractor. Return ONLY JSON matching the schema. Use null when you cannot read with confidence.
 
 Field rules:
 - expense_date: YYYY-MM-DD. The transaction date, not the print time.
@@ -407,62 +379,33 @@ Field rules:
 - Sanity check: tax_cents should be roughly 4-15% of amount_cents for a valid Canadian receipt. If the number you compute is way outside that range, return null.
 - vendor: merchant name as printed at the top.
 - description: one-line summary of what was bought ("regular gas", "2x4s and drywall screws", "coffee").
-- vendor_gst_number: the vendor's GST/HST business number (BN) if printed on the receipt. Canadian format is 9 digits + "RT" + 4 digits (e.g. "123456789 RT0001" or "123456789RT0001"). Commonly labeled "GST Reg #", "HST #", "BN", "Business Number", or appears near the vendor's address. If only the 9-digit root is shown, return those 9 digits. Return null if not visible.
-- suggested_category_id: pick a selectable (non-parent) id from the list, or null if nothing fits well.`,
-      },
-      { role: 'user', content: userContent },
-    ],
-    response_format: {
-      type: 'json_schema',
-      json_schema: {
-        name: 'overhead_receipt',
-        strict: true,
-        schema: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            amount_cents: { type: ['integer', 'null'] },
-            tax_cents: { type: ['integer', 'null'] },
-            vendor: { type: ['string', 'null'] },
-            vendor_gst_number: { type: ['string', 'null'] },
-            expense_date: { type: ['string', 'null'] },
-            description: { type: ['string', 'null'] },
-            suggested_category_id: { type: ['string', 'null'] },
-          },
-          required: [
-            'amount_cents',
-            'tax_cents',
-            'vendor',
-            'vendor_gst_number',
-            'expense_date',
-            'description',
-            'suggested_category_id',
-          ],
-        },
-      },
+- vendor_gst_number: the vendor's GST/HST business number (BN) if printed on the receipt. Canadian format is 9 digits + "RT" + 4 digits. If only the 9-digit root is shown, return those 9 digits. Return null if not visible.
+- suggested_category_id: pick a selectable (non-parent) id from the list, or null if nothing fits well.`;
+
+  const SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      amount_cents: { type: ['integer', 'null'] },
+      tax_cents: { type: ['integer', 'null'] },
+      vendor: { type: ['string', 'null'] },
+      vendor_gst_number: { type: ['string', 'null'] },
+      expense_date: { type: ['string', 'null'] },
+      description: { type: ['string', 'null'] },
+      suggested_category_id: { type: ['string', 'null'] },
     },
+    required: [
+      'amount_cents',
+      'tax_cents',
+      'vendor',
+      'vendor_gst_number',
+      'expense_date',
+      'description',
+      'suggested_category_id',
+    ],
   };
 
-  let res: Response;
-  try {
-    res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch (e) {
-    return { ok: false, error: `Network error: ${e instanceof Error ? e.message : String(e)}` };
-  }
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    return { ok: false, error: `OpenAI ${res.status}: ${txt || res.statusText}` };
-  }
-
-  const payload = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) return { ok: false, error: 'OpenAI returned no content.' };
-
-  let parsed: {
+  type ParsedOverheadReceipt = {
     amount_cents: number | null;
     tax_cents: number | null;
     vendor: string | null;
@@ -471,10 +414,28 @@ Field rules:
     description: string | null;
     suggested_category_id: string | null;
   };
+
+  let parsed: ParsedOverheadReceipt;
   try {
-    parsed = JSON.parse(content);
-  } catch {
-    return { ok: false, error: 'OpenAI returned non-JSON.' };
+    const userPrompt = `Extract the fields from this Canadian contractor receipt.\n\n${rateHint}\n\nAvailable categories (pick the most appropriate id, or null if nothing fits):\n${catLines}${vendorHintBlock}`;
+    const res = await gateway().runStructured<ParsedOverheadReceipt>({
+      kind: 'structured',
+      task: 'overhead_expense_extract',
+      tenant_id: tenant.id,
+      model_override: EXTRACT_MODEL,
+      prompt: `${SYSTEM_PROMPT}\n\n${userPrompt}`,
+      schema: SCHEMA,
+      file: { mime, base64: b64, filename: file.name || undefined },
+    });
+    parsed = res.data;
+  } catch (err) {
+    if (isAiError(err)) {
+      if (err.kind === 'quota')
+        return { ok: false, error: 'Receipt scanning temporarily unavailable across providers.' };
+      if (err.kind === 'overload' || err.kind === 'rate_limit')
+        return { ok: false, error: 'Receipt scanning is busy right now. Try again in a moment.' };
+    }
+    return { ok: false, error: 'Could not read the receipt. Try again.' };
   }
 
   // Validate the suggested id is real and selectable.

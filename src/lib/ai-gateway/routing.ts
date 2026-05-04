@@ -72,9 +72,53 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
   },
 
   scope_scaffold: {
-    primary: { provider: 'gemini' },
-    secondary: { provider: 'anthropic', weight: 0.25 },
-    fallback_chain: ['gemini', 'anthropic'],
+    // Originally Anthropic (claude-opus). Behavior preserved at migration:
+    // route to Anthropic primary, Gemini fallback.
+    primary: { provider: 'anthropic' },
+    fallback_chain: ['anthropic', 'gemini'],
+  },
+
+  // AG-7b — keep each on its original provider to avoid behavior regressions
+  // at migration. Re-evaluate after a week of telemetry.
+
+  pulse_progress_draft: {
+    primary: { provider: 'anthropic' },
+    fallback_chain: ['anthropic', 'gemini'],
+  },
+  document_type_classify: {
+    primary: { provider: 'anthropic' },
+    secondary: { provider: 'gemini', weight: 0.5 },
+    fallback_chain: ['anthropic', 'gemini'],
+  },
+  decision_suggest: {
+    primary: { provider: 'anthropic' },
+    fallback_chain: ['anthropic', 'gemini'],
+  },
+  photo_classify_internal: {
+    primary: { provider: 'anthropic' },
+    fallback_chain: ['anthropic', 'gemini'],
+  },
+  photo_label_homeowner: {
+    primary: { provider: 'anthropic' },
+    fallback_chain: ['anthropic', 'gemini'],
+  },
+  overhead_expense_extract: {
+    primary: { provider: 'openai' },
+    secondary: { provider: 'gemini', weight: 0.5 },
+    fallback_chain: ['openai', 'gemini', 'anthropic'],
+  },
+  contact_parse_intake: {
+    primary: { provider: 'openai' },
+    fallback_chain: ['openai', 'gemini', 'anthropic'],
+  },
+  intake_augment_suggest: {
+    primary: { provider: 'openai' },
+    fallback_chain: ['openai', 'gemini', 'anthropic'],
+  },
+  note_reply_draft: {
+    primary: { provider: 'openai' },
+    secondary: { provider: 'gemini', weight: 0.4 },
+    fallback_chain: ['openai', 'gemini', 'anthropic'],
   },
 };
 

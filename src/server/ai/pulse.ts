@@ -14,7 +14,7 @@
  *   - Draft phases (we don't surface phase names directly anyway)
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { gateway } from '@/lib/ai-gateway';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export type PulsePayload = {
@@ -31,12 +31,6 @@ export type PulseDraft = {
   body_md: string;
   payload: PulsePayload;
 };
-
-let _client: Anthropic | null = null;
-function getAnthropic(): Anthropic {
-  if (!_client) _client = new Anthropic();
-  return _client;
-}
 
 /**
  * Build a fresh Pulse draft for a job. Pure read — does not write to
@@ -192,17 +186,13 @@ async function renderBody(args: { title: string; payload: PulsePayload }): Promi
     JSON.stringify(p, null, 2),
   ].join('\n');
 
-  const client = getAnthropic();
-  const model = process.env.PULSE_MODEL ?? 'claude-haiku-4-5-20251001';
-  const response = await client.messages.create({
-    model,
-    max_tokens: 600,
+  const res = await gateway().runChat({
+    kind: 'chat',
+    task: 'pulse_progress_draft',
+    model_override: process.env.PULSE_MODEL,
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userMsg }],
+    max_tokens: 600,
   });
-  const block = response.content.find((b) => b.type === 'text');
-  if (!block || block.type !== 'text') {
-    throw new Error('pulse_no_text_block');
-  }
-  return block.text.trim();
+  return res.text.trim();
 }

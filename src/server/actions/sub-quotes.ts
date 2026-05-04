@@ -20,6 +20,7 @@ import {
   SUB_QUOTE_PARSE_SYSTEM_PROMPT,
   type SubQuoteParseResult,
 } from '@/lib/ai/sub-quote-parse-prompt';
+import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -569,9 +570,6 @@ export async function parseSubQuoteFromFileAction(
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { ok: false, error: 'Server missing OPENAI_API_KEY.' };
-
   const projectId = String(formData.get('project_id') ?? '');
   if (!projectId) return { ok: false, error: 'Missing projectId.' };
 
@@ -646,58 +644,27 @@ export async function parseSubQuoteFromFileAction(
 
   const buf = Buffer.from(await file.arrayBuffer());
   const b64 = buf.toString('base64');
-  const userContent: Array<Record<string, unknown>> = [{ type: 'text', text: intro }];
-  if (isPdf) {
-    userContent.push({
-      type: 'file',
-      file: {
-        filename: file.name || 'quote.pdf',
-        file_data: `data:application/pdf;base64,${b64}`,
-      },
-    });
-  } else {
-    userContent.push({
-      type: 'image_url',
-      image_url: { url: `data:${file.type};base64,${b64}` },
-    });
-  }
-
-  const body = {
-    model: PARSE_MODEL,
-    messages: [
-      { role: 'system', content: SUB_QUOTE_PARSE_SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
-    ],
-    response_format: { type: 'json_schema', json_schema: SUB_QUOTE_PARSE_JSON_SCHEMA },
-  };
-
-  let res: Response;
-  try {
-    res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (e) {
-    return { ok: false, error: `Network error: ${e instanceof Error ? e.message : String(e)}` };
-  }
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    return { ok: false, error: `OpenAI ${res.status}: ${txt || res.statusText}` };
-  }
-
-  const payload = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) return { ok: false, error: 'OpenAI returned no content.' };
 
   let parsed: SubQuoteParseResult;
   try {
-    parsed = JSON.parse(content) as SubQuoteParseResult;
-  } catch {
-    return { ok: false, error: 'OpenAI returned non-JSON.' };
+    const res = await gateway().runStructured<SubQuoteParseResult>({
+      kind: 'structured',
+      task: 'sub_quote_parse',
+      tenant_id: tenant.id,
+      model_override: PARSE_MODEL,
+      prompt: `${SUB_QUOTE_PARSE_SYSTEM_PROMPT}\n\n${intro}`,
+      schema: SUB_QUOTE_PARSE_JSON_SCHEMA.schema,
+      file: { mime: file.type, base64: b64, filename: file.name || undefined },
+    });
+    parsed = res.data;
+  } catch (err) {
+    if (isAiError(err)) {
+      if (err.kind === 'quota')
+        return { ok: false, error: 'AI parsing temporarily unavailable across providers.' };
+      if (err.kind === 'overload' || err.kind === 'rate_limit')
+        return { ok: false, error: 'AI parsing is busy right now. Try again in a moment.' };
+    }
+    return { ok: false, error: 'Failed to parse the quote. Try again.' };
   }
 
   // Map AI allocation category names back to real category IDs. Anything the

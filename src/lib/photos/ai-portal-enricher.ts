@@ -17,7 +17,7 @@
  * prompt + parser.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { gateway } from '@/lib/ai-gateway';
 import { PORTAL_PHOTO_TAGS, type PortalPhotoTag } from '@/lib/validators/portal-photo';
 
 const SUPPORTED_MEDIA_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
@@ -102,42 +102,19 @@ export async function enrichPhotoForPortal(params: {
   imageBytes: Buffer;
   mimeType: string;
   model?: string;
-  client?: Anthropic;
 }): Promise<PortalEnrichmentResult> {
   const mediaType = SUPPORTED_MEDIA_TYPES.has(params.mimeType)
     ? (params.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp')
     : 'image/jpeg';
   const model = params.model ?? process.env.PHOTO_CLASSIFIER_MODEL ?? 'claude-haiku-4-5-20251001';
-  const client = params.client ?? new Anthropic();
 
-  const response = await client.messages.create({
-    model,
+  const res = await gateway().runVision({
+    kind: 'vision',
+    task: 'photo_label_homeowner',
+    model_override: model,
+    prompt: `${PORTAL_ENRICHER_SYSTEM_PROMPT}\n\nClassify this photo for the homeowner portal and write a caption.`,
+    file: { mime: mediaType, base64: params.imageBytes.toString('base64') },
     max_tokens: 360,
-    system: PORTAL_ENRICHER_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: mediaType,
-              data: params.imageBytes.toString('base64'),
-            },
-          },
-          {
-            type: 'text',
-            text: 'Classify this photo for the homeowner portal and write a caption.',
-          },
-        ],
-      },
-    ],
   });
-
-  const textBlock = response.content.find((b) => b.type === 'text');
-  if (!textBlock || textBlock.type !== 'text') {
-    throw new Error('portal_enricher_no_text_block');
-  }
-  return parsePortalEnricherResponse(textBlock.text);
+  return parsePortalEnricherResponse(res.text);
 }

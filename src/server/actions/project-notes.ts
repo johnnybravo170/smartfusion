@@ -8,6 +8,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { HUMAN_VOICE_RULES } from '@/lib/ai/human-voice';
+import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
 
@@ -87,9 +88,6 @@ export async function askHenryAboutProjectAction(input: {
   if (!tenant) return { ok: false, error: 'Not signed in.' };
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: 'Not authenticated.' };
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { ok: false, error: 'Server missing OPENAI_API_KEY' };
 
   const question = input.question.trim();
   if (!question) return { ok: false, error: 'Ask something.' };
@@ -185,36 +183,27 @@ export async function askHenryAboutProjectAction(input: {
     .filter(Boolean)
     .join('\n');
 
-  // 3. Call OpenAI.
-  const body = {
-    model: HENRY_MODEL,
-    messages: [
-      { role: 'system', content: HENRY_SYSTEM },
-      { role: 'user', content: userBlock },
-    ],
-  };
-
-  let res: Response;
+  // 3. Call the gateway.
+  let answer: string;
   try {
-    res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
+    const res = await gateway().runChat({
+      kind: 'chat',
+      task: 'note_reply_draft',
+      tenant_id: tenant.id,
+      model_override: HENRY_MODEL,
+      system: HENRY_SYSTEM,
+      messages: [{ role: 'user', content: userBlock }],
     });
-  } catch (e) {
-    return { ok: false, error: `Network error: ${e instanceof Error ? e.message : String(e)}` };
+    answer = res.text.trim();
+  } catch (err) {
+    if (isAiError(err)) {
+      if (err.kind === 'quota')
+        return { ok: false, error: 'Henry is temporarily unavailable across providers.' };
+      if (err.kind === 'overload' || err.kind === 'rate_limit')
+        return { ok: false, error: 'Henry is busy right now. Try again in a moment.' };
+    }
+    return { ok: false, error: 'Henry could not draft a reply. Try again.' };
   }
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    return { ok: false, error: `OpenAI ${res.status}: ${txt || res.statusText}` };
-  }
-  const payload = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const answer = payload.choices?.[0]?.message?.content?.trim();
   if (!answer) return { ok: false, error: 'Henry returned no answer.' };
 
   // 4. Save the answer.

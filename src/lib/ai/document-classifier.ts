@@ -11,7 +11,7 @@
  * ambiguous. Saves a Claude call on the common case.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { gateway } from '@/lib/ai-gateway';
 import { type DocumentType, isDocumentType } from '@/lib/validators/project-document';
 
 /**
@@ -55,15 +55,10 @@ export async function classifyDocumentType(input: {
   filename: string;
   /** Optional first 1-2 KB of text from the file. Helps with generic names. */
   textSnippet?: string;
-  client?: Anthropic;
   model?: string;
 }): Promise<DocumentType> {
   const heuristic = classifyByHeuristic(input.filename);
   if (heuristic) return heuristic;
-
-  // Fallback to Claude Haiku — short prompt, ≤ 16-token answer.
-  const client = input.client ?? new Anthropic();
-  const model = input.model ?? AI_FALLBACK_MODEL;
 
   const userParts: string[] = [`Filename: ${input.filename}`];
   if (input.textSnippet && input.textSnippet.length > 0) {
@@ -73,14 +68,15 @@ export async function classifyDocumentType(input: {
 
   let text = '';
   try {
-    const response = await client.messages.create({
-      model,
-      max_tokens: 16,
+    const res = await gateway().runChat({
+      kind: 'chat',
+      task: 'document_type_classify',
+      model_override: input.model ?? AI_FALLBACK_MODEL,
       system: AI_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userParts.join('\n\n') }],
+      max_tokens: 16,
     });
-    const block = response.content.find((b) => b.type === 'text');
-    if (block && block.type === 'text') text = block.text.trim().toLowerCase();
+    text = res.text.trim().toLowerCase();
   } catch {
     // Fall through to 'other' on any AI error.
   }

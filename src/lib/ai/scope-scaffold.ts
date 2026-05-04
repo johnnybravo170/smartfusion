@@ -10,8 +10,8 @@
  * a starter template" or manual authoring. Suggestions, not commands.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import type { StarterTemplate } from '@/data/starter-templates/types';
+import { gateway } from '@/lib/ai-gateway';
 
 export type ScaffoldDetailLevel = 'quick' | 'standard' | 'detailed';
 
@@ -72,12 +72,9 @@ const TARGET_LINE_COUNTS: Record<ScaffoldDetailLevel, string> = {
 
 export async function generateScopeScaffold(
   input: ScopeScaffoldInput,
-  client?: Anthropic,
 ): Promise<StarterTemplate | null> {
   const description = (input.description ?? '').trim();
   if (description.length < 10) return null;
-
-  const anthropic = client ?? new Anthropic();
 
   const userPrompt = [
     `Detail level: ${input.detailLevel} (${TARGET_LINE_COUNTS[input.detailLevel]})`,
@@ -89,29 +86,19 @@ export async function generateScopeScaffold(
     .filter(Boolean)
     .join('\n');
 
+  // Note: prompt-cache (cache_control: ephemeral) is Anthropic-specific
+  // and not exposed through the gateway today. Not critical — this
+  // task fires per-call from the operator UI, not in tight loops.
   try {
-    const res = await anthropic.messages.create({
-      model: MODEL,
+    const res = await gateway().runChat({
+      kind: 'chat',
+      task: 'scope_scaffold',
+      model_override: MODEL,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
       max_tokens: 4096,
-      system: [
-        {
-          type: 'text',
-          text: SYSTEM_PROMPT,
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
-      messages: [
-        {
-          role: 'user',
-          content: userPrompt,
-        },
-      ],
     });
-
-    const text = res.content
-      .map((block) => (block.type === 'text' ? block.text : ''))
-      .join('')
-      .trim();
+    const text = res.text.trim();
     if (!text) return null;
 
     // Strip any accidental markdown fences just in case.

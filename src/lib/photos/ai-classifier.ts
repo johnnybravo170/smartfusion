@@ -10,7 +10,7 @@
  * can mock the SDK.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { gateway } from '@/lib/ai-gateway';
 
 export type Tag =
   | 'before'
@@ -222,7 +222,6 @@ export async function classifyPhoto(params: {
   context: ClassifierJobContext;
   prefs: ClassifierPrefs;
   model?: string;
-  client?: Anthropic;
 }): Promise<ClassifierResult> {
   const mediaType = SUPPORTED_MEDIA_TYPES.has(params.mimeType)
     ? (params.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp')
@@ -230,33 +229,14 @@ export async function classifyPhoto(params: {
 
   const { system, user } = buildClassifierPrompt(params.context, params.prefs);
   const model = params.model ?? process.env.PHOTO_CLASSIFIER_MODEL ?? 'claude-haiku-4-5-20251001';
-  const client = params.client ?? new Anthropic();
 
-  const response = await client.messages.create({
-    model,
+  const res = await gateway().runVision({
+    kind: 'vision',
+    task: 'photo_classify_internal',
+    model_override: model,
+    prompt: `${system}\n\n${user}`,
+    file: { mime: mediaType, base64: params.imageBytes.toString('base64') },
     max_tokens: 512,
-    system,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: mediaType,
-              data: params.imageBytes.toString('base64'),
-            },
-          },
-          { type: 'text', text: user },
-        ],
-      },
-    ],
   });
-
-  const textBlock = response.content.find((b) => b.type === 'text');
-  if (!textBlock || textBlock.type !== 'text') {
-    throw new Error('classifier_no_text_block');
-  }
-  return parseClassifierResponse(textBlock.text);
+  return parseClassifierResponse(res.text);
 }
