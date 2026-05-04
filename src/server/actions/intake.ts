@@ -14,6 +14,7 @@
  * the existing photo strip UI.
  */
 
+import * as Sentry from '@sentry/nextjs';
 import { revalidatePath } from 'next/cache';
 import {
   INTAKE_JSON_SCHEMA,
@@ -126,7 +127,33 @@ export async function parseInboundLeadAction(
       const type = blob.type || 'application/octet-stream';
       const f = new File([blob], originalName, { type });
       if (type.startsWith('audio/')) {
-        const transcript = await transcribeAudio(f, tenant.id);
+        let transcript: string;
+        try {
+          transcript = await transcribeAudio(f, tenant.id);
+        } catch (err) {
+          // Surface the Whisper error to the operator AS the result of
+          // the action — never let it bubble to the page error boundary
+          // (the user gets a useless "page hit an error" screen) or get
+          // swallowed (the parser then invents a "screenshots didn't
+          // come through" reply). Capture to Sentry so we still see it.
+          await admin.storage
+            .from('intake-audio')
+            .remove([path])
+            .catch(() => {});
+          const detail = isAiError(err)
+            ? `${err.kind}${err.kind === 'quota' ? ' — top up OpenAI credits or raise the project budget cap' : ''}`
+            : err instanceof Error
+              ? err.message
+              : String(err);
+          Sentry.captureException(err, {
+            tags: { stage: 'intake.transcribe', task: 'audio_transcribe_intake' },
+            extra: { filename: originalName },
+          });
+          return {
+            ok: false,
+            error: `Voice memo couldn't be transcribed: ${detail}. The artifact has been cleared — try again once resolved.`,
+          };
+        }
         if (transcript) {
           // Label the transcript with the original filename. The filename
           // frequently carries the customer's name and address ("Tony
@@ -373,20 +400,18 @@ const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
 const TRANSCRIBE_PROMPT =
   "General contractor scoping a residential renovation. The speaker is the contractor, not the customer; they mention the customer's first name, the job address (street number + street name), budget hints, and scope items such as flooring, baseboards, trim, demo, paint, drywall, tile, framing, plumbing, electrical, HVAC, insulation, cabinets, countertops, plywood, subfloor, transitions, stair nose, carpet removal, fixtures, finishes, kitchen, bathroom, basement, deck, fence, roof, siding, exterior.";
 
-async function transcribeAudio(file: File, tenantId: string): Promise<string | null> {
-  try {
-    const buf = Buffer.from(await file.arrayBuffer());
-    const res = await gateway().runTranscribe({
-      kind: 'transcribe',
-      task: 'audio_transcribe_intake',
-      tenant_id: tenantId,
-      model_override: TRANSCRIBE_MODEL,
-      file: { mime: file.type, base64: buf.toString('base64'), filename: file.name || undefined },
-      prompt: TRANSCRIBE_PROMPT,
-    });
-    const text = res.text.trim();
-    return text || null;
-  } catch {
-    return null;
-  }
+async function transcribeAudio(file: File, tenantId: string): Promise<string> {
+  const buf = Buffer.from(await file.arrayBuffer());
+  const res = await gateway().runTranscribe({
+    kind: 'transcribe',
+    task: 'audio_transcribe_intake',
+    tenant_id: tenantId,
+    model_override: TRANSCRIBE_MODEL,
+    file: { mime: file.type, base64: buf.toString('base64'), filename: file.name || undefined },
+    prompt: TRANSCRIBE_PROMPT,
+  });
+  // Empty transcript is a real result (silent audio) — return as-is.
+  // Errors propagate to the caller so the operator sees a real message
+  // instead of an Opus hallucination about missing screenshots.
+  return res.text.trim();
 }

@@ -19,6 +19,7 @@
  * readable.
  */
 
+import { createAlertHook } from './alert-hook';
 import { CircuitBreaker } from './circuit-breaker';
 import { AiError, isAiError, type ProviderName } from './errors';
 import { AnthropicProvider } from './providers/anthropic';
@@ -302,9 +303,30 @@ let _default: Gateway | null = null;
  */
 export function gateway(): Gateway {
   if (!_default) {
-    _default = createGateway({ hooks: createTelemetryHook() });
+    _default = createGateway({ hooks: composeHooks(createTelemetryHook(), createAlertHook()) });
   }
   return _default;
+}
+
+/**
+ * Run multiple RouterHooks side by side. Each hook's onAttempt is fired
+ * for every event; one hook throwing/rejecting does not affect the
+ * others (telemetry must never break alerting and vice versa).
+ */
+function composeHooks(...hooks: RouterHooks[]): RouterHooks {
+  return {
+    onAttempt: (event) => {
+      for (const h of hooks) {
+        if (!h.onAttempt) continue;
+        try {
+          const maybe = h.onAttempt(event);
+          if (maybe instanceof Promise) maybe.catch(() => {});
+        } catch {
+          // Swallow — composition must not let one hook break another.
+        }
+      }
+    },
+  };
 }
 
 /** Test-only: reset the singleton so a fresh env can be picked up. */
