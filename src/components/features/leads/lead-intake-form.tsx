@@ -23,6 +23,7 @@ import {
   Camera,
   FileQuestion,
   FileText,
+  HelpCircle,
   Image as ImageIcon,
   Info,
   Lightbulb,
@@ -217,6 +218,107 @@ function ReasoningReceipt({
         ) : null}
       </div>
     </details>
+  );
+}
+
+type MissingInfoQuestion = {
+  id: string;
+  prompt: string;
+  placeholder: string;
+  field: 'customer.name' | 'customer.address' | 'customer.phone' | 'customer.email';
+};
+
+/**
+ * Compute the list of friendly follow-up questions for fields Henry
+ * couldn't extract. Pure heuristic over the parsed extraction —
+ * deterministic, no model call. Order is intentional: name first
+ * (it's the anchor everything else hangs off), address next (the
+ * single most-asked-for missing piece), then contact info.
+ *
+ * Email is intentionally NOT prompted in V1 — JV's primary contact
+ * channel is phone/SMS, and asking for an email when the operator
+ * doesn't have one feels like a chore. Add later if a customer-
+ * portal use-case warrants it.
+ */
+function computeMissingInfoQuestions(draft: ParsedIntake | null): MissingInfoQuestion[] {
+  if (!draft) return [];
+  const out: MissingInfoQuestion[] = [];
+  const cn = draft.customer.name?.trim() ?? '';
+  if (!cn) {
+    out.push({
+      id: 'missing-customer-name',
+      prompt: "I didn't catch the customer's name. Who is this for?",
+      placeholder: 'e.g. Tony Smith',
+      field: 'customer.name',
+    });
+  }
+  if (!draft.customer.address?.trim()) {
+    out.push({
+      id: 'missing-customer-address',
+      prompt: cn ? `What's the project address for ${cn}?` : "What's the project address?",
+      placeholder: 'e.g. 2452 Mountain Drive',
+      field: 'customer.address',
+    });
+  }
+  if (!draft.customer.phone?.trim()) {
+    out.push({
+      id: 'missing-customer-phone',
+      prompt: cn ? `Phone for ${cn}?` : 'A phone number for this customer?',
+      placeholder: 'e.g. (604) 555-1234',
+      field: 'customer.phone',
+    });
+  }
+  return out;
+}
+
+function MissingInfoBlock({
+  questions,
+  values,
+  onValueChange,
+  onAnswer,
+  onDismiss,
+}: {
+  questions: MissingInfoQuestion[];
+  values: Record<string, string>;
+  onValueChange: (id: string, next: string) => void;
+  onAnswer: (q: MissingInfoQuestion) => void;
+  onDismiss: (q: MissingInfoQuestion) => void;
+}) {
+  if (questions.length === 0) return null;
+  return (
+    <div className="rounded-md border bg-card p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <HelpCircle className="size-4 text-blue-500" />
+        <p className="text-sm font-medium">Henry has a couple of quick questions:</p>
+      </div>
+      <ul className="space-y-3">
+        {questions.map((q) => (
+          <li key={q.id}>
+            <p className="text-sm">{q.prompt}</p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 sm:flex-nowrap">
+              <Input
+                value={values[q.id] ?? ''}
+                onChange={(e) => onValueChange(q.id, e.target.value)}
+                placeholder={q.placeholder}
+                className="h-8 flex-1 text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    onAnswer(q);
+                  }
+                }}
+              />
+              <Button size="sm" onClick={() => onAnswer(q)} disabled={!(values[q.id] ?? '').trim()}>
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => onDismiss(q)}>
+                Skip
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -426,6 +528,8 @@ export function LeadIntakeForm({
   );
   const [duplicates, setDuplicates] = useState<ContactMatch[]>([]);
   const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<Set<string>>(new Set());
+  const [dismissedQuestionIds, setDismissedQuestionIds] = useState<Set<string>>(new Set());
+  const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({});
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
   const [isRetrying, startRetrying] = useTransition();
@@ -675,6 +779,38 @@ export function LeadIntakeForm({
   }
 
   /**
+   * Save an operator's answer to a missing-info question. Patches the
+   * editable draft via setDraft; the question disappears from the
+   * MissingInfoBlock as soon as the underlying field is non-empty
+   * (computeMissingInfoQuestions re-runs on every render).
+   */
+  function handleAnswerQuestion(q: MissingInfoQuestion) {
+    if (!draft) return;
+    const value = (questionAnswers[q.id] ?? '').trim();
+    if (!value) return;
+    const nextDraft = { ...draft, customer: { ...draft.customer } };
+    if (q.field === 'customer.name') nextDraft.customer.name = value;
+    else if (q.field === 'customer.address') nextDraft.customer.address = value;
+    else if (q.field === 'customer.phone') nextDraft.customer.phone = value;
+    else if (q.field === 'customer.email') nextDraft.customer.email = value;
+    setDraft(nextDraft);
+    setQuestionAnswers((prev) => {
+      const next = { ...prev };
+      delete next[q.id];
+      return next;
+    });
+    toast.success('Got it.');
+  }
+
+  function handleDismissQuestion(q: MissingInfoQuestion) {
+    setDismissedQuestionIds((prev) => {
+      const next = new Set(prev);
+      next.add(q.id);
+      return next;
+    });
+  }
+
+  /**
    * Iterate-on-draft. Operator drops more files / pastes more text on
    * the review screen; we ship them to appendToIntakeDraftAction which
    * Whispers any new audio, classifies new artifacts, re-runs the
@@ -871,6 +1007,15 @@ export function LeadIntakeForm({
           customerId={initialDraft?.recognized_customer_id ?? null}
         />
         <ArtifactChipRow artifacts={initialDraft?.artifacts ?? null} />
+        <MissingInfoBlock
+          questions={computeMissingInfoQuestions(draft).filter(
+            (q) => !dismissedQuestionIds.has(q.id),
+          )}
+          values={questionAnswers}
+          onValueChange={(id, next) => setQuestionAnswers((prev) => ({ ...prev, [id]: next }))}
+          onAnswer={handleAnswerQuestion}
+          onDismiss={handleDismissQuestion}
+        />
         <SuggestionsBlock
           suggestions={(initialDraft?.augmentations ?? []).filter(
             (s) => !dismissedSuggestionIds.has(s.id),
