@@ -3,6 +3,7 @@
  * `drizzle(...)` so the type-safe client knows about all tables at once.
  */
 
+export * from './ai-calls';
 export * from './ar';
 export * from './audit-log';
 export * from './bank-statements';

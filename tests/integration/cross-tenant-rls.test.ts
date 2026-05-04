@@ -339,6 +339,33 @@ const RLS_TABLE_CASES: RlsCase[] = [
     // exercised on bank_statements above; that's enough.
     skipInsertReject: true,
   },
+  {
+    // ai_calls is platform infrastructure, NOT tenant data. RLS denies ALL
+    // authenticated access; reads + writes go through the admin client.
+    // The cross-tenant suite verifies the stricter "anon sees zero rows"
+    // semantic — the standard tenant-isolation assertions still pass
+    // because anon's view is empty regardless of who seeded.
+    table: 'ai_calls',
+    seed: async ({ admin, tenant, stamp }) => {
+      const r = await admin
+        .from('ai_calls')
+        .insert({
+          tenant_id: tenant.tenantId,
+          task: `rls-test-${stamp}`,
+          provider: 'noop',
+          model: 'rls-noop',
+          status: 'success',
+          attempt_index: 0,
+          latency_ms: 1,
+        })
+        .select('id')
+        .single();
+      if (r.error || !r.data) throw new Error(r.error?.message ?? 'ai_calls seed failed');
+      return r.data.id as string;
+    },
+    updatePayload: { task: 'cross-tenant tamper' },
+    skipInsertReject: true, // RLS uses authenticated=false policy; anon cannot insert at all
+  },
 ];
 
 async function provisionTenant(

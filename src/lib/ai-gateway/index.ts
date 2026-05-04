@@ -29,6 +29,8 @@ export type {
 export { DEFAULT_ROUTE, lookupRoute, ROUTING } from './routing';
 export type { KnownTask } from './tasks';
 export { KNOWN_TASKS } from './tasks';
+export type { AiCallRow, TelemetryHookOptions } from './telemetry';
+export { createTelemetryHook } from './telemetry';
 export type {
   AiProvider,
   AiRequestBase,

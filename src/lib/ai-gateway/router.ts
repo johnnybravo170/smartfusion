@@ -228,10 +228,17 @@ let _default: Gateway | null = null;
 
 /**
  * Lazy singleton. Avoids instantiating providers (which read env vars)
- * at module load — important for tests + cold-start tracing.
+ * at module load — important for tests + cold-start tracing. Wires the
+ * AG-5 telemetry hook so every attempt logs to `ai_calls`.
  */
 export function gateway(): Gateway {
-  if (!_default) _default = createGateway();
+  if (!_default) {
+    // Lazy-import to avoid telemetry pulling in supabase admin in
+    // contexts that don't need it (e.g. test files that only use
+    // createGateway with explicit providers).
+    const { createTelemetryHook } = require('./telemetry') as typeof import('./telemetry');
+    _default = createGateway({ hooks: createTelemetryHook() });
+  }
   return _default;
 }
 
