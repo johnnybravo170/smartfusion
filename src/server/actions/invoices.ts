@@ -1078,7 +1078,15 @@ export async function generateFinalInvoiceAction(input: {
 
   const mgmtRate = (project.management_fee_rate as number) ?? 0.12;
 
-  const [timeRes, expenseRes, priorInvoicesRes] = await Promise.all([
+  // Contract-based balance comes first — most jobs are priced from a
+  // signed estimate, and "final invoice" should mean "bill the rest of
+  // what was contracted" minus draws already taken. Cost-plus jobs
+  // (no estimate, no priced lines) fall back to the legacy
+  // labour+expenses+mgmt path below.
+  const { getVarianceReport } = await import('@/lib/db/queries/cost-lines');
+
+  const [variance, timeRes, expenseRes, priorInvoicesRes] = await Promise.all([
+    getVarianceReport(input.projectId),
     supabase
       .from('time_entries')
       .select('hours, hourly_rate_cents')
@@ -1096,51 +1104,80 @@ export async function generateFinalInvoiceAction(input: {
   const expenses = (expenseRes.data ?? []) as { amount_cents: number }[];
   const priorInvoices = (priorInvoicesRes.data ?? []) as { amount_cents: number }[];
 
-  const labourCents = timeEntries.reduce((s, t) => {
-    const rate = t.hourly_rate_cents ?? 0;
-    return s + Math.round(Number(t.hours) * rate);
-  }, 0);
-  const expenseCents = expenses.reduce((s, e) => s + e.amount_cents, 0);
-  const mgmtFeeCents = Math.round((labourCents + expenseCents) * mgmtRate);
   const priorBilledCents = priorInvoices.reduce((s, i) => s + i.amount_cents, 0);
+  const contractCents = variance.estimated_cents;
 
   const lineItems: InvoiceLineItem[] = [];
-  if (labourCents > 0) {
+
+  if (contractCents > 0) {
+    // Contracted job: balance owing = contract − prior draws.
     lineItems.push({
-      description: 'Labour',
+      description: `Contract balance (contracted ${formatCurrency(contractCents)})`,
       quantity: 1,
-      unit_price_cents: labourCents,
-      total_cents: labourCents,
+      unit_price_cents: contractCents,
+      total_cents: contractCents,
     });
-  }
-  if (expenseCents > 0) {
-    lineItems.push({
-      description: 'Materials & Expenses',
-      quantity: 1,
-      unit_price_cents: expenseCents,
-      total_cents: expenseCents,
-    });
-  }
-  if (mgmtFeeCents > 0) {
-    lineItems.push({
-      description: `Management Fee (${Math.round(mgmtRate * 100)}%)`,
-      quantity: 1,
-      unit_price_cents: mgmtFeeCents,
-      total_cents: mgmtFeeCents,
-    });
-  }
-  if (priorBilledCents > 0) {
-    lineItems.push({
-      description: 'Less: Prior Invoices',
-      quantity: 1,
-      unit_price_cents: -priorBilledCents,
-      total_cents: -priorBilledCents,
-    });
+    if (priorBilledCents > 0) {
+      lineItems.push({
+        description: 'Less: Prior Invoices',
+        quantity: 1,
+        unit_price_cents: -priorBilledCents,
+        total_cents: -priorBilledCents,
+      });
+    }
+  } else {
+    // Cost-plus job (no priced estimate): bill tracked labour + expenses
+    // + mgmt fee, minus prior draws. Original behavior.
+    const labourCents = timeEntries.reduce((s, t) => {
+      const rate = t.hourly_rate_cents ?? 0;
+      return s + Math.round(Number(t.hours) * rate);
+    }, 0);
+    const expenseCents = expenses.reduce((s, e) => s + e.amount_cents, 0);
+    const mgmtFeeCents = Math.round((labourCents + expenseCents) * mgmtRate);
+
+    if (labourCents > 0) {
+      lineItems.push({
+        description: 'Labour',
+        quantity: 1,
+        unit_price_cents: labourCents,
+        total_cents: labourCents,
+      });
+    }
+    if (expenseCents > 0) {
+      lineItems.push({
+        description: 'Materials & Expenses',
+        quantity: 1,
+        unit_price_cents: expenseCents,
+        total_cents: expenseCents,
+      });
+    }
+    if (mgmtFeeCents > 0) {
+      lineItems.push({
+        description: `Management Fee (${Math.round(mgmtRate * 100)}%)`,
+        quantity: 1,
+        unit_price_cents: mgmtFeeCents,
+        total_cents: mgmtFeeCents,
+      });
+    }
+    if (priorBilledCents > 0) {
+      lineItems.push({
+        description: 'Less: Prior Invoices',
+        quantity: 1,
+        unit_price_cents: -priorBilledCents,
+        total_cents: -priorBilledCents,
+      });
+    }
   }
 
   const subtotalCents = lineItems.reduce((s, li) => s + li.total_cents, 0);
   if (subtotalCents <= 0) {
-    return { ok: false, error: 'Balance owing is zero or negative — nothing left to invoice.' };
+    return {
+      ok: false,
+      error:
+        contractCents > 0
+          ? 'Contract is fully billed — no balance left to invoice.'
+          : 'Balance owing is zero or negative — log time/expenses or add cost lines first.',
+    };
   }
 
   // Province-aware tax via the provider, honoring customer tax-exempt flag.
