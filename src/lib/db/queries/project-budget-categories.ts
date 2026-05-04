@@ -47,6 +47,15 @@ export type BudgetLine = {
   committed_cents: number;
   spent_committed_cents: number;
   remaining_cents: number;
+  /**
+   * Sum of `project_cost_lines.line_price_cents` under this category.
+   * Surfaced separately from `estimate_cents` so the UI can show drift
+   * between the customer-facing envelope (estimate_cents) and the
+   * operator's internal line breakdown without auto-rolling one into
+   * the other (envelope = contractual; lines = internal plan, may
+   * differ for margin or rounding).
+   */
+  lines_total_cents: number;
   is_visible_in_report: boolean;
 };
 
@@ -255,6 +264,7 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
       // Remaining now subtracts both spent AND committed — committed money
       // is effectively reserved against the envelope.
       remaining_cents: estimate_cents - spent_committed_cents,
+      lines_total_cents,
       is_visible_in_report: b.is_visible_in_report,
     };
   });

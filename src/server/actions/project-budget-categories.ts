@@ -13,6 +13,7 @@ export type BudgetCategoryActionResult = { ok: true; id: string } | { ok: false;
 export async function updateBudgetCategoryAction(input: {
   id: string;
   project_id: string;
+  name?: string;
   estimate_cents?: number;
   description?: string;
   is_visible_in_report?: boolean;
@@ -20,6 +21,11 @@ export async function updateBudgetCategoryAction(input: {
   const supabase = await createClient();
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (input.name !== undefined) {
+    const trimmed = input.name.trim();
+    if (!trimmed) return { ok: false, error: 'Name cannot be empty.' };
+    updates.name = trimmed;
+  }
   if (input.estimate_cents !== undefined) updates.estimate_cents = input.estimate_cents;
   if (input.description !== undefined) updates.description = input.description || null;
   if (input.is_visible_in_report !== undefined)

@@ -8,7 +8,7 @@
  * from categories" button that seeds cost lines from category estimates.
  */
 
-import { Check, ChevronDown, ChevronRight, ChevronUp, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ChevronUp, Pencil, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
@@ -66,6 +66,8 @@ export function BudgetCategoriesTable({
   const [editValue, setEditValue] = useState('');
   const [editingDescId, setEditingDescId] = useState<string | null>(null);
   const [editDescValue, setEditDescValue] = useState('');
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [editNameValue, setEditNameValue] = useState('');
   // In Executing mode, sections start collapsed (operator is in
   // status-tracking posture; line-level detail is on-demand). In
   // Editing mode the default UX is fully visible — the operator is
@@ -161,6 +163,32 @@ export function BudgetCategoriesTable({
   function startEditDesc(line: BudgetLine) {
     setEditingDescId(line.budget_category_id);
     setEditDescValue(line.budget_category_description ?? '');
+  }
+
+  function startEditName(line: BudgetLine) {
+    setEditingNameId(line.budget_category_id);
+    setEditNameValue(line.budget_category_name);
+  }
+
+  function saveEditName(categoryId: string, originalName: string) {
+    const trimmed = editNameValue.trim();
+    if (!trimmed || trimmed === originalName) {
+      setEditingNameId(null);
+      return;
+    }
+    startTransition(async () => {
+      const result = await updateBudgetCategoryAction({
+        id: categoryId,
+        project_id: projectId,
+        name: trimmed,
+      });
+      if (result.ok) {
+        toast.success('Category renamed');
+        setEditingNameId(null);
+      } else {
+        toast.error(result.error);
+      }
+    });
   }
 
   function saveEditDesc(categoryId: string) {
@@ -441,6 +469,12 @@ export function BudgetCategoriesTable({
                         setEditingDescId={setEditingDescId}
                         saveEditDesc={saveEditDesc}
                         startEditDesc={startEditDesc}
+                        editingNameId={editingNameId}
+                        editNameValue={editNameValue}
+                        setEditNameValue={setEditNameValue}
+                        setEditingNameId={setEditingNameId}
+                        saveEditName={saveEditName}
+                        startEditName={startEditName}
                         coContributions={coContributionsByCategoryId[line.budget_category_id] ?? []}
                         mode={mode}
                       />
@@ -580,6 +614,12 @@ type BudgetCategoryRowProps = {
   setEditingDescId: (v: string | null) => void;
   saveEditDesc: (id: string) => void;
   startEditDesc: (line: BudgetLine) => void;
+  editingNameId: string | null;
+  editNameValue: string;
+  setEditNameValue: (v: string) => void;
+  setEditingNameId: (v: string | null) => void;
+  saveEditName: (id: string, originalName: string) => void;
+  startEditName: (line: BudgetLine) => void;
   coContributions: AppliedChangeOrderContribution[];
   mode: 'editing' | 'executing';
 };
@@ -615,6 +655,12 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
     setEditingDescId,
     saveEditDesc,
     startEditDesc,
+    editingNameId,
+    editNameValue,
+    setEditNameValue,
+    setEditingNameId,
+    saveEditName,
+    startEditName,
     coContributions,
     mode,
   } = props;
@@ -664,12 +710,72 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
           </button>
         </td>
         <td className="px-2 py-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span>{line.budget_category_name}</span>
-            {categoryLines.length > 0 && (
-              <span className="text-xs text-muted-foreground">
-                {categoryLines.length} line{categoryLines.length === 1 ? '' : 's'}
+          <div className="group flex flex-wrap items-center gap-1.5">
+            {editingNameId === line.budget_category_id ? (
+              <span className="inline-flex items-center gap-1">
+                <Input
+                  className="h-7 w-auto min-w-[200px] text-sm"
+                  value={editNameValue}
+                  onChange={(e) => setEditNameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter')
+                      saveEditName(line.budget_category_id, line.budget_category_name);
+                    if (e.key === 'Escape') setEditingNameId(null);
+                  }}
+                  onBlur={() => saveEditName(line.budget_category_id, line.budget_category_name)}
+                  autoFocus
+                  disabled={isPending}
+                />
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => saveEditName(line.budget_category_id, line.budget_category_name)}
+                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label="Save"
+                  disabled={isPending}
+                >
+                  <Check className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setEditingNameId(null)}
+                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label="Cancel"
+                  disabled={isPending}
+                >
+                  <X className="size-4" />
+                </button>
               </span>
+            ) : (
+              <>
+                {/* Click anywhere on the name (or the "X lines" hint) to */}
+                {/* toggle the row's expanded detail. Pencil on hover */}
+                {/* opens the rename input — keeps the chevron as a */}
+                {/* redundant affordance and matches the project-name */}
+                {/* editor pattern from PATTERNS.md §4. */}
+                <button
+                  type="button"
+                  onClick={() => toggleExpand(line.budget_category_id)}
+                  className="inline-flex items-center gap-1.5 text-left hover:text-foreground"
+                  aria-expanded={isExpanded}
+                >
+                  <span>{line.budget_category_name}</span>
+                  {categoryLines.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {categoryLines.length} line{categoryLines.length === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startEditName(line)}
+                  className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                  aria-label="Rename category"
+                >
+                  <Pencil className="size-3" />
+                </button>
+              </>
             )}
             {coChips.map((c) => (
               <a
@@ -778,13 +884,38 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              className="cursor-pointer hover:underline"
-              onClick={() => startEdit(line)}
-            >
-              {formatCurrencyCompact(line.estimate_cents)}
-            </button>
+            <div className="flex flex-col items-end">
+              <button
+                type="button"
+                className="cursor-pointer hover:underline"
+                onClick={() => startEdit(line)}
+              >
+                {formatCurrencyCompact(line.estimate_cents)}
+              </button>
+              {/* Lines-sum hint: surfaces drift between the customer */}
+              {/* envelope (estimate_cents) and the operator's internal */}
+              {/* line breakdown. Suppressed when there are no lines, */}
+              {/* or when the sum already matches the envelope (no */}
+              {/* drift to surface). Amber when lines exceed envelope — */}
+              {/* signals "internal cost has exceeded what you sold." */}
+              {line.lines_total_cents > 0 && line.lines_total_cents !== line.estimate_cents ? (
+                <span
+                  className={cn(
+                    'text-[10px] tabular-nums',
+                    line.lines_total_cents > line.estimate_cents
+                      ? 'text-amber-600'
+                      : 'text-muted-foreground',
+                  )}
+                  title={
+                    line.lines_total_cents > line.estimate_cents
+                      ? 'Line items total exceeds the category envelope. Update the envelope (CO if signed) or trim lines.'
+                      : 'Sum of line items under this category. Below the envelope = internal headroom.'
+                  }
+                >
+                  lines: {formatCurrencyCompact(line.lines_total_cents)}
+                </span>
+              ) : null}
+            </div>
           )}
         </td>
         {mode === 'executing' ? (
