@@ -1012,7 +1012,19 @@ export async function createInvoiceFromEstimateAction(input: {
   }
 
   const subtotalCents = lineSubtotal + mgmtFeeCents;
-  const taxCents = Math.round(subtotalCents * 0.05);
+
+  // Province-aware tax via the provider, honoring customer tax-exempt flag.
+  // Estimate-derived invoices stay tax-exclusive (legacy add-on-top): the
+  // operator priced the lines without GST embedded.
+  const { canadianTax } = await import('@/lib/providers/tax/canadian');
+  const { data: cust } = await supabase
+    .from('customers')
+    .select('tax_exempt')
+    .eq('id', project.customer_id)
+    .maybeSingle();
+  const taxExempt = Boolean(cust?.tax_exempt);
+  const taxCtx = await canadianTax.getContext(tenant.id);
+  const taxCents = taxExempt ? 0 : Math.round(subtotalCents * taxCtx.totalRate);
 
   const { data, error } = await supabase
     .from('invoices')
@@ -1130,7 +1142,20 @@ export async function generateFinalInvoiceAction(input: {
   if (subtotalCents <= 0) {
     return { ok: false, error: 'Balance owing is zero or negative — nothing left to invoice.' };
   }
-  const taxCents = Math.round(subtotalCents * 0.05);
+
+  // Province-aware tax via the provider, honoring customer tax-exempt flag.
+  // Final invoices stay tax-exclusive (legacy add-on-top): line items are the
+  // pre-tax breakdown of labour/materials/mgmt fee, and the prior-invoices
+  // credit nets out tax already collected on draws.
+  const { canadianTax } = await import('@/lib/providers/tax/canadian');
+  const { data: cust } = await supabase
+    .from('customers')
+    .select('tax_exempt')
+    .eq('id', project.customer_id)
+    .maybeSingle();
+  const taxExempt = Boolean(cust?.tax_exempt);
+  const taxCtx = await canadianTax.getContext(tenant.id);
+  const taxCents = taxExempt ? 0 : Math.round(subtotalCents * taxCtx.totalRate);
 
   const { data, error } = await supabase
     .from('invoices')
