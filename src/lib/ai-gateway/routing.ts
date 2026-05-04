@@ -1,15 +1,18 @@
 /**
- * Per-task routing config. Edited by hand — no UI for now. Adding a new
- * task means appending to `tasks.ts` and a row here; unknown tasks fall
- * through to `DEFAULT_ROUTE`.
+ * Per-task routing config. Edited by hand — no UI for now. Adding a
+ * new task means appending to `tasks.ts` and a row here; unknown tasks
+ * fall through to `DEFAULT_ROUTE`.
  *
  * Strategic notes:
  *  - `secondary` weights are the *intentional tier-climb traffic* — we
- *    over-route a slice to OpenAI / Anthropic so HeyHenry's spend keeps
- *    flowing into those tier ladders. AG-6 will tune these dynamically
- *    once it can see actual spend vs ladder thresholds.
+ *    over-route a slice to OpenAI / Anthropic so HeyHenry's spend
+ *    keeps flowing into those tier ladders.
  *  - `fallback_chain` order matters: cheapest first usually, but for
  *    quality-sensitive tasks (e.g. project_memo) we order by capability.
+ *  - The current per-task primaries reflect "preserve the original
+ *    provider at migration time." See the v1 roadmap item
+ *    "Re-evaluate AI gateway routing config against telemetry" for the
+ *    post-launch tuning pass against real numbers.
  */
 
 import type { RouteConfig } from './router-types';
@@ -32,14 +35,6 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
   // Lower volume — tier-climb traffic isn't worth the extra cost on
   // these. Gemini handles cheques + e-transfer screenshots well.
   invoice_payment_ocr: {
-    primary: { provider: 'gemini' },
-    fallback_chain: ['gemini', 'anthropic', 'openai'],
-  },
-
-  // Legacy unified call (audio → transcript + extraction in one shot).
-  // Kept for back-compat with rows still on the old shape, but new
-  // memos go through the split pipeline below.
-  project_memo_generate: {
     primary: { provider: 'gemini' },
     fallback_chain: ['gemini', 'anthropic', 'openai'],
   },
@@ -76,9 +71,8 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     fallback_chain: ['gemini', 'openai'],
   },
 
-  // Originally OpenAI in the legacy coa-mapping flow. Kept on OpenAI
-  // primary for now to avoid a behavior change at migration time;
-  // AG-7 can re-evaluate after a week of telemetry.
+  // OpenAI primary preserved from the legacy coa-mapping flow.
+  // Routing-tune roadmap entry covers re-evaluation.
   coa_account_suggest: {
     primary: { provider: 'openai' },
     secondary: { provider: 'gemini', weight: 0.5 },
@@ -96,14 +90,9 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
   },
 
   scope_scaffold: {
-    // Originally Anthropic (claude-opus). Behavior preserved at migration:
-    // route to Anthropic primary, Gemini fallback.
     primary: { provider: 'anthropic' },
     fallback_chain: ['anthropic', 'gemini'],
   },
-
-  // AG-7b — keep each on its original provider to avoid behavior regressions
-  // at migration. Re-evaluate after a week of telemetry.
 
   pulse_progress_draft: {
     primary: { provider: 'anthropic' },
@@ -145,7 +134,6 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     fallback_chain: ['openai', 'gemini', 'anthropic'],
   },
 
-  // AG-9 — intake.ts paths.
   // Audio transcription is OpenAI-only (Whisper / gpt-4o-transcribe).
   // Gemini and Anthropic don't expose a dedicated transcription
   // primitive — both throw `invalid_input` if routed here. No fallback.
@@ -153,9 +141,9 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     primary: { provider: 'openai' },
     fallback_chain: ['openai'],
   },
-  // Full intake parse uses Anthropic tool-use under the hood (handled
-  // by the Anthropic adapter automatically when `runStructured` is
-  // called with a schema). Pin to Anthropic primary; cross-provider
+  // Full intake parse uses Anthropic tool-use under the hood (the
+  // Anthropic adapter applies it automatically when `runStructured`
+  // is called with a schema). Pinned to Anthropic — cross-provider
   // fallback is risky for a complex tool-input schema.
   intake_full_parse: {
     primary: { provider: 'anthropic' },

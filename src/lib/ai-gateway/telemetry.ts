@@ -1,5 +1,5 @@
 /**
- * AG-5 — telemetry hook. Persists every router attempt to `ai_calls`.
+ * Telemetry hook. Persists every router attempt to `ai_calls`.
  *
  * Wired into the default singleton via `gateway()` in router.ts;
  * tests build an isolated Gateway without this hook.
@@ -77,7 +77,7 @@ function eventToRow(event: RouterAttemptEvent): AiCallRow {
     // below 2^53 micros per row.
     cost_micros: event.cost_micros !== undefined ? Number(event.cost_micros) : null,
     latency_ms: event.latency_ms,
-    error_message: null, // populated by future enrichment hooks; AG-5 keeps it null.
+    error_message: null, // reserved column; not used today.
   };
 }
 

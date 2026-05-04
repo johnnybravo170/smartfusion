@@ -13,9 +13,10 @@
  *          `fallback_chain` skipping any already tried.
  *   5. All providers exhausted → throw the last error.
  *
- * Internal retries on the SAME provider for transient overload land in
- * AG-4 (circuit breaker + half-open). This module is intentionally
- * single-attempt-per-provider so the algorithm stays readable.
+ * Internal retries on the SAME provider for transient overload land
+ * in the circuit breaker (half-open recovery). This module is
+ * intentionally single-attempt-per-provider so the algorithm stays
+ * readable.
  */
 
 import { CircuitBreaker } from './circuit-breaker';
@@ -292,7 +293,7 @@ let _default: Gateway | null = null;
 /**
  * Lazy singleton. Avoids instantiating providers (which read env vars)
  * at module load — important for tests + cold-start tracing. Wires the
- * AG-5 telemetry hook so every attempt logs to `ai_calls`.
+ * telemetry hook so every attempt logs to `ai_calls`.
  *
  * Static-imports `createTelemetryHook` (ESM-safe). Tests that build
  * their own Gateway via createGateway() with explicit providers don't

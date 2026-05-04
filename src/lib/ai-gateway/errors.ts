@@ -1,7 +1,7 @@
 /**
  * Normalized AI error class. Every adapter classifies its provider's
  * specific error format into one of these `kind` values so the router
- * (AG-3) and circuit breaker (AG-4) can act on a uniform signal.
+ * and circuit breaker can act on a uniform signal.
  *
  * Design notes:
  *  - Thrown, not returned. The router uses try/catch + instanceof so it

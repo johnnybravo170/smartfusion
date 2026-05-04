@@ -12,9 +12,9 @@
  * Backward-compat: each provider also reads its singular env var
  * (`OPENAI_API_KEY` etc.) so we don't break the existing setup.
  *
- * Selection: round-robin via a per-provider in-memory counter. Naive
- * but enough for v1 — when AG-6 (tier-climb policy) lands, we'll add
- * weighted selection here.
+ * Selection: round-robin via a per-provider in-memory counter. Per-key
+ * weighted selection (e.g. shift more spend to a specific org) belongs
+ * here when we need it; the routing-tune roadmap entry covers it.
  */
 
 export type ApiKey = {

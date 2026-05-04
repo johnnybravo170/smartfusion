@@ -1,5 +1,5 @@
 /**
- * AG-6 — provider tier-climb ladders. Constants + pure math, no DB.
+ * Provider tier-climb ladders. Constants + pure math, no DB.
  *
  * Each provider has a usage-tier ladder where higher tiers unlock
  * higher rate limits and (sometimes) lower per-token rates. Tiers are
@@ -9,7 +9,7 @@
  *
  * The router's intentional "tier-climb traffic" (e.g. 30% of
  * receipt_ocr to OpenAI) only matters if we know where we stand on
- * each ladder. AG-8 surfaces this on the admin dashboard.
+ * each ladder. The admin dashboard surfaces this.
  *
  * Verified: 2026-05-03. Both providers have changed tier requirements
  * before; if you see a mismatch, update the constants here and bump
@@ -88,7 +88,7 @@ export type TierProgress = {
 };
 
 /**
- * Pure compute — no IO. AG-6's spend-tracker query collects
+ * Pure compute — no IO. spend-tracker.ts collects
  * (lifetime_micros, first_call_iso) and hands them here.
  */
 export function computeTierProgress(input: {

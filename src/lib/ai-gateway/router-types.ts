@@ -23,8 +23,9 @@ export type RouteConfig = {
 };
 
 /**
- * Fired once per attempt — successful or failed. AG-5 wires this to the
- * `ai_calls` insert so we can audit cost / failure rate per task.
+ * Fired once per attempt — successful or failed. `createTelemetryHook`
+ * wires this to the `ai_calls` insert so we can audit cost / failure
+ * rate per task.
  */
 export type RouterAttemptEvent = {
   task: string;

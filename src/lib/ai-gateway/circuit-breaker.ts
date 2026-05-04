@@ -1,8 +1,7 @@
 /**
- * AG-4 — circuit breaker. When a provider hits a quota cliff or
- * spits out a burst of 503s, take it out of rotation for a recovery
- * window so the router doesn't burn latency retrying it on every
- * subsequent call.
+ * Circuit breaker. When a provider hits a quota cliff or spits out a
+ * burst of 503s, take it out of rotation for a recovery window so the
+ * router doesn't burn latency retrying it on every subsequent call.
  *
  * State machine:
  *
@@ -141,8 +140,9 @@ export class CircuitBreaker {
   }
 
   /**
-   * Snapshot of every currently-open breaker. Used by AG-8's admin
-   * dashboard to render the "circuit-broken right now" list.
+   * Snapshot of every currently-open breaker. Used by the admin
+   * dashboard at /admin/ai-gateway to render the "circuit-broken
+   * right now" list.
    */
   openSnapshot(): Array<{
     provider: ProviderName;

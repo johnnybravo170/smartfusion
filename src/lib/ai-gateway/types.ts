@@ -1,16 +1,16 @@
 /**
  * Public types for the AI gateway. The `AiProvider` interface is what
- * each adapter (AG-2) implements; the router (AG-3) and callers (AG-7)
- * speak only to this surface.
+ * each adapter implements; the router and callers speak only to this
+ * surface.
  *
  * Cost is denominated in micros (millionths of a cent) because Gemini
  * Flash inputs cost on the order of $0.075 per 1M tokens — well below
  * a cent per call. Bigint avoids float drift on cumulative spend
- * tracked in the telemetry table (AG-5).
+ * tracked in the `ai_calls` telemetry table.
  *
- * Streaming, tool-use, and function calling are intentionally not in
- * the v1 surface — no current HeyHenry caller uses them. Added later
- * once a feature actually needs them.
+ * Tool-use IS supported (the Anthropic adapter uses it under the hood
+ * for `runStructured` to enforce schemas server-side). Streaming and
+ * client-driven function-calling are NOT — no caller needs them.
  */
 
 import type { ProviderName } from './errors';
@@ -22,18 +22,20 @@ import type { KnownTask } from './tasks';
 
 /**
  * Fields every gateway request carries. The `task` is the lookup key
- * for routing (AG-3) and the attribution dimension in telemetry (AG-5).
- * It's `string` (not the strict union) so callers can add new tasks
- * without coordinated type changes — unrecognized tasks fall through
- * to the default routing policy.
+ * for routing config and the attribution dimension in telemetry. It's
+ * `string` (not the strict union) so callers can add new tasks without
+ * coordinated type changes — unrecognized tasks fall through to the
+ * default routing policy.
  */
 export type AiRequestBase = {
   /** What this call is for. See `KnownTask` for the registered list. */
   task: KnownTask | (string & {});
   /** Tenant scope for telemetry isolation. Null for system / cron jobs. */
   tenant_id?: string | null;
-  /** Force a specific provider. Skips the router; useful for incident
-   *  pinning and tests. */
+  /** Force a specific provider. Skips the router and the fallback
+   *  chain; the call must succeed on this provider or throw. Used by
+   *  intake.ts for the operator's model-choice toggle, by tests for
+   *  deterministic dispatch, and for incident pinning. */
   provider_override?: ProviderName;
   /** Force a specific model. Adapter-defaults are used when omitted. */
   model_override?: string;
@@ -132,8 +134,9 @@ export type StructuredRequest<T = unknown> = AiRequestBase & {
 // ---------------------------------------------------------------------------
 
 /**
- * Telemetry-bearing fields every response carries. AG-5 logs these to
- * `ai_calls`; AG-8 surfaces them on the admin dashboard.
+ * Telemetry-bearing fields every response carries. The router's
+ * telemetry hook logs these to `ai_calls`; the admin dashboard reads
+ * them back at /admin/ai-gateway.
  */
 export type AiResponseBase = {
   provider: ProviderName;

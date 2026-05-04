@@ -1,9 +1,8 @@
 /**
- * AG-6 — spend tracker. Reads `ai_calls` via the admin client (the
- * table is admin-only RLS per AG-5) and feeds the tier-progress
- * math.
+ * Spend tracker. Reads `ai_calls` via the admin client (the table is
+ * admin-only RLS) and feeds the tier-progress math.
  *
- * Surfaces queried by AG-8's admin dashboard:
+ * Surfaces queried by the /admin/ai-gateway dashboard:
  *   - getProviderSpendMicros(provider, window)
  *   - getProviderLifetime(provider) → for tier math
  *   - getTierProgress(provider) → composed result
@@ -144,8 +143,9 @@ export async function getRecentFailures(limit = 50): Promise<
 }
 
 /**
- * Per-provider success rate over a window. AG-8 surfaces this as a
- * health gauge. Returns success count, error count, and rate (0-1).
+ * Per-provider success rate over a window. The admin dashboard
+ * surfaces this as a health gauge. Returns success count, error count,
+ * and rate (0-1).
  */
 export async function getProviderHealth(
   provider: ProviderName,

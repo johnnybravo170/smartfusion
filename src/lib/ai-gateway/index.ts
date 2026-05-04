@@ -1,12 +1,24 @@
 /**
  * Public API surface for the AI gateway.
  *
- * AG-1 ships only the contract — types + error class + a noop provider.
- * The actual `gateway.run(...)` entry point lives in AG-3 (router); the
- * concrete OpenAI / Gemini / Anthropic adapters in AG-2.
+ * Callers use `import { gateway } from '@/lib/ai-gateway'` and then
+ * `gateway().runChat(...)` / runVision / runStructured / runTranscribe.
+ * Per-task routing, fallback chains, circuit breaking, and telemetry
+ * are handled inside; callers don't think about providers.
  *
- * Migration path (AG-7): callers switch from direct provider SDK imports
- * to `import { gateway } from '@/lib/ai-gateway'` once AG-3 lands.
+ * Module map:
+ *   - types.ts          public request/response types + AiProvider iface
+ *   - errors.ts         AiError class + AiErrorKind
+ *   - tasks.ts          KnownTask registry
+ *   - routing.ts        per-task RouteConfig
+ *   - router.ts         Gateway class + run* methods + lazy singleton
+ *   - router-types.ts   RouteConfig, RouterHooks, RouterAttemptEvent
+ *   - circuit-breaker.ts demote stuck providers for a recovery window
+ *   - telemetry.ts      RouterHook → ai_calls writer
+ *   - spend-tracker.ts  ai_calls reads for the admin dashboard
+ *   - tier-ladders.ts   per-provider tier-climb math
+ *   - providers/        per-provider adapters (openai, gemini,
+ *                       anthropic, noop) + multi-key + cost helpers
  */
 
 export { CircuitBreaker } from './circuit-breaker';
