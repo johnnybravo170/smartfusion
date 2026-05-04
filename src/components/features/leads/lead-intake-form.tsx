@@ -24,6 +24,7 @@ import {
   FileQuestion,
   FileText,
   Image as ImageIcon,
+  Info,
   Lightbulb,
   Loader2,
   MessageSquare,
@@ -162,6 +163,60 @@ function SuggestionsBlock({
         ))}
       </ul>
     </div>
+  );
+}
+
+/**
+ * Click-to-reveal "why is this line here?" receipt. Renders Henry's
+ * reasoning text plus mini-chips for any artifact this line cited via
+ * source_image_indexes. Uses native <details> for zero-state-needed
+ * accessibility — Enter/Space toggles, aria-expanded handled automatically.
+ */
+function ReasoningReceipt({
+  line,
+  artifacts,
+}: {
+  line: ParsedIntake['categories'][number]['lines'][number];
+  artifacts: IntakeArtifact[] | null;
+}) {
+  const reasoning = line.reasoning?.trim();
+  const cited = (line.source_image_indexes ?? [])
+    .map((idx) => ({ idx, artifact: artifacts?.[idx] ?? null }))
+    .filter((r) => r.artifact);
+  if (!reasoning && cited.length === 0) return null;
+  return (
+    <details className="mt-1.5 group">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+        <Info className="size-3" />
+        <span className="group-open:hidden">Why is this here?</span>
+        <span className="hidden group-open:inline">Hide reasoning</span>
+      </summary>
+      <div className="mt-1.5 rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
+        {reasoning ? <p>{reasoning}</p> : <p className="italic">No reasoning captured.</p>}
+        {cited.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <span className="text-[10px] font-medium uppercase tracking-wider">Cites:</span>
+            {cited.map(({ idx, artifact }) => {
+              if (!artifact) return null;
+              const meta = artifact.kind ? ARTIFACT_KIND_META[artifact.kind] : null;
+              const Icon = meta?.Icon ?? FileQuestion;
+              return (
+                <span
+                  // biome-ignore lint/suspicious/noArrayIndexKey: artifact-index is the citation key
+                  key={`${idx}-${artifact.path}`}
+                  className="inline-flex items-center gap-1 rounded-full border bg-background px-1.5 py-0.5 text-[10px]"
+                  title={artifact.label ?? artifact.name}
+                >
+                  <Icon className="size-3" />
+                  <span className="font-medium">#{idx}</span>
+                  {artifact.label ? <span className="truncate">— {artifact.label}</span> : null}
+                </span>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    </details>
   );
 }
 
@@ -553,6 +608,9 @@ export function LeadIntakeForm({
     // Same pattern as the rest of the form: append `_k` at runtime, cast
     // through unknown — `_k` lives on rendered objects but isn't in the
     // ParsedIntake schema (it's a React-keying concern, not data).
+    // `notes` is operator-facing; `reasoning` powers the click-to-reveal
+    // receipt next to the line. Both reflect Henry's "why" but at
+    // different visibility levels.
     const newLine = {
       label: s.title,
       notes: s.reasoning,
@@ -560,6 +618,7 @@ export function LeadIntakeForm({
       unit: 'lot',
       unit_price_cents: null,
       source_image_indexes: [],
+      reasoning: s.reasoning,
       _k: crypto.randomUUID(),
     } as unknown as Line;
     let nextCategories: ParsedIntake['categories'];
@@ -797,6 +856,7 @@ export function LeadIntakeForm({
           onBack={() => setPhase('upload')}
           onAccept={() => handleAccept()}
           isAccepting={isAccepting}
+          artifacts={initialDraft?.artifacts ?? null}
         />
         <AppendMoreZone
           files={appendFiles}
@@ -878,12 +938,15 @@ function ReviewDraft({
   onBack,
   onAccept,
   isAccepting,
+  artifacts,
 }: {
   draft: ParsedIntake;
   onChange: (d: ParsedIntake) => void;
   onBack: () => void;
   onAccept: () => void;
   isAccepting: boolean;
+  /** For per-line citation chips — maps source_image_indexes to chip labels. */
+  artifacts?: IntakeArtifact[] | null;
 }) {
   function copyReply() {
     navigator.clipboard.writeText(draft.reply_draft).then(() => toast.success('Reply copied'));
@@ -1050,6 +1113,7 @@ function ReviewDraft({
                           placeholder="Notes"
                           className="mt-1 text-xs"
                         />
+                        <ReasoningReceipt line={l} artifacts={artifacts ?? null} />
                       </div>
                       <div className="col-span-3 sm:col-span-2">
                         <Input

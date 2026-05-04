@@ -78,6 +78,8 @@ Your job — the same regardless of flavour, but the signals live in different p
 
 8. EVERY non-screenshot, non-PDF-doc image (reference photo, sketch, inspiration shot) MUST appear in at least one cost line's source_image_indexes. Attach sketches to the line whose scope they describe. Do not leave images orphaned.
 
+8b. REASONING (RECEIPTS) — for EVERY line you produce, fill the "reasoning" field with one short, specific sentence (max ~200 chars) explaining why this line is in the draft. Cite the specific phrase, measurement, or photo that justifies it. The operator clicks an info icon next to the line to see this; weak reasoning ("standard scope item") is worse than honest specificity ("Tony said 657 sq ft of carpet to come out — tear-out implied as start of scope"). Never fabricate a citation. If the line is genuinely inferred from renovation patterns rather than a direct mention, say so plainly ("inferred — flooring scope this size always needs transition strips").
+
 9. Draft a short reply in the contractor's voice — see VOICE rules below.
    - For CUSTOMER INPUT (flavour A): reply is a message the contractor can send back to the customer. Answer their questions, address opt-outs, propose next step.
    - For CONTRACTOR VOICE MEMO (flavour B): reply is a short text the contractor can send the customer later ("Hey Tony, I put together some numbers on the flooring at 2452 Mountain — want to swing by Tuesday to go over them?"). It's a follow-up, not a response.
@@ -143,6 +145,11 @@ export const INTAKE_JSON_SCHEMA = {
                     type: 'array',
                     items: { type: 'integer' },
                   },
+                  reasoning: {
+                    type: 'string',
+                    description:
+                      'Henry\'s short, specific "why this line is here" — surfaced in a click-to-reveal receipt next to the line. Cite the transcript phrase, the artifact, or the renovation pattern that supports it. Max ~200 chars.',
+                  },
                 },
                 required: [
                   'label',
@@ -151,6 +158,7 @@ export const INTAKE_JSON_SCHEMA = {
                   'unit',
                   'unit_price_cents',
                   'source_image_indexes',
+                  'reasoning',
                 ],
               },
             },
@@ -221,6 +229,13 @@ export type ParsedIntake = {
       unit: string;
       unit_price_cents: number | null;
       source_image_indexes: number[];
+      /**
+       * Henry's "why this line is here" — surfaced in a click-to-reveal
+       * receipt next to the line. Optional in the type (older drafts
+       * pre-dating the field have no reasoning) but required in the
+       * schema for fresh responses.
+       */
+      reasoning?: string | null;
     }>;
   }>;
   signals: {
