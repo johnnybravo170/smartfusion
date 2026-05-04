@@ -4,6 +4,16 @@ import { Loader2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -42,6 +52,7 @@ export function WorkerTimeForm({ projects, initial }: Props) {
   const [hours, setHours] = useState(initial ? String(initial.hours) : '');
   const [date, setDate] = useState(initialDate);
   const [notes, setNotes] = useState(initial?.notes ?? '');
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const categories = useMemo(
     () => projects.find((p) => p.project_id === projectId)?.categories ?? [],
@@ -51,6 +62,42 @@ export function WorkerTimeForm({ projects, initial }: Props) {
     () => categories.find((b) => b.id === categoryId)?.cost_lines ?? [],
     [categories, categoryId],
   );
+
+  const hasBucket = Boolean(categoryId || costLineId);
+  const hasNotes = notes.trim().length > 0;
+  const isEmptyContext = !hasBucket && !hasNotes;
+
+  function submit(confirmEmpty: boolean) {
+    const h = Number(hours);
+    startTransition(async () => {
+      const res = isEdit
+        ? await updateWorkerTimeAction({
+            id: initial?.id ?? '',
+            project_id: projectId,
+            budget_category_id: categoryId || undefined,
+            cost_line_id: costLineId || undefined,
+            hours: h,
+            notes: notes || undefined,
+            entry_date: date,
+            confirm_empty: confirmEmpty || undefined,
+          })
+        : await logWorkerTimeAction({
+            project_id: projectId,
+            budget_category_id: categoryId || undefined,
+            cost_line_id: costLineId || undefined,
+            hours: h,
+            notes: notes || undefined,
+            entry_date: date,
+            confirm_empty: confirmEmpty || undefined,
+          });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(isEdit ? 'Time updated.' : 'Time logged.');
+      router.push('/w/time');
+    });
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -63,32 +110,11 @@ export function WorkerTimeForm({ projects, initial }: Props) {
       toast.error('Enter hours.');
       return;
     }
-    startTransition(async () => {
-      const res = isEdit
-        ? await updateWorkerTimeAction({
-            id: initial?.id ?? '',
-            project_id: projectId,
-            budget_category_id: categoryId || undefined,
-            cost_line_id: costLineId || undefined,
-            hours: h,
-            notes: notes || undefined,
-            entry_date: date,
-          })
-        : await logWorkerTimeAction({
-            project_id: projectId,
-            budget_category_id: categoryId || undefined,
-            cost_line_id: costLineId || undefined,
-            hours: h,
-            notes: notes || undefined,
-            entry_date: date,
-          });
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success(isEdit ? 'Time updated.' : 'Time logged.');
-      router.push('/w/time');
-    });
+    if (isEmptyContext) {
+      setConfirmOpen(true);
+      return;
+    }
+    submit(false);
   }
 
   if (projects.length === 0) {
@@ -125,7 +151,7 @@ export function WorkerTimeForm({ projects, initial }: Props) {
 
       {categories.length > 0 ? (
         <div className="space-y-1.5">
-          <Label htmlFor="category">Work area (optional)</Label>
+          <Label htmlFor="category">Work area</Label>
           <Select
             value={categoryId}
             onValueChange={(v) => {
@@ -134,7 +160,7 @@ export function WorkerTimeForm({ projects, initial }: Props) {
             }}
           >
             <SelectTrigger id="category">
-              <SelectValue placeholder="— none —" />
+              <SelectValue placeholder="Pick a work area" />
             </SelectTrigger>
             <SelectContent>
               {categories.map((b) => (
@@ -144,6 +170,9 @@ export function WorkerTimeForm({ projects, initial }: Props) {
               ))}
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground">
+            Pick a work area or add a note below — helps the office track labour.
+          </p>
         </div>
       ) : null}
 
@@ -215,6 +244,31 @@ export function WorkerTimeForm({ projects, initial }: Props) {
         {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
         {isEdit ? 'Save changes' : 'Log time'}
       </Button>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save without a work area or notes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The office can&apos;t track these hours to a specific cost line. Either pick a work
+              area, jot a quick note, or save as-is.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Go back</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              onClick={(e) => {
+                e.preventDefault();
+                setConfirmOpen(false);
+                submit(true);
+              }}
+            >
+              Save anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }

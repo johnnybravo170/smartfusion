@@ -62,9 +62,17 @@ function TimeForm({
   const [rate, setRate] = useState(defaultRateCents ? String(defaultRateCents / 100) : '');
   const [notes, setNotes] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [needsEmptyConfirm, setNeedsEmptyConfirm] = useState(false);
+
+  const isEmptyContext = !categoryId && !notes.trim();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isEmptyContext && !needsEmptyConfirm) {
+      setNeedsEmptyConfirm(true);
+      setError('');
+      return;
+    }
     setError('');
     startTransition(async () => {
       const rateCents = rate ? Math.round(parseFloat(rate) * 100) : undefined;
@@ -75,10 +83,12 @@ function TimeForm({
         hourly_rate_cents: rateCents,
         budget_category_id: categoryId || undefined,
         notes: notes || undefined,
+        confirm_empty: needsEmptyConfirm || undefined,
       });
       if (res.ok) {
         setHours('');
         setNotes('');
+        setNeedsEmptyConfirm(false);
         onDone();
       } else setError(res.error);
     });
@@ -121,7 +131,10 @@ function TimeForm({
             <span className="mb-1 block text-xs font-medium">Category</span>
             <select
               value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
+              onChange={(e) => {
+                setCategoryId(e.target.value);
+                if (e.target.value) setNeedsEmptyConfirm(false);
+              }}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             >
               <option value="">— none —</option>
@@ -135,13 +148,26 @@ function TimeForm({
         )}
         <div className="sm:col-span-2">
           <span className="mb-1 block text-xs font-medium">Notes</span>
-          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
+          <Input
+            value={notes}
+            onChange={(e) => {
+              setNotes(e.target.value);
+              if (e.target.value.trim()) setNeedsEmptyConfirm(false);
+            }}
+            placeholder="What was worked on"
+          />
         </div>
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
+      {needsEmptyConfirm && (
+        <div className="rounded-md border border-amber-300/60 bg-amber-50/50 px-3 py-2 text-xs text-amber-900">
+          No category or notes set — these hours won&apos;t roll up to a cost line. Pick a category,
+          add a note, or click <span className="font-semibold">Save anyway</span>.
+        </div>
+      )}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={pending}>
-          {pending ? 'Saving…' : 'Log time'}
+          {pending ? 'Saving…' : needsEmptyConfirm ? 'Save anyway' : 'Log time'}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>
           Cancel

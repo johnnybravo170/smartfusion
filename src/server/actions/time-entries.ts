@@ -21,11 +21,21 @@ const timeEntrySchema = z.object({
   hourly_rate_cents: z.coerce.number().int().optional(),
   notes: z.string().trim().max(2000).optional().or(z.literal('')),
   entry_date: z.string().min(1, { message: 'Date is required.' }),
+  confirm_empty: z.boolean().optional(),
 });
 
 const timeEntryUpdateSchema = timeEntrySchema.extend({
   id: z.string().uuid({ message: 'Invalid time entry id.' }),
 });
+
+// See worker-time.ts for the rationale — every entry needs a bucket or a
+// note so labour can roll up to a cost line. Office surfaces show a confirm
+// dialog and pass `confirm_empty: true` when the user chose to save anyway.
+const EMPTY_CONTEXT_ERROR = 'Pick a work area or add a note so labour can be tracked.';
+
+function hasContext(input: { budget_category_id?: string | null; notes?: string | null }): boolean {
+  return Boolean(input.budget_category_id || input.notes?.trim());
+}
 
 export async function logTimeAction(input: {
   project_id?: string;
@@ -35,6 +45,7 @@ export async function logTimeAction(input: {
   hourly_rate_cents?: number;
   notes?: string;
   entry_date: string;
+  confirm_empty?: boolean;
 }): Promise<TimeEntryActionResult> {
   const parsed = timeEntrySchema.safeParse(input);
   if (!parsed.success) {
@@ -49,6 +60,10 @@ export async function logTimeAction(input: {
   const jobId = parsed.data.job_id || null;
   if (!projectId && !jobId) {
     return { ok: false, error: 'A project or job is required.' };
+  }
+
+  if (!hasContext(parsed.data) && !parsed.data.confirm_empty) {
+    return { ok: false, error: EMPTY_CONTEXT_ERROR };
   }
 
   const tenant = await getCurrentTenant();
@@ -92,6 +107,7 @@ export async function updateTimeEntryAction(input: {
   hourly_rate_cents?: number;
   notes?: string;
   entry_date: string;
+  confirm_empty?: boolean;
 }): Promise<TimeEntryActionResult> {
   const parsed = timeEntryUpdateSchema.safeParse(input);
   if (!parsed.success) {
@@ -100,6 +116,10 @@ export async function updateTimeEntryAction(input: {
       error: 'Please fix the errors below.',
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     };
+  }
+
+  if (!hasContext(parsed.data) && !parsed.data.confirm_empty) {
+    return { ok: false, error: EMPTY_CONTEXT_ERROR };
   }
 
   const supabase = await createClient();

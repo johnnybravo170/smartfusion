@@ -19,7 +19,22 @@ const logSchema = z.object({
   hours: z.coerce.number().positive().max(24),
   notes: z.string().trim().max(2000).optional().or(z.literal('')),
   entry_date: z.string().min(1),
+  confirm_empty: z.boolean().optional(),
 });
+
+// Time entries with no bucket and no notes are unallocatable — the office
+// can't roll labour up to a cost line. Require one or the other on every
+// new/updated entry; client surfaces show a confirm dialog and pass
+// `confirm_empty: true` if the worker chose to save anyway.
+function hasContext(input: {
+  budget_category_id?: string | null;
+  cost_line_id?: string | null;
+  notes?: string | null;
+}): boolean {
+  return Boolean(input.budget_category_id || input.cost_line_id || input.notes?.trim());
+}
+
+const EMPTY_CONTEXT_ERROR = 'Pick a work area or add a note so the office can track this.';
 
 export async function logWorkerTimeAction(input: {
   project_id: string;
@@ -28,11 +43,16 @@ export async function logWorkerTimeAction(input: {
   hours: number;
   notes?: string;
   entry_date: string;
+  confirm_empty?: boolean;
 }): Promise<WorkerTimeResult> {
   const parsed = logSchema.safeParse(input);
   if (!parsed.success) {
     const first = Object.values(parsed.error.flatten().fieldErrors)[0]?.[0];
     return { ok: false, error: first ?? 'Invalid input.' };
+  }
+
+  if (!hasContext(parsed.data) && !parsed.data.confirm_empty) {
+    return { ok: false, error: EMPTY_CONTEXT_ERROR };
   }
 
   const { user, tenant } = await requireWorker();
@@ -155,6 +175,7 @@ const updateSchema = z.object({
   hours: z.coerce.number().positive().max(24),
   notes: z.string().trim().max(2000).optional().or(z.literal('')),
   entry_date: z.string().min(1),
+  confirm_empty: z.boolean().optional(),
 });
 
 export async function updateWorkerTimeAction(input: {
@@ -165,11 +186,16 @@ export async function updateWorkerTimeAction(input: {
   hours: number;
   notes?: string;
   entry_date: string;
+  confirm_empty?: boolean;
 }): Promise<WorkerTimeResult> {
   const parsed = updateSchema.safeParse(input);
   if (!parsed.success) {
     const first = Object.values(parsed.error.flatten().fieldErrors)[0]?.[0];
     return { ok: false, error: first ?? 'Invalid input.' };
+  }
+
+  if (!hasContext(parsed.data) && !parsed.data.confirm_empty) {
+    return { ok: false, error: EMPTY_CONTEXT_ERROR };
   }
 
   const { tenant } = await requireWorker();

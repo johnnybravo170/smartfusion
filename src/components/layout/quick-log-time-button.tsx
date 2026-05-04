@@ -33,6 +33,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
   const [pending, startTransition] = useTransition();
+  const [needsEmptyConfirm, setNeedsEmptyConfirm] = useState(false);
 
   const categories = projects.find((p) => p.id === projectId)?.categories ?? [];
 
@@ -55,13 +56,21 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
       setRate(ownerRateCents ? String(ownerRateCents / 100) : '');
       setNotes('');
       setError('');
+      setNeedsEmptyConfirm(false);
     }
   }
+
+  const isEmptyContext = !categoryId && !notes.trim();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!projectId) {
       setError('Pick a project.');
+      return;
+    }
+    if (isEmptyContext && !needsEmptyConfirm) {
+      setNeedsEmptyConfirm(true);
+      setError('');
       return;
     }
     setError('');
@@ -74,6 +83,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
         hours: parseFloat(hours),
         hourly_rate_cents: rateCents,
         notes: notes || undefined,
+        confirm_empty: needsEmptyConfirm || undefined,
       });
       if (res.ok) {
         toast.success('Time logged.');
@@ -131,7 +141,10 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
               <select
                 id="ql-category"
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
+                onChange={(e) => {
+                  setCategoryId(e.target.value);
+                  if (e.target.value) setNeedsEmptyConfirm(false);
+                }}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
               >
                 <option value="">— none —</option>
@@ -194,16 +207,25 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
             <Input
               id="ql-notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => {
+                setNotes(e.target.value);
+                if (e.target.value.trim()) setNeedsEmptyConfirm(false);
+              }}
               placeholder="What were you working on?"
             />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
+          {needsEmptyConfirm && (
+            <div className="rounded-md border border-amber-300/60 bg-amber-50/50 px-3 py-2 text-xs text-amber-900">
+              No work area or notes set — these hours won&apos;t roll up to a cost line. Pick a work
+              area, add a note, or click <span className="font-semibold">Save anyway</span>.
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <Button type="submit" disabled={pending || loadingProjects}>
               {pending ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              Log time
+              {needsEmptyConfirm ? 'Save anyway' : 'Log time'}
             </Button>
           </AlertDialogFooter>
         </form>
