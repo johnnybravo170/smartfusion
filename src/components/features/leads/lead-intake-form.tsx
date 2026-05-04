@@ -1,14 +1,25 @@
 'use client';
 
 /**
- * Inbound lead intake — operator drops screenshots + photos + an
- * optional pasted message, Henry returns a draft estimate, operator
- * tweaks and accepts. Two phases live in one component:
- *   phase = 'upload' → form
- *   phase = 'review' → editable draft + Accept
+ * Inbound lead intake — operator drops screenshots + photos + voice
+ * memos + an optional pasted message, Henry returns a draft estimate,
+ * operator tweaks and accepts. Four phases live in one component:
+ *
+ *   phase = 'upload'      → form for fresh intakes
+ *   phase = 'processing'  → spinner + plain-English status while
+ *                            Whisper / Opus are running. Polling the
+ *                            persisted intake_drafts row every 4 s.
+ *   phase = 'review'      → editable draft + Accept
+ *   phase = 'failed'      → error + retry button (Stage B retry uses
+ *                            the persisted transcript; no re-Whisper)
+ *
+ * The form accepts an optional `initialDraft` prop. When the page is
+ * loaded with `?draft=<id>`, the server-side loader fills it and the
+ * form picks up where the previous run left off — refresh-safe,
+ * shareable URL, recoverable from a parse failure without re-uploading.
  */
 
-import { Loader2 } from 'lucide-react';
+import { Loader2, RefreshCcw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -19,15 +30,41 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type { ParsedIntake } from '@/lib/ai/intake-prompt';
 import type { ContactMatch } from '@/lib/db/queries/contact-matches-types';
+import type { IntakeDraftRow } from '@/lib/db/queries/intake-drafts';
 import { resizeImage } from '@/lib/storage/resize-image';
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client';
 import {
   acceptInboundLeadAction,
   type ParseModelChoice,
   parseInboundLeadAction,
+  parseIntakeDraftAction,
 } from '@/server/actions/intake';
 
-type Phase = 'upload' | 'review';
+type Phase = 'upload' | 'processing' | 'review' | 'failed';
+
+function stampDraft(d: ParsedIntake): ParsedIntake {
+  return {
+    ...d,
+    categories: d.categories.map((b) => ({
+      ...b,
+      _k: crypto.randomUUID(),
+      lines: b.lines.map((l) => ({ ...l, _k: crypto.randomUUID() })),
+    })) as ParsedIntake['categories'],
+  };
+}
+
+function statusToPhase(status: IntakeDraftRow['status']): Phase {
+  if (status === 'ready') return 'review';
+  if (status === 'failed') return 'failed';
+  return 'processing';
+}
+
+function processingMessage(status: IntakeDraftRow['status']): string {
+  if (status === 'transcribing') return 'Listening to your walkthrough…';
+  if (status === 'extracting') return "Henry's making sense of it…";
+  if (status === 'rethinking') return "Henry's having another think…";
+  return 'Working…';
+}
 
 const RESIZE_THRESHOLD_BYTES = 2 * 1024 * 1024;
 
@@ -72,19 +109,78 @@ function usePreventDefaultWindowDrop() {
   }, []);
 }
 
-export function LeadIntakeForm({ parseModel = 'gpt-4.1' }: { parseModel?: ParseModelChoice } = {}) {
+export function LeadIntakeForm({
+  parseModel = 'gpt-4.1',
+  initialDraft = null,
+}: {
+  parseModel?: ParseModelChoice;
+  initialDraft?: IntakeDraftRow | null;
+} = {}) {
   usePreventDefaultWindowDrop();
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('upload');
-  const [customerName, setCustomerName] = useState('');
-  const [pastedText, setPastedText] = useState('');
+
+  // Pull the active extraction (envelope shape `{v1,v2,active}`) into the
+  // editable draft. Falls back across active → v2 → v1 to stay robust to
+  // partially-populated rows.
+  const initialExtraction = (() => {
+    if (!initialDraft?.ai_extraction) return null;
+    const env = initialDraft.ai_extraction;
+    return env[env.active] ?? env.v2 ?? env.v1 ?? null;
+  })();
+
+  const [phase, setPhase] = useState<Phase>(
+    initialDraft ? statusToPhase(initialDraft.status) : 'upload',
+  );
+  const [draftId, setDraftId] = useState<string | null>(initialDraft?.id ?? null);
+  const [draftStatus, setDraftStatus] = useState<IntakeDraftRow['status'] | null>(
+    initialDraft?.status ?? null,
+  );
+  const [customerName, setCustomerName] = useState(initialDraft?.customer_name ?? '');
+  const [pastedText, setPastedText] = useState(initialDraft?.pasted_text ?? '');
   const [files, setFiles] = useState<File[]>([]);
-  const [draft, setDraft] = useState<ParsedIntake | null>(null);
-  const [transcript, setTranscript] = useState<string | null>(null);
-  const [parsedBy, setParsedBy] = useState<string | null>(null);
+  const [draft, setDraft] = useState<ParsedIntake | null>(
+    initialExtraction ? stampDraft(initialExtraction) : null,
+  );
+  const [transcript, setTranscript] = useState<string | null>(initialDraft?.transcript ?? null);
+  const [parsedBy, setParsedBy] = useState<string | null>(initialDraft?.parsed_by ?? null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    initialDraft?.error_message ?? null,
+  );
   const [duplicates, setDuplicates] = useState<ContactMatch[]>([]);
   const [isParsing, startParsing] = useTransition();
   const [isAccepting, startAccepting] = useTransition();
+  const [isRetrying, startRetrying] = useTransition();
+
+  // Re-sync from the server whenever a fresh initialDraft lands (e.g.
+  // polling fired router.refresh() and the page re-rendered with an
+  // updated row). Keying on id + status + updated_at means we only
+  // re-init on a real change, not every render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment
+  useEffect(() => {
+    if (!initialDraft) return;
+    setDraftId(initialDraft.id);
+    setDraftStatus(initialDraft.status);
+    setPhase(statusToPhase(initialDraft.status));
+    setErrorMessage(initialDraft.error_message ?? null);
+    setTranscript(initialDraft.transcript ?? null);
+    setParsedBy(initialDraft.parsed_by ?? null);
+    setCustomerName((prev) => prev || (initialDraft.customer_name ?? ''));
+    setPastedText((prev) => prev || (initialDraft.pasted_text ?? ''));
+    if (initialDraft.ai_extraction) {
+      const env = initialDraft.ai_extraction;
+      const next = env[env.active] ?? env.v2 ?? env.v1 ?? null;
+      if (next) setDraft(stampDraft(next));
+    }
+  }, [initialDraft?.id, initialDraft?.status, initialDraft?.updated_at]);
+
+  // Poll the server while the draft is in flight. router.refresh()
+  // re-runs the page server component; a status change updates
+  // initialDraft → the effect above re-syncs.
+  useEffect(() => {
+    if (phase !== 'processing') return;
+    const id = setInterval(() => router.refresh(), 4000);
+    return () => clearInterval(id);
+  }, [phase, router]);
 
   // Auto-fire the parse 1.5s after the operator stops typing / pasting.
   // File drops fire synchronously from handleFilesAdded; the "Read intake"
@@ -155,21 +251,40 @@ export function LeadIntakeForm({ parseModel = 'gpt-4.1' }: { parseModel?: ParseM
       const res = await parseInboundLeadAction(fd, { model: parseModel });
       if (!res.ok) {
         toast.error(res.error);
+        // The draft row was created but a later stage failed — navigate
+        // to ?draft=<id> so the operator can see the error + retry button
+        // and the URL is refresh-safe.
+        if (res.draftId) {
+          setDraftId(res.draftId);
+          setErrorMessage(res.error);
+          setPhase('failed');
+          router.replace(`/projects/new?draft=${res.draftId}`);
+        }
         return;
       }
-      // Tag every category and line with a stable runtime key so React
-      // diffing stays sane through edits and removals.
-      const stamped: ParsedIntake = {
-        ...res.draft,
-        categories: res.draft.categories.map((b) => ({
-          ...b,
-          _k: crypto.randomUUID(),
-          lines: b.lines.map((l) => ({ ...l, _k: crypto.randomUUID() })),
-        })) as ParsedIntake['categories'],
-      };
-      setDraft(stamped);
+      setDraftId(res.draftId);
+      setDraft(stampDraft(res.draft));
       setTranscript(res.transcript ?? null);
       setParsedBy(res.parsedBy ?? null);
+      setErrorMessage(null);
+      setPhase('review');
+      // Lock the URL to the draft so refresh + back-button keep state.
+      router.replace(`/projects/new?draft=${res.draftId}`);
+    });
+  }
+
+  function handleRetry() {
+    if (!draftId) return;
+    startRetrying(async () => {
+      const res = await parseIntakeDraftAction(draftId, { model: parseModel });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setDraft(stampDraft(res.draft));
+      setTranscript(res.transcript ?? null);
+      setParsedBy(res.parsedBy ?? null);
+      setErrorMessage(null);
       setPhase('review');
     });
   }
@@ -190,7 +305,10 @@ export function LeadIntakeForm({ parseModel = 'gpt-4.1' }: { parseModel?: ParseM
   function handleAccept(options?: { useExistingContactId?: string; confirmCreate?: boolean }) {
     if (!draft) return;
     startAccepting(async () => {
-      const res = await acceptInboundLeadAction(draft, options);
+      const res = await acceptInboundLeadAction(draft, {
+        ...options,
+        draftId: draftId ?? undefined,
+      });
       if (!res.ok) {
         if (res.duplicates && res.duplicates.length > 0) {
           setDuplicates(res.duplicates);
@@ -202,6 +320,79 @@ export function LeadIntakeForm({ parseModel = 'gpt-4.1' }: { parseModel?: ParseM
       toast.success('Project created');
       router.push(`/projects/${res.projectId}?tab=estimate`);
     });
+  }
+
+  if (phase === 'processing') {
+    return (
+      <div className="space-y-4 rounded-lg border bg-card p-6">
+        <p className="text-sm text-muted-foreground flex items-center gap-2">
+          <Loader2 className="size-4 animate-spin" />
+          {processingMessage(draftStatus ?? 'extracting')}
+        </p>
+        {transcript ? <TranscriptPanel transcript={transcript} /> : null}
+        <p className="text-xs text-muted-foreground">
+          This page is safe to leave or refresh — the draft is saved and Henry will keep working.
+        </p>
+      </div>
+    );
+  }
+
+  if (phase === 'failed') {
+    return (
+      <div className="space-y-4 rounded-lg border bg-card p-6">
+        <div>
+          <p className="text-sm font-medium">Something went sideways during the parse.</p>
+          {errorMessage ? (
+            <p className="mt-1 text-sm text-muted-foreground">{errorMessage}</p>
+          ) : null}
+        </div>
+        {transcript ? (
+          <>
+            <TranscriptPanel transcript={transcript} />
+            <p className="text-xs text-muted-foreground">
+              Transcript is saved. Retry the parse below — Henry won't re-listen to the audio, just
+              take another swing at extracting work items.
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            No transcript was captured before the failure. Re-upload the memo to start over.
+          </p>
+        )}
+        <div className="flex items-center gap-2">
+          {transcript && draftId ? (
+            <Button onClick={handleRetry} disabled={isRetrying}>
+              {isRetrying ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Retrying parse…
+                </>
+              ) : (
+                <>
+                  <RefreshCcw className="mr-1.5 size-3.5" />
+                  Retry parse
+                </>
+              )}
+            </Button>
+          ) : null}
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDraftId(null);
+              setDraft(null);
+              setTranscript(null);
+              setParsedBy(null);
+              setErrorMessage(null);
+              setDraftStatus(null);
+              setPhase('upload');
+              router.replace('/projects/new');
+            }}
+          >
+            Start over
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   if (phase === 'review' && draft) {

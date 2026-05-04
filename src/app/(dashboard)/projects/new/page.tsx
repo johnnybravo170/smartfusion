@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { LeadIntakeForm } from '@/components/features/leads/lead-intake-form';
 import { ProjectForm } from '@/components/features/projects/project-form';
 import { listCustomers } from '@/lib/db/queries/customers';
+import { loadIntakeDraft } from '@/lib/db/queries/intake-drafts';
 import { createProjectAction } from '@/server/actions/projects';
 
 export const metadata = {
@@ -25,13 +26,17 @@ export default async function NewProjectPage({
 }) {
   const params = await searchParams;
   const customerParam = typeof params.customer === 'string' ? params.customer : null;
+  const draftIdParam = typeof params.draft === 'string' ? params.draft : null;
   // Sonnet is the default parse model — on the Tony memo A/B it
   // captured 4 buckets vs gpt-4.1's 3, picked up the leftover-packs
   // detail and the plywood underlayment upsell that gpt-4.1 dropped,
   // and got the address casing right. ?ai=gpt flips back to gpt-4.1
   // for spot-checks.
   const aiChoice = typeof params.ai === 'string' && params.ai === 'gpt' ? 'openai' : 'claude';
-  const customers = await listCustomers({ limit: 500 });
+  const [customers, initialDraft] = await Promise.all([
+    listCustomers({ limit: 500 }),
+    draftIdParam ? loadIntakeDraft(draftIdParam) : Promise.resolve(null),
+  ]);
 
   // Valid ?customer=<id> means the operator already picked someone (usually
   // by clicking "Start project" from a lead's detail page). Skip the intake
@@ -90,7 +95,10 @@ export default async function NewProjectPage({
         ) : null}
       </div>
 
-      <LeadIntakeForm parseModel={aiChoice === 'claude' ? 'claude-sonnet' : 'gpt-4.1'} />
+      <LeadIntakeForm
+        parseModel={aiChoice === 'claude' ? 'claude-sonnet' : 'gpt-4.1'}
+        initialDraft={initialDraft}
+      />
 
       <details className="mt-8 rounded-lg border bg-card p-4">
         <summary className="cursor-pointer text-sm font-medium">
