@@ -51,6 +51,7 @@ export type JobInvoiceSummary = {
   status: string;
   amount_cents: number;
   tax_cents: number;
+  tax_inclusive: boolean;
   created_at: string;
 };
 
@@ -179,7 +180,7 @@ export async function getJob(id: string): Promise<JobWithRelations | null> {
 
   const { data: invoiceData, error: invErr } = await supabase
     .from('invoices')
-    .select('id, status, amount_cents, tax_cents, created_at')
+    .select('id, status, amount_cents, tax_cents, tax_inclusive, created_at')
     .eq('job_id', id)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });

@@ -22,6 +22,7 @@ import {
   type RelatedJob,
   type RelatedQuote,
 } from '@/lib/db/queries/customers';
+import { invoiceTotalCents } from '@/lib/db/queries/invoices';
 import { listTasksForLead } from '@/lib/db/queries/tasks';
 import type { CustomerType } from '@/lib/validators/customer';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
@@ -375,9 +376,7 @@ function RelatedInvoicesCard({
                   <InvoiceStatusBadge status={inv.status as InvoiceStatus} />
                 </div>
                 <div className="flex flex-col items-end">
-                  <span className="font-medium">
-                    {formatCents((inv.amount_cents ?? 0) + (inv.tax_cents ?? 0))}
-                  </span>
+                  <span className="font-medium">{formatCents(invoiceTotalCents(inv))}</span>
                   <span className="text-xs text-muted-foreground">
                     {formatDateUtil(inv.created_at, { timezone })}
                   </span>

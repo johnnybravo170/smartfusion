@@ -34,9 +34,7 @@ function AttentionRow({ item }: { item: AttentionItem }) {
         <li className="text-sm">
           <Link href={`/invoices/${item.id}`} className="hover:underline">
             Invoice for <span className="font-medium">{item.customerName}</span>{' '}
-            <span className="text-muted-foreground">
-              ({formatCurrency(item.amountCents + item.taxCents)})
-            </span>
+            <span className="text-muted-foreground">({formatCurrency(item.totalCents)})</span>
           </Link>{' '}
           <span className="text-muted-foreground">
             unpaid for {item.daysSinceSent} {item.daysSinceSent === 1 ? 'day' : 'days'}

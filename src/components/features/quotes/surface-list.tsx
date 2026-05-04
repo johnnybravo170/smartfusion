@@ -32,6 +32,9 @@ type SurfaceListProps = {
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
+  /** Combined tax rate as a decimal (e.g. 0.05 for AB GST, 0.13 for ON HST).
+   *  Used for the breakdown label only — math is computed by the caller. */
+  taxRate?: number;
   onRemove?: (id: string) => void;
   readOnly?: boolean;
   showPricing?: boolean;
@@ -42,10 +45,12 @@ export function SurfaceList({
   subtotalCents,
   taxCents,
   totalCents,
+  taxRate = 0.05,
   onRemove,
   readOnly = false,
   showPricing = true,
 }: SurfaceListProps) {
+  const taxLabel = `GST (${Math.round(taxRate * 100)}%)`;
   if (surfaces.length === 0) {
     return (
       <div className="rounded-xl border border-dashed bg-card p-6 text-center">
@@ -112,7 +117,7 @@ export function SurfaceList({
             <span className="tabular-nums">{formatCurrency(subtotalCents)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">GST (5%)</span>
+            <span className="text-muted-foreground">{taxLabel}</span>
             <span className="tabular-nums">{formatCurrency(taxCents)}</span>
           </div>
           <div className="mt-1 flex justify-between border-t pt-2 text-base font-semibold">

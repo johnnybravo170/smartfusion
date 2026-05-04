@@ -84,6 +84,15 @@ export default async function PublicInvoiceViewPage({
   // serve as the subtotal — hide the standalone Subtotal row to avoid an
   // apparent double-count in the customer-facing breakdown.
   const showSubtotalRow = !(taxInclusive && lineItems.length > 0);
+  // Back-compute the rate from the stored numbers so HST tenants render
+  // "GST (13%)" / "GST (15%)" without having to thread tenant context here.
+  const ratePct = taxInclusive
+    ? subtotalCents > 0
+      ? Math.round((invoice.tax_cents / subtotalCents) * 100)
+      : 5
+    : invoice.amount_cents > 0
+      ? Math.round((invoice.tax_cents / invoice.amount_cents) * 100)
+      : 5;
 
   const invoiceDate = invoice.sent_at
     ? new Date(invoice.sent_at).toLocaleDateString('en-CA', {
@@ -195,7 +204,7 @@ export default async function PublicInvoiceViewPage({
           ))}
 
           <div className="mt-1 flex justify-between text-sm text-gray-600">
-            <span>{taxInclusive ? 'GST (5%, included)' : 'GST (5%)'}</span>
+            <span>{taxInclusive ? `GST (${ratePct}%, included)` : `GST (${ratePct}%)`}</span>
             <span>{formatCurrency(invoice.tax_cents)}</span>
           </div>
           <div className="mt-2 flex justify-between border-t pt-2 text-base font-semibold text-gray-900">

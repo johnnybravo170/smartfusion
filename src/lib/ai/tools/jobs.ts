@@ -1,4 +1,5 @@
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { invoiceTotalCents } from '@/lib/db/queries/invoices';
 import { getJob, listJobs, listWorklogForJob } from '@/lib/db/queries/jobs';
 import { createClient } from '@/lib/supabase/server';
 import { sendSms } from '@/lib/twilio/client';
@@ -215,7 +216,7 @@ export const jobTools: AiTool[] = [
         if (job.invoices.length > 0) {
           output += `\nLinked Invoice(s)\n${'-'.repeat(20)}\n`;
           for (const inv of job.invoices) {
-            output += `  ${inv.id} - ${invoiceStatusLabels[inv.status] ?? inv.status} - ${formatCad(inv.amount_cents + inv.tax_cents)}\n`;
+            output += `  ${inv.id} - ${invoiceStatusLabels[inv.status] ?? inv.status} - ${formatCad(invoiceTotalCents(inv))}\n`;
           }
         }
 

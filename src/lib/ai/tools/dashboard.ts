@@ -69,7 +69,7 @@ export const dashboardTools: AiTool[] = [
             } else if (item.kind === 'stale_quote') {
               output += `  Stale quote: ${item.customerName} (sent ${item.daysSinceSent} day(s) ago, no response)\n`;
             } else if (item.kind === 'overdue_invoice') {
-              output += `  Overdue invoice: ${item.customerName} - ${formatCad(item.amountCents + item.taxCents)} (sent ${item.daysSinceSent} day(s) ago)\n`;
+              output += `  Overdue invoice: ${item.customerName} - ${formatCad(item.totalCents)} (sent ${item.daysSinceSent} day(s) ago)\n`;
             }
           }
         }

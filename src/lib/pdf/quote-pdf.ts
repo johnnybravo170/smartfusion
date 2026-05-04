@@ -208,7 +208,11 @@ export async function generateQuotePdf(
   doc.text(formatCurrency(quote.subtotal_cents), valuesX, y, { align: 'right' });
   y += 6;
 
-  doc.text('GST (5%):', totalsX, y);
+  // Back-compute the rate from the stored numbers so HST tenants render
+  // "GST (13%)" / "GST (15%)" without having to thread tenant context here.
+  const ratePct =
+    quote.subtotal_cents > 0 ? Math.round((quote.tax_cents / quote.subtotal_cents) * 100) : 5;
+  doc.text(`GST (${ratePct}%):`, totalsX, y);
   doc.text(formatCurrency(quote.tax_cents), valuesX, y, { align: 'right' });
   y += 2;
 

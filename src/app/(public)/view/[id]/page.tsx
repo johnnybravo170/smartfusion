@@ -161,7 +161,13 @@ export default async function PublicQuoteViewPage({ params }: { params: Promise<
             <span>{formatCurrency(quote.subtotal_cents)}</span>
           </div>
           <div className="mt-1 flex justify-between text-sm text-gray-600">
-            <span>GST (5%)</span>
+            <span>
+              GST (
+              {quote.subtotal_cents > 0
+                ? Math.round((quote.tax_cents / quote.subtotal_cents) * 100)
+                : 5}
+              %)
+            </span>
             <span>{formatCurrency(quote.tax_cents)}</span>
           </div>
           <div className="mt-2 flex justify-between border-t pt-2 text-base font-semibold text-gray-900">

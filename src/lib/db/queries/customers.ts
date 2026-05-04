@@ -61,6 +61,7 @@ export type RelatedInvoice = {
   status: string;
   amount_cents: number;
   tax_cents: number;
+  tax_inclusive: boolean;
   created_at: string;
 };
 
@@ -231,7 +232,7 @@ export async function getCustomerRelated(id: string): Promise<CustomerRelated> {
       .limit(20),
     supabase
       .from('invoices')
-      .select('id, status, amount_cents, tax_cents, created_at')
+      .select('id, status, amount_cents, tax_cents, tax_inclusive, created_at')
       .eq('customer_id', id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })

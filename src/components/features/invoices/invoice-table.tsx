@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/table';
 import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { formatDate } from '@/lib/date/format';
-import type { InvoiceWithCustomer } from '@/lib/db/queries/invoices';
+import { type InvoiceWithCustomer, invoiceTotalCents } from '@/lib/db/queries/invoices';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 
 function formatCad(cents: number): string {
@@ -46,9 +46,11 @@ export function InvoiceTable({ invoices }: { invoices: InvoiceWithCustomer[] }) 
                 <p className="font-mono text-xs text-muted-foreground">#{inv.id.slice(0, 8)}</p>
               </TableCell>
               <TableCell className="text-right">
-                <span className="font-medium">{formatCad(inv.amount_cents + inv.tax_cents)}</span>
+                <span className="font-medium">{formatCad(invoiceTotalCents(inv))}</span>
                 <p className="text-xs text-muted-foreground">
-                  {formatCad(inv.amount_cents)} + {formatCad(inv.tax_cents)} GST
+                  {inv.tax_inclusive
+                    ? `incl. ${formatCad(inv.tax_cents)} GST`
+                    : `${formatCad(inv.amount_cents)} + ${formatCad(inv.tax_cents)} GST`}
                 </p>
               </TableCell>
               <TableCell>

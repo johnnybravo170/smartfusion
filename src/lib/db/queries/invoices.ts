@@ -69,6 +69,30 @@ export type InvoiceListFilters = {
 const INVOICE_COLUMNS =
   'id, tenant_id, job_id, customer_id, status, amount_cents, tax_cents, tax_inclusive, doc_type, stripe_invoice_id, stripe_payment_intent_id, pdf_url, sent_at, paid_at, payment_method, payment_reference, payment_notes, payment_receipt_paths, customer_note, line_items, created_at, updated_at, deleted_at';
 
+/**
+ * Compute the customer-facing total for an invoice row.
+ *
+ * For tax-inclusive draws (`tax_inclusive=true`, typical of doc_type='draw'),
+ * `amount_cents` IS the total customer pays — `tax_cents` is the embedded GST
+ * portion shown for transparency, not added on top. Line items, when present,
+ * are a breakdown summing to `amount_cents` (not additive).
+ *
+ * For legacy non-inclusive invoices, the total is `amount_cents + tax_cents`.
+ * Note: this helper does NOT add line_items — it mirrors the canonical
+ * `customerTotalCents` used throughout the operator UI. The operator-side
+ * `addInvoiceLineItemAction` recomputes tax to fold lineItemsTotal into
+ * tax_cents, so for properly-maintained invoice rows this still nets correctly.
+ */
+export function invoiceTotalCents(row: {
+  amount_cents: number | null | undefined;
+  tax_cents: number | null | undefined;
+  tax_inclusive?: boolean | null | undefined;
+}): number {
+  const amount = row.amount_cents ?? 0;
+  const tax = row.tax_cents ?? 0;
+  return row.tax_inclusive ? amount : amount + tax;
+}
+
 function extractRelation<T>(raw: unknown): T | null {
   if (!raw) return null;
   const candidate = Array.isArray(raw) ? raw[0] : raw;

@@ -6,6 +6,13 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { invoiceTotalCents } from './invoices';
+
+type InvoiceTotalRow = {
+  amount_cents: number | null;
+  tax_cents: number | null;
+  tax_inclusive: boolean | null;
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,8 +50,7 @@ export type AttentionItem =
       kind: 'overdue_invoice';
       id: string;
       customerName: string;
-      amountCents: number;
-      taxCents: number;
+      totalCents: number;
       daysSinceSent: number;
     };
 
@@ -185,14 +191,14 @@ export async function getKeyMetrics(timezone: string): Promise<KeyMetrics> {
     // Revenue this month: sum of paid invoices
     supabase
       .from('invoices')
-      .select('amount_cents, tax_cents')
+      .select('amount_cents, tax_cents, tax_inclusive')
       .eq('status', 'paid')
       .gte('paid_at', monthStart)
       .is('deleted_at', null),
     // Outstanding: sent but unpaid invoices
     supabase
       .from('invoices')
-      .select('amount_cents, tax_cents')
+      .select('amount_cents, tax_cents, tax_inclusive')
       .eq('status', 'sent')
       .is('deleted_at', null),
     // Open jobs count
@@ -215,12 +221,12 @@ export async function getKeyMetrics(timezone: string): Promise<KeyMetrics> {
   if (pendingQuotes.error) throw new Error(`Metrics: ${pendingQuotes.error.message}`);
 
   const revenueThisMonthCents = (paidThisMonth.data ?? []).reduce(
-    (sum, inv) => sum + (inv.amount_cents as number) + (inv.tax_cents as number),
+    (sum, inv) => sum + invoiceTotalCents(inv as InvoiceTotalRow),
     0,
   );
 
   const outstandingCents = (sentInvoices.data ?? []).reduce(
-    (sum, inv) => sum + (inv.amount_cents as number) + (inv.tax_cents as number),
+    (sum, inv) => sum + invoiceTotalCents(inv as InvoiceTotalRow),
     0,
   );
 
@@ -419,7 +425,7 @@ export async function getAttentionItems(timezone: string): Promise<AttentionItem
     // Overdue invoices (sent > 14 days ago, unpaid)
     supabase
       .from('invoices')
-      .select('id, amount_cents, tax_cents, sent_at, customers:customer_id (name)')
+      .select('id, amount_cents, tax_cents, tax_inclusive, sent_at, customers:customer_id (name)')
       .eq('status', 'sent')
       .lt('sent_at', fourteenDaysAgo)
       .is('deleted_at', null)
@@ -459,8 +465,11 @@ export async function getAttentionItems(timezone: string): Promise<AttentionItem
       kind: 'overdue_invoice',
       id: row.id as string,
       customerName: extractCustomerName(row.customers),
-      amountCents: row.amount_cents as number,
-      taxCents: row.tax_cents as number,
+      totalCents: invoiceTotalCents({
+        amount_cents: row.amount_cents as number | null,
+        tax_cents: row.tax_cents as number | null,
+        tax_inclusive: row.tax_inclusive as boolean | null,
+      }),
       daysSinceSent: daysBetween(row.sent_at as string, now),
     });
   }
@@ -595,17 +604,14 @@ export async function getRevenueYtd(timezone: string): Promise<number> {
 
   const { data, error } = await supabase
     .from('invoices')
-    .select('amount_cents, tax_cents')
+    .select('amount_cents, tax_cents, tax_inclusive')
     .eq('status', 'paid')
     .gte('paid_at', start)
     .is('deleted_at', null);
 
   if (error) throw new Error(`Revenue YTD: ${error.message}`);
 
-  return (data ?? []).reduce(
-    (sum, inv) => sum + (inv.amount_cents as number) + (inv.tax_cents as number),
-    0,
-  );
+  return (data ?? []).reduce((sum, inv) => sum + invoiceTotalCents(inv as InvoiceTotalRow), 0);
 }
 
 /** Get the hour of day in tenant timezone (0-23). */

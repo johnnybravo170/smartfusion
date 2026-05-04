@@ -16,6 +16,7 @@ import type {
   MatchableInvoice,
   MatchPool,
 } from '@/lib/bank-recon/matcher';
+import { invoiceTotalCents } from '@/lib/db/queries/invoices';
 import { createClient } from '@/lib/supabase/server';
 
 const HARD_CAP = 500;
@@ -36,7 +37,9 @@ export async function getMatchPool(window: MatchPoolWindow): Promise<MatchPool> 
   const [invoiceRes, expenseRes, billRes] = await Promise.all([
     supabase
       .from('invoices')
-      .select('id, amount_cents, tax_cents, sent_at, created_at, customer:customers(name)')
+      .select(
+        'id, amount_cents, tax_cents, tax_inclusive, sent_at, created_at, customer:customers(name)',
+      )
       .eq('status', 'sent')
       .is('paid_at', null)
       .is('deleted_at', null)
@@ -64,7 +67,11 @@ export async function getMatchPool(window: MatchPoolWindow): Promise<MatchPool> 
 
   const invoices: MatchableInvoice[] = (invoiceRes.data ?? []).map((r) => ({
     id: r.id as string,
-    amount_cents: ((r.amount_cents as number) ?? 0) + ((r.tax_cents as number) ?? 0),
+    amount_cents: invoiceTotalCents({
+      amount_cents: r.amount_cents as number | null,
+      tax_cents: r.tax_cents as number | null,
+      tax_inclusive: r.tax_inclusive as boolean | null,
+    }),
     sent_at: (r.sent_at as string | null) ?? null,
     created_at: r.created_at as string,
     customer_name: customerName(r.customer),

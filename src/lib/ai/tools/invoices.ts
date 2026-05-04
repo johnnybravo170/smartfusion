@@ -1,6 +1,6 @@
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getKeyMetrics } from '@/lib/db/queries/dashboard';
-import { listInvoices } from '@/lib/db/queries/invoices';
+import { invoiceTotalCents, listInvoices } from '@/lib/db/queries/invoices';
 import { createClient } from '@/lib/supabase/server';
 import { formatCad, formatDate, invoiceStatusLabels } from '../format';
 import { resolveByShortId } from '../helpers/resolve-by-short-id';
@@ -47,7 +47,7 @@ export const invoiceTools: AiTool[] = [
         let output = `Found ${rows.length} invoice(s):\n\n`;
         for (let i = 0; i < rows.length; i++) {
           const inv = rows[i];
-          const total = inv.amount_cents + inv.tax_cents;
+          const total = invoiceTotalCents(inv);
           output += `${i + 1}. ${inv.customer?.name ?? 'No customer'} - ${formatCad(total)}\n`;
           output += `   Status: ${invoiceStatusLabels[inv.status] ?? inv.status}`;
           output += ` | Created: ${formatDate(inv.created_at)}`;
@@ -230,6 +230,7 @@ export const invoiceTools: AiTool[] = [
           status: string;
           amount_cents: number;
           tax_cents: number;
+          tax_inclusive: boolean;
           customer_id: string;
           customers:
             | { name: string; email: string | null }
@@ -239,7 +240,7 @@ export const invoiceTools: AiTool[] = [
         const result = await resolveByShortId<InvoiceRow>(
           'invoices',
           input.invoice_id as string,
-          'id, status, amount_cents, tax_cents, customer_id, customers:customer_id (name, email)',
+          'id, status, amount_cents, tax_cents, tax_inclusive, customer_id, customers:customer_id (name, email)',
         );
         if (typeof result === 'string') return result;
 
@@ -270,7 +271,7 @@ export const invoiceTools: AiTool[] = [
         // Stripe Checkout session and email sending are not yet implemented.
         // For now, update the status and log the intent.
         const now = new Date().toISOString();
-        const totalCents = invoice.amount_cents + invoice.tax_cents;
+        const totalCents = invoiceTotalCents(invoice);
 
         const { error: updateErr } = await supabase
           .from('invoices')
@@ -325,13 +326,14 @@ export const invoiceTools: AiTool[] = [
           status: string;
           amount_cents: number;
           tax_cents: number;
+          tax_inclusive: boolean;
           customers: { name: string } | { name: string }[];
         };
 
         const result = await resolveByShortId<InvoiceRow>(
           'invoices',
           input.invoice_id as string,
-          'id, status, amount_cents, tax_cents, customers:customer_id (name)',
+          'id, status, amount_cents, tax_cents, tax_inclusive, customers:customer_id (name)',
         );
         if (typeof result === 'string') return result;
 
@@ -356,7 +358,7 @@ export const invoiceTools: AiTool[] = [
         const customerRaw = invoice.customers;
         const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
         const customerName = customer?.name ?? 'customer';
-        const totalCents = invoice.amount_cents + invoice.tax_cents;
+        const totalCents = invoiceTotalCents(invoice);
 
         await supabase.from('worklog_entries').insert({
           tenant_id: tenant.id,
