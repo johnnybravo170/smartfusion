@@ -18,6 +18,7 @@ export default async function InboundEmailInboxPage({
 }) {
   const resolved = await searchParams;
   const tab = (resolved.tab as FilterTab) || 'review';
+  const projectFilter = typeof resolved.project === 'string' ? resolved.project : null;
 
   const tenant = await getCurrentTenant();
   if (!tenant) {
@@ -39,6 +40,10 @@ export default async function InboundEmailInboxPage({
     query = query.in('status', ['needs_review', 'pending', 'processing', 'error']);
   } else if (tab === 'applied') {
     query = query.in('status', ['applied', 'auto_applied']);
+  }
+
+  if (projectFilter) {
+    query = query.eq('project_id', projectFilter);
   }
 
   const { data: emails } = await query;
@@ -72,7 +77,11 @@ export default async function InboundEmailInboxPage({
 
   const projects = (projectsRaw ?? []).map((p) => ({ id: p.id as string, name: p.name as string }));
 
-  const inboundAddress = `${tenant.slug}@quotes.heyhenry.io`;
+  const inboundAddress = 'henry@heyhenry.io';
+
+  const filteredProjectName = projectFilter
+    ? (projects.find((p) => p.id === projectFilter)?.name ?? 'Unknown project')
+    : null;
 
   const tabs: { key: FilterTab; label: string }[] = [
     { key: 'review', label: 'Needs review' },
@@ -80,18 +89,38 @@ export default async function InboundEmailInboxPage({
     { key: 'all', label: 'All' },
   ];
 
+  function tabHref(t: FilterTab): string {
+    const params = new URLSearchParams({ tab: t });
+    if (projectFilter) params.set('project', projectFilter);
+    return `/inbox/email?${params.toString()}`;
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">Email Inbox</h1>
         <p className="text-sm text-muted-foreground">
-          Forward vendor quotes and vendor bills to your tenant address — we classify, extract, and
-          auto-apply to the right project.
+          Forward bills and sub-quotes to <code className="font-mono">{inboundAddress}</code> from
+          your account email — Henry parses and stages them for your confirmation. Nothing reaches
+          the project until you click confirm.
         </p>
         <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
           <Mail className="size-4 text-muted-foreground" />
           <code className="font-mono">{inboundAddress}</code>
         </div>
+        {filteredProjectName && (
+          <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+            <span>
+              Filtered to project: <strong>{filteredProjectName}</strong>
+            </span>
+            <Link
+              href={`/inbox/email?tab=${tab}`}
+              className="text-xs text-muted-foreground underline hover:text-foreground"
+            >
+              Clear filter
+            </Link>
+          </div>
+        )}
       </header>
 
       {/* Tab bar */}
@@ -99,7 +128,7 @@ export default async function InboundEmailInboxPage({
         {tabs.map((t) => (
           <Link
             key={t.key}
-            href={`/inbox/email?tab=${t.key}`}
+            href={tabHref(t.key)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === t.key
                 ? 'border-primary text-primary'
