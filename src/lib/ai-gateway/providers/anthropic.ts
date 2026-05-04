@@ -50,6 +50,15 @@ const RATES: Record<string, ModelRates> = {
     input_micros_per_token: usdPerMillionToMicros(15),
     output_micros_per_token: usdPerMillionToMicros(75),
   },
+  // The intake-parser flow has been pinned to claude-opus-4-5 since the
+  // original A/B-against-gpt-4.1 tests landed. The dated alias the API
+  // returns (claude-opus-4-5-20251101) prefix-matches this entry via
+  // lookupRates. Without this row, Opus 4.5 calls were silently
+  // costing us at the `*` wildcard's Haiku rate (~19x undercount).
+  'claude-opus-4-5': {
+    input_micros_per_token: usdPerMillionToMicros(15),
+    output_micros_per_token: usdPerMillionToMicros(75),
+  },
   'claude-opus-4-7': {
     input_micros_per_token: usdPerMillionToMicros(15),
     output_micros_per_token: usdPerMillionToMicros(75),
