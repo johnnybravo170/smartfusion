@@ -76,6 +76,30 @@ export type VisionRequest = AiRequestBase & {
 };
 
 /**
+ * Audio transcription. Used for voice memos, intake recordings, etc.
+ *
+ * Provider support: OpenAI only at the moment (Whisper / gpt-4o-transcribe).
+ * Gemini and Anthropic accept inline audio via their multimodal endpoints
+ * but don't expose a dedicated transcription primitive — for those use
+ * `runStructured` with an audio file in `files`. Routing for any
+ * transcription task should pin to OpenAI (no fallback).
+ */
+export type TranscribeRequest = AiRequestBase & {
+  kind: 'transcribe';
+  /** Audio file (mp3, mp4, m4a, wav, webm, ogg, flac). */
+  file: AttachedFile;
+  /** Domain-specific prompt. Improves accuracy on technical terms. */
+  prompt?: string;
+  /** ISO-639-1 language hint (e.g. 'en'). Defaults to auto-detect. */
+  language?: string;
+};
+
+export type TranscribeResponse = AiResponseBase & {
+  kind: 'transcribe';
+  text: string;
+};
+
+/**
  * JSON-mode structured output. The schema is provider-portable JSON
  * Schema. `parse` runs after the provider returns; throwing inside
  * `parse` produces an `invalid_input` AiError.
@@ -145,4 +169,5 @@ export interface AiProvider {
   callChat(req: ChatRequest): Promise<ChatResponse>;
   callVision(req: VisionRequest): Promise<VisionResponse>;
   callStructured<T = unknown>(req: StructuredRequest<T>): Promise<StructuredResponse<T>>;
+  callTranscribe(req: TranscribeRequest): Promise<TranscribeResponse>;
 }

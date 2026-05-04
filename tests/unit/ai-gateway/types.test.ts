@@ -110,6 +110,21 @@ describe('NoopProvider — echo mode', () => {
   });
 });
 
+describe('NoopProvider — transcribe', () => {
+  it('round-trips an audio transcribe call', async () => {
+    const provider = new NoopProvider({ kind: 'echo', canned_text: 'hello world transcript' });
+    const res = await provider.callTranscribe({
+      kind: 'transcribe',
+      task: 'audio_transcribe_intake',
+      file: { mime: 'audio/webm', base64: 'AAAA' },
+      prompt: 'contractor scoping',
+    });
+    expect(res.kind).toBe('transcribe');
+    expect(res.text).toBe('hello world transcript');
+    expect(res.provider).toBe('noop');
+  });
+});
+
 describe('NoopProvider — fail mode', () => {
   it('throws AiError with the configured kind', async () => {
     const provider = new NoopProvider({ kind: 'fail', error_kind: 'quota' });

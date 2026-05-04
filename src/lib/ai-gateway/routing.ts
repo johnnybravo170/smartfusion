@@ -120,6 +120,23 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     secondary: { provider: 'gemini', weight: 0.4 },
     fallback_chain: ['openai', 'gemini', 'anthropic'],
   },
+
+  // AG-9 — intake.ts paths.
+  // Audio transcription is OpenAI-only (Whisper / gpt-4o-transcribe).
+  // Gemini and Anthropic don't expose a dedicated transcription
+  // primitive — both throw `invalid_input` if routed here. No fallback.
+  audio_transcribe_intake: {
+    primary: { provider: 'openai' },
+    fallback_chain: ['openai'],
+  },
+  // Full intake parse uses Anthropic tool-use under the hood (handled
+  // by the Anthropic adapter automatically when `runStructured` is
+  // called with a schema). Pin to Anthropic primary; cross-provider
+  // fallback is risky for a complex tool-input schema.
+  intake_full_parse: {
+    primary: { provider: 'anthropic' },
+    fallback_chain: ['anthropic'],
+  },
 };
 
 export function lookupRoute(task: string, custom?: Record<string, RouteConfig>): RouteConfig {

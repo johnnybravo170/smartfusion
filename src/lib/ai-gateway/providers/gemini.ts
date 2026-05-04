@@ -13,6 +13,8 @@ import type {
   ChatResponse,
   StructuredRequest,
   StructuredResponse,
+  TranscribeRequest,
+  TranscribeResponse,
   VisionRequest,
   VisionResponse,
 } from '../types';
@@ -154,6 +156,15 @@ export class GeminiProvider implements AiProvider {
       data,
       raw_text: rawText,
     };
+  }
+
+  async callTranscribe(_req: TranscribeRequest): Promise<TranscribeResponse> {
+    throw new AiError({
+      kind: 'invalid_input',
+      provider: 'gemini',
+      message:
+        'Gemini does not expose a dedicated transcription primitive. For audio + text in one call, use runStructured with the audio in `files`.',
+    });
   }
 
   // ------------------------------------------------------------------

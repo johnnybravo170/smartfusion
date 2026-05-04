@@ -60,6 +60,8 @@ export type {
   ChatResponse,
   StructuredRequest,
   StructuredResponse,
+  TranscribeRequest,
+  TranscribeResponse,
   VisionRequest,
   VisionResponse,
 } from './types';

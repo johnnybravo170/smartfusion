@@ -17,6 +17,8 @@ import type {
   ChatResponse,
   StructuredRequest,
   StructuredResponse,
+  TranscribeRequest,
+  TranscribeResponse,
   VisionRequest,
   VisionResponse,
 } from '../types';
@@ -71,6 +73,23 @@ export class NoopProvider implements AiProvider {
       text:
         this.mode.canned_text ??
         `[noop vision: ${req.file?.mime ?? req.files?.[0]?.mime ?? 'no-file'}, ${req.prompt.slice(0, 32)}]`,
+    };
+  }
+
+  async callTranscribe(req: TranscribeRequest): Promise<TranscribeResponse> {
+    await this.delay();
+    this.maybeFail();
+    if (this.mode.kind !== 'echo') throw new Error('unreachable');
+    return {
+      kind: 'transcribe',
+      provider: 'noop',
+      model: req.model_override ?? 'noop-echo',
+      api_key_label: 'noop',
+      tokens_in: 100, // pretend the audio cost ~100 tokens
+      tokens_out: estimateTokens(this.mode.canned_text ?? ''),
+      cost_micros: BigInt(0),
+      latency_ms: this.mode.latency_ms ?? 0,
+      text: this.mode.canned_text ?? `[noop transcribe: ${req.file.mime}]`,
     };
   }
 

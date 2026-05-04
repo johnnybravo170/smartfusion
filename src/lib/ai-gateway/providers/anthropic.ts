@@ -17,6 +17,8 @@ import type {
   ChatResponse,
   StructuredRequest,
   StructuredResponse,
+  TranscribeRequest,
+  TranscribeResponse,
   VisionRequest,
   VisionResponse,
 } from '../types';
@@ -130,36 +132,51 @@ export class AnthropicProvider implements AiProvider {
 
   async callStructured<T = unknown>(req: StructuredRequest<T>): Promise<StructuredResponse<T>> {
     const model = req.model_override ?? DEFAULT_MODELS.structured;
-    const schemaPrompt = `${req.prompt}\n\nReturn ONLY JSON matching this schema, no prose, no markdown fences:\n${JSON.stringify(req.schema)}`;
     const fileBlocks = filesOf(req).map(toAnthropicFileBlock);
     const userContent: Array<Record<string, unknown>> = [
       ...fileBlocks,
-      { type: 'text', text: schemaPrompt },
+      { type: 'text', text: req.prompt },
     ];
+
+    // Tool-use mode: force the model to call a single tool whose
+    // `input_schema` is the caller's schema. Much more reliable than
+    // prompt-based JSON for complex shapes (Anthropic enforces the
+    // schema server-side).
+    const toolName = 'submit_response';
+    const tool = {
+      name: toolName,
+      description: 'Return the structured response.',
+      input_schema: req.schema,
+    };
+
     const { msg, key, latency_ms } = await this.run((client) =>
       client.messages.create({
         model,
         max_tokens: req.max_tokens ?? DEFAULT_MAX_TOKENS,
-        // biome-ignore lint/suspicious/noExplicitAny: Anthropic SDK content block typing isn't worth fighting here
+        // biome-ignore lint/suspicious/noExplicitAny: Anthropic SDK content block + tool typing isn't worth fighting here
         messages: [{ role: 'user', content: userContent as any }],
+        // biome-ignore lint/suspicious/noExplicitAny: tool schema is provider-portable JSON Schema
+        tools: [tool] as any,
+        // biome-ignore lint/suspicious/noExplicitAny: tool_choice typing
+        tool_choice: { type: 'tool', name: toolName } as any,
         temperature: req.temperature ?? 0.1,
       }),
     );
-    const rawText = extractText(msg).trim();
-    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
+
+    const toolBlock = msg.content.find(
+      (b: { type: string; name?: string }) => b.type === 'tool_use' && b.name === toolName,
+    ) as { input?: unknown } | undefined;
+    if (!toolBlock || toolBlock.input === undefined) {
       throw new AiError({
         kind: 'invalid_input',
         provider: 'anthropic',
-        message: 'Anthropic returned non-JSON for a structured request.',
+        message: `Anthropic did not invoke the ${toolName} tool.`,
       });
     }
+
     let data: T;
     try {
-      data = req.parse ? req.parse(parsed) : (parsed as T);
+      data = req.parse ? req.parse(toolBlock.input) : (toolBlock.input as T);
     } catch (cause) {
       throw new AiError({
         kind: 'invalid_input',
@@ -182,8 +199,17 @@ export class AnthropicProvider implements AiProvider {
       ),
       latency_ms,
       data,
-      raw_text: rawText,
+      raw_text: JSON.stringify(toolBlock.input),
     };
+  }
+
+  async callTranscribe(_req: TranscribeRequest): Promise<TranscribeResponse> {
+    throw new AiError({
+      kind: 'invalid_input',
+      provider: 'anthropic',
+      message:
+        'Anthropic does not expose a dedicated transcription primitive. Route audio_transcribe_* tasks to OpenAI.',
+    });
   }
 
   private async run<T>(

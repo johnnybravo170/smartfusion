@@ -33,6 +33,9 @@ export const KNOWN_TASKS = [
   'contact_parse_intake', // intake artifact → structured contact
   'intake_augment_suggest', // suggest project amendments from intake notes
   'note_reply_draft', // Henry Q&A reply draft on project notes
+  // AG-9 — last caller (intake.ts) split into two tasks
+  'audio_transcribe_intake', // Whisper transcription of intake voice memo
+  'intake_full_parse', // Anthropic tool-use intake → estimate + tasks
 ] as const;
 
 export type KnownTask = (typeof KNOWN_TASKS)[number];

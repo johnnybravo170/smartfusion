@@ -33,6 +33,8 @@ import type {
   ChatResponse,
   StructuredRequest,
   StructuredResponse,
+  TranscribeRequest,
+  TranscribeResponse,
   VisionRequest,
   VisionResponse,
 } from './types';
@@ -75,6 +77,10 @@ export class Gateway {
 
   async runStructured<T = unknown>(req: StructuredRequest<T>): Promise<StructuredResponse<T>> {
     return this.run(req, (p) => p.callStructured<T>(req));
+  }
+
+  async runTranscribe(req: TranscribeRequest): Promise<TranscribeResponse> {
+    return this.run(req, (p) => p.callTranscribe(req));
   }
 
   /**

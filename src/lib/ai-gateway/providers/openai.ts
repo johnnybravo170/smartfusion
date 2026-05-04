@@ -21,6 +21,8 @@ import type {
   ChatResponse,
   StructuredRequest,
   StructuredResponse,
+  TranscribeRequest,
+  TranscribeResponse,
   VisionRequest,
   VisionResponse,
 } from '../types';
@@ -49,6 +51,17 @@ const RATES: Record<string, ModelRates> = {
     input_micros_per_token: usdPerMillionToMicros(1.1),
     output_micros_per_token: usdPerMillionToMicros(4.4),
   },
+  // Audio transcription models: input rate is per-audio-token, output
+  // is the text transcript. Higher input rate than text models because
+  // audio takes more tokens to encode.
+  'gpt-4o-transcribe': {
+    input_micros_per_token: usdPerMillionToMicros(6),
+    output_micros_per_token: usdPerMillionToMicros(10),
+  },
+  'gpt-4o-mini-transcribe': {
+    input_micros_per_token: usdPerMillionToMicros(3),
+    output_micros_per_token: usdPerMillionToMicros(5),
+  },
   // Default for unknown / unlisted models — assume gpt-4o-mini-ish.
   '*': {
     input_micros_per_token: usdPerMillionToMicros(0.15),
@@ -60,9 +73,11 @@ const DEFAULT_MODELS = {
   chat: 'gpt-4o-mini',
   vision: 'gpt-4o-mini',
   structured: 'gpt-4o-mini',
+  transcribe: 'gpt-4o-transcribe',
 };
 
 const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
+const TRANSCRIBE_ENDPOINT = 'https://api.openai.com/v1/audio/transcriptions';
 
 export class OpenAiProvider implements AiProvider {
   readonly name = 'openai' as const;
@@ -186,6 +201,80 @@ export class OpenAiProvider implements AiProvider {
       latency_ms,
       data,
       raw_text: rawText,
+    };
+  }
+
+  async callTranscribe(req: TranscribeRequest): Promise<TranscribeResponse> {
+    const model = req.model_override ?? DEFAULT_MODELS.transcribe;
+    const key = pickKey('openai', this.keys);
+    if (!key) {
+      throw new AiError({
+        kind: 'auth',
+        provider: 'openai',
+        message: 'No OpenAI API key configured (OPENAI_API_KEYS or OPENAI_API_KEY).',
+      });
+    }
+
+    const form = new FormData();
+    form.set(
+      'file',
+      new Blob([Buffer.from(req.file.base64, 'base64')], { type: req.file.mime }),
+      req.file.filename ?? 'audio',
+    );
+    form.set('model', model);
+    if (req.prompt) form.set('prompt', req.prompt);
+    if (req.language) form.set('language', req.language);
+    // gpt-4o-transcribe defaults to JSON; ask for verbose to capture usage.
+    form.set('response_format', 'json');
+
+    const ac = new AbortController();
+    const timer =
+      req.timeout_ms && req.timeout_ms > 0 ? setTimeout(() => ac.abort(), req.timeout_ms) : null;
+    const start = Date.now();
+    let res: Response;
+    try {
+      res = await fetch(TRANSCRIBE_ENDPOINT, {
+        method: 'POST',
+        signal: ac.signal,
+        headers: { Authorization: `Bearer ${key.secret}` },
+        body: form,
+      });
+    } catch (cause) {
+      const aborted = (cause as { name?: string })?.name === 'AbortError';
+      throw new AiError({
+        kind: aborted ? 'timeout' : 'unknown',
+        provider: 'openai',
+        message: aborted
+          ? 'OpenAI transcribe timed out.'
+          : `OpenAI transcribe failed: ${String(cause)}`,
+        cause,
+      });
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    const latency_ms = Date.now() - start;
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw classifyOpenAiError(res.status, text);
+    }
+    const json = (await res.json()) as {
+      text?: string;
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
+
+    const tokens_in = json.usage?.input_tokens ?? 0;
+    const tokens_out = json.usage?.output_tokens ?? 0;
+    return {
+      kind: 'transcribe',
+      provider: 'openai',
+      model,
+      api_key_label: key.label,
+      tokens_in,
+      tokens_out,
+      cost_micros: computeCostMicros(tokens_in, tokens_out, lookupRates(RATES, model)),
+      latency_ms,
+      text: json.text ?? '',
     };
   }
 
