@@ -149,6 +149,15 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     primary: { provider: 'anthropic' },
     fallback_chain: ['anthropic'],
   },
+
+  // Per-artifact classification ("I see a voice memo, 2 damage photos,
+  // 1 sub-trade PDF"). Gemini Flash handles multimodal classification
+  // ~free and ~fast. Doesn't need Opus quality — the schema enum
+  // constrains the output. Falls back to OpenAI if Gemini's down.
+  intake_artifact_classify: {
+    primary: { provider: 'gemini' },
+    fallback_chain: ['gemini', 'openai'],
+  },
 };
 
 export function lookupRoute(task: string, custom?: Record<string, RouteConfig>): RouteConfig {

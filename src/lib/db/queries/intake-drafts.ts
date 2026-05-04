@@ -5,6 +5,7 @@
 
 import type { ParsedIntake } from '@/lib/ai/intake-prompt';
 import { createClient } from '@/lib/supabase/server';
+import type { IntakeArtifact } from '@/server/actions/intake';
 
 export type IntakeDraftStatus =
   | 'pending'
@@ -20,6 +21,7 @@ export type IntakeDraftRow = {
   customer_name: string | null;
   pasted_text: string | null;
   transcript: string | null;
+  artifacts: IntakeArtifact[];
   ai_extraction: {
     v1: ParsedIntake | null;
     v2: ParsedIntake | null;
@@ -41,7 +43,7 @@ export async function loadIntakeDraft(id: string): Promise<IntakeDraftRow | null
   const { data, error } = await supabase
     .from('intake_drafts')
     .select(
-      'id, status, customer_name, pasted_text, transcript, ai_extraction, parsed_by, error_message, accepted_project_id, created_at, updated_at',
+      'id, status, customer_name, pasted_text, transcript, artifacts, ai_extraction, parsed_by, error_message, accepted_project_id, created_at, updated_at',
     )
     .eq('id', id)
     .maybeSingle();

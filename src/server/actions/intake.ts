@@ -97,6 +97,71 @@ type IntakeExtractionEnvelope = {
   active: 'v1' | 'v2';
 };
 
+/**
+ * Per-artifact classification kinds. Drives the chip row at the top of
+ * the review screen — the "Henry sees what you dropped" demo moment.
+ * The label is a short Henry-generated description (max ~80 chars)
+ * shown alongside the chip's kind.
+ */
+const ARTIFACT_KINDS = [
+  'voice_memo',
+  'damage_photo',
+  'reference_photo',
+  'sketch',
+  'screenshot',
+  'sub_quote_pdf',
+  'spec_drawing_pdf',
+  'receipt',
+  'inspiration_photo',
+  'other',
+] as const;
+export type IntakeArtifactKind = (typeof ARTIFACT_KINDS)[number];
+
+export type IntakeArtifact = {
+  path: string;
+  name: string;
+  mime: string;
+  size: number;
+  kind: IntakeArtifactKind | null;
+  label: string | null;
+};
+
+const ARTIFACT_CLASSIFY_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    artifacts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          index: { type: 'integer' },
+          kind: { type: 'string', enum: [...ARTIFACT_KINDS] },
+          label: { type: 'string' },
+        },
+        required: ['index', 'kind', 'label'],
+      },
+    },
+  },
+  required: ['artifacts'],
+};
+
+const ARTIFACT_CLASSIFY_PROMPT = `You're inspecting artifacts the operator dropped into a renovation project intake. For each artifact (in order, 0-indexed) classify it into ONE of these kinds:
+
+- voice_memo (audio recording — usually a contractor scoping a job)
+- damage_photo (photo showing damage, defects, or conditions to repair)
+- reference_photo (photo of an existing condition / area / fixture for context, not damage-focused)
+- sketch (hand-drawn site plan, layout, or quick diagram)
+- screenshot (text-thread, email, or messaging-app capture)
+- sub_quote_pdf (PDF quote from a sub-trade)
+- spec_drawing_pdf (architectural drawing, floor plan, or technical spec PDF)
+- receipt (invoice or receipt for materials / supplies)
+- inspiration_photo (Pinterest-style aesthetic shot — what the customer wants it to look like)
+- other (when nothing fits)
+
+Also produce a short label (max 80 chars) describing what's IN the artifact specifically. Examples: "Water-damaged hardwood near the back door", "Text thread — kitchen reno scope", "Sub-trade quote — electrical, 4 lines".
+
+Return one row per artifact. The "index" must match the artifact's position in the order they were attached.`;
+
 export async function parseInboundLeadAction(
   formData: FormData,
   options?: { model?: ParseModelChoice },
@@ -170,6 +235,14 @@ export async function parseInboundLeadAction(
   // downstream vision pass. Best-effort cleanup of each staging file.
   const files: File[] = [];
   const transcriptParts: string[] = [];
+  // Tracks each downloaded artifact in upload order. Used both for the
+  // chip-row classification (visuals + audios indexed) and to write the
+  // artifacts column on the draft row so the chip row is recoverable
+  // across refresh / retry.
+  const allArtifacts: IntakeArtifact[] = [];
+  const visualFilesForClassify: Array<{ index: number; file: File }> = [];
+  const audioIndexesForClassify: number[] = [];
+  let artifactIdx = 0;
   const hasAudio = storageEntries.some(({ name }) =>
     /\.(m4a|mp3|mp4|wav|webm|ogg|aac|flac)$/i.test(name),
   );
@@ -185,7 +258,17 @@ export async function parseInboundLeadAction(
       }
       const type = blob.type || 'application/octet-stream';
       const f = new File([blob], originalName, { type });
+      const thisIndex = artifactIdx++;
+      allArtifacts.push({
+        path,
+        name: originalName,
+        mime: type,
+        size: blob.size,
+        kind: null,
+        label: null,
+      });
       if (type.startsWith('audio/')) {
+        audioIndexesForClassify.push(thisIndex);
         let transcript: string;
         try {
           transcript = await transcribeAudio(f, tenant.id);
@@ -230,12 +313,13 @@ export async function parseInboundLeadAction(
         }
       } else if (type.startsWith('image/') || type === 'application/pdf') {
         files.push(f);
+        visualFilesForClassify.push({ index: thisIndex, file: f });
       }
       await admin.storage.from('intake-audio').remove([path]);
     }
   }
   const transcript = transcriptParts.length > 0 ? transcriptParts.join('\n\n---\n\n') : null;
-  await updateDraft({ status: 'extracting', transcript });
+  await updateDraft({ status: 'extracting', transcript, artifacts: allArtifacts });
 
   // Build the prompt + the typed file list.
   const intro = [
@@ -266,21 +350,34 @@ export async function parseInboundLeadAction(
   const provider_override = modelChoice === 'claude-sonnet' ? 'anthropic' : 'openai';
   const model_override = modelChoice === 'claude-sonnet' ? CLAUDE_PARSE_MODEL : PARSE_MODEL;
 
+  // Run the heavy parse in parallel with the per-artifact classification
+  // call. Classification is best-effort (its helper catches its own
+  // errors) so this Promise.all only rejects on parse error.
+  const parsePromise = gateway().runStructured<ParsedIntake>({
+    kind: 'structured',
+    task: 'intake_full_parse',
+    tenant_id: tenant.id,
+    provider_override,
+    model_override,
+    prompt: `${INTAKE_SYSTEM_PROMPT}\n\n${intro}`,
+    schema: INTAKE_JSON_SCHEMA.schema,
+    files: attachedFiles,
+    temperature: 0.2,
+    max_tokens: 8000,
+  });
+  const classifyPromise = classifyArtifacts(
+    visualFilesForClassify,
+    audioIndexesForClassify,
+    allArtifacts.length,
+    tenant.id,
+  );
+
   let draft: ParsedIntake;
+  let classifications: Awaited<ReturnType<typeof classifyArtifacts>> = [];
   try {
-    const res = await gateway().runStructured<ParsedIntake>({
-      kind: 'structured',
-      task: 'intake_full_parse',
-      tenant_id: tenant.id,
-      provider_override,
-      model_override,
-      prompt: `${INTAKE_SYSTEM_PROMPT}\n\n${intro}`,
-      schema: INTAKE_JSON_SCHEMA.schema,
-      files: attachedFiles,
-      temperature: 0.2,
-      max_tokens: 8000,
-    });
-    draft = res.data;
+    const [parseRes, classifyRes] = await Promise.all([parsePromise, classifyPromise]);
+    draft = parseRes.data;
+    classifications = classifyRes;
   } catch (err) {
     Sentry.captureException(err, {
       tags: { stage: 'intake.parse', task: 'intake_full_parse' },
@@ -303,6 +400,12 @@ export async function parseInboundLeadAction(
   // pulled from the messages.
   if (customerName) draft.customer.name = customerName;
 
+  // Merge classifications into the artifact rows.
+  const finalArtifacts: IntakeArtifact[] = allArtifacts.map((a, i) => {
+    const c = classifications.find((row) => row.index === i);
+    return c ? { ...a, kind: c.kind, label: c.label } : a;
+  });
+
   // Persist the extraction in the same envelope shape used by
   // project_memos (migration 0174). Lets the second-pass / thinking
   // button drop in unchanged when we wire it for intake.
@@ -311,6 +414,7 @@ export async function parseInboundLeadAction(
     status: 'ready',
     ai_extraction: envelope,
     parsed_by: model_override,
+    artifacts: finalArtifacts,
   });
 
   return { ok: true, draftId, draft, transcript, parsedBy: model_override };
@@ -611,4 +715,107 @@ async function transcribeAudio(file: File, tenantId: string): Promise<string> {
   // Errors propagate to the caller so the operator sees a real message
   // instead of an Opus hallucination about missing screenshots.
   return res.text.trim();
+}
+
+/**
+ * Per-artifact classification — the "Henry sees what you dropped" demo
+ * moment. Audio is shortcutted locally as 'voice_memo' (no model call).
+ * Images + PDFs go to Gemini Flash in one batched structured call.
+ *
+ * Best-effort: a failure returns mime-derived defaults so the chip row
+ * still renders something useful; never blocks the rest of the
+ * pipeline.
+ */
+async function classifyArtifacts(
+  visualFiles: Array<{ index: number; file: File }>,
+  audioIndexes: number[],
+  totalCount: number,
+  tenantId: string,
+): Promise<Array<{ index: number; kind: IntakeArtifactKind; label: string }>> {
+  const results: Array<{ index: number; kind: IntakeArtifactKind; label: string }> = [];
+
+  // Audio: classified locally. We trust the upload mime / extension —
+  // burning a Gemini call to confirm "yes that's audio" is wasted spend.
+  for (const idx of audioIndexes) {
+    results.push({ index: idx, kind: 'voice_memo', label: 'Voice memo' });
+  }
+
+  if (visualFiles.length === 0) {
+    return sortByIndex(results, totalCount);
+  }
+
+  try {
+    const attached: AttachedFile[] = [];
+    for (const { file } of visualFiles) {
+      const buf = Buffer.from(await file.arrayBuffer());
+      attached.push({
+        mime: file.type || 'application/octet-stream',
+        base64: buf.toString('base64'),
+        filename: file.name || undefined,
+      });
+    }
+
+    const indexMap = visualFiles.map(({ index }) => index);
+    const indexHint = indexMap
+      .map((globalIdx, localIdx) => `Position ${localIdx} → artifact #${globalIdx}`)
+      .join('\n');
+
+    type ClassifyResponse = {
+      artifacts: Array<{ index: number; kind: IntakeArtifactKind; label: string }>;
+    };
+    const res = await gateway().runStructured<ClassifyResponse>({
+      kind: 'structured',
+      task: 'intake_artifact_classify',
+      tenant_id: tenantId,
+      prompt: `${ARTIFACT_CLASSIFY_PROMPT}\n\nIndex mapping (use these "index" values in your response):\n${indexHint}`,
+      schema: ARTIFACT_CLASSIFY_SCHEMA,
+      files: attached,
+      temperature: 0,
+      max_tokens: 1500,
+    });
+
+    const valid = new Set<IntakeArtifactKind>(ARTIFACT_KINDS);
+    for (const row of res.data.artifacts ?? []) {
+      const kind = valid.has(row.kind) ? row.kind : 'other';
+      const label =
+        (row.label ?? '').trim().slice(0, 200) || mimeDefaultLabel(visualFiles, row.index);
+      results.push({ index: row.index, kind, label });
+    }
+  } catch {
+    // Fall back to mime-derived defaults so the chip row still renders.
+    for (const { index, file } of visualFiles) {
+      results.push({
+        index,
+        kind: file.type === 'application/pdf' ? 'other' : 'reference_photo',
+        label: file.name || 'Artifact',
+      });
+    }
+  }
+
+  // Backfill any indexes the model omitted.
+  const seen = new Set(results.map((r) => r.index));
+  for (const { index, file } of visualFiles) {
+    if (seen.has(index)) continue;
+    results.push({
+      index,
+      kind: file.type === 'application/pdf' ? 'other' : 'reference_photo',
+      label: file.name || 'Artifact',
+    });
+  }
+
+  return sortByIndex(results, totalCount);
+}
+
+function sortByIndex<T extends { index: number }>(rows: T[], totalCount: number): T[] {
+  return [...rows]
+    .sort((a, b) => a.index - b.index)
+    .filter((r) => r.index >= 0 && r.index < totalCount);
+}
+
+function mimeDefaultLabel(
+  visualFiles: Array<{ index: number; file: File }>,
+  index: number,
+): string {
+  const match = visualFiles.find((v) => v.index === index);
+  return match?.file.name || 'Artifact';
 }

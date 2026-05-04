@@ -19,7 +19,19 @@
  * shareable URL, recoverable from a parse failure without re-uploading.
  */
 
-import { Loader2, RefreshCcw } from 'lucide-react';
+import {
+  Camera,
+  FileQuestion,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  MessageSquare,
+  Mic,
+  Pencil,
+  Receipt,
+  RefreshCcw,
+  Sparkles,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -35,6 +47,8 @@ import { resizeImage } from '@/lib/storage/resize-image';
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client';
 import {
   acceptInboundLeadAction,
+  type IntakeArtifact,
+  type IntakeArtifactKind,
   type ParseModelChoice,
   parseInboundLeadAction,
   parseIntakeDraftAction,
@@ -64,6 +78,60 @@ function processingMessage(status: IntakeDraftRow['status']): string {
   if (status === 'extracting') return "Henry's making sense of it…";
   if (status === 'rethinking') return "Henry's having another think…";
   return 'Working…';
+}
+
+const ARTIFACT_KIND_META: Record<
+  IntakeArtifactKind,
+  { Icon: React.ComponentType<{ className?: string }>; label: string }
+> = {
+  voice_memo: { Icon: Mic, label: 'Voice memo' },
+  damage_photo: { Icon: Camera, label: 'Damage photo' },
+  reference_photo: { Icon: ImageIcon, label: 'Reference photo' },
+  sketch: { Icon: Pencil, label: 'Sketch' },
+  screenshot: { Icon: MessageSquare, label: 'Screenshot' },
+  sub_quote_pdf: { Icon: FileText, label: 'Sub-trade quote' },
+  spec_drawing_pdf: { Icon: FileText, label: 'Spec drawing' },
+  receipt: { Icon: Receipt, label: 'Receipt' },
+  inspiration_photo: { Icon: Sparkles, label: 'Inspiration' },
+  other: { Icon: FileQuestion, label: 'Artifact' },
+};
+
+function ArtifactChipRow({ artifacts }: { artifacts: IntakeArtifact[] | null }) {
+  if (!artifacts || artifacts.length === 0) return null;
+  const allClassified = artifacts.every((a) => !!a.kind);
+  return (
+    <div className="rounded-md border bg-muted/30 p-3">
+      <p className="mb-2 text-xs font-medium text-muted-foreground">
+        Henry sees: {artifacts.length} {artifacts.length === 1 ? 'artifact' : 'artifacts'}
+        {!allClassified ? (
+          <span className="ml-1 inline-flex items-center gap-1 text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" />
+            still classifying…
+          </span>
+        ) : null}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {artifacts.map((a, i) => {
+          const meta = a.kind ? ARTIFACT_KIND_META[a.kind] : null;
+          const Icon = meta?.Icon ?? FileQuestion;
+          return (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: artifacts are positionally meaningful (referenced by index in classifications)
+              key={`${a.path}-${i}`}
+              className="inline-flex max-w-full items-center gap-2 rounded-full border bg-background px-3 py-1.5"
+              title={a.label ?? a.name}
+            >
+              <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="shrink-0 text-xs font-medium">{meta?.label ?? 'Classifying…'}</span>
+              {a.label ? (
+                <span className="truncate text-xs text-muted-foreground">— {a.label}</span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 const RESIZE_THRESHOLD_BYTES = 2 * 1024 * 1024;
@@ -329,6 +397,7 @@ export function LeadIntakeForm({
           <Loader2 className="size-4 animate-spin" />
           {processingMessage(draftStatus ?? 'extracting')}
         </p>
+        <ArtifactChipRow artifacts={initialDraft?.artifacts ?? null} />
         {transcript ? <TranscriptPanel transcript={transcript} /> : null}
         <p className="text-xs text-muted-foreground">
           This page is safe to leave or refresh — the draft is saved and Henry will keep working.
@@ -346,6 +415,7 @@ export function LeadIntakeForm({
             <p className="mt-1 text-sm text-muted-foreground">{errorMessage}</p>
           ) : null}
         </div>
+        <ArtifactChipRow artifacts={initialDraft?.artifacts ?? null} />
         {transcript ? (
           <>
             <TranscriptPanel transcript={transcript} />
@@ -412,6 +482,7 @@ export function LeadIntakeForm({
             useLabel="Use this contact for the new project"
           />
         ) : null}
+        <ArtifactChipRow artifacts={initialDraft?.artifacts ?? null} />
         {transcript ? <TranscriptPanel transcript={transcript} /> : null}
         {parsedBy ? <p className="text-xs text-muted-foreground">Parsed by: {parsedBy}</p> : null}
         <ReviewDraft
