@@ -162,12 +162,6 @@ export default async function DashboardPage() {
             <span className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
               Recently captured
             </span>
-            <Link
-              href="/admin/memory-guide"
-              className="text-xs text-[var(--muted-foreground)] hover:underline"
-            >
-              memory guide →
-            </Link>
           </div>
           <ul className="flex gap-2 overflow-x-auto pb-1">
             {captured.map((c) => {

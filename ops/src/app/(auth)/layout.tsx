@@ -2,6 +2,14 @@ import Link from 'next/link';
 import { requireAdmin } from '@/lib/ops-gate';
 import { SignOutButton } from './sign-out-button';
 
+// Top-level nav: items used day-to-day. Less-frequent admin pages
+// (memory-guide, audit log, raw API keys, MCP server config) are
+// reachable directly via URL but kept out of the human nav so the
+// header stays scannable.
+//
+// `memory-guide` is intentionally NOT here — it's a Claude/MCP surface
+// (via the `ops_memory_guide` tool), not a human one. The page still
+// exists at /admin/memory-guide for backward compat / testing.
 const NAV = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/worklog', label: 'Worklog' },
@@ -15,7 +23,6 @@ const NAV = [
   { href: '/admin/keys', label: 'API Keys' },
   { href: '/admin/mcp', label: 'MCP' },
   { href: '/admin/audit', label: 'Audit Log' },
-  { href: '/admin/memory-guide', label: 'Memory guide' },
 ];
 
 export default async function AuthedLayout({ children }: { children: React.ReactNode }) {
