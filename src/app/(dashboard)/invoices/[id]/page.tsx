@@ -2,6 +2,7 @@ import { Briefcase, Copy, User } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { InvoiceActions } from '@/components/features/invoices/invoice-actions';
+import { InvoiceDefaultsSetupBanner } from '@/components/features/invoices/invoice-defaults-setup-banner';
 import { InvoiceLineItems } from '@/components/features/invoices/invoice-line-items';
 import { InvoiceNote } from '@/components/features/invoices/invoice-note';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
@@ -34,16 +35,24 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const formatTimestamp = (iso: string | null | undefined) =>
     iso ? formatDateTime(iso, { timezone: tz }) : '';
 
-  // Check if tenant has Stripe connected.
+  // Check if tenant has Stripe connected and load invoice doc defaults.
   const supabase = await createClient();
   const { data: tenantRow } = await supabase
     .from('tenants')
-    .select('stripe_account_id, gst_number, wcb_number')
+    .select(
+      'stripe_account_id, gst_number, wcb_number, invoice_payment_instructions, invoice_terms, invoice_policies',
+    )
     .eq('id', tenant?.id ?? '')
     .maybeSingle();
   const hasStripe = !!tenantRow?.stripe_account_id;
   const gstNumber = (tenantRow?.gst_number as string | null) ?? null;
   const wcbNumber = (tenantRow?.wcb_number as string | null) ?? null;
+  const docFields = {
+    payment_instructions: (tenantRow?.invoice_payment_instructions as string | null) ?? null,
+    terms: (tenantRow?.invoice_terms as string | null) ?? null,
+    policies: (tenantRow?.invoice_policies as string | null) ?? null,
+  };
+  const showSetupBanner = invoice.status === 'draft' || invoice.status === 'sent';
   const regParts = [
     gstNumber ? `GST: ${gstNumber}` : null,
     wcbNumber ? `WCB: ${wcbNumber}` : null,
@@ -192,6 +201,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </p>
         </section>
       )}
+
+      {/* Inline default-fields setup — pops a dialog, no Settings detour */}
+      {showSetupBanner ? <InvoiceDefaultsSetupBanner current={docFields} /> : null}
 
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-2">
