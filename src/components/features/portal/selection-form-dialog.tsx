@@ -104,9 +104,21 @@ export function SelectionFormDialog({ projectId, defaultRoom, selection, trigger
         allowance_cents: dollarsToCents(allowance),
         actual_cost_cents: dollarsToCents(actualCost),
       };
-      const res = editing
-        ? await updateSelectionAction(selection?.id, projectId, payload)
-        : await createSelectionAction(projectId, payload);
+      // `editing` is set iff `selection` exists, but TS can't prove
+      // the linkage across props. Narrow explicitly so we can call
+      // updateSelectionAction with a real string id (avoids biome's
+      // noNonNullAssertion auto-fix turning `selection!.id` into
+      // `selection?.id`, which silently broke the type contract).
+      let res: Awaited<ReturnType<typeof createSelectionAction>>;
+      if (editing) {
+        if (!selection) {
+          toast.error('Cannot edit: selection record missing.');
+          return;
+        }
+        res = await updateSelectionAction(selection.id, projectId, payload);
+      } else {
+        res = await createSelectionAction(projectId, payload);
+      }
       if (!res.ok) {
         toast.error(res.error);
         return;
