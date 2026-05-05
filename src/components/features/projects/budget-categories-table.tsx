@@ -452,24 +452,44 @@ export function BudgetCategoriesTable({
                   <tr className="border-b">
                     <th className="px-1 py-1.5" />
                     <th className="px-2 py-1.5 text-left font-medium">Category</th>
-                    <th className="px-3 py-1.5 text-right font-medium">Estimate</th>
+                    {/* Numeric headers carry the same invisible `.00`
+                     * tail that the Money component pads onto whole-
+                     * dollar values. Without it, "Estimate" right-edge
+                     * sits flush with the cell while "$5,000" sits a
+                     * few pixels left (under the .00 shim), and the
+                     * column reads as misaligned. */}
+                    <th className="px-3 py-1.5 text-right font-medium">
+                      Estimate
+                      <span aria-hidden className="invisible text-[0.7em]">
+                        .00
+                      </span>
+                    </th>
                     <th
                       className="px-3 py-1.5 text-right font-medium"
                       title="Realized cost: labour + bills + expenses"
                     >
                       Spent
+                      <span aria-hidden className="invisible text-[0.7em]">
+                        .00
+                      </span>
                     </th>
                     <th
                       className="px-3 py-1.5 text-right font-medium"
                       title="Promised but not yet realized: accepted vendor quotes + active POs"
                     >
                       Committed
+                      <span aria-hidden className="invisible text-[0.7em]">
+                        .00
+                      </span>
                     </th>
                     <th
                       className="px-3 py-1.5 text-right font-medium"
                       title="Estimate − Spent − Committed. Bar shows progress; negative = over budget."
                     >
                       Remaining
+                      <span aria-hidden className="invisible text-[0.7em]">
+                        .00
+                      </span>
                     </th>
                     <th className="px-2 py-1.5" />
                   </tr>
