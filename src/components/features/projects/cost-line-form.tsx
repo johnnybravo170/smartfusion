@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -38,6 +39,8 @@ export function CostLineForm({
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState('');
+  const isEditing = Boolean(initial);
+  const labelInputRef = useRef<HTMLInputElement>(null);
 
   const [category, setCategory] = useState<string>(initial?.category ?? 'material');
   const [label, setLabel] = useState(initial?.label ?? '');
@@ -127,8 +130,28 @@ export function CostLineForm({
         markup_pct,
         notes,
       });
-      if (res.ok) onDone();
-      else setError(res.error);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      if (isEditing) {
+        onDone();
+        return;
+      }
+      // Add-mode: keep the form mounted so the operator can rip
+      // through a batch of lines without re-clicking "+ Add line"
+      // (and without the page jumping on each save). Reset the
+      // per-line fields; keep category + unit since those usually
+      // repeat across a batch.
+      toast.success(`Added "${label}"`);
+      setLabel('');
+      setQty('1');
+      setCostRaw('');
+      setPriceRaw('');
+      setMarkupRaw('');
+      setNotes('');
+      setError('');
+      labelInputRef.current?.focus();
     });
   }
 
@@ -165,6 +188,7 @@ export function CostLineForm({
           </label>
           <Input
             id="cl-label"
+            ref={labelInputRef}
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Description"
