@@ -417,7 +417,15 @@ export function BudgetCategoriesTable({
                 </div>
               ) : null}
             </div>
-            <div className="overflow-x-auto rounded-md border">
+            {/* `overflow-x-clip overflow-y-visible` instead of */}
+            {/* `overflow-x-auto`: clipping horizontally without */}
+            {/* establishing a vertical scroll container lets the */}
+            {/* thead `position: sticky` against the page scroll. */}
+            {/* Tradeoff: very narrow viewports (<760px) clip the */}
+            {/* table edge instead of horizontal-scrolling — accepted */}
+            {/* since the page already scrolls horizontally as a */}
+            {/* fallback. */}
+            <div className="overflow-x-clip [overflow-y:visible] rounded-md border">
               {/* Number columns sized for typical values ($X,XXX) rather */}
               {/* than worst-case ($XXX,XXX.XX). Combined with */}
               {/* formatCurrencyCompact (drops .00 on whole dollars), this */}
@@ -436,8 +444,12 @@ export function BudgetCategoriesTable({
                   <col className="w-28" />
                   <col className="w-16" />
                 </colgroup>
-                <thead>
-                  <tr className="border-b bg-muted/50">
+                {/* Sticky header: pins to the top of the page scroll */}
+                {/* while the section is in view. As you scroll past one */}
+                {/* section the next section's thead seamlessly takes */}
+                {/* over (each section is its own table). */}
+                <thead className="sticky top-0 z-10 bg-muted/50">
+                  <tr className="border-b">
                     <th className="px-1 py-1.5" />
                     <th className="px-2 py-1.5 text-left font-medium">Category</th>
                     <th className="px-3 py-1.5 text-right font-medium">Estimate</th>

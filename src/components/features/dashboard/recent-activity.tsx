@@ -27,8 +27,6 @@ function toneFor(kind: ActivityEventKind): keyof typeof statusToneClass {
     case 'photo_uploaded':
     case 'document_uploaded':
       return 'info';
-    case 'invoice_created':
-    case 'worklog':
     default:
       return 'neutral';
   }

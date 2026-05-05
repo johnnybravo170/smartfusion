@@ -247,9 +247,7 @@ export async function loginAction(input: {
   // Only same-origin paths; reject protocol-relative or external.
   const requestedNext = input.next;
   const safeNext =
-    requestedNext && requestedNext.startsWith('/') && !requestedNext.startsWith('//')
-      ? requestedNext
-      : null;
+    requestedNext?.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : null;
   if (safeNext) redirect(safeNext);
 
   // Role-aware destination: workers → /w, bookkeepers → /bk, else /dashboard.

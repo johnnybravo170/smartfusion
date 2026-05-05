@@ -121,7 +121,7 @@ async function claimViaReadWrite(
     .eq('provider', provider)
     .eq('kind', kind)
     .maybeSingle();
-  if (existing && existing.last_sent_at && existing.last_sent_at > cutoff) return false;
+  if (existing?.last_sent_at && existing.last_sent_at > cutoff) return false;
   const { error: upsertErr } = await admin
     .from('ai_alerts')
     .upsert({ provider, kind, last_sent_at: new Date().toISOString() });

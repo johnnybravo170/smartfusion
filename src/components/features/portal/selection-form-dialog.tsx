@@ -105,7 +105,7 @@ export function SelectionFormDialog({ projectId, defaultRoom, selection, trigger
         actual_cost_cents: dollarsToCents(actualCost),
       };
       const res = editing
-        ? await updateSelectionAction(selection!.id, projectId, payload)
+        ? await updateSelectionAction(selection?.id, projectId, payload)
         : await createSelectionAction(projectId, payload);
       if (!res.ok) {
         toast.error(res.error);

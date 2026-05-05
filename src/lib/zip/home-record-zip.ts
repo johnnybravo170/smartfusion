@@ -164,7 +164,7 @@ export function buildHomeRecordReadme(snapshot: HomeRecordSnapshotV1): string {
   lines.push('    highlight/         — featured shots');
   lines.push('  documents/           — contracts, permits, warranties, manuals, inspections, COIs');
   lines.push('');
-  lines.push('A permanent record from ' + snapshot.contractor.name + '.');
+  lines.push(`A permanent record from ${snapshot.contractor.name}.`);
   lines.push('Save this folder somewhere safe — it works forever.');
   lines.push('');
   return lines.join('\n');

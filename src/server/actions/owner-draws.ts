@@ -151,7 +151,7 @@ export async function updateOwnerDrawAction(input: {
   if (parsed.data.amount_cents !== undefined) patch.amount_cents = parsed.data.amount_cents;
   if (parsed.data.draw_type !== undefined) patch.draw_type = parsed.data.draw_type;
   if (parsed.data.note !== undefined) {
-    patch.note = parsed.data.note && parsed.data.note.length ? parsed.data.note : null;
+    patch.note = parsed.data.note?.length ? parsed.data.note : null;
   }
 
   const supabase = await createClient();

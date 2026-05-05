@@ -32,7 +32,7 @@ const counters = new Map<string, number>();
  */
 export function parseKeyEnv(rawList: string | undefined, fallback: string | undefined): ApiKey[] {
   const sources: string[] = [];
-  if (rawList && rawList.trim())
+  if (rawList?.trim())
     sources.push(
       ...rawList
         .split(',')

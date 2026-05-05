@@ -12,7 +12,7 @@
 import { createServiceClient } from '@/lib/supabase';
 
 const SENTRY_ORG = 'smart-fusion-marketing-inc-6r';
-const SENTRY_PROJECT = 'heyhenry';
+const _SENTRY_PROJECT = 'heyhenry';
 const SENTRY_REGION = 'https://de.sentry.io';
 
 export type SloStatus = 'ok' | 'warn' | 'breach' | 'no-data';

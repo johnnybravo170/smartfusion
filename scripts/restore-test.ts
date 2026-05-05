@@ -60,7 +60,7 @@ async function main() {
     sh(
       `pg_restore --clean --if-exists --no-owner --no-acl --dbname="${DRILL_DATABASE_URL}" "${dumpPath}"`,
     );
-  } catch (err) {
+  } catch (_err) {
     console.log('  (pg_restore reported errors — proceeding to verification)');
   }
 

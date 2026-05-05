@@ -88,9 +88,7 @@ export async function proxy(request: NextRequest) {
       .maybeSingle();
     const requestedNext = url.searchParams.get('next');
     const safeNext =
-      requestedNext && requestedNext.startsWith('/') && !requestedNext.startsWith('//')
-        ? requestedNext
-        : null;
+      requestedNext?.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : null;
     const dest = url.clone();
     dest.pathname = safeNext ?? (member?.role === 'worker' ? '/w' : '/dashboard');
     dest.search = '';

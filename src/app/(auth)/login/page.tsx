@@ -52,7 +52,7 @@ function LoginForm() {
     const password = String(form.get('password') ?? '');
 
     const next = searchParams.get('next') ?? undefined;
-    const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
+    const safeNext = next?.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
     startTransition(async () => {
       const result = await loginAction({ email, password, next });
       if (result && 'error' in result) {

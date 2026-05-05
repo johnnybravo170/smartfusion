@@ -137,6 +137,13 @@ export function SubQuoteForm({
       notes: a.notes ?? '',
     }));
   });
+  // Auto-mirror the total into the single allocation row until the
+  // operator signals split intent (edits the row amount directly, or
+  // adds a second row). Edit mode and AI-prefilled allocations start
+  // already-touched so we don't clobber existing splits.
+  const [allocationTouched, setAllocationTouched] = useState(
+    () => (initialValues?.allocations?.length ?? 0) > 0,
+  );
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [pendingRowKey, setPendingRowKey] = useState<string | null>(null);
 
@@ -161,27 +168,29 @@ export function SubQuoteForm({
     ? categories.find((b) => b.id === duplicateCategoryId)?.name
     : null;
 
-  // Sync the single-row allocation with the total when we have exactly
-  // one row that's still empty. Spares the operator from retyping
-  // "$288.14" in the allocation field after typing it as the total.
-  // Once they add a second split or manually edit the row, the row
-  // is no longer empty and this becomes a no-op. Reading rows via the
-  // setter callback keeps the dep list at [totalCents] only, so this
-  // doesn't refire on every keystroke inside the row.
+  // Sync the single-row allocation with the total until the operator
+  // signals split intent. Spares them from retyping "$288.14" in the
+  // allocation field, and keeps the row in sync if they correct the
+  // total later (typo, AI parse fix). Once they edit the row directly
+  // or add a second split, `allocationTouched` flips and this becomes
+  // a no-op.
   useEffect(() => {
+    if (allocationTouched) return;
     if (totalCents <= 0) return;
     setRows((prev) => {
       if (prev.length !== 1) return prev;
-      if (prev[0].amount_raw !== '' && toCents(prev[0].amount_raw) !== 0) return prev;
-      return [{ ...prev[0], amount_raw: (totalCents / 100).toFixed(2) }];
+      const next = (totalCents / 100).toFixed(2);
+      if (prev[0].amount_raw === next) return prev;
+      return [{ ...prev[0], amount_raw: next }];
     });
-  }, [totalCents]);
+  }, [totalCents, allocationTouched]);
 
   function updateRow(
     key: string,
     field: 'budget_category_id' | 'amount_raw' | 'notes',
     value: string,
   ) {
+    if (field === 'amount_raw') setAllocationTouched(true);
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
   }
 
@@ -190,6 +199,7 @@ export function SubQuoteForm({
   }
 
   function addRow() {
+    setAllocationTouched(true);
     // Auto-fill the new row with the unallocated remainder.
     const remainder = Math.max(0, diff);
     const row = newRow();
