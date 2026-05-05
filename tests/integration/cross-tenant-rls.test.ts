@@ -132,6 +132,29 @@ const RLS_TABLE_CASES: RlsCase[] = [
     }),
   },
   {
+    table: 'import_batches',
+    seed: async ({ admin, tenant, stamp }) => {
+      const { data, error } = await admin
+        .from('import_batches')
+        .insert({
+          tenant_id: tenant.tenantId,
+          kind: 'customers',
+          source_filename: `seed-${stamp}.csv`,
+          summary: { created: 0, merged: 0, skipped: 0 },
+        })
+        .select('id')
+        .single();
+      if (error || !data) throw new Error(error?.message ?? 'import_batches seed failed');
+      return data.id as string;
+    },
+    updatePayload: { note: 'cross-tenant tamper' },
+    insertAcrossTenants: ({ tenant, stamp }) => ({
+      tenant_id: tenant.tenantId,
+      kind: 'customers',
+      source_filename: `inject-${stamp}.csv`,
+    }),
+  },
+  {
     table: 'quotes',
     seed: async ({ tenant }) => tenant.quoteId,
     updatePayload: { notes: 'cross-tenant tamper' },

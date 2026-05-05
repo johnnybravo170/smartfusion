@@ -168,6 +168,19 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     primary: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
     fallback_chain: ['anthropic', 'openai'],
   },
+
+  // Day-1 onboarding showcase. The model takes whatever the contractor
+  // pasted/uploaded (Excel export, QBO CSV, plaintext list of names,
+  // even a screenshot) and emits a structured customer roster — name,
+  // email, phone, address parts, type, kind. Sonnet 4.6 is pinned: the
+  // wizard is the contractor's first impression of Henry, and a single
+  // sloppy parse undermines the entire product. Volume is low (one run
+  // per contractor onboarding) so the cost is irrelevant. No tier-climb
+  // secondary — quality wins.
+  onboarding_customer_classify: {
+    primary: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+    fallback_chain: ['anthropic', 'openai'],
+  },
 };
 
 export function lookupRoute(task: string, custom?: Record<string, RouteConfig>): RouteConfig {
