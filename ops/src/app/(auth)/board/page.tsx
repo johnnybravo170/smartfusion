@@ -22,12 +22,20 @@ export default async function BoardPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Board of Advisors</h1>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          A multi-agent strategic council. Convene a session, advisors debate, the chair (with your
-          operating imprint) decides. Synthesis lands here for review.
-        </p>
+      <header className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Board of Advisors</h1>
+          <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+            A multi-agent strategic council. Convene a session, advisors debate, the chair (with
+            your operating imprint) decides. Synthesis lands here for review.
+          </p>
+        </div>
+        <Link
+          href="/board/advisors"
+          className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm hover:border-[var(--foreground)]"
+        >
+          Records →
+        </Link>
       </header>
 
       <section>

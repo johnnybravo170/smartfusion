@@ -44,6 +44,14 @@ import {
   upsertPosition,
 } from './board';
 import { loadContextSnapshot, renderContextBlock } from './board-context';
+import { renderAdvisorTrackRecord, renderChairTrackRecord } from './board-track-record';
+
+// ── Track records (per-session bundle) ───────────────────────────────
+
+type TrackRecords = {
+  chair: string | null;
+  advisors: Map<string, string | null>;
+};
 
 // ── Posture (shared preamble) ─────────────────────────────────────────
 
@@ -83,17 +91,28 @@ export async function runDiscussion(session_id: string): Promise<void> {
     const contextBlock = renderContextBlock(snapshot);
     await updateSession(session_id, { context_snapshot: snapshot });
 
+    // Build track-record blocks (per-advisor + chair) once per session.
+    // Each is null if the advisor/chair has no prior sessions.
+    const [chairRecord, ...panelRecords] = await Promise.all([
+      renderChairTrackRecord(),
+      ...panel.map((a) => renderAdvisorTrackRecord(a.id)),
+    ]);
+    const trackRecords: TrackRecords = {
+      chair: chairRecord,
+      advisors: new Map(panel.map((a, i) => [a.id, panelRecords[i]])),
+    };
+
     // ─ Phase A: opening statements ─
-    await runPhaseA(session, panel, contextBlock);
+    await runPhaseA(session, panel, contextBlock, trackRecords);
 
     // ─ Phase B: crux extraction ─
-    const cruxes = await runPhaseB(session, chair, panel);
+    const cruxes = await runPhaseB(session, chair, panel, trackRecords);
 
     // ─ Phase C: resolution loop ─
-    await runPhaseC(session, chair, panel, cruxes, contextBlock);
+    await runPhaseC(session, chair, panel, cruxes, contextBlock, trackRecords);
 
     // ─ Phase D: final positions + synthesis ─
-    await runPhaseD(session, chair, panel, contextBlock);
+    await runPhaseD(session, chair, panel, contextBlock, trackRecords);
 
     await updateSession(session_id, {
       status: 'awaiting_review',
@@ -116,12 +135,13 @@ async function runPhaseA(
   session: BoardSession,
   panel: AdvisorWithKnowledge[],
   contextBlock: string,
+  records: TrackRecords,
 ): Promise<void> {
   await Promise.all(
     panel.map(async (advisor) => {
       if (await sessionOverBudget(session.id)) return;
 
-      const system = buildAdvisorSystem(advisor, contextBlock);
+      const system = buildAdvisorSystem(advisor, contextBlock, records.advisors.get(advisor.id));
       const user = `## Discussion Topic\n${session.topic}\n\nGive your initial analysis. Be specific, cite reasoning, give actionable advice. End with a clear one-sentence recommendation. 200-400 words.`;
 
       const choice = pickModel('advisor_opening', overridesFor(session));
@@ -161,6 +181,7 @@ async function runPhaseB(
   session: BoardSession,
   chair: AdvisorWithKnowledge,
   panel: AdvisorWithKnowledge[],
+  records: TrackRecords,
 ): Promise<Array<{ id: string; label: string }>> {
   const messages = await listMessages(session.id);
   const openings = messages.filter((m) => m.turn_kind === 'opening');
@@ -185,6 +206,7 @@ async function runPhaseB(
       `- 'advisors' must be advisor UUIDs from the index below.`,
       `- 'consensus' = points everyone agreed on (these get noted and skipped).`,
     ].join('\n\n'),
+    records.chair,
   );
 
   const user = `## Topic\n${session.topic}\n\n## Advisor index\n${advisorIndex}\n\n## Opening statements\n${transcript}\n\nReturn JSON.`;
@@ -250,6 +272,7 @@ async function runPhaseC(
   panel: AdvisorWithKnowledge[],
   initialCruxes: Array<{ id: string; label: string }>,
   contextBlock: string,
+  records: TrackRecords,
 ): Promise<void> {
   if (initialCruxes.length === 0) return;
 
@@ -263,7 +286,14 @@ async function runPhaseC(
     const open = cruxes.filter((c) => c.status === 'open');
     if (open.length === 0) break;
 
-    const action = await chairPickAction(session, chair, panel, contextBlock, exchangesPerCrux);
+    const action = await chairPickAction(
+      session,
+      chair,
+      panel,
+      contextBlock,
+      exchangesPerCrux,
+      records,
+    );
 
     await addMessage({
       session_id: session.id,
@@ -295,12 +325,12 @@ async function runPhaseC(
     // Execute the action
     if (action.action === 'exchange') {
       exchangesPerCrux.set(action.crux_id, (exchangesPerCrux.get(action.crux_id) ?? 0) + 1);
-      await runExchange(session, panel, action, contextBlock);
+      await runExchange(session, panel, action, contextBlock, records);
     } else if (action.action === 'challenge') {
       exchangesPerCrux.set(action.crux_id, (exchangesPerCrux.get(action.crux_id) ?? 0) + 1);
-      await runChallenge(session, panel, action, contextBlock);
+      await runChallenge(session, panel, action, contextBlock, records);
     } else if (action.action === 'poll') {
-      await runPoll(session, panel, action, contextBlock);
+      await runPoll(session, panel, action, contextBlock, records);
     } else if (action.action === 'next_crux') {
       await updateCrux(action.crux_id, {
         status: action.crux_status,
@@ -329,6 +359,7 @@ async function chairPickAction(
   panel: AdvisorWithKnowledge[],
   contextBlock: string,
   exchangesPerCrux: Map<string, number>,
+  records: TrackRecords,
 ): Promise<ChairAction> {
   const messages = await listMessages(session.id);
   const cruxes = await listCruxes(session.id);
@@ -370,6 +401,7 @@ async function chairPickAction(
       `\nAdvisor track records (your prior decisions): use them as signal, not gospel. Past credit doesn't guarantee this answer is right.`,
       contextBlock,
     ].join('\n\n'),
+    records.chair,
   );
 
   const user = `## Topic\n${session.topic}\n\n## Advisor index\n${advisorIndex}\n\n## Open cruxes\n${cruxIndex || '(none — close)'}\n\n## Closed cruxes\n${closedIndex}\n\n## Transcript so far\n${transcript || '(empty)'}${budgetWarning}\n\nReturn JSON for your next action.`;
@@ -392,6 +424,7 @@ async function runExchange(
   panel: AdvisorWithKnowledge[],
   action: Extract<ChairAction, { action: 'exchange' }>,
   contextBlock: string,
+  records: TrackRecords,
 ): Promise<void> {
   const a = panel.find((x) => x.id === action.advisor_a);
   const b = panel.find((x) => x.id === action.advisor_b);
@@ -406,6 +439,7 @@ async function runExchange(
     'exchange',
     action.crux_id,
     b.id,
+    records,
   );
   const aMsg = await persistAdvisorMessage(session, a, action.crux_id, 'exchange', b.id, aRes);
 
@@ -419,6 +453,7 @@ async function runExchange(
     'exchange',
     action.crux_id,
     a.id,
+    records,
   );
   await persistAdvisorMessage(session, b, action.crux_id, 'exchange', a.id, bRes);
 }
@@ -428,6 +463,7 @@ async function runChallenge(
   panel: AdvisorWithKnowledge[],
   action: Extract<ChairAction, { action: 'challenge' }>,
   contextBlock: string,
+  records: TrackRecords,
 ): Promise<void> {
   const challenger = panel.find((x) => x.id === action.challenger_id);
   const target = panel.find((x) => x.id === action.target_id);
@@ -449,6 +485,7 @@ async function runChallenge(
     'challenge',
     action.crux_id,
     target.id,
+    records,
   );
   await persistAdvisorMessage(session, challenger, action.crux_id, 'challenge', target.id, res);
 }
@@ -458,6 +495,7 @@ async function runPoll(
   panel: AdvisorWithKnowledge[],
   action: Extract<ChairAction, { action: 'poll' }>,
   contextBlock: string,
+  records: TrackRecords,
 ): Promise<void> {
   await Promise.all(
     panel.map(async (advisor) => {
@@ -471,6 +509,7 @@ async function runPoll(
         'poll',
         action.crux_id,
         null,
+        records,
       );
       await persistAdvisorMessage(session, advisor, action.crux_id, 'poll', null, res);
     }),
@@ -484,6 +523,7 @@ async function runPhaseD(
   chair: AdvisorWithKnowledge,
   panel: AdvisorWithKnowledge[],
   contextBlock: string,
+  records: TrackRecords,
 ): Promise<void> {
   const cruxes = await listCruxes(session.id);
   const cruxIndex = cruxes.map((c) => `- ${c.id} = ${c.label} [${c.status}]`).join('\n');
@@ -497,7 +537,7 @@ async function runPhaseD(
       const ownMessages = messages.filter((m) => m.advisor_id === advisor.id);
       const opening = ownMessages.find((m) => m.turn_kind === 'opening');
 
-      const system = buildAdvisorSystem(advisor, contextBlock);
+      const system = buildAdvisorSystem(advisor, contextBlock, records.advisors.get(advisor.id));
       const user = `## Discussion Topic\n${session.topic}\n\n## Cruxes\n${cruxIndex || '(none)'}\n\n## Full transcript\n${transcript}\n\n## Your opening statement\n${opening?.content ?? '(missing)'}\n\nProduce your FINAL POSITION as JSON ONLY:\n${JSON.stringify(
         {
           overall: { stance: 'string', confidence: 1, rationale: 'string' },
@@ -607,6 +647,7 @@ async function runPhaseD(
       `- feedback_loop_check is MANDATORY. The whole point.`,
       `- If you go against the advisor consensus, set chair_overrode_majority=true and write chair_disagreement_note.`,
     ].join('\n\n'),
+    records.chair,
   );
 
   const advisorList = panel.map((a) => `- ${a.id} = ${a.emoji} ${a.name} (${a.title})`).join('\n');
@@ -688,6 +729,7 @@ async function runPhaseD(
 function buildAdvisorSystem(
   advisor: AdvisorWithKnowledge,
   contextBlock: string,
+  trackRecord?: string | null,
 ): Array<{ text: string; cache?: boolean }> {
   return [
     { text: POSTURE_BLOCK },
@@ -698,12 +740,15 @@ function buildAdvisorSystem(
       ? [{ text: `## Skill\n${advisor.knowledge_body}`, cache: true }]
       : []),
     { text: contextBlock, cache: true },
+    // Track-record block changes between sessions, so don't cache it.
+    ...(trackRecord ? [{ text: trackRecord }] : []),
   ];
 }
 
 function buildChairSystem(
   chair: AdvisorWithKnowledge,
   instruction: string,
+  trackRecord?: string | null,
 ): Array<{ text: string; cache?: boolean }> {
   return [
     { text: POSTURE_BLOCK },
@@ -714,6 +759,7 @@ function buildChairSystem(
     ...(chair.knowledge_body
       ? [{ text: `## Operating Imprint\n${chair.knowledge_body}`, cache: true }]
       : []),
+    ...(trackRecord ? [{ text: trackRecord }] : []),
     { text: instruction },
   ];
 }
@@ -726,6 +772,7 @@ async function callAdvisorPrompt(
   kind: 'exchange' | 'challenge' | 'poll',
   _cruxId: string,
   _addressedTo: string | null,
+  records: TrackRecords,
 ) {
   const callKind: BoardCallKind =
     kind === 'exchange'
@@ -735,7 +782,7 @@ async function callAdvisorPrompt(
         : 'advisor_opening';
   const choice = pickModel(callKind, overridesFor(session));
   const res = await callLlm(choice, {
-    system: buildAdvisorSystem(advisor, contextBlock),
+    system: buildAdvisorSystem(advisor, contextBlock, records.advisors.get(advisor.id)),
     messages: [{ role: 'user', content: userPrompt }],
     temperature: 0.7,
     max_tokens: ADVISOR_EXCHANGE_MAX_TOKENS,

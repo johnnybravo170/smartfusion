@@ -332,4 +332,156 @@ export function registerBoardTools(server: McpServer) {
       }
     },
   );
+
+  server.tool(
+    'board_leaderboard',
+    "Cumulative performance records for every advisor across all sessions. Returns sessions, positions taken, credited/overruled counts and rates, concession rate, avg per-message rating from Jonathan, and outcome attribution (proven_right_credit, proven_wrong_credit, overruled_but_right). Role-aware: a high overrule rate is EXPECTED for the Devil's Advocate.",
+    {},
+    async () => {
+      try {
+        const data = await opsRequest<{
+          leaderboard: Array<{
+            slug: string;
+            name: string;
+            emoji: string;
+            role_kind: 'expert' | 'challenger' | 'chair';
+            sessions: number;
+            positions_taken: number;
+            credited: number;
+            overruled: number;
+            concessions: number;
+            credit_rate: number | null;
+            overrule_rate: number | null;
+            avg_human_rating: number | null;
+            proven_right_credit: number;
+            proven_wrong_credit: number;
+            overruled_but_right: number;
+          }>;
+        }>('GET', '/api/ops/board/leaderboard');
+        if (data.leaderboard.length === 0) return textResult('No advisor data yet.');
+
+        let out = `Leaderboard (${data.leaderboard.length} advisors):\n\n`;
+        for (const r of data.leaderboard) {
+          out += `${r.emoji} ${r.name} [${r.role_kind}]\n`;
+          out += `  ${r.sessions} sessions, ${r.positions_taken} positions\n`;
+          out += `  credited ${r.credited}${r.credit_rate !== null ? ` (${r.credit_rate}%)` : ''} · overruled ${r.overruled}${r.overrule_rate !== null ? ` (${r.overrule_rate}%)` : ''} · conceded ${r.concessions}\n`;
+          if (r.avg_human_rating !== null) out += `  avg rating ${r.avg_human_rating}/5\n`;
+          if (r.proven_right_credit + r.proven_wrong_credit + r.overruled_but_right > 0) {
+            out += `  outcomes: ✓${r.proven_right_credit} proven-right, ✗${r.proven_wrong_credit} proven-wrong`;
+            if (r.overruled_but_right > 0) out += `, !${r.overruled_but_right} overruled-but-right`;
+            out += '\n';
+          }
+          out += '\n';
+        }
+        return textResult(out.trim());
+      } catch (err) {
+        return errorResult(describeError(err));
+      }
+    },
+  );
+
+  server.tool(
+    'board_advisor_stats',
+    'Detailed record for one advisor: stats + recent positions + decisions where credited/overruled + recent rated messages with notes. Use the slug or UUID. Useful when deciding which advisor to retire, sharpen, or weight differently.',
+    {
+      advisor_id: z.string().uuid().describe('The advisor UUID (from board_advisors_list)'),
+    },
+    async ({ advisor_id }) => {
+      try {
+        const data = await opsRequest<{
+          advisor: { slug: string; name: string; emoji: string; role_kind: string; title: string };
+          stat: {
+            sessions: number;
+            positions_taken: number;
+            credited: number;
+            overruled: number;
+            concessions: number;
+            avg_human_rating: number | null;
+            proven_right_credit: number;
+            proven_wrong_credit: number;
+            overruled_but_right: number;
+          } | null;
+          positions: Array<{
+            session_title: string;
+            crux_label: string | null;
+            stance: string;
+            confidence: number;
+            shifted_from_opening: boolean;
+            session_created_at: string;
+          }>;
+          rated_messages: Array<{
+            session_title: string;
+            turn_kind: string;
+            content_preview: string;
+            advisor_rating: number;
+            review_note: string | null;
+          }>;
+          decisions: Array<{
+            session_title: string;
+            decision_text: string;
+            link_kind: 'credited' | 'overruled';
+            outcome: string;
+            overrule_reason: string | null;
+          }>;
+        }>('GET', `/api/ops/board/advisors/${advisor_id}/stats`);
+
+        const a = data.advisor;
+        const s = data.stat;
+        let out = `${a.emoji} ${a.name} [${a.role_kind}] — ${a.title}\n\n`;
+
+        if (s) {
+          out += `## Numbers\n`;
+          out += `${s.sessions} sessions · ${s.positions_taken} positions · credited ${s.credited} · overruled ${s.overruled} · conceded ${s.concessions}\n`;
+          if (s.avg_human_rating !== null) out += `Avg rating ${s.avg_human_rating}/5\n`;
+          if (s.proven_right_credit + s.proven_wrong_credit + s.overruled_but_right > 0) {
+            out += `Outcomes: ✓${s.proven_right_credit} proven-right, ✗${s.proven_wrong_credit} proven-wrong`;
+            if (s.overruled_but_right > 0) out += `, !${s.overruled_but_right} overruled-but-right`;
+            out += '\n';
+          }
+          out += '\n';
+        }
+
+        if (data.positions.length > 0) {
+          out += `## Recent positions (${data.positions.length})\n`;
+          for (const p of data.positions.slice(0, 10)) {
+            const shifted = p.shifted_from_opening ? ' (shifted)' : '';
+            const crux = p.crux_label ? ` [${p.crux_label}]` : '';
+            out += `- ${p.session_title}${crux}: ${p.stance} (${p.confidence}/5${shifted})\n`;
+          }
+          out += '\n';
+        }
+
+        if (data.decisions.length > 0) {
+          const credited = data.decisions.filter((d) => d.link_kind === 'credited');
+          const overruled = data.decisions.filter((d) => d.link_kind === 'overruled');
+          if (credited.length > 0) {
+            out += `## Credited (${credited.length})\n`;
+            for (const d of credited.slice(0, 8))
+              out += `- ${d.session_title}: ${d.decision_text.slice(0, 160)}${d.decision_text.length > 160 ? '…' : ''}\n`;
+            out += '\n';
+          }
+          if (overruled.length > 0) {
+            out += `## Overruled (${overruled.length})\n`;
+            for (const d of overruled.slice(0, 8)) {
+              out += `- ${d.session_title}: ${d.decision_text.slice(0, 160)}${d.decision_text.length > 160 ? '…' : ''}\n`;
+              if (d.overrule_reason) out += `  Chair: "${d.overrule_reason}"\n`;
+            }
+            out += '\n';
+          }
+        }
+
+        if (data.rated_messages.length > 0) {
+          out += `## Recent rated messages (${data.rated_messages.length})\n`;
+          for (const m of data.rated_messages.slice(0, 8)) {
+            out += `- [${m.advisor_rating}/5] ${m.session_title} (${m.turn_kind}): ${m.content_preview.slice(0, 200)}${m.content_preview.length > 200 ? '…' : ''}\n`;
+            if (m.review_note) out += `  Note: "${m.review_note}"\n`;
+          }
+        }
+
+        return textResult(out);
+      } catch (err) {
+        return errorResult(describeError(err));
+      }
+    },
+  );
 }

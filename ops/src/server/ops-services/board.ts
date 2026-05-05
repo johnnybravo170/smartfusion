@@ -407,6 +407,206 @@ export async function listAdvisorStats(): Promise<AdvisorStatRow[]> {
   return (data ?? []) as AdvisorStatRow[];
 }
 
+export async function getAdvisorStat(advisor_id: string): Promise<AdvisorStatRow | null> {
+  const { data, error } = await svc()
+    .schema('ops')
+    .from('advisor_stats')
+    .select('*')
+    .eq('advisor_id', advisor_id)
+    .maybeSingle();
+  if (error) throw new Error(`getAdvisorStat: ${error.message}`);
+  return (data ?? null) as AdvisorStatRow | null;
+}
+
+// ── Per-advisor history (for records page + track-record block) ────────
+
+export type AdvisorPositionWithSession = BoardPosition & {
+  session_title: string;
+  session_status: string;
+  session_created_at: string;
+  crux_label: string | null;
+};
+
+export async function listRecentPositionsForAdvisor(
+  advisor_id: string,
+  limit = 30,
+): Promise<AdvisorPositionWithSession[]> {
+  const { data, error } = await svc()
+    .schema('ops')
+    .from('board_positions')
+    .select(
+      'id, session_id, advisor_id, crux_id, stance, confidence, rationale, shifted_from_opening, emitted_at, board_sessions:session_id(title, status, created_at), board_cruxes:crux_id(label)',
+    )
+    .eq('advisor_id', advisor_id)
+    .order('emitted_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`listRecentPositionsForAdvisor: ${error.message}`);
+  type Row = BoardPosition & {
+    board_sessions:
+      | { title: string; status: string; created_at: string }
+      | { title: string; status: string; created_at: string }[]
+      | null;
+    board_cruxes: { label: string } | { label: string }[] | null;
+  };
+  return ((data ?? []) as Row[]).map((r) => {
+    const s = Array.isArray(r.board_sessions) ? r.board_sessions[0] : r.board_sessions;
+    const c = Array.isArray(r.board_cruxes) ? r.board_cruxes[0] : r.board_cruxes;
+    return {
+      id: r.id,
+      session_id: r.session_id,
+      advisor_id: r.advisor_id,
+      crux_id: r.crux_id,
+      stance: r.stance,
+      confidence: r.confidence,
+      rationale: r.rationale,
+      shifted_from_opening: r.shifted_from_opening,
+      emitted_at: r.emitted_at,
+      session_title: s?.title ?? '(unknown)',
+      session_status: s?.status ?? 'unknown',
+      session_created_at: s?.created_at ?? '',
+      crux_label: c?.label ?? null,
+    };
+  });
+}
+
+export type AdvisorRatedMessage = {
+  message_id: string;
+  session_id: string;
+  session_title: string;
+  turn_kind: string;
+  content_preview: string;
+  advisor_rating: number;
+  review_note: string | null;
+  created_at: string;
+};
+
+export async function listRatedMessagesForAdvisor(
+  advisor_id: string,
+  opts: { limit?: number; minRating?: number; maxRating?: number } = {},
+): Promise<AdvisorRatedMessage[]> {
+  const limit = opts.limit ?? 20;
+  let q = svc()
+    .schema('ops')
+    .from('board_messages')
+    .select(
+      'id, session_id, turn_kind, content, advisor_rating, review_note, created_at, board_sessions:session_id(title)',
+    )
+    .eq('advisor_id', advisor_id)
+    .not('advisor_rating', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (opts.minRating !== undefined) q = q.gte('advisor_rating', opts.minRating);
+  if (opts.maxRating !== undefined) q = q.lte('advisor_rating', opts.maxRating);
+  const { data, error } = await q;
+  if (error) throw new Error(`listRatedMessagesForAdvisor: ${error.message}`);
+  type Row = {
+    id: string;
+    session_id: string;
+    turn_kind: string;
+    content: string;
+    advisor_rating: number;
+    review_note: string | null;
+    created_at: string;
+    board_sessions: { title: string } | { title: string }[] | null;
+  };
+  return ((data ?? []) as Row[]).map((r) => {
+    const s = Array.isArray(r.board_sessions) ? r.board_sessions[0] : r.board_sessions;
+    return {
+      message_id: r.id,
+      session_id: r.session_id,
+      session_title: s?.title ?? '(unknown)',
+      turn_kind: r.turn_kind,
+      content_preview: r.content.length > 280 ? `${r.content.slice(0, 280)}…` : r.content,
+      advisor_rating: r.advisor_rating,
+      review_note: r.review_note,
+      created_at: r.created_at,
+    };
+  });
+}
+
+export type AdvisorDecisionLink = {
+  decision_id: string;
+  session_id: string;
+  session_title: string;
+  decision_text: string;
+  status: BoardDecision['status'];
+  outcome: BoardDecision['outcome'];
+  created_at: string;
+  /** 'credited' or 'overruled' relative to the advisor in question. */
+  link_kind: 'credited' | 'overruled';
+  overrule_reason: string | null;
+};
+
+export async function listDecisionsForAdvisor(
+  advisor_id: string,
+  opts: { limit?: number; kind?: 'credited' | 'overruled' | 'both' } = {},
+): Promise<AdvisorDecisionLink[]> {
+  const kind = opts.kind ?? 'both';
+  const limit = opts.limit ?? 30;
+  // Supabase REST filter `cs` (contains) takes a Postgres array literal.
+  const arr = `{${advisor_id}}`;
+  const cols =
+    'id, session_id, decision_text, status, outcome, created_at, credited_advisor_ids, overruled_advisor_ids, overrule_reasons, board_sessions:session_id(title)';
+
+  type Row = {
+    id: string;
+    session_id: string;
+    decision_text: string;
+    status: BoardDecision['status'];
+    outcome: BoardDecision['outcome'];
+    created_at: string;
+    credited_advisor_ids: string[];
+    overruled_advisor_ids: string[];
+    overrule_reasons: Record<string, string>;
+    board_sessions: { title: string } | { title: string }[] | null;
+  };
+
+  async function run(field: 'credited_advisor_ids' | 'overruled_advisor_ids'): Promise<Row[]> {
+    const { data, error } = await svc()
+      .schema('ops')
+      .from('board_decisions')
+      .select(cols)
+      .filter(field, 'cs', arr)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(`listDecisionsForAdvisor (${field}): ${error.message}`);
+    return (data ?? []) as Row[];
+  }
+
+  const tasks: Array<Promise<Row[]>> = [];
+  if (kind === 'credited' || kind === 'both') tasks.push(run('credited_advisor_ids'));
+  if (kind === 'overruled' || kind === 'both') tasks.push(run('overruled_advisor_ids'));
+  const results = await Promise.all(tasks);
+
+  const seen = new Set<string>();
+  const out: AdvisorDecisionLink[] = [];
+  for (const rows of results) {
+    for (const d of rows) {
+      const linkKind: 'credited' | 'overruled' = d.credited_advisor_ids.includes(advisor_id)
+        ? 'credited'
+        : 'overruled';
+      const dedupKey = `${d.id}:${linkKind}`;
+      if (seen.has(dedupKey)) continue;
+      seen.add(dedupKey);
+      const s = Array.isArray(d.board_sessions) ? d.board_sessions[0] : d.board_sessions;
+      out.push({
+        decision_id: d.id,
+        session_id: d.session_id,
+        session_title: s?.title ?? '(unknown)',
+        decision_text: d.decision_text,
+        status: d.status,
+        outcome: d.outcome,
+        created_at: d.created_at,
+        link_kind: linkKind,
+        overrule_reason:
+          linkKind === 'overruled' ? (d.overrule_reasons?.[advisor_id] ?? null) : null,
+      });
+    }
+  }
+  out.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return out.slice(0, limit);
+}
+
 // ── Action items helper (used by review flow) ──────────────────────────
 
 export function effectiveActionItems(d: BoardDecision): ActionItem[] {
