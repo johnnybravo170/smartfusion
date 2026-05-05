@@ -49,9 +49,12 @@ import {
 import { CostLineForm } from './cost-line-form';
 
 /**
- * Renders an amount with the currency symbol muted so the digits read
- * first. Use throughout the budget table — the symbol is redundant in
- * a column where every cell is the same currency.
+ * Renders an amount with:
+ *   - currency symbol muted (it's redundant in a $-only column);
+ *   - cents rendered smaller + dimmer, like a superscript;
+ *   - whole-dollar amounts padded with an invisible `.00` of the same
+ *     width so the integer's right edge aligns across the column —
+ *     no more "$4,190" and "$2,574.50" drifting in the same column.
  */
 function Money({
   cents,
@@ -63,14 +66,23 @@ function Money({
   emphasis?: boolean;
 }) {
   const text = formatCurrencyCompact(cents);
-  // Split leading symbol(s) (e.g. `$`, `CA$`) from the digits.
-  const m = text.match(/^([^\d-]+)?(-?[\d,.]+)$/);
+  // Pull symbol, integer, fraction out separately so we can style and
+  // align them independently.
+  const m = text.match(/^([^\d-]+)?(-?[\d,]+)(\.\d+)?$/);
   const symbol = m?.[1] ?? '';
-  const number = m?.[2] ?? text;
+  const integer = m?.[2] ?? text;
+  const fraction = m?.[3] ?? null;
   return (
-    <span className={cn('tabular-nums', emphasis && 'font-medium', className)}>
+    <span className={cn('whitespace-nowrap tabular-nums', emphasis && 'font-medium', className)}>
       <span className="text-muted-foreground/60">{symbol}</span>
-      {number}
+      {integer}
+      {fraction ? (
+        <span className="text-[0.7em] text-muted-foreground/70">{fraction}</span>
+      ) : (
+        <span aria-hidden className="invisible text-[0.7em]">
+          .00
+        </span>
+      )}
     </span>
   );
 }
