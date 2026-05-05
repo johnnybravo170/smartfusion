@@ -8,7 +8,7 @@
  * from categories" button that seeds cost lines from category estimates.
  */
 
-import { ChevronDown, ChevronRight, ChevronUp, Pencil } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
@@ -968,24 +968,25 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                 // table-level min-w keeps the collapsed table tidy and lets
                 // only this sub-table scroll horizontally when expanded.
                 <div className="overflow-x-auto rounded-md border bg-background">
-                  <table className="w-full min-w-[640px] table-fixed text-xs">
+                  {/* Cost column dropped — internal authoring info, only */}
+                  {/* relevant when editing a line (visible in CostLineForm). */}
+                  {/* Operators reading the budget see Price + Total which */}
+                  {/* are the customer-facing numbers. */}
+                  <table className="w-full min-w-[520px] table-fixed text-xs">
                     <colgroup>
                       <col />
                       <col className="w-12" />
                       <col className="w-14" />
                       <col className="w-20" />
-                      <col className="w-20" />
                       <col className="w-24" />
-                      {/* Actions: Edit + Delete at size="xs" need ~110px */}
-                      {/* + gap. w-24 was overflowing into the Total col. */}
-                      <col className="w-32" />
+                      {/* Actions: Pencil + Trash icons, ~64px + gap. */}
+                      <col className="w-20" />
                     </colgroup>
                     <thead>
                       <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
                         <th className="px-2 py-1.5 text-left font-medium">Label</th>
                         <th className="px-2 py-1.5 text-right font-medium">Qty</th>
                         <th className="px-2 py-1.5 text-left font-medium">Unit</th>
-                        <th className="px-2 py-1.5 text-right font-medium">Cost</th>
                         <th className="px-2 py-1.5 text-right font-medium">Price</th>
                         <th className="px-2 py-1.5 text-right font-medium">Total</th>
                         <th className="px-2 py-1.5" />
@@ -1038,45 +1039,41 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                               <td className="px-2 py-1.5 align-top text-muted-foreground">
                                 {cl.unit}
                               </td>
-                              <td className="px-2 py-1.5 text-right align-top tabular-nums text-muted-foreground">
-                                {formatCurrencyCompact(cl.unit_cost_cents)}
-                              </td>
                               <td className="px-2 py-1.5 text-right align-top tabular-nums">
                                 {formatCurrencyCompact(cl.unit_price_cents)}
                               </td>
                               <td className="px-2 py-1.5 text-right align-top font-medium tabular-nums">
                                 {formatCurrencyCompact(cl.line_price_cents)}
                               </td>
-                              {/* Plain text-link buttons (not Button size="xs") */}
-                              {/* so the baseline lines up with the numeric */}
-                              {/* cells in the same row. xs Button adds */}
-                              {/* height + padding that visibly drifts off */}
-                              {/* the text baseline of $X,XXX cells. */}
-                              <td className="px-2 py-1.5 text-right align-top tabular-nums">
-                                <div className="inline-flex items-center gap-3">
+                              <td className="px-2 py-1.5 align-top">
+                                <div className="flex items-center justify-end gap-1">
                                   <button
                                     type="button"
                                     onClick={() => {
                                       setEditingLine(cl);
                                       setAddingLineFor(null);
                                     }}
-                                    className="hover:underline"
+                                    aria-label={`Edit ${cl.label}`}
+                                    title="Edit line"
+                                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                                   >
-                                    Edit
+                                    <Pencil className="size-3.5" />
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => deleteLine(cl.id)}
-                                    className="text-destructive hover:underline"
+                                    aria-label={`Delete ${cl.label}`}
+                                    title="Delete line"
+                                    className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                                   >
-                                    Delete
+                                    <Trash2 className="size-3.5" />
                                   </button>
                                 </div>
                               </td>
                             </tr>
                             {isLineExpanded ? (
                               <tr>
-                                <td colSpan={7} className="bg-muted/30 px-3 py-2">
+                                <td colSpan={6} className="bg-muted/30 px-3 py-2">
                                   <CostLineActualsInline
                                     projectId={projectId}
                                     costLineId={cl.id}
