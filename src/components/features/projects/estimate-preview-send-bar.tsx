@@ -232,7 +232,11 @@ export function EstimatePreviewSendBar({
             /* ── Email known: normal confirm ── */
             <AlertDialogContent
               onKeyDown={(e) => {
+                // Enter-to-send shortcut, but bail when focus is in the
+                // Textarea — newlines belong to the message.
                 if (e.key === 'Enter' && !pending) {
+                  const tag = (e.target as HTMLElement).tagName;
+                  if (tag === 'TEXTAREA') return;
                   e.preventDefault();
                   handleSend();
                 }
