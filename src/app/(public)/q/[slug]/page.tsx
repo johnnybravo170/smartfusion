@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { PublicQuoteForm } from '@/components/features/lead-gen/public-quote-form';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -90,6 +91,7 @@ export default async function PublicQuotePage({ params }: Props) {
         tenantId={tenant.id as string}
         businessName={tenant.name as string}
         catalog={catalogEntries}
+        taxRate={(await canadianTax.getContext(tenant.id as string)).totalRate}
       />
     </div>
   );

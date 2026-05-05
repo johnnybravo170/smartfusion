@@ -40,17 +40,23 @@ import { submitLeadAction } from '@/server/actions/lead-gen';
 import { LeadCaptureForm } from './lead-capture-form';
 import { LeadConfirmation } from './lead-confirmation';
 
-const TAX_RATE = 0.05;
-
 type PublicQuoteFormProps = {
   tenantId: string;
   businessName: string;
   catalog: CatalogEntryRow[];
+  /** Combined tax rate for live preview (e.g. 0.05 AB GST, 0.13 ON HST).
+   *  Server recomputes authoritatively at submission. */
+  taxRate: number;
 };
 
 type Step = 'surfaces' | 'contact' | 'done';
 
-export function PublicQuoteForm({ tenantId, businessName, catalog }: PublicQuoteFormProps) {
+export function PublicQuoteForm({
+  tenantId,
+  businessName,
+  catalog,
+  taxRate,
+}: PublicQuoteFormProps) {
   const [step, setStep] = useState<Step>('surfaces');
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +67,7 @@ export function PublicQuoteForm({ tenantId, businessName, catalog }: PublicQuote
   const [manualType, setManualType] = useState(catalog[0]?.surface_type ?? '');
   const [manualSqft, setManualSqft] = useState('');
 
-  const totals = useMemo(() => calculateQuoteTotal(surfaces, TAX_RATE), [surfaces]);
+  const totals = useMemo(() => calculateQuoteTotal(surfaces, taxRate), [surfaces, taxRate]);
 
   const handleSurfaceAdd = useCallback(
     (surface: {
@@ -305,6 +311,7 @@ export function PublicQuoteForm({ tenantId, businessName, catalog }: PublicQuote
         subtotalCents={totals.subtotal_cents}
         taxCents={totals.tax_cents}
         totalCents={totals.total_cents}
+        taxRate={taxRate}
         onRemove={handleSurfaceRemove}
         showPricing={false}
       />

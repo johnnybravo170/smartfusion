@@ -16,10 +16,9 @@ import {
   calculateSurfacePrice,
   formatCurrency,
 } from '@/lib/pricing/calculator';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { leadSubmitSchema } from '@/lib/validators/lead';
-
-const TAX_RATE = 0.05; // 5% GST
 
 export async function submitLeadAction(input: {
   tenantId: string;
@@ -86,7 +85,10 @@ export async function submitLeadAction(input: {
     return { ...s, price_cents };
   });
 
-  const totals = calculateQuoteTotal(pricedSurfaces, TAX_RATE);
+  // Per-tenant rate (HST tenants get 13%/15%). Lead's customer doesn't
+  // exist yet, so no tax-exempt branching here.
+  const taxCtx = await canadianTax.getContext(tenant.id);
+  const totals = calculateQuoteTotal(pricedSurfaces, taxCtx.totalRate);
 
   // 4. Create customer in the operator's tenant.
   const { data: customer, error: custErr } = await admin

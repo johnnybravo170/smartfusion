@@ -20,6 +20,7 @@ import {
   calculateSurfacePrice,
   formatCurrency,
 } from '@/lib/pricing/calculator';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { emptyToNull, quoteCreateSchema, quoteUpdateSchema } from '@/lib/validators/quote';
@@ -49,7 +50,22 @@ export type QuoteActionResult =
   | { ok: true; id: string; warning?: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
-const TAX_RATE = 0.05; // 5% GST
+/**
+ * Resolve the GST rate to apply to a quote: per-tenant rate from the tax
+ * provider (so HST tenants get 13%/15%), zeroed when the customer is
+ * tax-exempt.
+ */
+async function resolveQuoteTaxRate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  customerId: string,
+): Promise<number> {
+  const [{ data: cust }, taxCtx] = await Promise.all([
+    supabase.from('customers').select('tax_exempt').eq('id', customerId).maybeSingle(),
+    canadianTax.getContext(tenantId),
+  ]);
+  return cust?.tax_exempt ? 0 : taxCtx.totalRate;
+}
 
 export async function createQuoteAction(input: unknown): Promise<QuoteActionResult> {
   const parsed = quoteCreateSchema.safeParse(input);
@@ -90,7 +106,8 @@ export async function createQuoteAction(input: unknown): Promise<QuoteActionResu
     return { ...s, price_cents };
   });
 
-  const totals = calculateQuoteTotal(pricedSurfaces, TAX_RATE);
+  const taxRate = await resolveQuoteTaxRate(supabase, tenant.id, parsed.data.customer_id);
+  const totals = calculateQuoteTotal(pricedSurfaces, taxRate);
 
   // Insert quote.
   const { data: quoteData, error: quoteErr } = await supabase
@@ -159,6 +176,11 @@ export async function updateQuoteAction(input: unknown): Promise<QuoteActionResu
     };
   }
 
+  const tenant = await getCurrentTenant();
+  if (!tenant) {
+    return { ok: false, error: 'Not signed in or missing tenant.' };
+  }
+
   const supabase = await createClient();
 
   // Load catalog for server-side pricing.
@@ -178,7 +200,8 @@ export async function updateQuoteAction(input: unknown): Promise<QuoteActionResu
     return { ...s, price_cents };
   });
 
-  const totals = calculateQuoteTotal(pricedSurfaces, TAX_RATE);
+  const taxRate = await resolveQuoteTaxRate(supabase, tenant.id, parsed.data.customer_id);
+  const totals = calculateQuoteTotal(pricedSurfaces, taxRate);
 
   // Update quote row.
   const { error: quoteErr } = await supabase

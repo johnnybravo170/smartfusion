@@ -2,9 +2,11 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { QuoteForm } from '@/components/features/quotes/quote-form';
+import { requireTenant } from '@/lib/auth/helpers';
 import { listCustomers } from '@/lib/db/queries/customers';
 import { getQuote } from '@/lib/db/queries/quotes';
 import { listCatalogEntries } from '@/lib/db/queries/service-catalog';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { updateQuoteAction } from '@/server/actions/quotes';
 
 export const metadata = {
@@ -14,10 +16,12 @@ export const metadata = {
 export default async function EditQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const [quote, customers, catalog] = await Promise.all([
+  const { tenant } = await requireTenant();
+  const [quote, customers, catalog, taxCtx] = await Promise.all([
     getQuote(id),
     listCustomers({ limit: 500 }),
     listCatalogEntries(),
+    canadianTax.getContext(tenant.id),
   ]);
 
   if (!quote) notFound();
@@ -43,6 +47,7 @@ export default async function EditQuotePage({ params }: { params: Promise<{ id: 
         mode="edit"
         customers={customers.map((c) => ({ id: c.id, name: c.name }))}
         catalog={catalog}
+        taxRate={taxCtx.totalRate}
         defaults={{
           id: quote.id,
           customer_id: quote.customer_id,

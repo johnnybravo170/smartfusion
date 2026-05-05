@@ -57,18 +57,21 @@ export type QuoteFormProps = {
   mode: 'create' | 'edit';
   customers: QuoteFormCustomerOption[];
   catalog: CatalogEntryRow[];
+  /** Combined tax rate for live preview (e.g. 0.05 AB GST, 0.13 ON HST).
+   *  Server recomputes authoritatively at submission, including
+   *  tax-exempt zeroing — preview is informational only. */
+  taxRate: number;
   defaults?: QuoteFormDefaults;
   action: (input: unknown) => Promise<QuoteActionResult>;
   submitLabel?: string;
   cancelHref?: string;
 };
 
-const TAX_RATE = 0.05;
-
 export function QuoteForm({
   mode,
   customers,
   catalog,
+  taxRate,
   defaults,
   action,
   submitLabel,
@@ -102,8 +105,8 @@ export function QuoteForm({
   const [manualSqft, setManualSqft] = useState('');
 
   const totals = useMemo(() => {
-    return calculateQuoteTotal(surfaces, TAX_RATE);
-  }, [surfaces]);
+    return calculateQuoteTotal(surfaces, taxRate);
+  }, [surfaces, taxRate]);
 
   const selectedCustomer = customers.find((c) => c.id === customerId);
 
@@ -333,6 +336,7 @@ export function QuoteForm({
         subtotalCents={totals.subtotal_cents}
         taxCents={totals.tax_cents}
         totalCents={totals.total_cents}
+        taxRate={taxRate}
         onRemove={handleSurfaceRemove}
       />
 

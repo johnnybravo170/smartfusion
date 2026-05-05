@@ -5,6 +5,7 @@ import { QuoteForm } from '@/components/features/quotes/quote-form';
 import { requireTenant } from '@/lib/auth/helpers';
 import { listCustomers } from '@/lib/db/queries/customers';
 import { listCatalogEntries } from '@/lib/db/queries/service-catalog';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createQuoteAction } from '@/server/actions/quotes';
 
 type RawSearchParams = Record<string, string | string[] | undefined>;
@@ -32,9 +33,10 @@ export default async function NewQuotePage({
   const resolvedParams = await searchParams;
   const prefilledCustomerId = parseCustomerId(resolvedParams.customer_id);
 
-  const [customers, catalog] = await Promise.all([
+  const [customers, catalog, taxCtx] = await Promise.all([
     listCustomers({ limit: 500 }),
     listCatalogEntries(),
+    canadianTax.getContext(tenant.id),
   ]);
 
   return (
@@ -80,6 +82,7 @@ export default async function NewQuotePage({
           mode="create"
           customers={customers.map((c) => ({ id: c.id, name: c.name }))}
           catalog={catalog}
+          taxRate={taxCtx.totalRate}
           defaults={prefilledCustomerId ? { customer_id: prefilledCustomerId } : undefined}
           action={createQuoteAction}
           cancelHref="/quotes"
