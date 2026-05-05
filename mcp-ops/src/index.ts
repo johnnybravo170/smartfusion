@@ -16,6 +16,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { registerBoardTools } from './tools/board.js';
 import { registerCompetitorTools } from './tools/competitors.js';
 import { registerDecisionTools } from './tools/decisions.js';
 import { registerDocsTools } from './tools/docs.js';
@@ -54,6 +55,7 @@ registerRoadmapTools(server);
 registerIdeasTools(server);
 registerDecisionTools(server);
 registerReviewQueueTools(server);
+registerBoardTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

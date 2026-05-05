@@ -126,6 +126,10 @@ export type Scope =
   | 'write:kanban'
   | 'write:feedback'
   | 'write:email'
+  | 'read:board'
+  | 'write:board'
+  | 'write:board:run'
+  | 'write:board:review'
   | 'admin:maintenance'
   | 'admin:keys';
 

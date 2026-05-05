@@ -21,6 +21,7 @@ const PRIMARY_NAV = [
 // one. The page still exists at /admin/memory-guide for direct
 // access if needed.
 const MORE_NAV = [
+  { href: '/board', label: 'Board' },
   { href: '/admin/launch', label: 'Launch' },
   { href: '/admin/stats', label: 'Stats' },
   { href: '/admin/slo', label: 'SLO' },
