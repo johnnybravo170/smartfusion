@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { AppliedChangeOrdersBanner } from '@/components/features/change-orders/applied-co-banner';
 import { BudgetCategoriesTable } from '@/components/features/projects/budget-categories-table';
+import { EstimateFeedbackCard } from '@/components/features/projects/estimate-feedback-card';
 import { EstimateSentBanner } from '@/components/features/projects/estimate-sent-banner';
 import { SaveAsTemplateButton } from '@/components/features/projects/save-as-template-button';
 import { ScopeScaffoldGenerator } from '@/components/features/projects/scope-scaffold-generator';
@@ -12,8 +13,10 @@ import { getCostLineActualsByProject } from '@/lib/db/queries/cost-line-actuals'
 import { listCostLines } from '@/lib/db/queries/cost-lines';
 import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
 import { getBudgetVsActual } from '@/lib/db/queries/project-budget-categories';
+import { getEstimateViewStats } from '@/lib/db/queries/project-events';
 import { listProjectVersions } from '@/lib/db/queries/project-versions';
 import { getProject } from '@/lib/db/queries/projects';
+import { createClient } from '@/lib/supabase/server';
 import type { LifecycleStage } from '@/lib/validators/project';
 
 /**
@@ -39,17 +42,48 @@ export default async function BudgetTabServer({
    * `?expand=` URL override. */
   defaultExpanded: boolean;
 }) {
-  const [budget, costLines, catalog, project, coContributions, versions, actualsByLineId, tenant] =
-    await Promise.all([
-      getBudgetVsActual(projectId),
-      listCostLines(projectId),
-      listMaterialsCatalog(),
-      getProject(projectId),
-      getProjectChangeOrderContributions(projectId),
-      listProjectVersions(projectId),
-      getCostLineActualsByProject(projectId),
-      getCurrentTenant(),
-    ]);
+  const supabase = await createClient();
+  const [
+    budget,
+    costLines,
+    catalog,
+    project,
+    coContributions,
+    versions,
+    actualsByLineId,
+    tenant,
+    viewStats,
+    { data: feedbackRowsRaw },
+  ] = await Promise.all([
+    getBudgetVsActual(projectId),
+    listCostLines(projectId),
+    listMaterialsCatalog(),
+    getProject(projectId),
+    getProjectChangeOrderContributions(projectId),
+    listProjectVersions(projectId),
+    getCostLineActualsByProject(projectId),
+    getCurrentTenant(),
+    getEstimateViewStats(projectId),
+    supabase
+      .from('project_estimate_comments')
+      .select('id, body, cost_line_id, seen_at, created_at')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false }),
+  ]);
+
+  // Resolve cost-line labels for any line-targeted comments so the
+  // operator sees "Re: Demolition" instead of a UUID.
+  const costLineLabelById = new Map(costLines.map((l) => [l.id, l.label]));
+  const feedbackRows = (feedbackRowsRaw ?? []).map((r) => ({
+    id: r.id as string,
+    body: r.body as string,
+    cost_line_id: (r.cost_line_id as string | null) ?? null,
+    cost_line_label: r.cost_line_id
+      ? (costLineLabelById.get(r.cost_line_id as string) ?? null)
+      : null,
+    seen_at: (r.seen_at as string | null) ?? null,
+    created_at: r.created_at as string,
+  }));
 
   const stage = (project?.lifecycle_stage ?? 'planning') as LifecycleStage;
   const isPreApproval = stage === 'planning' || stage === 'awaiting_approval';
@@ -76,7 +110,10 @@ export default async function BudgetTabServer({
         customerName={project?.customer?.name ?? null}
         approvalCode={(project?.estimate_approval_code as string | null) ?? null}
         timezone={tenant?.timezone ?? 'America/Vancouver'}
+        viewStats={viewStats}
       />
+
+      <EstimateFeedbackCard projectId={projectId} feedback={feedbackRows} />
 
       {/* Merged signed-estimate banner. Renders only when the estimate */}
       {/* is approved; absorbs both the legacy "Estimate is approved" */}
