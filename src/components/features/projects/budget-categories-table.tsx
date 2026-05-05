@@ -36,6 +36,17 @@ import type { BudgetLine } from '@/lib/db/queries/project-budget-categories';
 import { withFrom } from '@/lib/nav/from-link';
 import { formatCurrencyCompact } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
+import {
+  addBudgetCategoryAction,
+  moveSectionAction,
+  removeBudgetCategoryAction,
+  updateBudgetCategoryAction,
+} from '@/server/actions/project-budget-categories';
+import {
+  deleteCostLineAction,
+  generateEstimateFromCategoriesAction,
+} from '@/server/actions/project-cost-control';
+import { CostLineForm } from './cost-line-form';
 
 /**
  * Renders an amount with the currency symbol muted so the digits read
@@ -63,18 +74,6 @@ function Money({
     </span>
   );
 }
-
-import {
-  addBudgetCategoryAction,
-  moveSectionAction,
-  removeBudgetCategoryAction,
-  updateBudgetCategoryAction,
-} from '@/server/actions/project-budget-categories';
-import {
-  deleteCostLineAction,
-  generateEstimateFromCategoriesAction,
-} from '@/server/actions/project-cost-control';
-import { CostLineForm } from './cost-line-form';
 
 type BudgetCategoriesTableProps = {
   lines: BudgetLine[];
