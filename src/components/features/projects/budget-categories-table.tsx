@@ -991,11 +991,8 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         // table's columns. (Previously the px-3 on this td shifted
         // everything inside ~12px right of the parent.)
         <tr className="border-b bg-muted/40">
-          <td />
-          <td
-            colSpan={6}
-            className="relative py-3 before:absolute before:top-0 before:bottom-0 before:left-0 before:w-0.5 before:bg-primary/40 before:content-['']"
-          >
+          <td className="relative before:absolute before:top-0 before:bottom-0 before:left-3 before:w-0.5 before:bg-primary/40 before:content-['']" />
+          <td colSpan={6} className="py-3">
             <div className="space-y-3">
               {/* Slim spend-by-source strip. Inline pill, ~24px tall. */}
               {/* Each value links to the tab where the underlying */}
