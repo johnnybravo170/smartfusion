@@ -844,39 +844,27 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                 autoFocus
               />
             </div>
+          ) : // When the bucket has priced cost lines, the estimate IS the
+          // sum of those lines (single source of truth — see
+          // project-budget-categories.ts). Inline edit only makes sense
+          // for envelope-only buckets; otherwise the operator edits
+          // line prices directly to move this number.
+          line.lines_total_cents > 0 ? (
+            <span
+              className="text-muted-foreground"
+              title={`Sum of ${categoryLines.length} cost line${categoryLines.length === 1 ? '' : 's'}. Edit a line below to change this number.`}
+            >
+              {formatCurrencyCompact(line.estimate_cents)}
+            </span>
           ) : (
-            <div className="flex flex-col items-end">
-              <button
-                type="button"
-                className="cursor-pointer hover:underline"
-                onClick={() => startEdit(line)}
-              >
-                {formatCurrencyCompact(line.estimate_cents)}
-              </button>
-              {/* Lines-sum hint: surfaces drift between the customer */}
-              {/* envelope (estimate_cents) and the operator's internal */}
-              {/* line breakdown. Suppressed when there are no lines, */}
-              {/* or when the sum already matches the envelope (no */}
-              {/* drift to surface). Amber when lines exceed envelope — */}
-              {/* signals "internal cost has exceeded what you sold." */}
-              {line.lines_total_cents > 0 && line.lines_total_cents !== line.estimate_cents ? (
-                <span
-                  className={cn(
-                    'text-[10px] tabular-nums',
-                    line.lines_total_cents > line.estimate_cents
-                      ? 'text-amber-600'
-                      : 'text-muted-foreground',
-                  )}
-                  title={
-                    line.lines_total_cents > line.estimate_cents
-                      ? 'Line items total exceeds the category envelope. Update the envelope (CO if signed) or trim lines.'
-                      : 'Sum of line items under this category. Below the envelope = internal headroom.'
-                  }
-                >
-                  lines: {formatCurrencyCompact(line.lines_total_cents)}
-                </span>
-              ) : null}
-            </div>
+            <button
+              type="button"
+              className="cursor-pointer hover:underline"
+              onClick={() => startEdit(line)}
+              title="Click to set an envelope. Once you add priced lines, the line sum takes over."
+            >
+              {formatCurrencyCompact(line.estimate_cents)}
+            </button>
           )}
         </td>
         {mode === 'executing' ? (

@@ -243,12 +243,13 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
     const actual_cents = labor_cents + expense_cents + bills_cents;
     const committed_cents = committedByBudgetCategory.get(b.id) ?? 0;
     const spent_committed_cents = actual_cents + committed_cents;
-    // Display estimate falls back to the lines sum when the stored
-    // envelope is 0. Operators with a deliberate envelope (>0) keep
-    // their headroom intact; operators who skipped the envelope and
-    // priced lines see their lines roll up.
+    // Single source of truth: when a bucket has any priced cost lines,
+    // the lines sum IS the estimate. Envelope is only consulted for
+    // envelope-only buckets (no priced lines yet). This matches the
+    // project-level rollup in cost-lines.ts and removes the drift case
+    // where envelope and lines could disagree on the same screen.
     const lines_total_cents = linesByBudgetCategory.get(b.id) ?? 0;
-    const estimate_cents = b.estimate_cents > 0 ? b.estimate_cents : lines_total_cents;
+    const estimate_cents = lines_total_cents > 0 ? lines_total_cents : b.estimate_cents;
     return {
       budget_category_id: b.id,
       budget_category_name: b.name,

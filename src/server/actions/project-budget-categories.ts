@@ -26,7 +26,26 @@ export async function updateBudgetCategoryAction(input: {
     if (!trimmed) return { ok: false, error: 'Name cannot be empty.' };
     updates.name = trimmed;
   }
-  if (input.estimate_cents !== undefined) updates.estimate_cents = input.estimate_cents;
+  if (input.estimate_cents !== undefined) {
+    // Single-source-of-truth guard: when the bucket has priced cost
+    // lines, the lines sum drives the displayed estimate (see
+    // project-budget-categories.ts query). Letting the operator edit
+    // the envelope here would silently no-op in the UI — a confusing
+    // dead control. Force them to edit lines instead.
+    const { count: pricedCount } = await supabase
+      .from('project_cost_lines')
+      .select('id', { count: 'exact', head: true })
+      .eq('budget_category_id', input.id)
+      .gt('line_price_cents', 0);
+    if ((pricedCount ?? 0) > 0) {
+      return {
+        ok: false,
+        error:
+          'This bucket has priced cost lines, so the estimate is the sum of those lines. Edit individual line prices to change it.',
+      };
+    }
+    updates.estimate_cents = input.estimate_cents;
+  }
   if (input.description !== undefined) updates.description = input.description || null;
   if (input.is_visible_in_report !== undefined)
     updates.is_visible_in_report = input.is_visible_in_report;
