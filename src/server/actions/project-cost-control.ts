@@ -78,67 +78,6 @@ export async function upsertCostLineAction(input: unknown): Promise<CostControlR
   return { ok: true, id: data.id as string };
 }
 
-export async function generateEstimateFromCategoriesAction(input: {
-  project_id: string;
-}): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
-  const tenant = await getCurrentTenant();
-  if (!tenant) return { ok: false, error: 'Not signed in.' };
-
-  const supabase = await createClient();
-
-  const { data: categories, error: bErr } = await supabase
-    .from('project_budget_categories')
-    .select('id, name, description, estimate_cents')
-    .eq('project_id', input.project_id)
-    .gt('estimate_cents', 0);
-  if (bErr) return { ok: false, error: bErr.message };
-  if (!categories || categories.length === 0) {
-    return { ok: false, error: 'No categories have an estimate to generate from.' };
-  }
-
-  const { data: existingLines, error: lErr } = await supabase
-    .from('project_cost_lines')
-    .select('budget_category_id')
-    .eq('project_id', input.project_id)
-    .not('budget_category_id', 'is', null);
-  if (lErr) return { ok: false, error: lErr.message };
-
-  const usedCategoryIds = new Set(
-    (existingLines ?? []).map((r) => (r as { budget_category_id: string }).budget_category_id),
-  );
-  const toSeed = categories.filter((b) => !usedCategoryIds.has((b as { id: string }).id)) as {
-    id: string;
-    name: string;
-    description: string | null;
-    estimate_cents: number;
-  }[];
-
-  if (toSeed.length === 0) {
-    return { ok: false, error: 'All categories with estimates already have line items.' };
-  }
-
-  const rows = toSeed.map((b) => ({
-    project_id: input.project_id,
-    budget_category_id: b.id,
-    category: 'material' as const,
-    label: b.name,
-    notes: b.description?.trim() || null,
-    qty: 1,
-    unit: 'lot',
-    unit_cost_cents: b.estimate_cents,
-    unit_price_cents: b.estimate_cents,
-    line_cost_cents: b.estimate_cents,
-    line_price_cents: b.estimate_cents,
-    markup_pct: 0,
-  }));
-
-  const { error: insErr } = await supabase.from('project_cost_lines').insert(rows);
-  if (insErr) return { ok: false, error: insErr.message };
-
-  revalidatePath(`/projects/${input.project_id}`);
-  return { ok: true, count: rows.length };
-}
-
 export async function deleteCostLineAction(
   id: string,
   projectId: string,

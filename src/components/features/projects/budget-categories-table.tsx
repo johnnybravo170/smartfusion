@@ -61,10 +61,7 @@ import {
   reorderBudgetCategoriesAction,
   updateBudgetCategoryAction,
 } from '@/server/actions/project-budget-categories';
-import {
-  deleteCostLineAction,
-  generateEstimateFromCategoriesAction,
-} from '@/server/actions/project-cost-control';
+import { deleteCostLineAction } from '@/server/actions/project-cost-control';
 import { CostLineForm } from './cost-line-form';
 
 /**
@@ -449,18 +446,6 @@ export function BudgetCategoriesTable({
     });
   }
 
-  function generateEstimate() {
-    startTransition(async () => {
-      const res = await generateEstimateFromCategoriesAction({ project_id: projectId });
-      if (res.ok) {
-        toast.success(`Seeded ${res.count} line${res.count === 1 ? '' : 's'} from categories`);
-        router.push(`/projects/${projectId}?tab=estimate`);
-      } else {
-        toast.error(res.error);
-      }
-    });
-  }
-
   return (
     <DndContext sensors={dndSensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
       <div className="space-y-4">
@@ -477,9 +462,6 @@ export function BudgetCategoriesTable({
             onClick={() => setAddCategoryMode((m) => (m === 'section' ? 'closed' : 'section'))}
           >
             {addCategoryMode === 'section' ? 'Cancel' : '+ New section'}
-          </Button>
-          <Button size="sm" variant="outline" onClick={generateEstimate} disabled={isPending}>
-            Generate Estimate
           </Button>
           {headerActions}
         </div>
