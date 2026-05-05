@@ -843,14 +843,14 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         <td className="px-3 py-1.5 text-right">
           {editingId === line.budget_category_id ? (
             <div className="flex items-center justify-end gap-1">
-              <div className="relative flex-1">
+              <div className="relative">
                 <span className="-translate-y-1/2 absolute top-1/2 left-2 text-muted-foreground text-sm">
                   $
                 </span>
                 <Input
                   type="number"
                   step="0.01"
-                  className="h-7 pl-5 text-right text-sm"
+                  className="h-7 w-[120px] pl-5 text-right text-sm"
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   onKeyDown={(e) => {
