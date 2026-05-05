@@ -279,7 +279,9 @@ export function CostLineForm({
           />
           <LastUsedPriceHints
             label={label}
+            unit={unit}
             category={category}
+            catalog={catalog}
             excludeProjectId={projectId}
             onPick={(p) => handlePriceChange(p)}
           />
