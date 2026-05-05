@@ -58,6 +58,9 @@ export const sessionSchema = z.object({
   advisor_ids: z.array(z.string().uuid()),
   provider_override: z.string().nullable(),
   model_override: z.string().nullable(),
+  /** When set + Competitor Brain is in the panel, that advisor switches
+   *  into "embodying" mode and reasons as the named competitor. */
+  target_competitor_slug: z.string().nullable().optional(),
   budget_cents: z.number(),
   spent_cents: z.number(),
   call_count: z.number().int(),
@@ -81,6 +84,18 @@ export const createSessionInputSchema = z.object({
   provider_override: z.enum(['anthropic', 'openrouter']).optional().nullable(),
   model_override: z.string().trim().min(1).max(200).optional().nullable(),
   budget_cents: z.number().int().min(50).max(5000).optional(), // $0.50–$50
+  /** Slug from ops.competitors. Optional. When set, the Competitor Brain
+   *  (if present in the panel) switches into "embodying" mode for this
+   *  session. Slug-based so a competitor rename or re-add doesn't break
+   *  references. */
+  target_competitor_slug: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .regex(/^[a-z0-9-]+$/)
+    .optional()
+    .nullable(),
 });
 export type CreateSessionInput = z.infer<typeof createSessionInputSchema>;
 

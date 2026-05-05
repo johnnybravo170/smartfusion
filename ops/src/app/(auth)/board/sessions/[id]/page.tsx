@@ -81,6 +81,11 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
               {session.provider_override}/{session.model_override ?? '(default model)'}
             </span>
           ) : null}
+          {session.target_competitor_slug ? (
+            <span className="rounded bg-purple-100 px-2 py-0.5 text-purple-900 dark:bg-purple-950/50 dark:text-purple-300">
+              🥷 embodying {session.target_competitor_slug}
+            </span>
+          ) : null}
         </div>
         {session.error_message ? (
           <p className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20">

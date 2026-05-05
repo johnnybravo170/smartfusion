@@ -31,6 +31,7 @@ export async function createBoardSessionAction(input: {
   provider_override?: 'anthropic' | 'openrouter' | null;
   model_override?: string | null;
   budget_cents?: number;
+  target_competitor_slug?: string | null;
 }): Promise<ActionResult<{ id: string }>> {
   const admin = await requireAdmin();
   const parsed = createSessionInputSchema.safeParse(input);

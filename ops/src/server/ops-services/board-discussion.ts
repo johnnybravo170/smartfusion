@@ -43,14 +43,25 @@ import {
   updateSession,
   upsertPosition,
 } from './board';
+import { loadCompetitorBrief, renderCompetitorEmbodimentBlock } from './board-competitor';
 import { loadContextSnapshot, renderContextBlock } from './board-context';
 import { renderAdvisorTrackRecord, renderChairTrackRecord } from './board-track-record';
+
+/** Slug we look for to identify the Competitor Brain advisor. Hardcoded
+ *  here so the engine can special-case it without an extra DB column. */
+const COMPETITOR_BRAIN_SLUG = 'competitor-brain';
 
 // ── Track records (per-session bundle) ───────────────────────────────
 
 type TrackRecords = {
   chair: string | null;
   advisors: Map<string, string | null>;
+};
+
+/** Per-advisor embodiment blocks. Currently only used by the Competitor
+ *  Brain when target_competitor_slug is set. Map key = advisor.id. */
+type Embodiments = {
+  advisors: Map<string, string>;
 };
 
 // ── Posture (shared preamble) ─────────────────────────────────────────
@@ -102,17 +113,34 @@ export async function runDiscussion(session_id: string): Promise<void> {
       advisors: new Map(panel.map((a, i) => [a.id, panelRecords[i]])),
     };
 
+    // Competitor embodiment: if a target_competitor_slug is set on the
+    // session AND the Competitor Brain advisor is in the panel, load its
+    // embodiment brief and inject it into that advisor's prompt only.
+    const competitorBrain = panel.find((a) => a.slug === COMPETITOR_BRAIN_SLUG);
+    const embodimentByAdvisor = new Map<string, string>();
+    if (competitorBrain && session.target_competitor_slug) {
+      const brief = await loadCompetitorBrief(session.target_competitor_slug);
+      if (brief) {
+        embodimentByAdvisor.set(competitorBrain.id, renderCompetitorEmbodimentBlock(brief));
+      } else {
+        console.warn(
+          `[board.embodiment] target_competitor_slug=${session.target_competitor_slug} not found; Competitor Brain stays in generic mode.`,
+        );
+      }
+    }
+    const embodiments: Embodiments = { advisors: embodimentByAdvisor };
+
     // ─ Phase A: opening statements ─
-    await runPhaseA(session, panel, contextBlock, trackRecords);
+    await runPhaseA(session, panel, contextBlock, trackRecords, embodiments);
 
     // ─ Phase B: crux extraction ─
     const cruxes = await runPhaseB(session, chair, panel, trackRecords);
 
     // ─ Phase C: resolution loop ─
-    await runPhaseC(session, chair, panel, cruxes, contextBlock, trackRecords);
+    await runPhaseC(session, chair, panel, cruxes, contextBlock, trackRecords, embodiments);
 
     // ─ Phase D: final positions + synthesis ─
-    await runPhaseD(session, chair, panel, contextBlock, trackRecords);
+    await runPhaseD(session, chair, panel, contextBlock, trackRecords, embodiments);
 
     await updateSession(session_id, {
       status: 'awaiting_review',
@@ -136,12 +164,18 @@ async function runPhaseA(
   panel: AdvisorWithKnowledge[],
   contextBlock: string,
   records: TrackRecords,
+  embodiments: Embodiments,
 ): Promise<void> {
   await Promise.all(
     panel.map(async (advisor) => {
       if (await sessionOverBudget(session.id)) return;
 
-      const system = buildAdvisorSystem(advisor, contextBlock, records.advisors.get(advisor.id));
+      const system = buildAdvisorSystem(
+        advisor,
+        contextBlock,
+        records.advisors.get(advisor.id),
+        embodiments.advisors.get(advisor.id) ?? null,
+      );
       const user = `## Discussion Topic\n${session.topic}\n\nGive your initial analysis. Be specific, cite reasoning, give actionable advice. End with a clear one-sentence recommendation. 200-400 words.`;
 
       const choice = pickModel('advisor_opening', overridesFor(session));
@@ -273,6 +307,7 @@ async function runPhaseC(
   initialCruxes: Array<{ id: string; label: string }>,
   contextBlock: string,
   records: TrackRecords,
+  embodiments: Embodiments,
 ): Promise<void> {
   if (initialCruxes.length === 0) return;
 
@@ -325,12 +360,12 @@ async function runPhaseC(
     // Execute the action
     if (action.action === 'exchange') {
       exchangesPerCrux.set(action.crux_id, (exchangesPerCrux.get(action.crux_id) ?? 0) + 1);
-      await runExchange(session, panel, action, contextBlock, records);
+      await runExchange(session, panel, action, contextBlock, records, embodiments);
     } else if (action.action === 'challenge') {
       exchangesPerCrux.set(action.crux_id, (exchangesPerCrux.get(action.crux_id) ?? 0) + 1);
-      await runChallenge(session, panel, action, contextBlock, records);
+      await runChallenge(session, panel, action, contextBlock, records, embodiments);
     } else if (action.action === 'poll') {
-      await runPoll(session, panel, action, contextBlock, records);
+      await runPoll(session, panel, action, contextBlock, records, embodiments);
     } else if (action.action === 'next_crux') {
       await updateCrux(action.crux_id, {
         status: action.crux_status,
@@ -425,6 +460,7 @@ async function runExchange(
   action: Extract<ChairAction, { action: 'exchange' }>,
   contextBlock: string,
   records: TrackRecords,
+  embodiments: Embodiments,
 ): Promise<void> {
   const a = panel.find((x) => x.id === action.advisor_a);
   const b = panel.find((x) => x.id === action.advisor_b);
@@ -440,6 +476,7 @@ async function runExchange(
     action.crux_id,
     b.id,
     records,
+    embodiments,
   );
   const aMsg = await persistAdvisorMessage(session, a, action.crux_id, 'exchange', b.id, aRes);
 
@@ -454,6 +491,7 @@ async function runExchange(
     action.crux_id,
     a.id,
     records,
+    embodiments,
   );
   await persistAdvisorMessage(session, b, action.crux_id, 'exchange', a.id, bRes);
 }
@@ -464,6 +502,7 @@ async function runChallenge(
   action: Extract<ChairAction, { action: 'challenge' }>,
   contextBlock: string,
   records: TrackRecords,
+  embodiments: Embodiments,
 ): Promise<void> {
   const challenger = panel.find((x) => x.id === action.challenger_id);
   const target = panel.find((x) => x.id === action.target_id);
@@ -486,6 +525,7 @@ async function runChallenge(
     action.crux_id,
     target.id,
     records,
+    embodiments,
   );
   await persistAdvisorMessage(session, challenger, action.crux_id, 'challenge', target.id, res);
 }
@@ -496,6 +536,7 @@ async function runPoll(
   action: Extract<ChairAction, { action: 'poll' }>,
   contextBlock: string,
   records: TrackRecords,
+  embodiments: Embodiments,
 ): Promise<void> {
   await Promise.all(
     panel.map(async (advisor) => {
@@ -510,6 +551,7 @@ async function runPoll(
         action.crux_id,
         null,
         records,
+        embodiments,
       );
       await persistAdvisorMessage(session, advisor, action.crux_id, 'poll', null, res);
     }),
@@ -524,6 +566,7 @@ async function runPhaseD(
   panel: AdvisorWithKnowledge[],
   contextBlock: string,
   records: TrackRecords,
+  embodiments: Embodiments,
 ): Promise<void> {
   const cruxes = await listCruxes(session.id);
   const cruxIndex = cruxes.map((c) => `- ${c.id} = ${c.label} [${c.status}]`).join('\n');
@@ -537,7 +580,12 @@ async function runPhaseD(
       const ownMessages = messages.filter((m) => m.advisor_id === advisor.id);
       const opening = ownMessages.find((m) => m.turn_kind === 'opening');
 
-      const system = buildAdvisorSystem(advisor, contextBlock, records.advisors.get(advisor.id));
+      const system = buildAdvisorSystem(
+        advisor,
+        contextBlock,
+        records.advisors.get(advisor.id),
+        embodiments.advisors.get(advisor.id) ?? null,
+      );
       const user = `## Discussion Topic\n${session.topic}\n\n## Cruxes\n${cruxIndex || '(none)'}\n\n## Full transcript\n${transcript}\n\n## Your opening statement\n${opening?.content ?? '(missing)'}\n\nProduce your FINAL POSITION as JSON ONLY:\n${JSON.stringify(
         {
           overall: { stance: 'string', confidence: 1, rationale: 'string' },
@@ -743,6 +791,7 @@ function buildAdvisorSystem(
   advisor: AdvisorWithKnowledge,
   contextBlock: string,
   trackRecord?: string | null,
+  embodimentBlock?: string | null,
 ): Array<{ text: string; cache?: boolean }> {
   return [
     { text: POSTURE_BLOCK },
@@ -752,6 +801,10 @@ function buildAdvisorSystem(
     ...(advisor.knowledge_body
       ? [{ text: `## Skill\n${advisor.knowledge_body}`, cache: true }]
       : []),
+    // Embodiment goes BEFORE live context — it's a role override that
+    // shifts how the advisor reads everything else (the live HeyHenry
+    // context becomes "the target" instead of "you, the advisee").
+    ...(embodimentBlock ? [{ text: embodimentBlock }] : []),
     { text: contextBlock, cache: true },
     // Track-record block changes between sessions, so don't cache it.
     ...(trackRecord ? [{ text: trackRecord }] : []),
@@ -786,6 +839,7 @@ async function callAdvisorPrompt(
   _cruxId: string,
   _addressedTo: string | null,
   records: TrackRecords,
+  embodiments: Embodiments,
 ) {
   const callKind: BoardCallKind =
     kind === 'exchange'
@@ -795,7 +849,12 @@ async function callAdvisorPrompt(
         : 'advisor_opening';
   const choice = pickModel(callKind, overridesFor(session));
   const res = await callLlm(choice, {
-    system: buildAdvisorSystem(advisor, contextBlock, records.advisors.get(advisor.id)),
+    system: buildAdvisorSystem(
+      advisor,
+      contextBlock,
+      records.advisors.get(advisor.id),
+      embodiments.advisors.get(advisor.id) ?? null,
+    ),
     messages: [{ role: 'user', content: userPrompt }],
     temperature: 0.7,
     max_tokens: ADVISOR_EXCHANGE_MAX_TOKENS,

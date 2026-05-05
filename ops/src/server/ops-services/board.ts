@@ -140,6 +140,7 @@ export async function createSession(
     advisor_ids: input.advisor_ids,
     provider_override: input.provider_override ?? null,
     model_override: input.model_override ?? null,
+    target_competitor_slug: input.target_competitor_slug ?? null,
     budget_cents: input.budget_cents ?? 500,
     created_by_admin_user_id: actor.admin_user_id ?? null,
     created_by_key_id: actor.key_id ?? null,

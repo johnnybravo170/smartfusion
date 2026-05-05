@@ -13,6 +13,15 @@ type AdvisorOption = {
   role_kind: 'expert' | 'challenger' | 'chair';
 };
 
+type CompetitorOption = {
+  slug: string;
+  name: string;
+  url: string | null;
+  notes_bytes: number;
+};
+
+const COMPETITOR_BRAIN_SLUG = 'competitor-brain';
+
 /**
  * Topic-shaped advisor presets. Each lists slugs to include — the form
  * resolves slugs to IDs at runtime. Chair + DA are in every preset on
@@ -90,7 +99,13 @@ const ADVISOR_PRESETS: Array<{ id: string; label: string; slugs: string[]; descr
     },
   ];
 
-export function NewSessionForm({ advisors }: { advisors: AdvisorOption[] }) {
+export function NewSessionForm({
+  advisors,
+  competitors,
+}: {
+  advisors: AdvisorOption[];
+  competitors: CompetitorOption[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -98,6 +113,7 @@ export function NewSessionForm({ advisors }: { advisors: AdvisorOption[] }) {
   // Default selection: chair + every expert + DA challenger
   const [selected, setSelected] = useState<Set<string>>(new Set(advisors.map((a) => a.id)));
   const [activePreset, setActivePreset] = useState<string>('all');
+  const [targetCompetitorSlug, setTargetCompetitorSlug] = useState<string>('');
   const [budget, setBudget] = useState(500);
   const [providerOverride, setProviderOverride] = useState<'' | 'anthropic' | 'openrouter'>('');
   const [modelOverride, setModelOverride] = useState('');
@@ -151,6 +167,7 @@ export function NewSessionForm({ advisors }: { advisors: AdvisorOption[] }) {
         title: title.trim(),
         topic: topic.trim(),
         advisor_ids: [...selected],
+        target_competitor_slug: targetCompetitorSlug || null,
         provider_override: providerOverride || null,
         model_override: modelOverride.trim() || null,
         budget_cents: budget,
@@ -304,6 +321,34 @@ export function NewSessionForm({ advisors }: { advisors: AdvisorOption[] }) {
           </p>
         </div>
       </div>
+
+      {advisors.some((a) => a.slug === COMPETITOR_BRAIN_SLUG && selected.has(a.id)) ? (
+        <label className="block rounded-md border border-purple-200 bg-purple-50/40 p-3 dark:border-purple-900 dark:bg-purple-950/20">
+          <span className="block text-xs font-medium text-purple-900 dark:text-purple-200">
+            🥷 Competitor Brain — embody which competitor?
+          </span>
+          <select
+            value={targetCompetitorSlug}
+            onChange={(e) => setTargetCompetitorSlug(e.target.value)}
+            className="mt-1 w-full rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
+          >
+            <option value="">— Generic mode (no specific competitor) —</option>
+            {competitors.map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {c.name}
+                {c.notes_bytes > 0
+                  ? ` (${(c.notes_bytes / 1024).toFixed(1)}KB brief)`
+                  : ' (no brief yet)'}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs text-purple-900/70 dark:text-purple-200/70">
+            When set, the Competitor Brain reasons AS that company. Pulls{' '}
+            <code>ops.competitors.edge_notes</code> + any <code>knowledge_docs</code> tagged{' '}
+            <code>competitor:{'{slug}'}</code>. Sharper with more research; works without it.
+          </span>
+        </label>
+      ) : null}
 
       <details>
         <summary className="cursor-pointer text-xs text-[var(--muted-foreground)]">

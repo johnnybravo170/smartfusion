@@ -142,6 +142,17 @@ export function registerBoardTools(server: McpServer) {
         .max(5000)
         .optional()
         .describe('USD cents cap, default 500 = $5'),
+      target_competitor_slug: z
+        .string()
+        .trim()
+        .min(1)
+        .max(80)
+        .regex(/^[a-z0-9-]+$/)
+        .optional()
+        .nullable()
+        .describe(
+          'Slug from ops.competitors. When set + Competitor Brain advisor is in panel, that advisor switches to embodying mode. Use competitors_list to find slugs.',
+        ),
     },
     async (args) => {
       try {
@@ -151,7 +162,7 @@ export function registerBoardTools(server: McpServer) {
           args,
         );
         return textResult(
-          `Created session ${data.session.id}\n  status: ${data.session.status}\n  budget: $${(data.session.budget_cents / 100).toFixed(2)}\n\nNow call board_session_run with session_id=${data.session.id} to start the discussion.`,
+          `Created session ${data.session.id}\n  status: ${data.session.status}\n  budget: $${(data.session.budget_cents / 100).toFixed(2)}${args.target_competitor_slug ? `\n  embodying: ${args.target_competitor_slug}` : ''}\n\nNow call board_session_run with session_id=${data.session.id} to start the discussion.`,
         );
       } catch (err) {
         return errorResult(describeError(err));

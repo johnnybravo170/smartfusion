@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { fmtDate } from '@/lib/tz';
 import { listAdvisors, listSessions } from '@/server/ops-services/board';
+import { listCompetitorOptions } from '@/server/ops-services/board-competitor';
 import { DeleteSessionButton } from './delete-session-button';
 import { NewSessionForm } from './new-session-form';
 
@@ -18,7 +19,11 @@ const STATUS_DOT: Record<string, string> = {
 export const dynamic = 'force-dynamic';
 
 export default async function BoardPage() {
-  const [sessions, advisors] = await Promise.all([listSessions(50), listAdvisors()]);
+  const [sessions, advisors, competitors] = await Promise.all([
+    listSessions(50),
+    listAdvisors(),
+    listCompetitorOptions(),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -50,7 +55,7 @@ export default async function BoardPage() {
         <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
           Convene
         </h2>
-        <NewSessionForm advisors={advisors} />
+        <NewSessionForm advisors={advisors} competitors={competitors} />
       </section>
 
       <section>
