@@ -216,6 +216,60 @@ export async function renameSectionAction(input: {
   return { ok: true };
 }
 
+/**
+ * Bulk reorder + cross-section move for categories on a project. The
+ * client sends the new ordered list of (id, section) tuples — array
+ * index becomes the new display_order, and any section change is
+ * applied in the same UPDATE.
+ *
+ * Used by the drag-and-drop reorder UI. Sections that pre-existed but
+ * are no longer in `ordered` (e.g. last category of a section was
+ * dragged out) simply disappear, since sections are derived from
+ * categories.
+ */
+export async function reorderBudgetCategoriesAction(input: {
+  project_id: string;
+  ordered: { id: string; section: string }[];
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient();
+
+  // Re-number using the same `section_idx * 1000 + within` scheme that
+  // moveSectionAction uses, so section order survives a category drag.
+  const sectionsInOrder: string[] = [];
+  for (const row of input.ordered) {
+    const s = row.section.trim();
+    if (!s) return { ok: false, error: 'Section cannot be empty.' };
+    if (!sectionsInOrder.includes(s)) sectionsInOrder.push(s);
+  }
+
+  const withinCounters = new Map<string, number>();
+  const updates: { id: string; section: string; display_order: number }[] = [];
+  for (const row of input.ordered) {
+    const s = row.section.trim();
+    const sectionIdx = sectionsInOrder.indexOf(s);
+    const within = withinCounters.get(s) ?? 0;
+    withinCounters.set(s, within + 1);
+    updates.push({
+      id: row.id,
+      section: s,
+      display_order: sectionIdx * 1000 + within,
+    });
+  }
+
+  const now = new Date().toISOString();
+  for (const u of updates) {
+    const { error } = await supabase
+      .from('project_budget_categories')
+      .update({ section: u.section, display_order: u.display_order, updated_at: now })
+      .eq('id', u.id)
+      .eq('project_id', input.project_id);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidatePath(`/projects/${input.project_id}`);
+  return { ok: true };
+}
+
 export async function removeBudgetCategoryAction(input: {
   id: string;
   project_id: string;

@@ -8,7 +8,23 @@
  * from categories" button that seeds cost lines from category estimates.
  */
 
-import { ChevronDown, ChevronRight, ChevronUp, Pencil, Trash2 } from 'lucide-react';
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { ChevronDown, ChevronRight, ChevronUp, GripVertical, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
@@ -41,6 +57,7 @@ import {
   moveSectionAction,
   removeBudgetCategoryAction,
   renameSectionAction,
+  reorderBudgetCategoriesAction,
   updateBudgetCategoryAction,
 } from '@/server/actions/project-budget-categories';
 import {
@@ -165,11 +182,82 @@ export function BudgetCategoriesTable({
     return () => clearTimeout(t);
   }, [focusCategoryId]);
 
+  // Optimistic order for drag-and-drop. Null = use the server-rendered
+  // order from `lines`. When the operator drags, we set this to the
+  // new order so the UI reacts instantly; on action failure we revert,
+  // and after revalidate we drop back to null so server is source of
+  // truth again.
+  const [localOrder, setLocalOrder] = useState<{ id: string; section: string }[] | null>(null);
+  // Reset optimistic order when fresh server data arrives (e.g. after
+  // revalidatePath). Without this, a stale local order would mask
+  // legitimate edits made elsewhere.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lines is the dep, identity changes on new server data
+  useEffect(() => {
+    setLocalOrder(null);
+  }, [lines]);
+
+  const orderedLines = useMemo(() => {
+    if (!localOrder) return lines;
+    const byId = new Map(lines.map((l) => [l.budget_category_id, l]));
+    return localOrder
+      .map((o) => {
+        const orig = byId.get(o.id);
+        return orig ? { ...orig, section: o.section } : null;
+      })
+      .filter((x): x is BudgetLine => x !== null);
+  }, [lines, localOrder]);
+
   const sections = new Map<string, BudgetLine[]>();
-  for (const line of lines) {
+  for (const line of orderedLines) {
     const existing = sections.get(line.section) ?? [];
     existing.push(line);
     sections.set(line.section, existing);
+  }
+
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (activeId === overId) return;
+
+    // Build the current flat order (across all sections) from
+    // orderedLines, then move active to over's position. The over row's
+    // section becomes active's new section.
+    const flat = orderedLines.map((l) => ({
+      id: l.budget_category_id,
+      section: l.section,
+    }));
+    const fromIdx = flat.findIndex((r) => r.id === activeId);
+    const toIdx = flat.findIndex((r) => r.id === overId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const newSection = flat[toIdx].section;
+    const moved = { id: activeId, section: newSection };
+    const without = flat.filter((_, i) => i !== fromIdx);
+    // After removing active, toIdx may shift by one if active was
+    // before over.
+    const insertAt = fromIdx < toIdx ? toIdx - 1 : toIdx;
+    const next = [...without.slice(0, insertAt), moved, ...without.slice(insertAt)];
+
+    const previous = localOrder;
+    setLocalOrder(next);
+
+    startTransition(async () => {
+      const res = await reorderBudgetCategoriesAction({
+        project_id: projectId,
+        ordered: next,
+      });
+      if (!res.ok) {
+        setLocalOrder(previous);
+        toast.error(res.error);
+      }
+    });
   }
 
   const linesByBudgetCategory = new Map<string, CostLineRow[]>();
@@ -349,310 +437,323 @@ export function BudgetCategoriesTable({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          onClick={() => setAddCategoryMode((m) => (m === 'category' ? 'closed' : 'category'))}
-        >
-          {addCategoryMode === 'category' ? 'Cancel' : '+ Add category'}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setAddCategoryMode((m) => (m === 'section' ? 'closed' : 'section'))}
-        >
-          {addCategoryMode === 'section' ? 'Cancel' : '+ New section'}
-        </Button>
-        <Button size="sm" variant="outline" onClick={generateEstimate} disabled={isPending}>
-          Generate Estimate
-        </Button>
-        {headerActions}
-      </div>
+    <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => setAddCategoryMode((m) => (m === 'category' ? 'closed' : 'category'))}
+          >
+            {addCategoryMode === 'category' ? 'Cancel' : '+ Add category'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setAddCategoryMode((m) => (m === 'section' ? 'closed' : 'section'))}
+          >
+            {addCategoryMode === 'section' ? 'Cancel' : '+ New section'}
+          </Button>
+          <Button size="sm" variant="outline" onClick={generateEstimate} disabled={isPending}>
+            Generate Estimate
+          </Button>
+          {headerActions}
+        </div>
 
-      {addCategoryMode !== 'closed' && (
-        <AddBudgetCategoryForm
-          projectId={projectId}
-          existingSections={Array.from(new Set(lines.map((l) => l.section).filter(Boolean)))}
-          defaultNewSection={addCategoryMode === 'section'}
-          onDone={() => setAddCategoryMode('closed')}
-        />
-      )}
+        {addCategoryMode !== 'closed' && (
+          <AddBudgetCategoryForm
+            projectId={projectId}
+            existingSections={Array.from(new Set(lines.map((l) => l.section).filter(Boolean)))}
+            defaultNewSection={addCategoryMode === 'section'}
+            onDone={() => setAddCategoryMode('closed')}
+          />
+        )}
 
-      {Array.from(sections.entries()).map(([section, sectionLines], sectionIdx, sectionArr) => {
-        const sectionTotal = sectionLines.reduce((s, l) => s + l.estimate_cents, 0);
-        const sectionActual = sectionLines.reduce((s, l) => s + l.actual_cents, 0);
-        const sectionCommitted = sectionLines.reduce((s, l) => s + l.committed_cents, 0);
-        const isFirstSection = sectionIdx === 0;
-        const isLastSection = sectionIdx === sectionArr.length - 1;
+        {Array.from(sections.entries()).map(([section, sectionLines], sectionIdx, sectionArr) => {
+          const sectionTotal = sectionLines.reduce((s, l) => s + l.estimate_cents, 0);
+          const sectionActual = sectionLines.reduce((s, l) => s + l.actual_cents, 0);
+          const sectionCommitted = sectionLines.reduce((s, l) => s + l.committed_cents, 0);
+          const isFirstSection = sectionIdx === 0;
+          const isLastSection = sectionIdx === sectionArr.length - 1;
 
-        function moveSection(direction: 'up' | 'down') {
-          startTransition(async () => {
-            const res = await moveSectionAction({
-              project_id: projectId,
-              section,
-              direction,
+          function moveSection(direction: 'up' | 'down') {
+            startTransition(async () => {
+              const res = await moveSectionAction({
+                project_id: projectId,
+                section,
+                direction,
+              });
+              if (!res.ok) toast.error(res.error);
             });
-            if (!res.ok) toast.error(res.error);
-          });
-        }
+          }
 
-        function commitSectionRename(newName: string) {
-          const trimmed = newName.trim();
-          setEditingSectionName(null);
-          if (!trimmed || trimmed === section) return;
-          startTransition(async () => {
-            const res = await renameSectionAction({
-              project_id: projectId,
-              old_name: section,
-              new_name: trimmed,
+          function commitSectionRename(newName: string) {
+            const trimmed = newName.trim();
+            setEditingSectionName(null);
+            if (!trimmed || trimmed === section) return;
+            startTransition(async () => {
+              const res = await renameSectionAction({
+                project_id: projectId,
+                old_name: section,
+                new_name: trimmed,
+              });
+              if (!res.ok) toast.error(res.error);
             });
-            if (!res.ok) toast.error(res.error);
-          });
-        }
+          }
 
-        const isRenamingSection = editingSectionName === section;
+          const isRenamingSection = editingSectionName === section;
 
-        return (
-          <div key={section}>
-            <div className="group mb-2 flex items-center gap-1">
-              {isRenamingSection ? (
-                // PATTERNS.md §4 keyboard contract: Enter saves,
-                // Escape cancels, blur saves.
-                <Input
-                  className="h-7 w-auto min-w-[180px] text-sm font-semibold uppercase tracking-wider"
-                  value={editSectionValue}
-                  onChange={(e) => setEditSectionValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') commitSectionRename(editSectionValue);
-                    if (e.key === 'Escape') setEditingSectionName(null);
-                  }}
-                  onBlur={() => commitSectionRename(editSectionValue)}
-                  autoFocus
-                  disabled={isPending}
-                />
-              ) : (
-                <>
-                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                    {section}
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditSectionValue(section);
-                      setEditingSectionName(section);
+          return (
+            <div key={section}>
+              <div className="group mb-2 flex items-center gap-1">
+                {isRenamingSection ? (
+                  // PATTERNS.md §4 keyboard contract: Enter saves,
+                  // Escape cancels, blur saves.
+                  <Input
+                    className="h-7 w-auto min-w-[180px] text-sm font-semibold uppercase tracking-wider"
+                    value={editSectionValue}
+                    onChange={(e) => setEditSectionValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitSectionRename(editSectionValue);
+                      if (e.key === 'Escape') setEditingSectionName(null);
                     }}
-                    aria-label={`Rename ${section} section`}
-                    title="Rename section"
-                    className="rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover:opacity-100 focus:opacity-100"
-                  >
-                    <Pencil className="size-3" />
-                  </button>
-                </>
-              )}
-              {/* Section reorder is purely cosmetic — leave it on for */}
-              {/* every project posture. Chevrons over a drag handle: */}
-              {/* zero added libraries, predictable on touch, and the */}
-              {/* surface area matches the rest of the inline edit */}
-              {/* affordances on this page. */}
-              {sectionArr.length > 1 ? (
-                <div className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => moveSection('up')}
-                    disabled={isFirstSection || isPending}
-                    aria-label={`Move ${section} section up`}
-                    title="Move section up"
-                    className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
-                  >
-                    <ChevronUp className="size-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveSection('down')}
-                    disabled={isLastSection || isPending}
-                    aria-label={`Move ${section} section down`}
-                    title="Move section down"
-                    className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
-                  >
-                    <ChevronDown className="size-3.5" />
-                  </button>
-                </div>
-              ) : null}
-            </div>
-            {/* `overflow-x-clip overflow-y-visible` instead of */}
-            {/* `overflow-x-auto`: clipping horizontally without */}
-            {/* establishing a vertical scroll container lets the */}
-            {/* thead `position: sticky` against the page scroll. */}
-            {/* Tradeoff: very narrow viewports (<760px) clip the */}
-            {/* table edge instead of horizontal-scrolling — accepted */}
-            {/* since the page already scrolls horizontally as a */}
-            {/* fallback. */}
-            <div className="overflow-x-clip [overflow-y:visible] rounded-md border">
-              {/* Number columns sized for typical values ($X,XXX) rather */}
-              {/* than worst-case ($XXX,XXX.XX). Combined with */}
-              {/* formatCurrencyCompact (drops .00 on whole dollars), this */}
-              {/* frees width back into the Category column so descriptions */}
-              {/* can run longer before clamping. */}
-              <table className="table-fixed w-full min-w-[760px] text-sm">
-                <colgroup>
-                  <col className="w-7" />
-                  {/* Category col is undefined so table-fixed hands it ALL */}
-                  {/* the leftover width. All other cols stay fixed-width so */}
-                  {/* numbers don't dance when a description is long. */}
-                  <col />
-                  <col className="w-28" />
-                  <col className="w-24" />
-                  <col className="w-24" />
-                  <col className="w-28" />
-                  <col className="w-16" />
-                </colgroup>
-                {/* Sticky header: pins to the top of the page scroll */}
-                {/* while the section is in view. As you scroll past one */}
-                {/* section the next section's thead seamlessly takes */}
-                {/* over (each section is its own table). */}
-                <thead className="sticky -top-4 z-10 md:-top-6 [&>tr>th]:bg-muted">
-                  <tr className="border-b">
-                    <th className="px-1 py-1.5" />
-                    <th className="px-2 py-1.5 text-left font-medium">Category</th>
-                    {/* Numeric headers carry the same invisible `.00`
-                     * tail that the Money component pads onto whole-
-                     * dollar values. Without it, "Estimate" right-edge
-                     * sits flush with the cell while "$5,000" sits a
-                     * few pixels left (under the .00 shim), and the
-                     * column reads as misaligned. */}
-                    <th className="px-3 py-1.5 text-right font-medium">
-                      Estimate
-                      <span aria-hidden className="invisible text-[0.7em]">
-                        .00
-                      </span>
-                    </th>
-                    <th
-                      className="px-3 py-1.5 text-right font-medium"
-                      title="Realized cost: labour + bills + expenses"
+                    onBlur={() => commitSectionRename(editSectionValue)}
+                    autoFocus
+                    disabled={isPending}
+                  />
+                ) : (
+                  <>
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                      {section}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditSectionValue(section);
+                        setEditingSectionName(section);
+                      }}
+                      aria-label={`Rename ${section} section`}
+                      title="Rename section"
+                      className="rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover:opacity-100 focus:opacity-100"
                     >
-                      Spent
-                      <span aria-hidden className="invisible text-[0.7em]">
-                        .00
-                      </span>
-                    </th>
-                    <th
-                      className="px-3 py-1.5 text-right font-medium"
-                      title="Promised but not yet realized: accepted vendor quotes + active POs"
+                      <Pencil className="size-3" />
+                    </button>
+                  </>
+                )}
+                {/* Section reorder is purely cosmetic — leave it on for */}
+                {/* every project posture. Chevrons over a drag handle: */}
+                {/* zero added libraries, predictable on touch, and the */}
+                {/* surface area matches the rest of the inline edit */}
+                {/* affordances on this page. */}
+                {sectionArr.length > 1 ? (
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => moveSection('up')}
+                      disabled={isFirstSection || isPending}
+                      aria-label={`Move ${section} section up`}
+                      title="Move section up"
+                      className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
                     >
-                      Committed
-                      <span aria-hidden className="invisible text-[0.7em]">
-                        .00
-                      </span>
-                    </th>
-                    <th
-                      className="px-3 py-1.5 text-right font-medium"
-                      title="Estimate − Spent − Committed. Bar shows progress; negative = over budget."
+                      <ChevronUp className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveSection('down')}
+                      disabled={isLastSection || isPending}
+                      aria-label={`Move ${section} section down`}
+                      title="Move section down"
+                      className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
                     >
-                      Remaining
-                      <span aria-hidden className="invisible text-[0.7em]">
-                        .00
-                      </span>
-                    </th>
-                    <th className="px-2 py-1.5" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {sectionLines.map((line) => {
-                    // Split "over" into actual vs projected. Spent alone
-                    // > estimate is real overage (red). Spent ≤ estimate
-                    // but spent+committed > estimate is projection — the
-                    // POs/quotes haven't realized yet, so amber, not red.
-                    const totalUsed = line.actual_cents + line.committed_cents;
-                    const isActuallyOver = line.actual_cents > line.estimate_cents;
-                    const isProjectedOver = !isActuallyOver && totalUsed > line.estimate_cents;
-                    const isExpanded = expanded.has(line.budget_category_id);
-                    const categoryLines = linesByBudgetCategory.get(line.budget_category_id) ?? [];
+                      <ChevronDown className="size-3.5" />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              {/* `overflow-x-clip overflow-y-visible` instead of */}
+              {/* `overflow-x-auto`: clipping horizontally without */}
+              {/* establishing a vertical scroll container lets the */}
+              {/* thead `position: sticky` against the page scroll. */}
+              {/* Tradeoff: very narrow viewports (<760px) clip the */}
+              {/* table edge instead of horizontal-scrolling — accepted */}
+              {/* since the page already scrolls horizontally as a */}
+              {/* fallback. */}
+              <div className="overflow-x-clip [overflow-y:visible] rounded-md border">
+                {/* Number columns sized for typical values ($X,XXX) rather */}
+                {/* than worst-case ($XXX,XXX.XX). Combined with */}
+                {/* formatCurrencyCompact (drops .00 on whole dollars), this */}
+                {/* frees width back into the Category column so descriptions */}
+                {/* can run longer before clamping. */}
+                <table className="table-fixed w-full min-w-[760px] text-sm">
+                  <colgroup>
+                    {/* w-12 leaves room for the drag handle + chevron
+                     * side-by-side. Both render at size-4 (16px each)
+                     * with gap-1 between, padded by px-1. */}
+                    <col className="w-12" />
+                    {/* Category col is undefined so table-fixed hands it ALL */}
+                    {/* the leftover width. All other cols stay fixed-width so */}
+                    {/* numbers don't dance when a description is long. */}
+                    <col />
+                    <col className="w-28" />
+                    <col className="w-24" />
+                    <col className="w-24" />
+                    <col className="w-28" />
+                    <col className="w-16" />
+                  </colgroup>
+                  {/* Sticky header: pins to the top of the page scroll */}
+                  {/* while the section is in view. As you scroll past one */}
+                  {/* section the next section's thead seamlessly takes */}
+                  {/* over (each section is its own table). */}
+                  <thead className="sticky -top-4 z-10 md:-top-6 [&>tr>th]:bg-muted">
+                    <tr className="border-b">
+                      <th className="px-1 py-1.5" />
+                      <th className="px-2 py-1.5 text-left font-medium">Category</th>
+                      {/* Numeric headers carry the same invisible `.00`
+                       * tail that the Money component pads onto whole-
+                       * dollar values. Without it, "Estimate" right-edge
+                       * sits flush with the cell while "$5,000" sits a
+                       * few pixels left (under the .00 shim), and the
+                       * column reads as misaligned. */}
+                      <th className="px-3 py-1.5 text-right font-medium">
+                        Estimate
+                        <span aria-hidden className="invisible text-[0.7em]">
+                          .00
+                        </span>
+                      </th>
+                      <th
+                        className="px-3 py-1.5 text-right font-medium"
+                        title="Realized cost: labour + bills + expenses"
+                      >
+                        Spent
+                        <span aria-hidden className="invisible text-[0.7em]">
+                          .00
+                        </span>
+                      </th>
+                      <th
+                        className="px-3 py-1.5 text-right font-medium"
+                        title="Promised but not yet realized: accepted vendor quotes + active POs"
+                      >
+                        Committed
+                        <span aria-hidden className="invisible text-[0.7em]">
+                          .00
+                        </span>
+                      </th>
+                      <th
+                        className="px-3 py-1.5 text-right font-medium"
+                        title="Estimate − Spent − Committed. Bar shows progress; negative = over budget."
+                      >
+                        Remaining
+                        <span aria-hidden className="invisible text-[0.7em]">
+                          .00
+                        </span>
+                      </th>
+                      <th className="px-2 py-1.5" />
+                    </tr>
+                  </thead>
+                  <SortableContext
+                    items={sectionLines.map((l) => l.budget_category_id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <tbody>
+                      {sectionLines.map((line) => {
+                        // Split "over" into actual vs projected. Spent alone
+                        // > estimate is real overage (red). Spent ≤ estimate
+                        // but spent+committed > estimate is projection — the
+                        // POs/quotes haven't realized yet, so amber, not red.
+                        const totalUsed = line.actual_cents + line.committed_cents;
+                        const isActuallyOver = line.actual_cents > line.estimate_cents;
+                        const isProjectedOver = !isActuallyOver && totalUsed > line.estimate_cents;
+                        const isExpanded = expanded.has(line.budget_category_id);
+                        const categoryLines =
+                          linesByBudgetCategory.get(line.budget_category_id) ?? [];
 
-                    return (
-                      <BudgetCategoryRow
-                        key={line.budget_category_id}
-                        line={line}
-                        isActuallyOver={isActuallyOver}
-                        isProjectedOver={isProjectedOver}
-                        isExpanded={isExpanded}
-                        categoryLines={categoryLines}
-                        editingId={editingId}
-                        editValue={editValue}
-                        setEditValue={setEditValue}
-                        setEditingId={setEditingId}
-                        isPending={isPending}
-                        saveEdit={saveEdit}
-                        startEdit={startEdit}
-                        toggleExpand={toggleExpand}
-                        removeCategory={removeCategory}
-                        addingLineFor={addingLineFor}
-                        setAddingLineFor={setAddingLineFor}
-                        editingLine={editingLine}
-                        setEditingLine={setEditingLine}
-                        deleteLine={deleteLine}
-                        projectId={projectId}
-                        catalog={catalog}
-                        isFocused={line.budget_category_id === focusCategoryId}
-                        showHighlight={highlight && line.budget_category_id === focusCategoryId}
-                        editingDescId={editingDescId}
-                        editDescValue={editDescValue}
-                        setEditDescValue={setEditDescValue}
-                        setEditingDescId={setEditingDescId}
-                        saveEditDesc={saveEditDesc}
-                        startEditDesc={startEditDesc}
-                        editingNameId={editingNameId}
-                        editNameValue={editNameValue}
-                        setEditNameValue={setEditNameValue}
-                        setEditingNameId={setEditingNameId}
-                        saveEditName={saveEditName}
-                        startEditName={startEditName}
-                        coContributions={coContributionsByCategoryId[line.budget_category_id] ?? []}
-                        actualsByLineId={actualsByLineId}
-                      />
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="bg-muted/30 font-medium">
-                    <td />
-                    <td className="px-2 py-1.5">
-                      {section.charAt(0).toUpperCase() + section.slice(1)} Total
-                    </td>
-                    <td className="px-3 py-1.5 text-right">
-                      <Money cents={sectionTotal} />
-                    </td>
-                    <td className="px-3 py-1.5 text-right">
-                      <Money cents={sectionActual} />
-                    </td>
-                    <td className="px-3 py-1.5 text-right text-muted-foreground">
-                      {sectionCommitted > 0 ? <Money cents={sectionCommitted} /> : ''}
-                    </td>
-                    <td
-                      className={cn(
-                        'px-3 py-1.5 text-right',
-                        sectionActual > sectionTotal && 'text-red-600',
-                        sectionActual <= sectionTotal &&
-                          sectionActual + sectionCommitted > sectionTotal &&
-                          'text-amber-600',
-                      )}
-                    >
-                      <Money cents={Math.abs(sectionTotal - sectionActual - sectionCommitted)} />
-                      {sectionActual > sectionTotal
-                        ? ' over'
-                        : sectionActual + sectionCommitted > sectionTotal
-                          ? ' projected over'
-                          : ''}
-                    </td>
-                    <td />
-                  </tr>
-                </tfoot>
-              </table>
+                        return (
+                          <BudgetCategoryRow
+                            key={line.budget_category_id}
+                            line={line}
+                            isActuallyOver={isActuallyOver}
+                            isProjectedOver={isProjectedOver}
+                            isExpanded={isExpanded}
+                            categoryLines={categoryLines}
+                            editingId={editingId}
+                            editValue={editValue}
+                            setEditValue={setEditValue}
+                            setEditingId={setEditingId}
+                            isPending={isPending}
+                            saveEdit={saveEdit}
+                            startEdit={startEdit}
+                            toggleExpand={toggleExpand}
+                            removeCategory={removeCategory}
+                            addingLineFor={addingLineFor}
+                            setAddingLineFor={setAddingLineFor}
+                            editingLine={editingLine}
+                            setEditingLine={setEditingLine}
+                            deleteLine={deleteLine}
+                            projectId={projectId}
+                            catalog={catalog}
+                            isFocused={line.budget_category_id === focusCategoryId}
+                            showHighlight={highlight && line.budget_category_id === focusCategoryId}
+                            editingDescId={editingDescId}
+                            editDescValue={editDescValue}
+                            setEditDescValue={setEditDescValue}
+                            setEditingDescId={setEditingDescId}
+                            saveEditDesc={saveEditDesc}
+                            startEditDesc={startEditDesc}
+                            editingNameId={editingNameId}
+                            editNameValue={editNameValue}
+                            setEditNameValue={setEditNameValue}
+                            setEditingNameId={setEditingNameId}
+                            saveEditName={saveEditName}
+                            startEditName={startEditName}
+                            coContributions={
+                              coContributionsByCategoryId[line.budget_category_id] ?? []
+                            }
+                            actualsByLineId={actualsByLineId}
+                          />
+                        );
+                      })}
+                    </tbody>
+                  </SortableContext>
+                  <tfoot>
+                    <tr className="bg-muted/30 font-medium">
+                      <td />
+                      <td className="px-2 py-1.5">
+                        {section.charAt(0).toUpperCase() + section.slice(1)} Total
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        <Money cents={sectionTotal} />
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        <Money cents={sectionActual} />
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-muted-foreground">
+                        {sectionCommitted > 0 ? <Money cents={sectionCommitted} /> : ''}
+                      </td>
+                      <td
+                        className={cn(
+                          'px-3 py-1.5 text-right',
+                          sectionActual > sectionTotal && 'text-red-600',
+                          sectionActual <= sectionTotal &&
+                            sectionActual + sectionCommitted > sectionTotal &&
+                            'text-amber-600',
+                        )}
+                      >
+                        <Money cents={Math.abs(sectionTotal - sectionActual - sectionCommitted)} />
+                        {sectionActual > sectionTotal
+                          ? ' over'
+                          : sectionActual + sectionCommitted > sectionTotal
+                            ? ' projected over'
+                            : ''}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+    </DndContext>
   );
 }
 
@@ -807,32 +908,69 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
     });
   }
 
-  // Callback ref — fires once when the focused row mounts; scroll into
-  // view smoothly so the user lands on it without scrolling manually.
-  const focusRef = (node: HTMLTableRowElement | null) => {
+  const {
+    attributes: dragAttributes,
+    listeners: dragListeners,
+    setNodeRef: dragSetNodeRef,
+    transform: dragTransform,
+    transition: dragTransition,
+    isDragging,
+  } = useSortable({ id: line.budget_category_id });
+
+  // Combine focus auto-scroll ref with the dnd-kit setNodeRef. dnd-kit
+  // needs the ref on the dragged element so it can read its
+  // boundingRect during sort.
+  const rowRef = (node: HTMLTableRowElement | null) => {
+    dragSetNodeRef(node);
     if (node && isFocused) {
       node.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 
+  const dragStyle = {
+    transform: CSS.Transform.toString(dragTransform),
+    transition: dragTransition,
+  };
+
   return (
     <>
       <tr
-        ref={isFocused ? focusRef : undefined}
+        ref={rowRef}
+        style={dragStyle}
+        {...dragAttributes}
         className={cn(
           'border-b transition-colors last:border-0',
           showHighlight && 'bg-primary/10 ring-2 ring-primary/40 ring-inset',
+          isDragging && 'relative z-20 bg-background opacity-90 shadow-md ring-1 ring-border',
         )}
       >
         <td className="px-1 py-1.5">
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={() => toggleExpand(line.budget_category_id)}
-            aria-label={isExpanded ? 'Collapse' : 'Expand'}
-          >
-            {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Drag handle — only this element receives drag listeners
+             * so click-to-expand on the chevron isn't hijacked. Visible
+             * by default but muted; brightens on row hover. */}
+            <button
+              type="button"
+              {...dragListeners}
+              aria-label={`Reorder ${line.budget_category_name}`}
+              title="Drag to reorder or move to another section"
+              className="cursor-grab touch-none text-muted-foreground/40 hover:text-foreground active:cursor-grabbing"
+            >
+              <GripVertical className="size-4" />
+            </button>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => toggleExpand(line.budget_category_id)}
+              aria-label={isExpanded ? 'Collapse' : 'Expand'}
+            >
+              {isExpanded ? (
+                <ChevronDown className="size-4" />
+              ) : (
+                <ChevronRight className="size-4" />
+              )}
+            </button>
+          </div>
         </td>
         <td className="px-2 py-1.5">
           <div className="group flex flex-wrap items-center gap-1.5">
@@ -1066,7 +1204,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
           )}
         </td>
       </tr>
-      {isExpanded && (
+      {isExpanded && !isDragging && (
         // Stronger bg + a left accent stripe that visually attaches the
         // expanded detail to its parent category row above. The stripe
         // is a pseudo-element so it doesn't take layout width — that
@@ -1074,7 +1212,11 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         // table's columns. (Previously the px-3 on this td shifted
         // everything inside ~12px right of the parent.)
         <tr className="border-b bg-muted/40">
-          <td className="relative before:absolute before:top-0 before:bottom-0 before:left-3 before:w-0.5 before:bg-primary/40 before:content-['']" />
+          {/* Accent stripe sits under the chevron of the row above —
+           * with col 1 widened to w-12 to fit the drag handle, the
+           * chevron sits further right than before, so the stripe
+           * shifts from left-3 to left-8 to keep alignment. */}
+          <td className="relative before:absolute before:top-0 before:bottom-0 before:left-8 before:w-0.5 before:bg-primary/40 before:content-['']" />
           <td colSpan={6} className="px-2 py-3">
             <div className="space-y-3">
               {/* Slim spend-by-source strip. Inline pill, ~24px tall. */}
