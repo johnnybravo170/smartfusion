@@ -13,9 +13,16 @@ type HeaderProps = {
   ownerRateCents?: number | null;
   memberships: UserMembership[];
   activeTenantId: string | null;
+  isAdmin?: boolean;
 };
 
-export function Header({ navItems, ownerRateCents, memberships, activeTenantId }: HeaderProps) {
+export function Header({
+  navItems,
+  ownerRateCents,
+  memberships,
+  activeTenantId,
+  isAdmin,
+}: HeaderProps) {
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-3">
@@ -39,7 +46,11 @@ export function Header({ navItems, ownerRateCents, memberships, activeTenantId }
           </Link>
         </Button>
 
-        <WorkspaceSwitcher memberships={memberships} activeTenantId={activeTenantId} />
+        <WorkspaceSwitcher
+          memberships={memberships}
+          activeTenantId={activeTenantId}
+          isAdmin={isAdmin}
+        />
       </div>
     </header>
   );

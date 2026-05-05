@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, ChevronsUpDown, Circle } from 'lucide-react';
+import { Check, ChevronsUpDown, Circle, Shield } from 'lucide-react';
 import Link from 'next/link';
 import { useTransition } from 'react';
 import { Button } from '@/components/ui/button';
@@ -18,9 +18,12 @@ import { switchActiveTenantAction } from '@/server/actions/tenants';
 type Props = {
   memberships: UserMembership[];
   activeTenantId: string | null;
+  /** When true, renders an "Admin view" link to /admin/overview —
+   *  symmetric to the "Operator view" link in admin-header.tsx. */
+  isAdmin?: boolean;
 };
 
-export function WorkspaceSwitcher({ memberships, activeTenantId }: Props) {
+export function WorkspaceSwitcher({ memberships, activeTenantId, isAdmin }: Props) {
   const [pending, startTransition] = useTransition();
   const active = memberships.find((m) => m.tenantId === activeTenantId) ?? memberships[0];
   const others = memberships.filter((m) => m.tenantId !== active?.tenantId);
@@ -116,6 +119,14 @@ export function WorkspaceSwitcher({ memberships, activeTenantId }: Props) {
         <DropdownMenuItem asChild>
           <Link href="/settings">Profile &amp; settings</Link>
         </DropdownMenuItem>
+        {isAdmin ? (
+          <DropdownMenuItem asChild>
+            <Link href="/admin/overview" className="gap-2">
+              <Shield className="size-3.5 text-muted-foreground" />
+              Admin view
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem asChild>
           <Link href="/logout">Log out</Link>
         </DropdownMenuItem>

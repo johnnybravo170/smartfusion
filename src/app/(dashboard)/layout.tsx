@@ -9,7 +9,7 @@ import { MfaEnforcementBanner } from '@/components/features/settings/mfa-enforce
 import { FeedbackButton } from '@/components/layout/feedback-button';
 import { Header } from '@/components/layout/header';
 import { SidebarNav } from '@/components/layout/sidebar';
-import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
+import { getCurrentTenant, getCurrentUser, isPlatformAdmin } from '@/lib/auth/helpers';
 import { TenantProvider } from '@/lib/auth/tenant-context';
 import { listUserMemberships } from '@/lib/db/queries/memberships';
 import { getOperatorProfile } from '@/lib/db/queries/profile';
@@ -54,10 +54,11 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   const timezone = tenant?.timezone || 'America/Vancouver';
   const vertical = tenant?.vertical || 'pressure_washing';
-  const [operatorProfile, memberships, verticalPack] = await Promise.all([
+  const [operatorProfile, memberships, verticalPack, isAdmin] = await Promise.all([
     tenant && currentUser ? getOperatorProfile(tenant.id, currentUser.id) : Promise.resolve(null),
     currentUser ? listUserMemberships(currentUser.id) : Promise.resolve([]),
     loadVerticalPack(vertical),
+    currentUser ? isPlatformAdmin(currentUser.id) : Promise.resolve(false),
   ]);
   const ownerRateCents = operatorProfile?.defaultHourlyRateCents ?? null;
   const activeMembership = memberships.find((m) => m.isActive) ?? null;
@@ -85,6 +86,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
               ownerRateCents={ownerRateCents}
               memberships={memberships}
               activeTenantId={tenant?.id ?? null}
+              isAdmin={isAdmin}
             />
             {tenant ? <PastDueBanner status={tenant.subscriptionStatus} /> : null}
             {tenant ? (
