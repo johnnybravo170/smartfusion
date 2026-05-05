@@ -47,35 +47,43 @@ export default async function BoardPage() {
         ) : (
           <ul className="space-y-2">
             {sessions.map((s) => (
-              <li key={s.id}>
-                <Link
-                  href={`/board/sessions/${s.id}`}
-                  className="block rounded-md border border-[var(--border)] p-4 transition hover:border-[var(--foreground)]"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`size-2 rounded-full ${STATUS_DOT[s.status] ?? 'bg-zinc-400'}`}
-                        />
-                        <span className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
-                          {s.status.replace('_', ' ')}
-                        </span>
-                      </div>
-                      <h3 className="mt-1 text-sm font-medium">{s.title}</h3>
-                      <p className="mt-1 line-clamp-2 text-sm text-[var(--muted-foreground)]">
-                        {s.topic}
-                      </p>
+              // The title is the only link target. Wrapping the whole row in
+              // an anchor steals every click — including drag-to-select on
+              // the topic preview — and makes accidental nav too easy.
+              <li
+                key={s.id}
+                className="rounded-md border border-[var(--border)] p-4 transition hover:border-[var(--foreground)]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`size-2 rounded-full ${STATUS_DOT[s.status] ?? 'bg-zinc-400'}`}
+                      />
+                      <span className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+                        {s.status.replace('_', ' ')}
+                      </span>
                     </div>
-                    <div className="text-right text-xs text-[var(--muted-foreground)]">
-                      <div>{fmtDate(s.created_at)}</div>
-                      <div>
-                        ${(s.spent_cents / 100).toFixed(2)} / ${(s.budget_cents / 100).toFixed(0)}
-                      </div>
-                      <div>{s.call_count} calls</div>
-                    </div>
+                    <h3 className="mt-1 text-sm font-medium">
+                      <Link
+                        href={`/board/sessions/${s.id}`}
+                        className="hover:underline focus:underline focus:outline-none"
+                      >
+                        {s.title}
+                      </Link>
+                    </h3>
+                    <p className="mt-1 line-clamp-2 text-sm text-[var(--muted-foreground)]">
+                      {s.topic}
+                    </p>
                   </div>
-                </Link>
+                  <div className="text-right text-xs text-[var(--muted-foreground)]">
+                    <div>{fmtDate(s.created_at)}</div>
+                    <div>
+                      ${(s.spent_cents / 100).toFixed(2)} / ${(s.budget_cents / 100).toFixed(0)}
+                    </div>
+                    <div>{s.call_count} calls</div>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>

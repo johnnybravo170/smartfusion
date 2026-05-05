@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/ops-gate';
+import { MoreMenu } from './more-menu';
 import { SignOutButton } from './sign-out-button';
 
 // Primary nav: day-to-day items. Stays in the main bar so it's
-// always one click away. Six entries fit comfortably; resist the
+// always one click away. Six-ish entries fit comfortably; resist the
 // urge to grow this list — push lower-frequency surfaces into
 // MORE_NAV instead.
 const PRIMARY_NAV = [
@@ -13,6 +14,7 @@ const PRIMARY_NAV = [
   { href: '/admin/kanban', label: 'Kanban' },
   { href: '/decisions', label: 'Decisions' },
   { href: '/knowledge', label: 'Knowledge' },
+  { href: '/board', label: 'Board' },
 ];
 
 // Less-frequent admin surfaces. Behind a "More" disclosure so they
@@ -21,7 +23,6 @@ const PRIMARY_NAV = [
 // one. The page still exists at /admin/memory-guide for direct
 // access if needed.
 const MORE_NAV = [
-  { href: '/board', label: 'Board' },
   { href: '/admin/launch', label: 'Launch' },
   { href: '/admin/stats', label: 'Stats' },
   { href: '/admin/slo', label: 'SLO' },
@@ -48,23 +49,7 @@ export default async function AuthedLayout({ children }: { children: React.React
                 {n.label}
               </Link>
             ))}
-            <details className="relative">
-              <summary className="cursor-pointer list-none text-[var(--muted-foreground)] hover:text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
-                More ▾
-              </summary>
-              <ul className="absolute left-0 top-full z-10 mt-2 flex w-44 flex-col gap-1 rounded-md border border-[var(--border)] bg-[var(--background)] p-1 shadow-md">
-                {MORE_NAV.map((n) => (
-                  <li key={n.href}>
-                    <Link
-                      href={n.href}
-                      className="block rounded px-2 py-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                    >
-                      {n.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </details>
+            <MoreMenu items={MORE_NAV} />
           </nav>
           <div className="ml-auto flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
             <span title={admin.email}>{admin.email.split('@')[0]}</span>
