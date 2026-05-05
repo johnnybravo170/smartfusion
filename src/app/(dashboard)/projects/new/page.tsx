@@ -73,6 +73,48 @@ export default async function NewProjectPage({
     );
   }
 
+  // ?intake=full opts into the original deeper guided flow (multi-step
+  // review of parsed scope + reply drafting). We'll fold this into the
+  // manual form as an inline accelerator in a follow-up — for now it's
+  // available via the link below the manual form.
+  const fullIntake = typeof params.intake === 'string' && params.intake === 'full';
+
+  if (fullIntake) {
+    return (
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="mb-6">
+          <Link
+            href="/projects/new"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="size-3.5" />
+            Back to manual entry
+          </Link>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Guided intake</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Drop screenshots, photos, sketches, PDFs (sub-trade quotes, drawings) — or paste the
+            message. Henry will extract scope, build a starting estimate, and draft a reply.
+          </p>
+          {aiChoice === 'openai' ? (
+            <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+              Parse model: GPT-4.1 (A/B mode)
+            </p>
+          ) : null}
+        </div>
+
+        <LeadIntakeForm
+          parseModel={aiChoice === 'claude' ? 'claude-sonnet' : 'gpt-4.1'}
+          initialDraft={initialDraft}
+        />
+      </div>
+    );
+  }
+
+  // Default: manual-first. Operator can start a project from scratch
+  // and add scope later on the budget tab. The guided AI intake (drop
+  // a quote PDF / voice memo) is one click away via ?intake=full —
+  // a future revision will fold that drop-zone into this same page
+  // as an optional accelerator above the form.
   return (
     <div className="mx-auto w-full max-w-3xl">
       <div className="mb-6">
@@ -85,33 +127,27 @@ export default async function NewProjectPage({
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">New project</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Drop screenshots, photos, sketches, PDFs (sub-trade quotes, drawings) — or paste the
-          message. Henry will extract scope, build a starting estimate, and draft a reply.
+          Pick a customer, give the project a name, save. You can build the budget on the next
+          screen.
         </p>
-        {aiChoice === 'openai' ? (
-          <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-            Parse model: GPT-4.1 (A/B mode)
-          </p>
-        ) : null}
       </div>
 
-      <LeadIntakeForm
-        parseModel={aiChoice === 'claude' ? 'claude-sonnet' : 'gpt-4.1'}
-        initialDraft={initialDraft}
+      <ProjectForm
+        mode="create"
+        customers={customers.map((c) => ({ id: c.id, name: c.name }))}
+        action={createProjectAction}
       />
 
-      <details className="mt-8 rounded-lg border bg-card p-4">
-        <summary className="cursor-pointer text-sm font-medium">
-          Or enter manually (existing customer, no artifacts)
-        </summary>
-        <div className="mt-4">
-          <ProjectForm
-            mode="create"
-            customers={customers.map((c) => ({ id: c.id, name: c.name }))}
-            action={createProjectAction}
-          />
-        </div>
-      </details>
+      <div className="mt-8 rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+        Got a quote PDF, photos, or a voice memo about the job?{' '}
+        <Link
+          href="/projects/new?intake=full"
+          className="font-medium text-foreground underline-offset-2 hover:underline"
+        >
+          Use the guided AI intake →
+        </Link>{' '}
+        Henry will extract scope, build a starting estimate, and draft a customer reply.
+      </div>
     </div>
   );
 }
