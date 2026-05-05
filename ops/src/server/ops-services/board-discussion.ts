@@ -559,18 +559,24 @@ async function runPhaseD(
       await incrementSessionSpend(session.id, res.cost_cents);
 
       let parsed: FinalPosition | null = null;
+      let parseError: string | null = null;
       try {
         parsed = parseJson(res.text, finalPositionSchema, 'final position');
-      } catch {
-        // Fall back to a minimal stub so the chair has something to read
+      } catch (err) {
+        // Fall back to a minimal stub so the chair has something to read.
+        // Save the FULL raw response in the rationale + payload so a future
+        // recovery script (or a manual re-parse) can salvage the data.
+        parseError = err instanceof Error ? err.message : String(err);
         parsed = {
-          overall: { stance: 'unable to parse', confidence: 1, rationale: res.text.slice(0, 1000) },
+          overall: { stance: 'unable to parse', confidence: 1, rationale: res.text },
           cruxes: [],
           shifted_from_opening: [],
         };
+        console.warn(`[board.PhaseD] final position parse failed for ${advisor.id}:`, parseError);
       }
 
-      // Persist the message + structured positions
+      // Persist the message + structured positions. Payload preserves the
+      // full raw text on failure so we can recover later.
       await addMessage({
         session_id: session.id,
         advisor_id: advisor.id,
@@ -578,7 +584,9 @@ async function runPhaseD(
         turn_kind: 'final_position',
         addressed_to: null,
         content: renderFinalPositionForTranscript(parsed, cruxes),
-        payload: parsed,
+        payload: parseError
+          ? { stub: parsed, raw_text: res.text, parse_error: parseError }
+          : parsed,
         new_information: null,
         provider: res.provider,
         model: res.model,
@@ -590,29 +598,34 @@ async function runPhaseD(
         review_note: null,
       });
 
-      // Overall row (crux_id = null)
-      await upsertPosition({
-        session_id: session.id,
-        advisor_id: advisor.id,
-        crux_id: null,
-        stance: parsed.overall.stance,
-        confidence: parsed.overall.confidence,
-        rationale: parsed.overall.rationale,
-        shifted_from_opening: parsed.shifted_from_opening.length > 0,
-      });
-      // Per-crux rows
-      for (const cp of parsed.cruxes) {
-        // skip if crux_id isn't real (model hallucinated)
-        if (!cruxes.find((c) => c.id === cp.crux_id)) continue;
+      // Skip persisting positions when parsing failed — better to render
+      // "—" in the grid than fake "unable to parse" rows. Raw text is
+      // preserved in payload above for later recovery.
+      if (!parseError) {
+        // Overall row (crux_id = null)
         await upsertPosition({
           session_id: session.id,
           advisor_id: advisor.id,
-          crux_id: cp.crux_id,
-          stance: cp.stance,
-          confidence: cp.confidence,
-          rationale: cp.rationale,
-          shifted_from_opening: parsed.shifted_from_opening.includes(cp.crux_id),
+          crux_id: null,
+          stance: parsed.overall.stance,
+          confidence: parsed.overall.confidence,
+          rationale: parsed.overall.rationale,
+          shifted_from_opening: parsed.shifted_from_opening.length > 0,
         });
+        // Per-crux rows
+        for (const cp of parsed.cruxes) {
+          // skip if crux_id isn't real (model hallucinated)
+          if (!cruxes.find((c) => c.id === cp.crux_id)) continue;
+          await upsertPosition({
+            session_id: session.id,
+            advisor_id: advisor.id,
+            crux_id: cp.crux_id,
+            stance: cp.stance,
+            confidence: cp.confidence,
+            rationale: cp.rationale,
+            shifted_from_opening: parsed.shifted_from_opening.includes(cp.crux_id),
+          });
+        }
       }
     }),
   );

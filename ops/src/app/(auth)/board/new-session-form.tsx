@@ -13,6 +13,83 @@ type AdvisorOption = {
   role_kind: 'expert' | 'challenger' | 'chair';
 };
 
+/**
+ * Topic-shaped advisor presets. Each lists slugs to include — the form
+ * resolves slugs to IDs at runtime. Chair + DA are in every preset on
+ * purpose: chair is mandatory, DA earns its keep on every topic.
+ *
+ * Picking by topic beats picking everyone. The marginal advisor on a
+ * mismatched topic dilutes attention more than they add depth.
+ */
+const ADVISOR_PRESETS: Array<{ id: string; label: string; slugs: string[]; description: string }> =
+  [
+    {
+      id: 'all',
+      label: 'Everyone',
+      slugs: [], // empty = include all
+      description: 'All advisors. Default.',
+    },
+    {
+      id: 'compensation',
+      label: 'Compensation / Governance',
+      slugs: [
+        'strategic-chair',
+        'devils-advocate',
+        'customer-success',
+        'surefooted-architect',
+        'pricing-packaging',
+        'founder-led-sales',
+      ],
+      description: 'Equity, partner pay, advisor agreements, friend-as-collaborator structures.',
+    },
+    {
+      id: 'pricing',
+      label: 'Pricing / Packaging',
+      slugs: [
+        'strategic-chair',
+        'devils-advocate',
+        'pricing-packaging',
+        'founder-led-sales',
+        'vertical-saas-strategist',
+      ],
+      description: 'Plan structure, value metric, discounts, monetization mechanics.',
+    },
+    {
+      id: 'architecture',
+      label: 'Architecture / Scale',
+      slugs: [
+        'strategic-chair',
+        'devils-advocate',
+        'surefooted-architect',
+        'vertical-saas-strategist',
+      ],
+      description: 'Schema, data model, service boundaries, scaling decisions.',
+    },
+    {
+      id: 'gtm',
+      label: 'GTM / Sales motion',
+      slugs: [
+        'strategic-chair',
+        'devils-advocate',
+        'founder-led-sales',
+        'customer-success',
+        'vertical-saas-strategist',
+      ],
+      description: 'Sales process, ICP, channel choice, demos, onboarding.',
+    },
+    {
+      id: 'triage',
+      label: 'Quick triage',
+      slugs: [
+        'strategic-chair',
+        'devils-advocate',
+        'vertical-saas-strategist',
+        'founder-led-sales',
+      ],
+      description: 'Fast gut-check with the smallest useful panel.',
+    },
+  ];
+
 export function NewSessionForm({ advisors }: { advisors: AdvisorOption[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -20,6 +97,7 @@ export function NewSessionForm({ advisors }: { advisors: AdvisorOption[] }) {
   const [topic, setTopic] = useState('');
   // Default selection: chair + every expert + DA challenger
   const [selected, setSelected] = useState<Set<string>>(new Set(advisors.map((a) => a.id)));
+  const [activePreset, setActivePreset] = useState<string>('all');
   const [budget, setBudget] = useState(500);
   const [providerOverride, setProviderOverride] = useState<'' | 'anthropic' | 'openrouter'>('');
   const [modelOverride, setModelOverride] = useState('');
@@ -31,6 +109,20 @@ export function NewSessionForm({ advisors }: { advisors: AdvisorOption[] }) {
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelected(next);
+    setActivePreset('custom');
+  }
+
+  function applyAdvisorPreset(presetId: string): void {
+    const preset = ADVISOR_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    if (preset.id === 'all' || preset.slugs.length === 0) {
+      setSelected(new Set(advisors.map((a) => a.id)));
+    } else {
+      const wanted = new Set(preset.slugs);
+      const matched = advisors.filter((a) => wanted.has(a.slug)).map((a) => a.id);
+      setSelected(new Set(matched));
+    }
+    setActivePreset(presetId);
   }
 
   function presetKimi(): void {
@@ -120,10 +212,39 @@ export function NewSessionForm({ advisors }: { advisors: AdvisorOption[] }) {
       </label>
 
       <div>
-        <p className="text-xs font-medium text-[var(--muted-foreground)]">
-          Advisors ({selected.size} selected)
-        </p>
-        <ul className="mt-1 grid gap-1 sm:grid-cols-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="text-xs font-medium text-[var(--muted-foreground)]">
+            Advisors ({selected.size} selected)
+          </p>
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {ADVISOR_PRESETS.map((p) => {
+            const isActive = activePreset === p.id;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => applyAdvisorPreset(p.id)}
+                title={p.description}
+                className={`rounded-full border px-3 py-1 text-xs transition ${
+                  isActive
+                    ? 'border-[var(--foreground)] bg-[var(--muted)]'
+                    : 'border-[var(--border)] text-[var(--muted-foreground)] hover:border-[var(--foreground)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+          {activePreset === 'custom' ? (
+            <span className="rounded-full border border-[var(--foreground)] bg-[var(--muted)] px-3 py-1 text-xs">
+              Custom
+            </span>
+          ) : null}
+        </div>
+
+        <ul className="mt-2 grid gap-1 sm:grid-cols-2">
           {advisors.map((a) => (
             <li key={a.id}>
               <label className="flex cursor-pointer items-center gap-2 rounded border border-[var(--border)] p-2 text-sm">

@@ -260,11 +260,24 @@ export const chairActionSchema = z.discriminatedUnion('action', [
 ]);
 export type ChairAction = z.infer<typeof chairActionSchema>;
 
+/** Confidence clamp. Models routinely return values outside the 1-5 band
+ *  (most often 1-10 or 0-100). Map to 1-5 instead of failing the parse —
+ *  the chair's overall synthesis is the load-bearing output, not the
+ *  precise per-message confidence. */
+const confidenceSchema = z.preprocess((val) => {
+  if (typeof val !== 'number' || !Number.isFinite(val)) return val;
+  if (val >= 1 && val <= 5) return Math.round(val);
+  if (val >= 6 && val <= 10) return Math.max(1, Math.min(5, Math.ceil(val / 2))); // 6→3, 7→4, 8→4, 9→5, 10→5
+  if (val > 10 && val <= 100) return Math.max(1, Math.min(5, Math.ceil(val / 20))); // % scale
+  if (val < 1) return 1;
+  return 5;
+}, z.number().int().min(1).max(5));
+
 /** Phase D: each advisor's structured final position. */
 export const finalPositionSchema = z.object({
   overall: z.object({
     stance: z.string().min(1).max(4000),
-    confidence: z.number().int().min(1).max(5),
+    confidence: confidenceSchema,
     rationale: z.string().min(1).max(8000),
   }),
   cruxes: z
@@ -272,7 +285,7 @@ export const finalPositionSchema = z.object({
       z.object({
         crux_id: z.string().uuid(),
         stance: z.string().min(1).max(4000),
-        confidence: z.number().int().min(1).max(5),
+        confidence: confidenceSchema,
         rationale: z.string().min(1).max(8000),
       }),
     )
