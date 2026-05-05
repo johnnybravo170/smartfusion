@@ -205,14 +205,19 @@ export async function sendInvoiceAction(input: {
     return { ok: false, error: `Cannot send an invoice with status "${invoice.status}".` };
   }
 
-  // Load tenant for stripe_account_id.
+  // Load tenant for stripe_account_id and invoice doc defaults.
   const { data: tenantRow } = await supabase
     .from('tenants')
-    .select('stripe_account_id, name')
+    .select(
+      'stripe_account_id, name, invoice_payment_instructions, invoice_terms, invoice_policies',
+    )
     .eq('id', tenant.id)
     .single();
 
   const stripeAccountId = tenantRow?.stripe_account_id as string | null;
+  const docPayment = (tenantRow?.invoice_payment_instructions as string | null) ?? null;
+  const docTerms = (tenantRow?.invoice_terms as string | null) ?? null;
+  const docPolicies = (tenantRow?.invoice_policies as string | null) ?? null;
 
   // Load customer for the checkout line item and email.
   const { data: customer } = await supabase
@@ -332,6 +337,9 @@ export async function sendInvoiceAction(input: {
           payUrl: emailLinkUrl,
           customerNote: (invoice.customer_note as string | null) ?? undefined,
           hasStripe: !!stripeAccountId,
+          paymentInstructions: docPayment,
+          terms: docTerms,
+          policies: docPolicies,
         }),
         caslCategory: 'transactional',
         relatedType: 'invoice',
@@ -409,6 +417,16 @@ export async function resendInvoiceAction(input: {
     return { ok: false, error: 'No payment link found. Send the invoice first.' };
   }
 
+  // Load tenant invoice doc defaults.
+  const { data: tenantDocs } = await supabase
+    .from('tenants')
+    .select('invoice_payment_instructions, invoice_terms, invoice_policies')
+    .eq('id', tenant.id)
+    .single();
+  const docPayment = (tenantDocs?.invoice_payment_instructions as string | null) ?? null;
+  const docTerms = (tenantDocs?.invoice_terms as string | null) ?? null;
+  const docPolicies = (tenantDocs?.invoice_policies as string | null) ?? null;
+
   // Load customer for email. Tenant name/logo come from getEmailBrandingForTenant below.
   const { data: customer } = await supabase
     .from('customers')
@@ -472,6 +490,9 @@ export async function resendInvoiceAction(input: {
           totalFormatted: formatCurrency(totalCents),
           payUrl: paymentUrl,
           customerNote: (invoice.customer_note as string | null) ?? undefined,
+          paymentInstructions: docPayment,
+          terms: docTerms,
+          policies: docPolicies,
         }),
         caslCategory: 'transactional',
         relatedType: 'invoice',

@@ -49,7 +49,9 @@ export default async function PublicInvoiceViewPage({
   // Load tenant info.
   const { data: tenant } = await supabase
     .from('tenants')
-    .select('name, gst_number, wcb_number')
+    .select(
+      'name, gst_number, wcb_number, invoice_payment_instructions, invoice_terms, invoice_policies',
+    )
     .eq('id', invoice.tenant_id)
     .single();
 
@@ -63,6 +65,9 @@ export default async function PublicInvoiceViewPage({
   const businessName = tenant?.name ?? 'Our Company';
   const gstNumber = (tenant?.gst_number as string | null) ?? null;
   const wcbNumber = (tenant?.wcb_number as string | null) ?? null;
+  const docPayment = (tenant?.invoice_payment_instructions as string | null) ?? null;
+  const docTerms = (tenant?.invoice_terms as string | null) ?? null;
+  const docPolicies = (tenant?.invoice_policies as string | null) ?? null;
   const regParts = [
     gstNumber ? `GST: ${gstNumber}` : null,
     wcbNumber ? `WCB: ${wcbNumber}` : null,
@@ -228,6 +233,32 @@ export default async function PublicInvoiceViewPage({
           </p>
         </div>
       )}
+
+      {/* How to pay / Terms / Policies — only render when set on tenant */}
+      {!isPaid && !isVoid && docPayment ? (
+        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            How to pay
+          </h2>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{docPayment}</p>
+        </div>
+      ) : null}
+      {docTerms ? (
+        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Terms
+          </h2>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{docTerms}</p>
+        </div>
+      ) : null}
+      {docPolicies ? (
+        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Policies
+          </h2>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{docPolicies}</p>
+        </div>
+      ) : null}
 
       {/* Pay button (only if sent + has Stripe payment URL) */}
       {invoice.status === 'sent' && paymentUrl && (
