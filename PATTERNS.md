@@ -50,6 +50,7 @@ Click-to-edit fields use the same keyboard contract: Enter saves, Escape cancels
 
 - `src/components/features/projects/project-name-editor.tsx` — heading + inline variants.
 - `src/components/features/projects/percent-complete-editor.tsx` — slider variant; shows "edit" hint on hover.
+- `src/components/features/projects/management-fee-editor.tsx` — number-as-percent variant on the Overview facts grid; writes a worklog entry on change.
 
 ---
 

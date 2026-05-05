@@ -177,6 +177,51 @@ export async function renameProjectAction(input: {
   return { ok: true, id: input.id };
 }
 
+export async function updateProjectManagementFeeAction(input: {
+  id: string;
+  rate: number;
+}): Promise<ProjectActionResult> {
+  if (!Number.isFinite(input.rate) || input.rate < 0 || input.rate > 1) {
+    return { ok: false, error: 'Fee rate must be between 0% and 100%.' };
+  }
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not authenticated.' };
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from('projects')
+    .select('name, management_fee_rate')
+    .eq('id', input.id)
+    .is('deleted_at', null)
+    .single();
+  if (!existing) return { ok: false, error: 'Project not found.' };
+
+  const oldPct = Math.round(Number(existing.management_fee_rate ?? 0) * 1000) / 10;
+  const newPct = Math.round(input.rate * 1000) / 10;
+  if (oldPct === newPct) return { ok: true, id: input.id };
+
+  const { error } = await supabase
+    .from('projects')
+    .update({ management_fee_rate: input.rate, updated_at: new Date().toISOString() })
+    .eq('id', input.id)
+    .is('deleted_at', null);
+
+  if (error) return { ok: false, error: error.message };
+
+  await supabase.from('worklog_entries').insert({
+    tenant_id: tenant.id,
+    entry_type: 'system',
+    title: 'Management fee changed',
+    body: `Management fee on "${existing.name}" changed from ${oldPct}% to ${newPct}%.`,
+    related_type: 'project',
+    related_id: input.id,
+  });
+
+  revalidatePath('/projects');
+  revalidatePath(`/projects/${input.id}`);
+  return { ok: true, id: input.id };
+}
+
 /**
  * Move a project through its lifecycle. The only sanctioned way to change
  * `lifecycle_stage` outside of the estimate-approval flow. Writes a

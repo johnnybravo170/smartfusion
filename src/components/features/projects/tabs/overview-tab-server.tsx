@@ -9,6 +9,7 @@
 
 import { Suspense } from 'react';
 import { VarianceTab } from '@/components/features/projects/budget-summary';
+import { ManagementFeeEditor } from '@/components/features/projects/management-fee-editor';
 import { ProjectTimeline } from '@/components/features/projects/project-timeline';
 import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
 import { getVarianceReport } from '@/lib/db/queries/cost-lines';
@@ -89,7 +90,7 @@ async function ProjectFactsSection({ projectId }: { projectId: string }) {
       </div>
       <div className="rounded-lg border p-4">
         <p className="text-xs text-muted-foreground">Mgmt Fee</p>
-        <p className="text-sm font-medium">{Math.round(project.management_fee_rate * 100)}%</p>
+        <ManagementFeeEditor projectId={project.id} rate={project.management_fee_rate} />
       </div>
       <div className="rounded-lg border p-4">
         <p className="text-xs text-muted-foreground">Categories</p>
