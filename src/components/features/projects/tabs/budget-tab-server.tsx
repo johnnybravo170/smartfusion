@@ -90,7 +90,9 @@ export default async function BudgetTabServer({
         <div className="flex flex-wrap items-center justify-end gap-2">
           {showSendForApproval ? (
             <Button asChild size="sm">
-              <Link href={`/projects/${projectId}/estimate/preview`}>Send for approval</Link>
+              <Link href={`/projects/${projectId}/estimate/preview`}>
+                Preview &amp; send to customer
+              </Link>
             </Button>
           ) : null}
         </div>

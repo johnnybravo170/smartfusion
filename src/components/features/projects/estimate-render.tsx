@@ -75,10 +75,23 @@ function formatDate(iso: string | null | undefined): string | null {
 }
 
 /**
- * Group lines by category (budget_category_id) and then by section. Renders the same
- * columns in each category's own table so the customer sees the contractor's
- * chosen divisions (e.g. UPSTAIRS WORK → Closets, Vanity, Paint) rather
- * than a single flat list.
+ * Group lines by category (budget_category_id) and then by section.
+ *
+ * Customer view layout:
+ *   - Section header: prominent (sm-base text, bold, distinct bar) so
+ *     the operator's chosen divisions are obvious at a glance.
+ *   - Category: native <details>, collapsed by default. The summary
+ *     row shows the category name + the sum of its line prices —
+ *     enough info that a customer can scan the full estimate without
+ *     opening anything. Click to expand for individual line items,
+ *     descriptions, and photos.
+ *   - Print stylesheet at the bottom forces every <details> open
+ *     when the page is printed/saved-as-PDF, so the printed
+ *     estimate is always complete.
+ *
+ * Layout uses a CSS grid (`grid-cols-[1fr_auto]`) instead of a
+ * <table> so the disclosure widget can wrap each category cleanly
+ * without fighting <table> semantics.
  */
 function renderGroups(lines: EstimateRenderLine[]) {
   type Category = {
@@ -132,89 +145,102 @@ function renderGroups(lines: EstimateRenderLine[]) {
     .sort((a, b) => a.order - b.order);
 
   return (
-    <div className="rounded-md border">
-      <table className="w-full table-fixed text-sm">
-        <colgroup>
-          <col />
-          <col className="w-28" />
-        </colgroup>
-        <thead>
-          <tr className="border-b bg-muted/50">
-            <th className="px-3 py-2 text-left font-medium">Item</th>
-            <th className="px-3 py-2 text-right font-medium">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sections.map((sec) => (
-            <Fragment key={sec.key}>
-              {sec.section ? (
-                <tr className="border-b bg-muted/30">
-                  <td
-                    colSpan={2}
-                    className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
-                  >
-                    {sec.section}
-                  </td>
-                </tr>
-              ) : null}
-              {sec.categories.flatMap((g) => [
-                ...(g.description?.trim()
-                  ? [
-                      <tr key={`${g.key}__desc`} className="border-b bg-muted/10">
-                        <td colSpan={2} className="px-3 py-2">
-                          <p className="text-xs font-medium text-foreground">{g.categoryName}</p>
-                          <p className="mt-0.5 whitespace-pre-wrap text-xs text-muted-foreground">
-                            {g.description.trim()}
-                          </p>
-                        </td>
-                      </tr>,
-                    ]
-                  : []),
-                ...g.lines.map((l) => {
-                  const hasDetail = !!l.notes || (l.photo_urls && l.photo_urls.length > 0);
-                  const detailContent = hasDetail ? (
-                    <>
-                      {l.notes ? (
-                        <p className="whitespace-pre-wrap text-xs text-muted-foreground">
-                          {l.notes}
-                        </p>
-                      ) : null}
-                      {l.photo_urls && l.photo_urls.length > 0 ? (
-                        <EstimatePhotoLightbox urls={l.photo_urls} />
-                      ) : null}
-                    </>
-                  ) : null;
-                  return (
-                    <Fragment key={l.id}>
-                      <tr className={hasDetail ? 'align-top' : 'align-top border-b last:border-0'}>
-                        <td className="px-3 py-2">
-                          <p className="font-medium">{l.label}</p>
-                          {/* Desktop: inline under the label */}
-                          {hasDetail ? (
-                            <div className="mt-0.5 hidden sm:block">{detailContent}</div>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-2 text-right font-medium">
-                          {formatCurrency(l.line_price_cents)}
-                        </td>
-                      </tr>
-                      {/* Mobile: full-width row below */}
-                      {hasDetail ? (
-                        <tr className="border-b last:border-0 sm:hidden">
-                          <td colSpan={2} className="px-3 pb-3 pt-0">
-                            {detailContent}
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                }),
-              ])}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      {/* Print: force every <details> open so PDF / paper output is
+       *  complete even though the on-screen default is collapsed. */}
+      <style>{`
+        @media print {
+          .estimate-categories details > *:not(summary) {
+            display: block !important;
+          }
+          .estimate-categories details summary::-webkit-details-marker {
+            display: none;
+          }
+          .estimate-categories details .estimate-chevron {
+            display: none;
+          }
+        }
+      `}</style>
+      <div className="estimate-categories overflow-hidden rounded-md border">
+        <div className="grid grid-cols-[1fr_auto] gap-x-3 border-b bg-muted/50 px-4 py-2 text-sm font-medium">
+          <div>Item</div>
+          <div className="text-right">Total</div>
+        </div>
+        {sections.map((sec) => (
+          <Fragment key={sec.key}>
+            {sec.section ? (
+              <div className="border-b bg-foreground/5 px-4 py-2.5 text-sm font-bold uppercase tracking-wider text-foreground">
+                {sec.section}
+              </div>
+            ) : null}
+            {sec.categories.map((g) => {
+              const categoryTotal = g.lines.reduce((s, l) => s + l.line_price_cents, 0);
+              return (
+                <details
+                  key={g.key}
+                  className="group border-b last:border-0 [&_summary]:list-none [&_summary::-webkit-details-marker]:hidden"
+                >
+                  <summary className="grid cursor-pointer grid-cols-[1fr_auto] items-baseline gap-x-3 px-4 py-3 hover:bg-muted/30">
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        aria-hidden
+                        className="estimate-chevron inline-block w-3 text-muted-foreground transition-transform group-open:rotate-90"
+                      >
+                        ›
+                      </span>
+                      <span className="font-medium">{g.categoryName}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {g.lines.length} {g.lines.length === 1 ? 'item' : 'items'}
+                      </span>
+                    </div>
+                    <span className="font-medium tabular-nums">
+                      {formatCurrency(categoryTotal)}
+                    </span>
+                  </summary>
+                  <div className="bg-muted/10 px-4 pb-3 pt-1">
+                    {g.description?.trim() ? (
+                      <p className="mb-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                        {g.description.trim()}
+                      </p>
+                    ) : null}
+                    <div className="divide-y divide-dashed">
+                      {g.lines.map((l) => {
+                        const hasDetail = !!l.notes || (l.photo_urls && l.photo_urls.length > 0);
+                        return (
+                          <div
+                            key={l.id}
+                            className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 py-2"
+                          >
+                            <div>
+                              <p className="text-sm">{l.label}</p>
+                              {hasDetail ? (
+                                <div className="mt-1 space-y-1">
+                                  {l.notes ? (
+                                    <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+                                      {l.notes}
+                                    </p>
+                                  ) : null}
+                                  {l.photo_urls && l.photo_urls.length > 0 ? (
+                                    <EstimatePhotoLightbox urls={l.photo_urls} />
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                            <span className="text-sm tabular-nums">
+                              {formatCurrency(l.line_price_cents)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </details>
+              );
+            })}
+          </Fragment>
+        ))}
+      </div>
+    </>
   );
 }
 
