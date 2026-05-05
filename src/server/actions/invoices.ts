@@ -169,6 +169,11 @@ export async function createInvoiceAction(input: {
  */
 export async function sendInvoiceAction(input: {
   invoiceId: string;
+  /** Per-send recipient list (optional). When undefined, defaults to
+   *  the union of the customer's primary email + additional_emails.
+   *  Pass an explicit list to opt anyone out for this specific send,
+   *  or include a one-off CC. */
+  recipientEmails?: string[];
 }): Promise<InvoiceActionResult> {
   const parsed = invoiceSendSchema.safeParse({ invoice_id: input.invoiceId });
   if (!parsed.success) {
@@ -212,9 +217,22 @@ export async function sendInvoiceAction(input: {
   // Load customer for the checkout line item and email.
   const { data: customer } = await supabase
     .from('customers')
-    .select('name, email')
+    .select('name, email, additional_emails')
     .eq('id', invoice.customer_id)
     .single();
+
+  const customerEmail = (customer?.email as string | null) ?? null;
+  const customerAdditionalEmails = (customer?.additional_emails as string[] | null) ?? [];
+  const defaultRecipients = Array.from(
+    new Set(
+      [customerEmail, ...customerAdditionalEmails]
+        .filter((e): e is string => Boolean(e?.trim()))
+        .map((e) => e.trim().toLowerCase()),
+    ),
+  );
+  const recipientEmails = (input.recipientEmails ?? defaultRecipients)
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
 
   const invoiceLineItems = ((invoice.line_items as InvoiceLineItem[] | null) ??
     []) as InvoiceLineItem[];
@@ -294,7 +312,7 @@ export async function sendInvoiceAction(input: {
   // Use payment URL if Stripe is connected, otherwise link to public view page.
   const emailLinkUrl = paymentUrl ?? publicViewUrl;
 
-  if (customer?.email) {
+  if (recipientEmails.length > 0) {
     try {
       const { sendEmail } = await import('@/lib/email/send');
       const { invoiceEmailHtml } = await import('@/lib/email/templates/invoice-email');
@@ -303,10 +321,10 @@ export async function sendInvoiceAction(input: {
       const branding = await getEmailBrandingForTenant(tenant.id);
       const emailResult = await sendEmail({
         tenantId: tenant.id,
-        to: customer.email,
+        to: recipientEmails,
         subject: `Invoice from ${branding.businessName} — ${formatCurrency(totalCents)}`,
         html: invoiceEmailHtml({
-          customerName: customer.name,
+          customerName: customer?.name ?? 'Customer',
           businessName: branding.businessName,
           logoUrl: branding.logoUrl,
           invoiceNumber: invoice.id.slice(0, 8),
@@ -318,7 +336,12 @@ export async function sendInvoiceAction(input: {
         caslCategory: 'transactional',
         relatedType: 'invoice',
         relatedId: invoice.id,
-        caslEvidence: { kind: 'invoice_send', invoiceId: invoice.id, jobId: invoice.job_id },
+        caslEvidence: {
+          kind: 'invoice_send',
+          invoiceId: invoice.id,
+          jobId: invoice.job_id,
+          recipients: recipientEmails,
+        },
       });
 
       if (emailResult.ok) {
@@ -326,7 +349,7 @@ export async function sendInvoiceAction(input: {
           tenant_id: tenant.id,
           entry_type: 'system',
           title: 'Invoice emailed',
-          body: `Invoice #${invoice.id.slice(0, 8)} emailed to ${customer.email}`,
+          body: `Invoice #${invoice.id.slice(0, 8)} emailed to ${recipientEmails.join(', ')}`,
           related_type: 'job',
           related_id: invoice.job_id,
         });
@@ -337,7 +360,7 @@ export async function sendInvoiceAction(input: {
       console.error('Invoice email error:', emailErr);
     }
   } else {
-    warning = 'Customer has no email on file. Invoice saved but not emailed.';
+    warning = 'No recipient email on file. Invoice saved but not emailed.';
   }
 
   revalidatePath('/invoices');
@@ -352,6 +375,9 @@ export async function sendInvoiceAction(input: {
  */
 export async function resendInvoiceAction(input: {
   invoiceId: string;
+  /** Per-send recipient list. Same defaulting + override semantics as
+   *  sendInvoiceAction. */
+  recipientEmails?: string[];
 }): Promise<InvoiceActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) {
@@ -386,9 +412,22 @@ export async function resendInvoiceAction(input: {
   // Load customer for email. Tenant name/logo come from getEmailBrandingForTenant below.
   const { data: customer } = await supabase
     .from('customers')
-    .select('name, email')
+    .select('name, email, additional_emails')
     .eq('id', invoice.customer_id)
     .single();
+
+  const resendCustomerEmail = (customer?.email as string | null) ?? null;
+  const resendCustomerAlt = (customer?.additional_emails as string[] | null) ?? [];
+  const resendDefaultRecipients = Array.from(
+    new Set(
+      [resendCustomerEmail, ...resendCustomerAlt]
+        .filter((e): e is string => Boolean(e?.trim()))
+        .map((e) => e.trim().toLowerCase()),
+    ),
+  );
+  const resendRecipientEmails = (input.recipientEmails ?? resendDefaultRecipients)
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
 
   const resendLineItems = ((invoice.line_items as InvoiceLineItem[] | null) ??
     []) as InvoiceLineItem[];
@@ -414,7 +453,7 @@ export async function resendInvoiceAction(input: {
   // Email the payment link to the customer.
   let warning: string | undefined;
 
-  if (customer?.email) {
+  if (resendRecipientEmails.length > 0) {
     try {
       const { sendEmail } = await import('@/lib/email/send');
       const { invoiceEmailHtml } = await import('@/lib/email/templates/invoice-email');
@@ -423,10 +462,10 @@ export async function resendInvoiceAction(input: {
       const branding = await getEmailBrandingForTenant(tenant.id);
       const emailResult = await sendEmail({
         tenantId: tenant.id,
-        to: customer.email,
+        to: resendRecipientEmails,
         subject: `Invoice from ${branding.businessName} — ${formatCurrency(totalCents)}`,
         html: invoiceEmailHtml({
-          customerName: customer.name,
+          customerName: customer?.name ?? 'Customer',
           businessName: branding.businessName,
           logoUrl: branding.logoUrl,
           invoiceNumber: invoice.id.slice(0, 8),
@@ -437,7 +476,11 @@ export async function resendInvoiceAction(input: {
         caslCategory: 'transactional',
         relatedType: 'invoice',
         relatedId: invoice.id,
-        caslEvidence: { kind: 'invoice_resend', invoiceId: invoice.id },
+        caslEvidence: {
+          kind: 'invoice_resend',
+          invoiceId: invoice.id,
+          recipients: resendRecipientEmails,
+        },
       });
 
       if (emailResult.ok) {
@@ -445,7 +488,7 @@ export async function resendInvoiceAction(input: {
           tenant_id: tenant.id,
           entry_type: 'system',
           title: 'Invoice emailed',
-          body: `Invoice #${invoice.id.slice(0, 8)} resent to ${customer.email}`,
+          body: `Invoice #${invoice.id.slice(0, 8)} resent to ${resendRecipientEmails.join(', ')}`,
           related_type: 'job',
           related_id: invoice.job_id,
         });
@@ -456,7 +499,7 @@ export async function resendInvoiceAction(input: {
       console.error('Invoice resend email error:', emailErr);
     }
   } else {
-    warning = 'Customer has no email on file. Invoice not emailed.';
+    warning = 'No recipient email on file. Invoice not emailed.';
   }
 
   revalidatePath('/invoices');

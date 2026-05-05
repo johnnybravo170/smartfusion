@@ -71,6 +71,7 @@ const EMPTY: CustomerCreateInput = {
   kind: 'customer',
   name: '',
   email: '',
+  additionalEmails: [],
   phone: '',
   addressLine1: '',
   city: '',
@@ -474,6 +475,68 @@ export function CustomerForm({
                 <FormMessage />
               </FormItem>
             )}
+          />
+
+          {/* Additional recipients — spouse, bookkeeper, business
+           *  partner, lender. Pre-cc'd on every customer-facing send;
+           *  the send bar offers a per-send opt-out. */}
+          <FormField
+            control={form.control}
+            name="additionalEmails"
+            render={({ field }) => {
+              const list = field.value ?? [];
+              return (
+                <FormItem className="md:col-span-2">
+                  <FormLabel>
+                    Additional recipients{' '}
+                    <span className="font-normal text-muted-foreground">
+                      (cc'd on estimates &amp; invoices)
+                    </span>
+                  </FormLabel>
+                  <div className="space-y-2">
+                    {list.map((value, idx) => (
+                      // Index is the only stable key here — emails can
+                      // legitimately repeat or be empty mid-edit.
+                      // biome-ignore lint/suspicious/noArrayIndexKey: edit-in-place list
+                      <div key={idx} className="flex items-center gap-2">
+                        <Input
+                          type="email"
+                          autoComplete="email"
+                          placeholder="spouse@example.com"
+                          value={value}
+                          onChange={(e) => {
+                            const next = [...list];
+                            next[idx] = e.target.value;
+                            field.onChange(next);
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Remove this email"
+                          onClick={() => {
+                            field.onChange(list.filter((_, i) => i !== idx));
+                          }}
+                        >
+                          ×
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => field.onChange([...list, ''])}
+                      disabled={list.length >= 10}
+                    >
+                      + Add another
+                    </Button>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
           />
         </div>
 

@@ -20,6 +20,7 @@ export default async function EditContactPage({ params }: { params: Promise<{ id
     type: customer.type as CustomerType,
     name: customer.name,
     email: customer.email ?? '',
+    additionalEmails: customer.additional_emails ?? [],
     phone: customer.phone ?? '',
     addressLine1: customer.address_line1 ?? '',
     city: customer.city ?? '',

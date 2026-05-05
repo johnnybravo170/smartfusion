@@ -106,6 +106,24 @@ export const customerCreateSchema = z.object({
     .min(1, { message: 'Name is required.' })
     .max(100, { message: 'Name must be at most 100 characters.' }),
   email: optionalEmail,
+  /**
+   * Additional recipient emails for customer-facing communications
+   * (estimates, invoices, change orders). Spouse, bookkeeper, partner,
+   * lender — whoever else should be cc'd by default. The send bar lets
+   * the operator opt any of these out per-send.
+   */
+  additionalEmails: z
+    .array(z.string())
+    .max(10, { message: 'At most 10 additional emails.' })
+    .default([])
+    // Strip blank rows the operator may have left while editing,
+    // then validate each remaining entry.
+    .transform((arr) => arr.map((s) => s.trim().toLowerCase()).filter(Boolean))
+    .pipe(
+      z
+        .array(z.string().email({ message: 'Enter a valid email address.' }))
+        .max(10, { message: 'At most 10 additional emails.' }),
+    ),
   phone: optionalText(30, 'Phone'),
   addressLine1: optionalText(200, 'Address'),
   city: optionalText(100, 'City'),

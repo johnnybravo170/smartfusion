@@ -16,6 +16,7 @@ export type InvoiceCustomerSummary = {
   id: string;
   name: string;
   email: string | null;
+  additional_emails: string[];
 };
 
 export type InvoiceLineItem = {
@@ -95,7 +96,7 @@ export async function listInvoices(
 
   let query = supabase
     .from('invoices')
-    .select(`${INVOICE_COLUMNS}, customers:customer_id (id, name, email)`)
+    .select(`${INVOICE_COLUMNS}, customers:customer_id (id, name, email, additional_emails)`)
     .is('deleted_at', null);
 
   if (filters.status) query = query.eq('status', filters.status);
@@ -125,7 +126,7 @@ export async function getInvoice(id: string): Promise<InvoiceWithRelations | nul
     .from('invoices')
     .select(
       `${INVOICE_COLUMNS},
-       customers:customer_id (id, name, email),
+       customers:customer_id (id, name, email, additional_emails),
        jobs:job_id (id, status, scheduled_at)`,
     )
     .eq('id', id)

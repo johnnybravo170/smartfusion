@@ -36,6 +36,9 @@ type Props = {
   customerId: string;
   customerName: string;
   customerEmail: string | null;
+  /** Saved additional recipients on the customer record. Pre-checked
+   *  in the send dialog; operator can opt any out for this send. */
+  customerAdditionalEmails: string[];
   totalFormatted: string;
   lineCount: number;
   alreadySent: boolean;
@@ -50,6 +53,7 @@ export function EstimatePreviewSendBar({
   customerId,
   customerName,
   customerEmail: initialEmail,
+  customerAdditionalEmails,
   totalFormatted,
   lineCount,
   alreadySent,
@@ -73,6 +77,24 @@ export function EstimatePreviewSendBar({
 
   const [note, setNote] = useState('');
 
+  // Recipient checklist — array of { email, checked } for the saved
+  // emails, plus an editable list of one-off extras that exist only
+  // for this send. Defaults to all checked when the dialog opens.
+  type RecipientRow = { email: string; checked: boolean };
+  const [recipientList, setRecipientList] = useState<RecipientRow[]>(() =>
+    [resolvedEmail, ...customerAdditionalEmails]
+      .filter((e): e is string => Boolean(e?.trim()))
+      .map((email) => ({ email: email.trim().toLowerCase(), checked: true })),
+  );
+  const [extraRecipient, setExtraRecipient] = useState('');
+
+  function selectedRecipients(): string[] {
+    const fromList = recipientList.filter((r) => r.checked).map((r) => r.email);
+    const extra = extraRecipient.trim().toLowerCase();
+    if (extra) fromList.push(extra);
+    return Array.from(new Set(fromList));
+  }
+
   const canSend = lineCount > 0;
   const needsEmail = !resolvedEmail;
 
@@ -84,6 +106,7 @@ export function EstimatePreviewSendBar({
         projectId,
         note: note.trim() || null,
         autoFollowupOverride: autoFollowup,
+        recipientEmails: selectedRecipients(),
       });
       if (res.ok) {
         toast.success('Estimate sent to customer');
@@ -110,11 +133,21 @@ export function EstimatePreviewSendBar({
         return;
       }
       setResolvedEmail(trimmed);
-      // Now send.
+      // No-email-on-file path: the operator just typed the primary
+      // address. Send to that plus any pre-saved additionals — the
+      // recipient checklist UI hasn't been used yet.
+      const recipients = Array.from(
+        new Set(
+          [trimmed.toLowerCase(), ...customerAdditionalEmails.map((e) => e.toLowerCase())].filter(
+            Boolean,
+          ),
+        ),
+      );
       const res = await sendEstimateForApprovalAction({
         projectId,
         note: note.trim() || null,
         autoFollowupOverride: autoFollowup,
+        recipientEmails: recipients,
       });
       if (res.ok) {
         toast.success('Estimate sent to customer');
@@ -250,8 +283,8 @@ export function EstimatePreviewSendBar({
                   <div className="space-y-3 text-sm">
                     <div className="space-y-1">
                       <p>
-                        Emailing <span className="font-medium text-foreground">{customerName}</span>{' '}
-                        at <span className="font-medium text-foreground">{resolvedEmail}</span>.
+                        Sending estimate to{' '}
+                        <span className="font-medium text-foreground">{customerName}</span>.
                       </p>
                       <p>
                         Total <span className="font-medium text-foreground">{totalFormatted}</span>{' '}
@@ -262,6 +295,43 @@ export function EstimatePreviewSendBar({
                           Already sent once — resending keeps the same approval link.
                         </p>
                       ) : null}
+                    </div>
+
+                    {/* Recipients checklist. Pre-checks every email
+                     *  saved on the customer; operator can opt any
+                     *  out for this send only. The "+ Also CC" input
+                     *  is for one-off addresses that don't get saved. */}
+                    <div className="space-y-1.5">
+                      <Label>Recipients</Label>
+                      <div className="space-y-1">
+                        {recipientList.map((row, idx) => (
+                          <label
+                            key={row.email}
+                            className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-0.5 hover:bg-muted/50"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={row.checked}
+                              onChange={(e) =>
+                                setRecipientList((prev) => {
+                                  const next = [...prev];
+                                  next[idx] = { ...next[idx], checked: e.target.checked };
+                                  return next;
+                                })
+                              }
+                              disabled={pending}
+                            />
+                            <span className="text-sm">{row.email}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <Input
+                        type="email"
+                        placeholder="Also CC (this send only)…"
+                        value={extraRecipient}
+                        onChange={(e) => setExtraRecipient(e.target.value)}
+                        disabled={pending}
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="confirm-note">
@@ -288,7 +358,10 @@ export function EstimatePreviewSendBar({
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => handleSend()} disabled={pending}>
+                <AlertDialogAction
+                  onClick={() => handleSend()}
+                  disabled={pending || selectedRecipients().length === 0}
+                >
                   {pending ? (
                     <Loader2 className="size-3.5 animate-spin" />
                   ) : (

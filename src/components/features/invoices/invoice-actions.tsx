@@ -70,6 +70,9 @@ type Props = {
   status: InvoiceStatus;
   paymentUrl: string | null;
   customerEmail: string | null;
+  /** Pre-saved alt emails on the customer record. Pre-checked in the
+   *  send dialog; per-send opt-out works the same as on estimates. */
+  customerAdditionalEmails?: string[];
   hasStripe?: boolean;
   /** Invoice grand total in cents — used to flag amount mismatches in OCR. */
   invoiceTotalCents?: number;
@@ -94,6 +97,7 @@ export function InvoiceActions({
   status,
   paymentUrl,
   customerEmail,
+  customerAdditionalEmails = [],
   hasStripe = true,
   invoiceTotalCents,
 }: Props) {
@@ -108,6 +112,24 @@ export function InvoiceActions({
   const [ocrAmountCents, setOcrAmountCents] = useState<number | null>(null);
   const [ocrApplied, setOcrApplied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Recipient checklist for the send / resend dialogs. Initialised
+  // from customer.email + customer.additional_emails; operator can
+  // opt any out for this send only, or add a one-off CC.
+  const initialRecipients = [customerEmail, ...customerAdditionalEmails]
+    .filter((e): e is string => Boolean(e?.trim()))
+    .map((e) => e.trim().toLowerCase());
+  const [recipientList, setRecipientList] = useState<{ email: string; checked: boolean }[]>(
+    initialRecipients.map((email) => ({ email, checked: true })),
+  );
+  const [extraRecipient, setExtraRecipient] = useState('');
+
+  function selectedRecipients(): string[] {
+    const fromList = recipientList.filter((r) => r.checked).map((r) => r.email);
+    const extra = extraRecipient.trim().toLowerCase();
+    if (extra) fromList.push(extra);
+    return Array.from(new Set(fromList));
+  }
 
   function handleAddReceipts(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -208,7 +230,10 @@ export function InvoiceActions({
 
   function handleSend() {
     startTransition(async () => {
-      const result = await sendInvoiceAction({ invoiceId });
+      const result = await sendInvoiceAction({
+        invoiceId,
+        recipientEmails: selectedRecipients(),
+      });
       if (result.ok) {
         toast.success('Invoice sent!');
         if (result.warning) {
@@ -273,7 +298,10 @@ export function InvoiceActions({
 
   function handleResend() {
     startTransition(async () => {
-      const result = await resendInvoiceAction({ invoiceId });
+      const result = await resendInvoiceAction({
+        invoiceId,
+        recipientEmails: selectedRecipients(),
+      });
       if (result.ok) {
         toast.success('Invoice resent.');
         if (result.warning) {
@@ -297,14 +325,43 @@ export function InvoiceActions({
   if (status === 'draft') {
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={handleSend} disabled={isPending} size="sm">
-          {isPending ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Send className="size-3.5" />
-          )}
-          Send invoice
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button disabled={isPending} size="sm">
+              {isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Send className="size-3.5" />
+              )}
+              Send invoice
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Send invoice?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Pick which addresses receive this email. The customer's saved emails are
+                pre-checked; uncheck any you don't want on this send. Add a one-off CC if needed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <RecipientChecklist
+              recipientList={recipientList}
+              setRecipientList={setRecipientList}
+              extraRecipient={extraRecipient}
+              setExtraRecipient={setExtraRecipient}
+              disabled={isPending}
+            />
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleSend}
+                disabled={isPending || selectedRecipients().length === 0}
+              >
+                Send
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <VoidButton onVoid={handleVoid} isPending={isPending} />
       </div>
     );
@@ -332,16 +389,25 @@ export function InvoiceActions({
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>
-                Resend to {customerEmail ?? 'customer (no email on file)'}?
-              </AlertDialogTitle>
+              <AlertDialogTitle>Resend invoice?</AlertDialogTitle>
               <AlertDialogDescription>
-                This will send another email with the invoice and payment link to the customer.
+                This sends another email with the invoice and payment link. Tweak the recipient list
+                if you want a different mix this time.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <RecipientChecklist
+              recipientList={recipientList}
+              setRecipientList={setRecipientList}
+              extraRecipient={extraRecipient}
+              setExtraRecipient={setExtraRecipient}
+              disabled={isPending}
+            />
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleResend} disabled={isPending}>
+              <AlertDialogAction
+                onClick={handleResend}
+                disabled={isPending || selectedRecipients().length === 0}
+              >
                 Send
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -515,6 +581,68 @@ export function InvoiceActions({
 
   // paid or void: no actions
   return null;
+}
+
+/**
+ * Pre-checked checklist of saved recipient emails plus a "Also CC"
+ * one-off field. Mirrored on the estimate send bar — same shape so
+ * operators see the same UX on both surfaces.
+ */
+function RecipientChecklist({
+  recipientList,
+  setRecipientList,
+  extraRecipient,
+  setExtraRecipient,
+  disabled,
+}: {
+  recipientList: { email: string; checked: boolean }[];
+  setRecipientList: (
+    updater: (prev: { email: string; checked: boolean }[]) => { email: string; checked: boolean }[],
+  ) => void;
+  extraRecipient: string;
+  setExtraRecipient: (v: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>Recipients</Label>
+      {recipientList.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No saved emails on this customer — type one below.
+        </p>
+      ) : (
+        <div className="space-y-1">
+          {recipientList.map((row, idx) => (
+            <label
+              key={row.email}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-0.5 hover:bg-muted/50"
+            >
+              <input
+                type="checkbox"
+                checked={row.checked}
+                onChange={(e) =>
+                  setRecipientList((prev) => {
+                    const next = [...prev];
+                    next[idx] = { ...next[idx], checked: e.target.checked };
+                    return next;
+                  })
+                }
+                disabled={disabled}
+              />
+              <span className="text-sm">{row.email}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      <Input
+        type="email"
+        placeholder="Also CC (this send only)…"
+        value={extraRecipient}
+        onChange={(e) => setExtraRecipient(e.target.value)}
+        disabled={disabled}
+      />
+    </div>
+  );
 }
 
 function VoidButton({ onVoid, isPending }: { onVoid: () => void; isPending: boolean }) {

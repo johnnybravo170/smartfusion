@@ -82,7 +82,7 @@ export async function sendEmail({
   relatedType,
   relatedId,
 }: {
-  to: string;
+  to: string | string[];
   subject: string;
   html: string;
   /** Optional override for the plain-text alternative. When omitted,
@@ -115,6 +115,12 @@ export async function sendEmail({
     }
   }
 
+  // Resend accepts either a single address string or an array; we
+  // normalize so the audit log row always stores a comma-joined string
+  // for searchability.
+  const toArray = Array.isArray(to) ? to : [to];
+  const toForLog = toArray.join(', ');
+
   // 1. Pre-log as queued so we have an audit row even if Resend throws.
   const supabase = createAdminClient();
   const { data: row, error: insertErr } = await supabase
@@ -122,7 +128,7 @@ export async function sendEmail({
     .insert({
       tenant_id: tenantId ?? null,
       direction: 'outbound',
-      to_address: to,
+      to_address: toForLog,
       from_address: resolvedFrom,
       reply_to: resolvedReplyTo ?? null,
       subject,
@@ -145,7 +151,7 @@ export async function sendEmail({
     const resolvedText = text ?? htmlToPlainText(html);
     const { data, error } = await resend.emails.send({
       from: resolvedFrom,
-      to,
+      to: toArray,
       subject,
       html,
       text: resolvedText || undefined,

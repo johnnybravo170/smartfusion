@@ -27,6 +27,9 @@ export type CustomerRow = {
   type: 'residential' | 'commercial' | 'agent';
   name: string;
   email: string | null;
+  /** Extra recipients for customer-facing emails. Always returned as an
+   *  array — the column has NOT NULL DEFAULT '{}'. */
+  additional_emails: string[];
   phone: string | null;
   address_line1: string | null;
   city: string | null;
@@ -80,7 +83,7 @@ export type CustomerListFilters = {
 };
 
 const CUSTOMER_COLUMNS =
-  'id, tenant_id, kind, type, name, email, phone, address_line1, city, province, postal_code, notes, do_not_auto_message, do_not_auto_message_at, do_not_auto_message_source, created_at, updated_at, deleted_at';
+  'id, tenant_id, kind, type, name, email, additional_emails, phone, address_line1, city, province, postal_code, notes, do_not_auto_message, do_not_auto_message_at, do_not_auto_message_source, created_at, updated_at, deleted_at';
 
 /**
  * For the duration of the contacts-unification rollout (Slice A), readers

@@ -53,6 +53,13 @@ export async function sendEstimateForApprovalAction(input: {
    * `auto_followup_enabled` value (or tenant default) is used.
    */
   autoFollowupOverride?: boolean;
+  /**
+   * Per-send recipient list. When undefined, defaults to
+   * [primary_email, ...customer.additional_emails]. Operators can pass
+   * a subset to opt any of those out, or include a brand-new address
+   * for a one-off CC. Empty array = no email send.
+   */
+  recipientEmails?: string[];
 }): Promise<EstimateActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
@@ -62,7 +69,7 @@ export async function sendEstimateForApprovalAction(input: {
   const { data: project, error: projErr } = await supabase
     .from('projects')
     .select(
-      'id, name, estimate_status, estimate_approval_code, management_fee_rate, auto_followup_enabled, customers:customer_id (name, email, phone, tax_exempt)',
+      'id, name, estimate_status, estimate_approval_code, management_fee_rate, auto_followup_enabled, customers:customer_id (name, email, additional_emails, phone, tax_exempt)',
     )
     .eq('id', input.projectId)
     .single();
@@ -72,16 +79,32 @@ export async function sendEstimateForApprovalAction(input: {
   const p = project as Record<string, unknown>;
   const customerRaw = p.customers as Record<string, unknown> | null;
   const customerEmail = customerRaw?.email as string | null;
+  const customerAdditionalEmails = (customerRaw?.additional_emails as string[] | null) ?? [];
   const customerPhone = (customerRaw?.phone as string | null) ?? null;
   const customerName = (customerRaw?.name as string) ?? 'Customer';
   const taxExempt = Boolean(customerRaw?.tax_exempt);
+
+  // Resolve the actual recipient list. When the operator hasn't
+  // overridden, default to primary + every saved alt email (deduped,
+  // empty-stripped). Operators can pass a subset via input to opt
+  // any of those out per send.
+  const defaultRecipients = [customerEmail, ...customerAdditionalEmails]
+    .filter((e): e is string => Boolean(e?.trim()))
+    .map((e) => e.trim().toLowerCase());
+  const dedupedDefault = Array.from(new Set(defaultRecipients));
+  const recipientEmails = (input.recipientEmails ?? dedupedDefault)
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
   const perQuoteFollowup =
     typeof input.autoFollowupOverride === 'boolean'
       ? input.autoFollowupOverride
       : ((p.auto_followup_enabled as boolean | null) ?? null);
 
-  if (!customerEmail) {
-    return { ok: false, error: 'Customer has no email address on file.' };
+  if (recipientEmails.length === 0) {
+    return {
+      ok: false,
+      error: 'No recipient email — add one to the customer or pass it at send time.',
+    };
   }
 
   const { data: costLines, error: clErr } = await supabase
@@ -140,13 +163,17 @@ export async function sendEstimateForApprovalAction(input: {
 
   await sendEmail({
     tenantId: tenant.id,
-    to: customerEmail,
+    to: recipientEmails,
     subject: `Estimate for ${p.name as string} — ${tenant.name}`,
     html,
     caslCategory: 'transactional',
     relatedType: 'estimate',
     relatedId: input.projectId,
-    caslEvidence: { kind: 'estimate_send', projectId: input.projectId },
+    caslEvidence: {
+      kind: 'estimate_send',
+      projectId: input.projectId,
+      recipients: recipientEmails,
+    },
   });
 
   const admin = createAdminClient();

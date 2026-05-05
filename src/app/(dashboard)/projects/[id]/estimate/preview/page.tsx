@@ -29,7 +29,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
        estimate_status, estimate_approved_at, estimate_approved_by_name,
        estimate_declined_reason, terms_text, document_type,
        customer_id, tenant_id,
-       customers:customer_id (name, email, address_line1, tax_exempt),
+       customers:customer_id (name, email, additional_emails, address_line1, tax_exempt),
        tenants:tenant_id (name, logo_storage_path, gst_number, wcb_number)`,
     )
     .eq('id', id)
@@ -158,6 +158,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
         customerId={p.customer_id as string}
         customerName={(customerRaw?.name as string) ?? 'Customer'}
         customerEmail={(customerRaw?.email as string | null) ?? null}
+        customerAdditionalEmails={(customerRaw?.additional_emails as string[] | null) ?? []}
         totalFormatted={formatCurrency(total)}
         lineCount={costLines.length}
         alreadySent={status !== 'draft'}
