@@ -35,7 +35,7 @@ export function NewSessionForm({ advisors }: { advisors: AdvisorOption[] }) {
 
   function presetKimi(): void {
     setProviderOverride('openrouter');
-    setModelOverride('moonshotai/kimi-k2-thinking');
+    setModelOverride('moonshotai/kimi-k2.5');
   }
 
   function presetSonnet(): void {
@@ -201,7 +201,7 @@ export function NewSessionForm({ advisors }: { advisors: AdvisorOption[] }) {
           <input
             value={modelOverride}
             onChange={(e) => setModelOverride(e.target.value)}
-            placeholder="claude-sonnet-4-6 / moonshotai/kimi-k2-thinking"
+            placeholder="claude-sonnet-4-6 / moonshotai/kimi-k2.5 / moonshotai/kimi-latest"
             className="rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
           />
         </div>

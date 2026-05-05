@@ -55,15 +55,17 @@ export const DEFAULT_BOARD_MODELS: Record<BoardCallKind, BoardModelChoice> = {
   context_summary: { provider: 'anthropic', model: 'claude-haiku-4-5' },
 };
 
-// Useful preset for the "let's try Kimi for fun" experiment. Override at
-// session creation: { provider_override: 'openrouter', model_override:
-// 'moonshotai/kimi-k2-thinking' }. Chair stays on Sonnet so the imprint
-// caching still works; only advisors and orchestration go to Kimi.
+// Kimi preset. Pinned to k2.5 — newer than k2-thinking (which Moonshot
+// released back in Nov 2025), cheaper ($0.44/$2 vs $0.60/$2.50 per M
+// tokens), 262K context, and non-thinking is actually the better fit
+// for our JSON-shaped chair turns and structured advisor positions
+// (thinking models are slower and noisier on JSON-mode tasks).
+export const KIMI_MODEL = 'moonshotai/kimi-k2.5';
 export const KIMI_PRESET: Partial<Record<BoardCallKind, BoardModelChoice>> = {
-  advisor_opening: { provider: 'openrouter', model: 'moonshotai/kimi-k2-thinking' },
-  advisor_exchange: { provider: 'openrouter', model: 'moonshotai/kimi-k2-thinking' },
-  advisor_challenge: { provider: 'openrouter', model: 'moonshotai/kimi-k2-thinking' },
-  advisor_position: { provider: 'openrouter', model: 'moonshotai/kimi-k2-thinking' },
+  advisor_opening: { provider: 'openrouter', model: KIMI_MODEL },
+  advisor_exchange: { provider: 'openrouter', model: KIMI_MODEL },
+  advisor_challenge: { provider: 'openrouter', model: KIMI_MODEL },
+  advisor_position: { provider: 'openrouter', model: KIMI_MODEL },
 };
 
 export function pickModel(
