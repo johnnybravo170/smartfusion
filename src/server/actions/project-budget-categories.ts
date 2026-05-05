@@ -182,6 +182,40 @@ export async function moveSectionAction(input: {
   return { ok: true };
 }
 
+/**
+ * Rename a section across all categories on a project. Sections are a
+ * free-text label on `project_budget_categories.section` — there's no
+ * sections table — so a rename is just an UPDATE that targets every
+ * category in the project with the old section name.
+ *
+ * Idempotent on no-op (old === new) and on a section that doesn't
+ * exist yet on this project.
+ */
+export async function renameSectionAction(input: {
+  project_id: string;
+  old_name: string;
+  new_name: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const oldName = input.old_name.trim();
+  const newName = input.new_name.trim();
+  if (!oldName) return { ok: false, error: 'Missing existing section name.' };
+  if (!newName) return { ok: false, error: 'Section name cannot be empty.' };
+  if (newName.length > 80) return { ok: false, error: 'Section name too long.' };
+  if (oldName === newName) return { ok: true };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('project_budget_categories')
+    .update({ section: newName, updated_at: new Date().toISOString() })
+    .eq('project_id', input.project_id)
+    .eq('section', oldName);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/projects/${input.project_id}`);
+  return { ok: true };
+}
+
 export async function removeBudgetCategoryAction(input: {
   id: string;
   project_id: string;

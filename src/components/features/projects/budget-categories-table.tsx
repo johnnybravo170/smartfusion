@@ -40,6 +40,7 @@ import {
   addBudgetCategoryAction,
   moveSectionAction,
   removeBudgetCategoryAction,
+  renameSectionAction,
   updateBudgetCategoryAction,
 } from '@/server/actions/project-budget-categories';
 import {
@@ -128,7 +129,11 @@ export function BudgetCategoriesTable({
   );
   const [addingLineFor, setAddingLineFor] = useState<string | null>(null);
   const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
-  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [addCategoryMode, setAddCategoryMode] = useState<'closed' | 'category' | 'section'>(
+    'closed',
+  );
+  const [editingSectionName, setEditingSectionName] = useState<string | null>(null);
+  const [editSectionValue, setEditSectionValue] = useState('');
   const [isPending, startTransition] = useTransition();
   // Lines that the operator has tapped × on but the 5s undo window
   // hasn't yet expired. Hidden from render; the actual server-side
@@ -346,8 +351,18 @@ export function BudgetCategoriesTable({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={() => setShowAddCategory((v) => !v)}>
-          {showAddCategory ? 'Cancel' : '+ Add category'}
+        <Button
+          size="sm"
+          onClick={() => setAddCategoryMode((m) => (m === 'category' ? 'closed' : 'category'))}
+        >
+          {addCategoryMode === 'category' ? 'Cancel' : '+ Add category'}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setAddCategoryMode((m) => (m === 'section' ? 'closed' : 'section'))}
+        >
+          {addCategoryMode === 'section' ? 'Cancel' : '+ New section'}
         </Button>
         <Button size="sm" variant="outline" onClick={generateEstimate} disabled={isPending}>
           Generate Estimate
@@ -355,11 +370,12 @@ export function BudgetCategoriesTable({
         {headerActions}
       </div>
 
-      {showAddCategory && (
+      {addCategoryMode !== 'closed' && (
         <AddBudgetCategoryForm
           projectId={projectId}
           existingSections={Array.from(new Set(lines.map((l) => l.section).filter(Boolean)))}
-          onDone={() => setShowAddCategory(false)}
+          defaultNewSection={addCategoryMode === 'section'}
+          onDone={() => setAddCategoryMode('closed')}
         />
       )}
 
@@ -381,12 +397,59 @@ export function BudgetCategoriesTable({
           });
         }
 
+        function commitSectionRename(newName: string) {
+          const trimmed = newName.trim();
+          setEditingSectionName(null);
+          if (!trimmed || trimmed === section) return;
+          startTransition(async () => {
+            const res = await renameSectionAction({
+              project_id: projectId,
+              old_name: section,
+              new_name: trimmed,
+            });
+            if (!res.ok) toast.error(res.error);
+          });
+        }
+
+        const isRenamingSection = editingSectionName === section;
+
         return (
           <div key={section}>
-            <div className="mb-2 flex items-center gap-1">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                {section}
-              </h3>
+            <div className="group mb-2 flex items-center gap-1">
+              {isRenamingSection ? (
+                // PATTERNS.md §4 keyboard contract: Enter saves,
+                // Escape cancels, blur saves.
+                <Input
+                  className="h-7 w-auto min-w-[180px] text-sm font-semibold uppercase tracking-wider"
+                  value={editSectionValue}
+                  onChange={(e) => setEditSectionValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitSectionRename(editSectionValue);
+                    if (e.key === 'Escape') setEditingSectionName(null);
+                  }}
+                  onBlur={() => commitSectionRename(editSectionValue)}
+                  autoFocus
+                  disabled={isPending}
+                />
+              ) : (
+                <>
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                    {section}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditSectionValue(section);
+                      setEditingSectionName(section);
+                    }}
+                    aria-label={`Rename ${section} section`}
+                    title="Rename section"
+                    className="rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover:opacity-100 focus:opacity-100"
+                  >
+                    <Pencil className="size-3" />
+                  </button>
+                </>
+              )}
               {/* Section reorder is purely cosmetic — leave it on for */}
               {/* every project posture. Chevrons over a drag handle: */}
               {/* zero added libraries, predictable on touch, and the */}
@@ -1255,16 +1318,27 @@ function AddBudgetCategoryForm({
   projectId,
   existingSections,
   onDone,
+  defaultNewSection = false,
 }: {
   projectId: string;
-  /** Sections already in use on this project — drives the datalist
-   * autocomplete. Free-text per migration 0072; operator can type a
-   * brand-new section name and it just becomes one. */
+  /** Sections already in use on this project — populates the section
+   * dropdown. Free-text per migration 0072; "+ New section…" lets the
+   * operator add a label that doesn't exist yet. */
   existingSections: string[];
   onDone: () => void;
+  /** Open the form in new-section mode: the section field starts in
+   * the "type a new name" state. Used by the toolbar's "+ New section"
+   * button so the operator doesn't have to first pick the dropdown
+   * sentinel. */
+  defaultNewSection?: boolean;
 }) {
   const [name, setName] = useState('');
-  const [section, setSection] = useState(existingSections[0] ?? 'interior');
+  // `section` holds the resolved value (the actual string saved on the
+  // category). `isCustomSection` toggles between dropdown-pick mode and
+  // free-text mode.
+  const initialIsCustom = defaultNewSection || existingSections.length === 0;
+  const [section, setSection] = useState(initialIsCustom ? '' : (existingSections[0] ?? ''));
+  const [isCustomSection, setIsCustomSection] = useState(initialIsCustom);
   const [estimate, setEstimate] = useState('');
   const [description, setDescription] = useState('');
   const [isPending, startTransition] = useTransition();
@@ -1275,12 +1349,17 @@ function AddBudgetCategoryForm({
       toast.error('Name is required');
       return;
     }
+    const sectionTrimmed = section.trim();
+    if (!sectionTrimmed) {
+      toast.error('Section is required');
+      return;
+    }
     const estimate_cents = Math.round(parseFloat(estimate || '0') * 100);
     startTransition(async () => {
       const result = await addBudgetCategoryAction({
         project_id: projectId,
         name: name.trim(),
-        section,
+        section: sectionTrimmed,
         estimate_cents,
         description: description.trim() || undefined,
       });
@@ -1312,24 +1391,57 @@ function AddBudgetCategoryForm({
           <label htmlFor="add-category-section" className="mb-1 block text-xs font-medium">
             Section
           </label>
-          <Input
-            id="add-category-section"
-            list="add-category-section-options"
-            value={section}
-            onChange={(e) => setSection(e.target.value)}
-            placeholder="e.g. Kitchen, Basement, Exterior"
-          />
-          <datalist id="add-category-section-options">
-            {/* Existing sections + the legacy three so operators have a
-                starting point if they're seeding a fresh project. */}
-            {Array.from(new Set([...existingSections, 'interior', 'exterior', 'general']))
-              .filter(Boolean)
-              .map((s) => (
-                <option key={s} value={s} />
+          {isCustomSection ? (
+            // Free-text mode for naming a brand-new section. The "←
+            // Pick existing" link drops the operator back into the
+            // dropdown if they realise one already covers it.
+            <div className="flex items-center gap-2">
+              <Input
+                id="add-category-section"
+                value={section}
+                onChange={(e) => setSection(e.target.value)}
+                placeholder="New section name"
+                autoFocus
+              />
+              {existingSections.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCustomSection(false);
+                    setSection(existingSections[0] ?? '');
+                  }}
+                  className="shrink-0 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  ← Pick existing
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <select
+              id="add-category-section"
+              value={section}
+              onChange={(e) => {
+                if (e.target.value === '__new__') {
+                  setIsCustomSection(true);
+                  setSection('');
+                } else {
+                  setSection(e.target.value);
+                }
+              }}
+              className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+            >
+              {existingSections.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
               ))}
-          </datalist>
+              <option value="__new__">+ New section…</option>
+            </select>
+          )}
           <p className="mt-1 text-[10px] text-muted-foreground">
-            Type any section name. New ones become headers automatically.
+            {isCustomSection
+              ? 'This section appears once you save the category.'
+              : 'Pick an existing section or create a new one.'}
           </p>
         </div>
         <div>
