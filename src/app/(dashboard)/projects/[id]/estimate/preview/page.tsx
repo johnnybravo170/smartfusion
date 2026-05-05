@@ -43,18 +43,9 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
   const customerRaw = p.customers as Record<string, unknown> | null;
   const managementFeeRate = Number(p.management_fee_rate) || 0;
   const taxExempt = Boolean(customerRaw?.tax_exempt);
-  const taxCtx = await canadianTax.getContext(p.tenant_id as string);
-  // Customer-facing estimates show GST/HST only — never PST/RST/QST.
-  // Renovation contractors absorb PST as a materials-side cost paid to
-  // suppliers; the customer doesn't see a PST line on the estimate.
-  // (HST provinces are unaffected since their full rate lives under
-  // gstRate.)
-  const customerFacingBreakdown = taxCtx.breakdown.filter((b) => !/^(PST|RST|QST)/i.test(b.label));
-  const customerFacingRate = customerFacingBreakdown.reduce((s, b) => s + b.rate, 0);
-  const gstRate = taxExempt ? 0 : customerFacingRate;
-  const taxLabel = taxExempt
-    ? 'Tax exempt'
-    : customerFacingBreakdown.map((b) => b.label).join(' + ');
+  const taxCtx = await canadianTax.getCustomerFacingContext(p.tenant_id as string);
+  const gstRate = taxExempt ? 0 : taxCtx.totalRate;
+  const taxLabel = taxExempt ? 'Tax exempt' : taxCtx.summaryLabel;
 
   // Sign the tenant logo (storage RLS would silently fail here under the
   // authed client, same reason cost-line thumbs use the admin client).

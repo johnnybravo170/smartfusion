@@ -102,7 +102,7 @@ export async function createInvoiceAction(input: {
     .eq('id', job.customer_id)
     .maybeSingle();
   const taxExempt = Boolean(cust?.tax_exempt);
-  const taxCtx = await canadianTax.getContext(tenant.id);
+  const taxCtx = await canadianTax.getCustomerFacingContext(tenant.id);
   // Draws default to tax-inclusive: operator types ONE total ($12,500) and
   // we back-compute the GST portion. Invoices keep add-tax-on-top.
   const docType = input.docType === 'draw' ? 'draw' : 'invoice';
@@ -805,9 +805,11 @@ export async function addInvoiceLineItemAction(input: {
   const updatedItems = [...existingItems, newItem];
   const lineItemsTotal = updatedItems.reduce((sum, li) => sum + li.total_cents, 0);
 
-  // Recalculate tax: 5% GST on (base amount + line items)
+  // Recalculate tax at the tenant's customer-facing rate (GST/HST only).
+  const { canadianTax: addItemTax } = await import('@/lib/providers/tax/canadian');
+  const addItemCtx = await addItemTax.getCustomerFacingContext(tenant.id);
   const baseCents = invoice.amount_cents;
-  const newTax = Math.round((baseCents + lineItemsTotal) * 0.05);
+  const newTax = Math.round((baseCents + lineItemsTotal) * addItemCtx.totalRate);
 
   const now = new Date().toISOString();
   const { error: updateErr } = await supabase
@@ -853,7 +855,9 @@ export async function removeInvoiceLineItemAction(input: {
 
   const updatedItems = existingItems.filter((_, i) => i !== input.itemIndex);
   const lineItemsTotal = updatedItems.reduce((sum, li) => sum + li.total_cents, 0);
-  const newTax = Math.round((invoice.amount_cents + lineItemsTotal) * 0.05);
+  const { canadianTax: removeItemTax } = await import('@/lib/providers/tax/canadian');
+  const removeItemCtx = await removeItemTax.getCustomerFacingContext(tenant.id);
+  const newTax = Math.round((invoice.amount_cents + lineItemsTotal) * removeItemCtx.totalRate);
 
   const now = new Date().toISOString();
   const { error: updateErr } = await supabase
@@ -950,7 +954,7 @@ export async function createMilestoneInvoiceAction(input: {
     .maybeSingle();
   const taxExempt = Boolean(cust?.tax_exempt);
   const { canadianTax } = await import('@/lib/providers/tax/canadian');
-  const taxCtx = await canadianTax.getContext(tenant.id);
+  const taxCtx = await canadianTax.getCustomerFacingContext(tenant.id);
   const taxCents = taxExempt
     ? 0
     : Math.round((totalCents * taxCtx.totalRate) / (1 + taxCtx.totalRate));
@@ -1066,7 +1070,7 @@ export async function createInvoiceFromEstimateAction(input: {
     .eq('id', project.customer_id)
     .maybeSingle();
   const taxExempt = Boolean(cust?.tax_exempt);
-  const taxCtx = await canadianTax.getContext(tenant.id);
+  const taxCtx = await canadianTax.getCustomerFacingContext(tenant.id);
   const taxCents = taxExempt ? 0 : Math.round(subtotalCents * taxCtx.totalRate);
 
   // amount_cents=0 + breakdown in line_items lets the operator
@@ -1270,7 +1274,7 @@ export async function generateFinalInvoiceAction(input: {
     .eq('id', project.customer_id)
     .maybeSingle();
   const taxExempt = Boolean(cust?.tax_exempt);
-  const taxCtx = await canadianTax.getContext(tenant.id);
+  const taxCtx = await canadianTax.getCustomerFacingContext(tenant.id);
   const taxCents = taxExempt ? 0 : Math.round(subtotalCents * taxCtx.totalRate);
 
   // amount_cents=0 + breakdown in line_items: matches the convention

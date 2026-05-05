@@ -122,7 +122,7 @@ export async function sendEstimateForApprovalAction(input: {
   const mgmtFee = Math.round(lineSubtotal * mgmtRate);
   const beforeTax = lineSubtotal + mgmtFee;
   // Tax via the provider (province-aware). Tax-exempt customers zero it out.
-  const taxCtx = await canadianTax.getContext(tenant.id);
+  const taxCtx = await canadianTax.getCustomerFacingContext(tenant.id);
   const effectiveRate = taxExempt ? 0 : taxCtx.totalRate;
   const gst = Math.round(beforeTax * effectiveRate);
   const total = beforeTax + gst;

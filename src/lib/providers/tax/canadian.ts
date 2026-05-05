@@ -19,6 +19,29 @@ import type { TaxComputation, TaxExtraction, TaxProvider, TenantTaxContext } fro
 export class CanadianTaxProvider implements TaxProvider {
   readonly name = 'canadian';
 
+  /**
+   * Customer-facing tax context — same as `getContext` but with
+   * PST/RST/QST stripped. Renovation contractors absorb provincial
+   * sales tax as an embedded materials-side cost paid to suppliers,
+   * so the customer never sees a PST line on their estimate or
+   * invoice. HST provinces (where the full rate sits under one HST
+   * label) are unaffected. Use this for any total a customer will
+   * see; use `getContext` for internal accounting / GST remittance.
+   */
+  async getCustomerFacingContext(tenantId: string): Promise<TenantTaxContext> {
+    const ctx = await this.getContext(tenantId);
+    const breakdown = ctx.breakdown.filter((b) => !/^(PST|RST|QST)/i.test(b.label));
+    const totalRate = breakdown.reduce((s, b) => s + b.rate, 0);
+    return {
+      gstRate: totalRate,
+      pstRate: 0,
+      totalRate,
+      breakdown,
+      provinceCode: ctx.provinceCode,
+      summaryLabel: breakdown.length ? breakdown.map((b) => b.label).join(' + ') : 'No tax',
+    };
+  }
+
   async getContext(tenantId: string): Promise<TenantTaxContext> {
     const supabase = createAdminClient();
     const { data, error } = await supabase

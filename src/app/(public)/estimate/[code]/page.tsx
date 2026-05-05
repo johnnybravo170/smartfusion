@@ -119,12 +119,8 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
   const status = p.estimate_status as 'draft' | 'pending_approval' | 'approved' | 'declined';
 
   const taxExempt = Boolean(customerRaw?.tax_exempt);
-  const taxCtx = await canadianTax.getContext(p.tenant_id as string);
-  // Customer-facing estimates show GST/HST only — never PST/RST/QST.
-  // Renovation contractors absorb PST as a materials-side cost paid to
-  // suppliers; the customer doesn't see a PST line on the estimate.
-  const customerFacingBreakdown = taxCtx.breakdown.filter((b) => !/^(PST|RST|QST)/i.test(b.label));
-  const effectiveGstRate = taxExempt ? 0 : customerFacingBreakdown.reduce((s, b) => s + b.rate, 0);
+  const taxCtx = await canadianTax.getCustomerFacingContext(p.tenant_id as string);
+  const effectiveGstRate = taxExempt ? 0 : taxCtx.totalRate;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
@@ -138,9 +134,7 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
         description={(p.description as string | null) ?? null}
         managementFeeRate={Number(p.management_fee_rate) || 0}
         gstRate={effectiveGstRate}
-        taxLabel={
-          taxExempt ? 'Tax exempt' : customerFacingBreakdown.map((b) => b.label).join(' + ')
-        }
+        taxLabel={taxExempt ? 'Tax exempt' : taxCtx.summaryLabel}
         quoteDate={(p.estimate_sent_at as string | null) ?? null}
         lines={renderLines}
         status={status}
