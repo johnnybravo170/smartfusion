@@ -2,6 +2,7 @@ import type { CaslCategory } from '@/lib/db/schema/casl';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { FROM_EMAIL, getResend } from './client';
 import { getTenantFromHeader } from './from';
+import { htmlToPlainText } from './html-to-text';
 
 export type EmailAttachment = {
   filename: string;
@@ -70,6 +71,7 @@ export async function sendEmail({
   to,
   subject,
   html,
+  text,
   from,
   replyTo,
   attachments,
@@ -83,6 +85,11 @@ export async function sendEmail({
   to: string;
   subject: string;
   html: string;
+  /** Optional override for the plain-text alternative. When omitted,
+   *  one is auto-generated from `html`. Modern spam filters
+   *  (Gmail/Outlook in particular) downweight HTML-only emails;
+   *  always shipping both parts is a free deliverability win. */
+  text?: string;
   from?: string;
   replyTo?: string;
   attachments?: EmailAttachment[];
@@ -135,11 +142,13 @@ export async function sendEmail({
   // 2. Fire the Resend API call.
   try {
     const resend = getResend();
+    const resolvedText = text ?? htmlToPlainText(html);
     const { data, error } = await resend.emails.send({
       from: resolvedFrom,
       to,
       subject,
       html,
+      text: resolvedText || undefined,
       replyTo: resolvedReplyTo,
       headers,
       attachments: attachments?.map((a) => ({
