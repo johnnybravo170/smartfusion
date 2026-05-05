@@ -24,42 +24,6 @@ export type ProjectActionResult =
   | { ok: true; id: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
-/** Jon's default interior budget categories. */
-const DEFAULT_INTERIOR_CATEGORIES = [
-  'Demo',
-  'Disposal',
-  'Framing',
-  'Plumbing',
-  'Plumbing Fixtures',
-  'HVAC',
-  'Insulation',
-  'Drywall',
-  'Flooring',
-  'Doors & Mouldings',
-  'Windows & Doors',
-  'Railings',
-  'Electrical',
-  'Painting',
-  'Kitchen',
-  'Contingency',
-];
-
-/** Jon's default exterior budget categories. */
-const DEFAULT_EXTERIOR_CATEGORIES = [
-  'Demo',
-  'Disposal',
-  'Framing',
-  'Siding',
-  'Sheathing',
-  'Painting',
-  'Gutters',
-  'Front Garden',
-  'Front Door',
-  'Rot Repair',
-  'Garage Doors',
-  'Contingency',
-];
-
 export async function createProjectAction(input: {
   customer_id: string;
   name: string;
@@ -125,33 +89,10 @@ export async function createProjectAction(input: {
     }
   }
 
-  // Seed default budget categories
-  const categoryRows = [
-    ...DEFAULT_INTERIOR_CATEGORIES.map((name, i) => ({
-      project_id: data.id,
-      tenant_id: tenant.id,
-      name,
-      section: 'interior' as const,
-      display_order: i,
-    })),
-    ...DEFAULT_EXTERIOR_CATEGORIES.map((name, i) => ({
-      project_id: data.id,
-      tenant_id: tenant.id,
-      name,
-      section: 'exterior' as const,
-      display_order: DEFAULT_INTERIOR_CATEGORIES.length + i,
-    })),
-  ];
-
-  const { error: categoryErr } = await supabase
-    .from('project_budget_categories')
-    .insert(categoryRows);
-
-  if (categoryErr) {
-    // Project created but categories failed. Still return success so the user
-    // can seed manually.
-    console.error('Failed to seed default categories:', categoryErr.message);
-  }
+  // No auto-seed of categories. The budget tab shows a starter
+  // template picker when scope is empty — operator picks a template
+  // (or builds from scratch) instead of inheriting 28 boilerplate
+  // categories they may not need.
 
   // Write worklog entry
   await supabase.from('worklog_entries').insert({

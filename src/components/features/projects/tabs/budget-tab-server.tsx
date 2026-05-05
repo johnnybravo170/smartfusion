@@ -56,7 +56,12 @@ export default async function BudgetTabServer({
 
   // Self-gating CTAs — no mode prop, just project state.
   const isEmptyScope = costLines.length === 0 && budget.lines.length === 0;
-  const showStarterPicker = isEmptyScope && isPreApproval;
+  // Show the template picker on every empty project — not just
+  // pre-approval. New projects no longer auto-seed default categories,
+  // so an empty active project (rare but possible — e.g. a blank
+  // project created post-approval for tracking) still benefits from
+  // the head-start.
+  const showStarterPicker = isEmptyScope;
   const showSaveAsTemplate = !isEmptyScope;
   const showSendForApproval = sendable;
   const hasActionRow = showSendForApproval;
