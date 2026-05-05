@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { fmtDate } from '@/lib/tz';
 import { listAdvisors, listSessions } from '@/server/ops-services/board';
+import { DeleteSessionButton } from './delete-session-button';
 import { NewSessionForm } from './new-session-form';
 
 const STATUS_DOT: Record<string, string> = {
@@ -76,12 +77,16 @@ export default async function BoardPage() {
                       {s.topic}
                     </p>
                   </div>
-                  <div className="text-right text-xs text-[var(--muted-foreground)]">
+                  <div className="flex flex-col items-end gap-1 text-xs text-[var(--muted-foreground)]">
                     <div>{fmtDate(s.created_at)}</div>
                     <div>
                       ${(s.spent_cents / 100).toFixed(2)} / ${(s.budget_cents / 100).toFixed(0)}
                     </div>
                     <div>{s.call_count} calls</div>
+                    {s.overall_rating !== null ? (
+                      <div className="text-amber-500">{'★'.repeat(s.overall_rating)}</div>
+                    ) : null}
+                    <DeleteSessionButton sessionId={s.id} status={s.status} variant="icon" />
                   </div>
                 </div>
               </li>

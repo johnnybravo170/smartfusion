@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { describeError, opsRequest } from '../client.js';
 import { errorResult, formatDateTime, textResult } from '../types.js';
 
+const actionItemSchema = z.object({
+  text: z.string().min(1).max(2000),
+  board_slug: z.enum(['ops', 'dev', 'marketing', 'research']).optional(),
+  tags: z.array(z.string().max(40)).max(8).optional(),
+});
+
 type Advisor = {
   id: string;
   slug: string;
@@ -225,6 +231,102 @@ export function registerBoardTools(server: McpServer) {
         }
 
         return textResult(out);
+      } catch (err) {
+        return errorResult(describeError(err));
+      }
+    },
+  );
+
+  server.tool(
+    'board_session_review',
+    'Rate the synthesis quality of a board session and leave free-text notes. Notes are training signal — future sessions surface low-rated patterns to the chair and advisors. Pass rating=null to clear.',
+    {
+      session_id: z.string().uuid(),
+      rating: z.number().int().min(1).max(5).nullable(),
+      notes: z.string().trim().max(20_000).nullable(),
+    },
+    async (args) => {
+      try {
+        await opsRequest('POST', `/api/ops/board/sessions/${args.session_id}/review`, {
+          rating: args.rating,
+          notes: args.notes,
+        });
+        return textResult(
+          `Reviewed session ${args.session_id.slice(0, 8)}: rating=${args.rating ?? '(cleared)'}.`,
+        );
+      } catch (err) {
+        return errorResult(describeError(err));
+      }
+    },
+  );
+
+  server.tool(
+    'board_decision_accept',
+    "Accept a session's proposed decision. Spawns one row in ops.decisions and one kanban card per action item. Optionally pass edited_decision_text and edited_action_items to edit-and-accept (status becomes 'edited' instead of 'accepted'). Idempotent: a session can only be accepted once.",
+    {
+      session_id: z.string().uuid(),
+      actor_name: z
+        .string()
+        .trim()
+        .min(1)
+        .max(200)
+        .describe("Who's accepting (agent slug or human name)"),
+      edited_decision_text: z.string().trim().min(1).max(2000).optional(),
+      edited_action_items: z.array(actionItemSchema).max(10).optional(),
+    },
+    async (args) => {
+      try {
+        const data = await opsRequest<{
+          status: 'accepted' | 'edited';
+          ops_decision_id: string;
+          kanban_card_ids: string[];
+          kanban_boards: string[];
+        }>('POST', `/api/ops/board/sessions/${args.session_id}/decision/accept`, {
+          actor_name: args.actor_name,
+          edited_decision_text: args.edited_decision_text,
+          edited_action_items: args.edited_action_items,
+        });
+        return textResult(
+          `Decision ${data.status}.\n  ops.decisions row: ${data.ops_decision_id}\n  kanban cards (${data.kanban_card_ids.length}): ${data.kanban_card_ids.join(', ') || '(none)'}\n  boards: ${data.kanban_boards.join(', ') || '(none)'}`,
+        );
+      } catch (err) {
+        return errorResult(describeError(err));
+      }
+    },
+  );
+
+  server.tool(
+    'board_decision_reject',
+    'Reject a proposed decision with a required reason. The reason is saved on the decision row for the record. No action sinks fire.',
+    {
+      session_id: z.string().uuid(),
+      reason: z.string().trim().min(1).max(2000),
+    },
+    async (args) => {
+      try {
+        await opsRequest('POST', `/api/ops/board/sessions/${args.session_id}/decision/reject`, {
+          reason: args.reason,
+        });
+        return textResult(`Rejected session ${args.session_id.slice(0, 8)}.`);
+      } catch (err) {
+        return errorResult(describeError(err));
+      }
+    },
+  );
+
+  server.tool(
+    'board_session_delete',
+    'Hard-delete a board session and its transcript / cruxes / positions / proposed decision. Refuses if the session was accepted (would orphan the spawned ops.decisions row and kanban cards). Use for failed/junk sessions.',
+    {
+      session_id: z.string().uuid(),
+      reason: z.string().trim().min(1).max(500).describe('Why the deletion (logged to audit_log)'),
+    },
+    async (args) => {
+      try {
+        await opsRequest('DELETE', `/api/ops/board/sessions/${args.session_id}`, undefined, {
+          reason: args.reason,
+        });
+        return textResult(`Deleted session ${args.session_id.slice(0, 8)}.`);
       } catch (err) {
         return errorResult(describeError(err));
       }

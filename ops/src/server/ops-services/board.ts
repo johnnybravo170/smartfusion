@@ -172,6 +172,16 @@ export async function updateSession(
   return (data ?? null) as BoardSession | null;
 }
 
+export async function deleteSession(id: string): Promise<boolean> {
+  const { error, count } = await svc()
+    .schema('ops')
+    .from('board_sessions')
+    .delete({ count: 'exact' })
+    .eq('id', id);
+  if (error) throw new Error(`deleteSession: ${error.message}`);
+  return (count ?? 0) > 0;
+}
+
 /** Atomic-ish budget bump. Increments spent_cents and call_count by deltas. */
 export async function incrementSessionSpend(id: string, cost_cents: number): Promise<void> {
   // Single statement via RPC would be cleaner; for now read-modify-write is
@@ -248,6 +258,21 @@ export async function listMessages(session_id: string): Promise<BoardMessage[]> 
     .order('created_at', { ascending: true });
   if (error) throw new Error(`listMessages: ${error.message}`);
   return (data ?? []) as BoardMessage[];
+}
+
+export async function rateMessage(
+  message_id: string,
+  patch: { advisor_rating?: number | null; review_note?: string | null },
+): Promise<BoardMessage | null> {
+  const { data, error } = await svc()
+    .schema('ops')
+    .from('board_messages')
+    .update(patch)
+    .eq('id', message_id)
+    .select('*')
+    .maybeSingle();
+  if (error) throw new Error(`rateMessage: ${error.message}`);
+  return (data ?? null) as BoardMessage | null;
 }
 
 export async function addMessage(

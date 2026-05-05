@@ -8,7 +8,10 @@ import {
   listMessages,
   listPositions,
 } from '@/server/ops-services/board';
+import { DeleteSessionButton } from '../../delete-session-button';
 import { AutoRefresh } from './auto-refresh';
+import { MessageRating } from './message-rating';
+import { ReviewPanel } from './review-panel';
 import { RunButton } from './run-button';
 
 export const dynamic = 'force-dynamic';
@@ -45,11 +48,21 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
       {isLive ? <AutoRefresh intervalMs={5000} /> : null}
 
       <header>
-        <div className="flex items-center gap-2">
-          <span className={`size-2 rounded-full ${STATUS_DOT[session.status] ?? 'bg-zinc-400'}`} />
-          <span className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
-            {session.status.replace('_', ' ')}
-          </span>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span
+              className={`size-2 rounded-full ${STATUS_DOT[session.status] ?? 'bg-zinc-400'}`}
+            />
+            <span className="text-xs uppercase tracking-wide text-[var(--muted-foreground)]">
+              {session.status.replace('_', ' ')}
+            </span>
+          </div>
+          <DeleteSessionButton
+            sessionId={session.id}
+            status={session.status}
+            redirectTo="/board"
+            variant="button"
+          />
         </div>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">{session.title}</h1>
         <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--muted-foreground)]">
@@ -77,12 +90,19 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
       {session.status === 'pending' ? <RunButton sessionId={session.id} /> : null}
 
       {decision ? (
-        <section>
-          <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-            Decision (proposed)
+        <section className="space-y-4">
+          <h2 className="text-sm font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+            Decision ({decision.status})
           </h2>
-          <div className="rounded-md border border-[var(--border)] p-4 space-y-3">
-            <p className="text-base font-medium">{decision.decision_text}</p>
+          <div className="space-y-3 rounded-md border border-[var(--border)] p-4">
+            <p className="text-base font-medium">
+              {decision.edited_decision_text ?? decision.decision_text}
+            </p>
+            {decision.edited_decision_text ? (
+              <p className="text-xs italic text-[var(--muted-foreground)]">
+                Edited at accept-time. Original synthesis: "{decision.decision_text}"
+              </p>
+            ) : null}
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
                 Reasoning
@@ -95,15 +115,22 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
               </p>
               <p className="text-sm whitespace-pre-wrap">{decision.feedback_loop_check}</p>
             </div>
-            {decision.action_items.length > 0 ? (
+            {(decision.edited_action_items ?? decision.action_items).length > 0 ? (
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
                   Action items
                 </p>
                 <ul className="mt-1 list-disc pl-5 text-sm">
-                  {decision.action_items.map((it) => (
+                  {(decision.edited_action_items ?? decision.action_items).map((it) => (
                     // Action item text is unique within a decision; safe key.
-                    <li key={it.text}>{it.text}</li>
+                    <li key={it.text}>
+                      {it.text}
+                      {it.board_slug ? (
+                        <span className="ml-2 text-xs text-[var(--muted-foreground)]">
+                          → {it.board_slug}
+                        </span>
+                      ) : null}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -132,10 +159,34 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
                   .join(', ') || '(none)'}
               </span>
             </div>
-            <p className="text-xs text-[var(--muted-foreground)]">
-              Review/rate/accept actions land in slice 2.
-            </p>
+            {decision.status === 'rejected' && decision.rejected_reason ? (
+              <p className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                Rejected: {decision.rejected_reason}
+              </p>
+            ) : null}
+            {(decision.status === 'accepted' || decision.status === 'edited') &&
+            decision.links &&
+            typeof decision.links === 'object' &&
+            'decision_id' in decision.links ? (
+              <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                Promoted: ops.decisions row{' '}
+                {String((decision.links as { decision_id?: string }).decision_id)?.slice(0, 8)},{' '}
+                {Array.isArray((decision.links as { kanban_card_ids?: unknown[] }).kanban_card_ids)
+                  ? (decision.links as { kanban_card_ids: unknown[] }).kanban_card_ids.length
+                  : 0}{' '}
+                kanban card(s) on{' '}
+                {Array.isArray((decision.links as { kanban_boards?: unknown[] }).kanban_boards)
+                  ? (decision.links as { kanban_boards: string[] }).kanban_boards.join(', ') ||
+                    'none'
+                  : '?'}
+                .
+              </p>
+            ) : null}
           </div>
+
+          {session.status === 'awaiting_review' && decision.status === 'proposed' ? (
+            <ReviewPanel session={session} decision={decision} />
+          ) : null}
         </section>
       ) : null}
 
@@ -176,6 +227,12 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
           <ol className="space-y-3">
             {messages.map((m) => {
               const advisor = m.advisor_id ? byAdvisor.get(m.advisor_id) : null;
+              const ratable =
+                m.advisor_id !== null &&
+                m.turn_kind !== 'system' &&
+                ['awaiting_review', 'accepted', 'edited', 'rejected', 'revised'].includes(
+                  session.status,
+                );
               return (
                 <li key={m.id} className="rounded-md border border-[var(--border)] p-4">
                   <div className="flex items-center justify-between gap-2 text-xs text-[var(--muted-foreground)]">
@@ -196,6 +253,13 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
                       {m.provider}/{m.model} · {m.prompt_tokens}+{m.completion_tokens} tok · $
                       {((m.cost_cents ?? 0) / 100).toFixed(3)}
                     </p>
+                  ) : null}
+                  {ratable ? (
+                    <MessageRating
+                      messageId={m.id}
+                      initialRating={m.advisor_rating}
+                      initialNote={m.review_note}
+                    />
                   ) : null}
                 </li>
               );
