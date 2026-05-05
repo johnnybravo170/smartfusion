@@ -1,10 +1,6 @@
 import Link from 'next/link';
 import { AppliedChangeOrdersBanner } from '@/components/features/change-orders/applied-co-banner';
 import { BudgetCategoriesTable } from '@/components/features/projects/budget-categories-table';
-import {
-  type BudgetMode,
-  BudgetModeToggle,
-} from '@/components/features/projects/budget-mode-toggle';
 import { EstimateSentBanner } from '@/components/features/projects/estimate-sent-banner';
 import { SaveAsTemplateButton } from '@/components/features/projects/save-as-template-button';
 import { ScopeScaffoldGenerator } from '@/components/features/projects/scope-scaffold-generator';
@@ -19,26 +15,27 @@ import { getProject } from '@/lib/db/queries/projects';
 import type { LifecycleStage } from '@/lib/validators/project';
 
 /**
- * Unified Budget page. Two postures via mode toggle:
+ * Unified Budget page. One view — no Editing/Executing toggle.
+ * Authoring CTAs (Save as template, Send for approval, Add category)
+ * self-gate based on lifecycle + estimate status. Sections default
+ * expanded for planning, collapsed for active and beyond, but the
+ * operator can toggle freely on a per-row basis.
  *
- *   - Editing  — scope-authoring surface: sections expanded by default,
- *     "Send for approval" CTA prominent. Default for planning /
- *     awaiting_approval lifecycle stages.
- *   - Executing — status-tracking surface: sections collapsed by
- *     default, headline numbers + diff chip up front. Default for
- *     active and beyond.
+ * `?expand=all` / `?expand=none` URL overrides honored for muscle
+ * memory of the legacy mode toggle.
  *
  * Replaces the old separate Budget + Estimate + Change Orders tabs
  * (per decision 6790ef2b — diff-tracked + intentional-send model).
- * The Estimate + Change Orders tab routes redirect into Budget at the
- * page-level router; the actual page surface unifies here.
  */
 export default async function BudgetTabServer({
   projectId,
-  mode,
+  defaultExpanded,
 }: {
   projectId: string;
-  mode: BudgetMode;
+  /** When true, sections start expanded; when false, collapsed. Page
+   * shell derives this from lifecycle (planning → true) and any
+   * `?expand=` URL override. */
+  defaultExpanded: boolean;
 }) {
   const [budget, costLines, catalog, project, coContributions, versions] = await Promise.all([
     getBudgetVsActual(projectId),
@@ -54,18 +51,11 @@ export default async function BudgetTabServer({
   const estimateStatus = project?.estimate_status ?? 'draft';
   const sendable = estimateStatus === 'draft' || estimateStatus === 'declined' || isPreApproval;
 
-  // Show the starter-template picker only when the project is empty
-  // and we're in editing posture. Once seeded, the picker disappears.
+  // Self-gating CTAs — no mode prop, just project state.
   const isEmptyScope = costLines.length === 0 && budget.lines.length === 0;
-  const showStarterPicker = mode === 'editing' && isEmptyScope && isPreApproval;
-
-  // Right-side actions. Save-as-template is rendered down inside the
-  // table's own action row (next to Add category / Generate Estimate)
-  // so it lives with the other budget-authoring tools. Send-for-approval
-  // stays in its own top-of-tab row — it's a strong CTA that deserves
-  // top placement when the estimate is sendable.
-  const showSaveAsTemplate = mode === 'editing' && !isEmptyScope;
-  const showSendForApproval = mode === 'editing' && sendable;
+  const showStarterPicker = isEmptyScope && isPreApproval;
+  const showSaveAsTemplate = !isEmptyScope;
+  const showSendForApproval = sendable;
   const hasActionRow = showSendForApproval;
 
   return (
@@ -86,12 +76,8 @@ export default async function BudgetTabServer({
         appliedCount={coContributions.appliedOrder.length}
         projectId={projectId}
         versions={versions}
-        mode={mode}
       />
 
-      {/* Action row — only renders when there's a CTA to surface. */}
-      {/* Subtitle text dropped (was redundant with the merged banner */}
-      {/* above and the mode toggle below). */}
       {hasActionRow ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
           {showSendForApproval ? (
@@ -109,17 +95,13 @@ export default async function BudgetTabServer({
         </>
       ) : null}
 
-      {/* Mode toggle — anchored right above the table so the operator */}
-      {/* knows which posture controls the data they're about to read. */}
-      <BudgetModeToggle currentMode={mode} />
-
       <BudgetCategoriesTable
         lines={budget.lines}
         projectId={projectId}
         costLines={costLines}
         catalog={catalog}
         coContributionsByCategoryId={Object.fromEntries(coContributions.byCategoryId)}
-        mode={mode}
+        defaultExpanded={defaultExpanded}
         headerActions={showSaveAsTemplate ? <SaveAsTemplateButton projectId={projectId} /> : null}
       />
     </div>

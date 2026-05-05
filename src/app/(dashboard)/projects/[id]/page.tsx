@@ -90,11 +90,19 @@ export default async function ProjectDetailPage({
       ? 'budget'
       : (rawTab as Tab | undefined);
 
-  // Editing / Executing mode for the unified Budget tab. Defaulted by
-  // lifecycle stage, overridable via ?mode=. Read once at the page
-  // shell so server components downstream can use it.
+  // Default-expanded behaviour for the unified Budget tab. Defaulted
+  // by lifecycle stage (planning/awaiting_approval → expanded; active+
+  // → collapsed) with `?expand=all` / `?expand=none` URL override.
+  // Legacy `?mode=editing` / `?mode=executing` still honored as an
+  // alias for muscle memory.
+  const rawExpand = resolvedSearchParams.expand;
   const rawMode = resolvedSearchParams.mode;
-  const explicitMode = rawMode === 'editing' || rawMode === 'executing' ? rawMode : null;
+  const explicitExpand =
+    rawExpand === 'all' || rawMode === 'editing'
+      ? true
+      : rawExpand === 'none' || rawMode === 'executing'
+        ? false
+        : null;
 
   // Shell-only queries. getProject is React.cache-wrapped, so generateMetadata
   // + the shell + any inner tab that also calls it (e.g. OverviewTab) dedupe
@@ -115,12 +123,10 @@ export default async function ProjectDetailPage({
     stage === 'planning' || stage === 'awaiting_approval' ? 'budget' : 'overview';
   const tab: Tab = explicitTab ?? defaultTab;
 
-  // Default Budget mode by lifecycle. Operator can override via ?mode=.
-  // Editing for pre-approval (authoring); Executing for active and
-  // beyond (status tracking + diff-tracked changes).
-  const budgetMode: 'editing' | 'executing' =
-    explicitMode ??
-    (stage === 'planning' || stage === 'awaiting_approval' ? 'editing' : 'executing');
+  // Pre-approval projects (planning / awaiting_approval) default to
+  // expanded so the operator sees the full scope at a glance while
+  // authoring. Active+ defaults collapsed (status-tracking posture).
+  const budgetExpanded = explicitExpand ?? (stage === 'planning' || stage === 'awaiting_approval');
 
   // Tab order follows the project lifecycle. Estimate + Change Orders
   // folded into Budget under the unified-Budget design — kept as
@@ -301,7 +307,9 @@ export default async function ProjectDetailPage({
       {/* Tab content — each tab streams independently. */}
       <Suspense key={tab} fallback={<TabSkeleton />}>
         {tab === 'overview' ? <OverviewTabServer projectId={id} /> : null}
-        {tab === 'budget' ? <BudgetTabServer projectId={id} mode={budgetMode} /> : null}
+        {tab === 'budget' ? (
+          <BudgetTabServer projectId={id} defaultExpanded={budgetExpanded} />
+        ) : null}
         {tab === 'costs' ? <CostsTabServer projectId={id} /> : null}
         {/* Variance merged into Overview — keep route alive for old bookmarks
             but render Overview content. Drop entirely in a future cleanup. */}

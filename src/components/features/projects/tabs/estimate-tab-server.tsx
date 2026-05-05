@@ -92,7 +92,6 @@ export default async function EstimateTabServer({ projectId }: { projectId: stri
         appliedCount={coContributions.appliedOrder.length}
         projectId={projectId}
         versions={[]}
-        mode="editing"
       />
       <div className="flex flex-wrap items-center justify-end gap-3 rounded-xl border bg-card px-4 py-2">
         <ProjectDocumentTypeToggle projectId={projectId} initialValue={project.document_type} />

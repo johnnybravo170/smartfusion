@@ -15,10 +15,6 @@
  *
  *   ✓ Estimate signed · 2 applied COs   [See history ▾]   [+ Change Order]
  *
- * Mode-aware:
- *   - Editing mode: show the [+ Change Order] CTA on the right.
- *   - Executing mode: drop the CTA — operator is tracking, not authoring.
- *
  * Click "See history" to inline-expand the version timeline (every
  * signed estimate + applied CO).
  *
@@ -39,13 +35,11 @@ export function AppliedChangeOrdersBanner({
   appliedCount,
   projectId,
   versions,
-  mode,
 }: {
   estimateStatus: string;
   appliedCount: number;
   projectId: string;
   versions: ProjectVersionListItem[];
-  mode: 'editing' | 'executing';
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -54,7 +48,9 @@ export function AppliedChangeOrdersBanner({
   if (estimateStatus !== 'approved') return null;
 
   const hasHistory = appliedCount > 0;
-  const showCta = mode === 'editing';
+  // Once the estimate is signed, the operator can author a CO at any
+  // time — show the CTA whenever this banner renders.
+  const showCta = true;
 
   return (
     <div className="overflow-hidden rounded-md border border-blue-200 bg-blue-50/60 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">

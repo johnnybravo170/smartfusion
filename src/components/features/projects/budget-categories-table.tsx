@@ -54,10 +54,10 @@ type BudgetCategoriesTableProps = {
   catalog: MaterialsCatalogRow[];
   /** Audit lens — categories touched by applied COs get a chip. */
   coContributionsByCategoryId?: Record<string, AppliedChangeOrderContribution[]>;
-  /** Editing/Executing posture (decision 6790ef2b). Editing expands
-   * sections by default; Executing collapses them. Defaults to 'editing'
-   * so the prop is optional for legacy callers. */
-  mode?: 'editing' | 'executing';
+  /** Whether sections start expanded. Page derives from lifecycle
+   * (planning → true) and `?expand=` URL override. Defaults true so
+   * legacy callers still see the authoring layout. */
+  defaultExpanded?: boolean;
   /** Extra buttons rendered in the action row alongside Add category +
    * Generate Estimate. Used by the budget tab to inline Save as template
    * here instead of in a separate row above the table. */
@@ -70,7 +70,7 @@ export function BudgetCategoriesTable({
   costLines,
   catalog,
   coContributionsByCategoryId = {},
-  mode = 'editing',
+  defaultExpanded = true,
   headerActions,
 }: BudgetCategoriesTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -79,12 +79,8 @@ export function BudgetCategoriesTable({
   const [editDescValue, setEditDescValue] = useState('');
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
-  // In Executing mode, sections start collapsed (operator is in
-  // status-tracking posture; line-level detail is on-demand). In
-  // Editing mode the default UX is fully visible — the operator is
-  // authoring scope.
   const [expanded, setExpanded] = useState<Set<string>>(() =>
-    mode === 'editing' ? new Set(lines.map((l) => l.budget_category_id)) : new Set(),
+    defaultExpanded ? new Set(lines.map((l) => l.budget_category_id)) : new Set(),
   );
   const [addingLineFor, setAddingLineFor] = useState<string | null>(null);
   const [editingLine, setEditingLine] = useState<CostLineRow | null>(null);
@@ -347,12 +343,12 @@ export function BudgetCategoriesTable({
               <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 {section}
               </h3>
-              {/* Section reorder controls — only render in Editing mode */}
-              {/* (Executing is read-only on structure). Chevrons over a */}
-              {/* drag handle: zero added libraries, predictable on touch, */}
-              {/* and the surface area matches the rest of the inline */}
-              {/* edit affordances on this page. */}
-              {mode === 'editing' && sectionArr.length > 1 ? (
+              {/* Section reorder is purely cosmetic — leave it on for */}
+              {/* every project posture. Chevrons over a drag handle: */}
+              {/* zero added libraries, predictable on touch, and the */}
+              {/* surface area matches the rest of the inline edit */}
+              {/* affordances on this page. */}
+              {sectionArr.length > 1 ? (
                 <div className="flex items-center">
                   <button
                     type="button"
@@ -382,57 +378,44 @@ export function BudgetCategoriesTable({
               {/* than worst-case ($XXX,XXX.XX). Combined with */}
               {/* formatCurrencyCompact (drops .00 on whole dollars), this */}
               {/* frees width back into the Category column so descriptions */}
-              {/* can run longer before clamping. Executing also drops the */}
-              {/* trailing actions col (no per-row × in Executing). */}
-              <table
-                className={`table-fixed text-sm ${mode === 'executing' ? 'w-full min-w-[760px]' : 'w-full'}`}
-              >
+              {/* can run longer before clamping. */}
+              <table className="table-fixed w-full min-w-[760px] text-sm">
                 <colgroup>
                   <col className="w-7" />
-                  {/* Executing mode: leave Category undefined so table-fixed */}
-                  {/* hands it ALL the leftover width (rather than fixing it */}
-                  {/* at w-56 and proportionally scaling — that left 40-50% of */}
-                  {/* description col empty after the 2-line clamp on wide */}
-                  {/* viewports). All other cols stay fixed-width so numbers */}
-                  {/* don't dance when a description is long. */}
+                  {/* Category col is undefined so table-fixed hands it ALL */}
+                  {/* the leftover width. All other cols stay fixed-width so */}
+                  {/* numbers don't dance when a description is long. */}
                   <col />
                   <col className="w-28" />
-                  {mode === 'executing' ? <col className="w-24" /> : null}
-                  {mode === 'executing' ? <col className="w-24" /> : null}
-                  {mode === 'executing' ? <col className="w-28" /> : null}
-                  {/* Actions col only renders in Editing mode (× to */}
-                  {/* remove a category). Executing has no per-row action, */}
-                  {/* so the column would be 40px of dead space. */}
-                  {mode === 'editing' ? <col className="w-10" /> : null}
+                  <col className="w-24" />
+                  <col className="w-24" />
+                  <col className="w-28" />
+                  <col className="w-10" />
                 </colgroup>
                 <thead>
                   <tr className="border-b bg-muted/50">
                     <th className="px-1 py-1.5" />
                     <th className="px-2 py-1.5 text-left font-medium">Category</th>
                     <th className="px-3 py-1.5 text-right font-medium">Estimate</th>
-                    {mode === 'executing' ? (
-                      <>
-                        <th
-                          className="px-3 py-1.5 text-right font-medium"
-                          title="Realized cost: labour + bills + expenses"
-                        >
-                          Spent
-                        </th>
-                        <th
-                          className="px-3 py-1.5 text-right font-medium"
-                          title="Promised but not yet realized: accepted vendor quotes + active POs"
-                        >
-                          Committed
-                        </th>
-                        <th
-                          className="px-3 py-1.5 text-right font-medium"
-                          title="Estimate − Spent − Committed. Bar shows progress; negative = over budget."
-                        >
-                          Remaining
-                        </th>
-                      </>
-                    ) : null}
-                    {mode === 'editing' ? <th className="px-2 py-1.5" /> : null}
+                    <th
+                      className="px-3 py-1.5 text-right font-medium"
+                      title="Realized cost: labour + bills + expenses"
+                    >
+                      Spent
+                    </th>
+                    <th
+                      className="px-3 py-1.5 text-right font-medium"
+                      title="Promised but not yet realized: accepted vendor quotes + active POs"
+                    >
+                      Committed
+                    </th>
+                    <th
+                      className="px-3 py-1.5 text-right font-medium"
+                      title="Estimate − Spent − Committed. Bar shows progress; negative = over budget."
+                    >
+                      Remaining
+                    </th>
+                    <th className="px-2 py-1.5" />
                   </tr>
                 </thead>
                 <tbody>
@@ -486,7 +469,6 @@ export function BudgetCategoriesTable({
                         saveEditName={saveEditName}
                         startEditName={startEditName}
                         coContributions={coContributionsByCategoryId[line.budget_category_id] ?? []}
-                        mode={mode}
                       />
                     );
                   })}
@@ -500,35 +482,31 @@ export function BudgetCategoriesTable({
                     <td className="px-3 py-1.5 text-right">
                       {formatCurrencyCompact(sectionTotal)}
                     </td>
-                    {mode === 'executing' ? (
-                      <>
-                        <td className="px-3 py-1.5 text-right">
-                          {formatCurrencyCompact(sectionActual)}
-                        </td>
-                        <td className="px-3 py-1.5 text-right text-muted-foreground">
-                          {sectionCommitted > 0 ? formatCurrencyCompact(sectionCommitted) : ''}
-                        </td>
-                        <td
-                          className={cn(
-                            'px-3 py-1.5 text-right',
-                            sectionActual > sectionTotal && 'text-red-600',
-                            sectionActual <= sectionTotal &&
-                              sectionActual + sectionCommitted > sectionTotal &&
-                              'text-amber-600',
-                          )}
-                        >
-                          {formatCurrencyCompact(
-                            Math.abs(sectionTotal - sectionActual - sectionCommitted),
-                          )}
-                          {sectionActual > sectionTotal
-                            ? ' over'
-                            : sectionActual + sectionCommitted > sectionTotal
-                              ? ' projected over'
-                              : ''}
-                        </td>
-                      </>
-                    ) : null}
-                    {mode === 'editing' ? <td /> : null}
+                    <td className="px-3 py-1.5 text-right">
+                      {formatCurrencyCompact(sectionActual)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground">
+                      {sectionCommitted > 0 ? formatCurrencyCompact(sectionCommitted) : ''}
+                    </td>
+                    <td
+                      className={cn(
+                        'px-3 py-1.5 text-right',
+                        sectionActual > sectionTotal && 'text-red-600',
+                        sectionActual <= sectionTotal &&
+                          sectionActual + sectionCommitted > sectionTotal &&
+                          'text-amber-600',
+                      )}
+                    >
+                      {formatCurrencyCompact(
+                        Math.abs(sectionTotal - sectionActual - sectionCommitted),
+                      )}
+                      {sectionActual > sectionTotal
+                        ? ' over'
+                        : sectionActual + sectionCommitted > sectionTotal
+                          ? ' projected over'
+                          : ''}
+                    </td>
+                    <td />
                   </tr>
                 </tfoot>
               </table>
@@ -631,7 +609,6 @@ type BudgetCategoryRowProps = {
   saveEditName: (id: string, originalName: string) => void;
   startEditName: (line: BudgetLine) => void;
   coContributions: AppliedChangeOrderContribution[];
-  mode: 'editing' | 'executing';
 };
 
 function BudgetCategoryRow(props: BudgetCategoryRowProps) {
@@ -672,16 +649,14 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
     saveEditName,
     startEditName,
     coContributions,
-    mode,
   } = props;
   // Distinct CO chip per CO (a CO may have multiple lines in this category;
   // we still want one chip per CO).
   const coChips = Array.from(new Map(coContributions.map((c) => [c.co_id, c])).values());
 
-  // Per-line "see spend" expansion. Only used in Executing mode —
-  // Editing-mode operators are authoring, not tracking. State is
-  // local to the category row so closing/reopening the category retains
-  // which lines were expanded for the current session.
+  // Per-line "see spend" expansion. State is local to the category row
+  // so closing/reopening the category retains which lines were
+  // expanded for the current session.
   const [expandedLineIds, setExpandedLineIds] = useState<Set<string>>(new Set());
   function toggleLineSpend(id: string) {
     setExpandedLineIds((prev) => {
@@ -867,78 +842,68 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
             </button>
           )}
         </td>
-        {mode === 'executing' ? (
-          <>
-            <td className="px-3 py-1.5 text-right">{formatCurrencyCompact(line.actual_cents)}</td>
-            <td className="px-3 py-1.5 text-right text-muted-foreground">
-              {line.committed_cents > 0 ? formatCurrencyCompact(line.committed_cents) : ''}
-            </td>
-            {/* Remaining + progress merged: dollar amount on top, thin */}
-            {/* bar underneath. The bar is multi-segment so the operator */}
-            {/* can tell at a glance how much of the row is real spend */}
-            {/* vs. committed-but-not-yet-realized. Without the split a */}
-            {/* row reads as "blown the budget" when in fact actuals are */}
-            {/* under and the overage is purely projected from POs. */}
-            <td
-              className={cn(
-                'px-3 py-1.5 text-right',
-                isActuallyOver && 'font-medium text-red-600',
-                isProjectedOver && 'font-medium text-amber-600',
-              )}
-            >
-              <div>
-                {formatCurrencyCompact(Math.abs(line.remaining_cents))}
-                {isActuallyOver ? ' over' : isProjectedOver ? ' projected over' : ''}
-              </div>
-              <BudgetProgressBar
-                estimateCents={line.estimate_cents}
-                spentCents={line.actual_cents}
-                committedCents={line.committed_cents}
-              />
-            </td>
-          </>
-        ) : null}
-        {/* Remove-category is an authoring action — only available in */}
-        {/* Editing mode. In Executing mode the entire actions column */}
-        {/* doesn't render (would be 40px of dead space on every row). */}
-        {mode === 'editing' ? (
-          <td className="px-2 py-1.5 text-right">
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  className="text-destructive hover:text-destructive"
-                  aria-label={`Remove ${line.budget_category_name}`}
+        <td className="px-3 py-1.5 text-right">{formatCurrencyCompact(line.actual_cents)}</td>
+        <td className="px-3 py-1.5 text-right text-muted-foreground">
+          {line.committed_cents > 0 ? formatCurrencyCompact(line.committed_cents) : ''}
+        </td>
+        {/* Remaining + progress merged: dollar amount on top, thin bar */}
+        {/* underneath. Multi-segment so the operator can tell at a glance */}
+        {/* how much of the row is real spend vs. committed-but-not-yet- */}
+        {/* realized — otherwise a row reads as "blown the budget" when */}
+        {/* actuals are under and overage is purely projected from POs. */}
+        <td
+          className={cn(
+            'px-3 py-1.5 text-right',
+            isActuallyOver && 'font-medium text-red-600',
+            isProjectedOver && 'font-medium text-amber-600',
+          )}
+        >
+          <div>
+            {formatCurrencyCompact(Math.abs(line.remaining_cents))}
+            {isActuallyOver ? ' over' : isProjectedOver ? ' projected over' : ''}
+          </div>
+          <BudgetProgressBar
+            estimateCents={line.estimate_cents}
+            spentCents={line.actual_cents}
+            committedCents={line.committed_cents}
+          />
+        </td>
+        <td className="px-2 py-1.5 text-right">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                size="xs"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                aria-label={`Remove ${line.budget_category_name}`}
+              >
+                ×
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove {line.budget_category_name}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {categoryLines.length > 0
+                    ? `This category has ${categoryLines.length} cost line${categoryLines.length === 1 ? '' : 's'}. They will be orphaned (kept on the project but unlinked from any category) so no spend history is lost.`
+                    : 'This category has no cost lines.'}{' '}
+                  If any time entries or expenses are linked to this category, the removal will be
+                  blocked — reassign those first.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => removeCategory(line.budget_category_id)}
+                  disabled={isPending}
+                  className="bg-destructive/10 text-destructive hover:bg-destructive/20"
                 >
-                  ×
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Remove {line.budget_category_name}?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {categoryLines.length > 0
-                      ? `This category has ${categoryLines.length} cost line${categoryLines.length === 1 ? '' : 's'}. They will be orphaned (kept on the project but unlinked from any category) so no spend history is lost.`
-                      : 'This category has no cost lines.'}{' '}
-                    If any time entries or expenses are linked to this category, the removal will be
-                    blocked — reassign those first.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => removeCategory(line.budget_category_id)}
-                    disabled={isPending}
-                    className="bg-destructive/10 text-destructive hover:bg-destructive/20"
-                  >
-                    Remove category
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </td>
-        ) : null}
+                  Remove category
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </td>
       </tr>
       {isExpanded && (
         // Stronger bg + a left accent stripe that visually attaches the
@@ -946,10 +911,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         // "this content belongs to that category" without re-reading.
         <tr className="border-b bg-muted/40">
           <td />
-          <td
-            colSpan={mode === 'executing' ? 5 : 2}
-            className="border-l-2 border-primary/40 px-3 py-3"
-          >
+          <td colSpan={5} className="border-l-2 border-primary/40 px-3 py-3">
             <div className="space-y-3">
               {/* Actuals breakdown by source — synthesized from */}
               {/* time_entries, expenses, project_bills. Slim inline */}
@@ -1036,35 +998,30 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                           <Fragment key={cl.id}>
                             <tr className="border-t hover:bg-muted/40">
                               <td className="px-2 py-1.5 align-top">
-                                {/* Label on its own line; description */}
-                                {/* drops to muted text-xs underneath */}
-                                {/* (clamped to 2 lines, full text on */}
-                                {/* hover via title). Executing mode: */}
-                                {/* the label toggles the inline spend */}
+                                {/* Label toggles the inline spend */}
                                 {/* breakdown for this specific line. */}
+                                {/* Description drops to muted text-xs */}
+                                {/* underneath (clamped to 2 lines, full */}
+                                {/* text on hover via title). */}
                                 <div className="flex flex-col gap-0.5">
-                                  {mode === 'executing' ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleLineSpend(cl.id)}
-                                      className="inline-flex items-start gap-1 text-left font-medium hover:text-foreground"
-                                      aria-expanded={isLineExpanded}
-                                      title={
-                                        isLineExpanded
-                                          ? 'Hide spend on this line'
-                                          : 'See spend on this line'
-                                      }
-                                    >
-                                      {isLineExpanded ? (
-                                        <ChevronDown className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                                      ) : (
-                                        <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                                      )}
-                                      <span>{cl.label}</span>
-                                    </button>
-                                  ) : (
-                                    <span className="font-medium">{cl.label}</span>
-                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleLineSpend(cl.id)}
+                                    className="inline-flex items-start gap-1 text-left font-medium hover:text-foreground"
+                                    aria-expanded={isLineExpanded}
+                                    title={
+                                      isLineExpanded
+                                        ? 'Hide spend on this line'
+                                        : 'See spend on this line'
+                                    }
+                                  >
+                                    {isLineExpanded ? (
+                                      <ChevronDown className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                                    ) : (
+                                      <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                                    )}
+                                    <span>{cl.label}</span>
+                                  </button>
                                   {cl.notes ? (
                                     <span
                                       className="line-clamp-2 text-[11px] text-muted-foreground"
@@ -1117,7 +1074,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                                 </div>
                               </td>
                             </tr>
-                            {mode === 'executing' && isLineExpanded ? (
+                            {isLineExpanded ? (
                               <tr>
                                 <td colSpan={7} className="bg-muted/30 px-3 py-2">
                                   <CostLineActualsInline
