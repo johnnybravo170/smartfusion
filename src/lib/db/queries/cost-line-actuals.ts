@@ -184,3 +184,164 @@ export async function getCostLineActuals(costLineId: string): Promise<CostLineAc
     rows,
   };
 }
+
+/**
+ * Project-wide variant: same shape as `getCostLineActuals` but returns
+ * a Map keyed by `cost_line_id`. Used by the Budget tab so the page
+ * pre-fetches every line's actuals in a single round-trip rather than
+ * one fetch per expand. Cost lines with no actuals don't appear in the
+ * map; consumers should default to `EMPTY` for missing keys.
+ */
+export async function getCostLineActualsByProject(
+  projectId: string,
+): Promise<Map<string, CostLineActualsSummary>> {
+  const result = new Map<string, CostLineActualsSummary>();
+  if (!projectId) return result;
+  const admin = createAdminClient();
+
+  const [timeRes, expensesRes, billsRes, poItemsRes] = await Promise.all([
+    admin
+      .from('time_entries')
+      .select('id, hours, hourly_rate_cents, entry_date, notes, cost_line_id')
+      .eq('project_id', projectId)
+      .not('cost_line_id', 'is', null)
+      .order('entry_date', { ascending: false }),
+    admin
+      .from('expenses')
+      .select('id, amount_cents, expense_date, vendor, description, cost_line_id')
+      .eq('project_id', projectId)
+      .not('cost_line_id', 'is', null)
+      .order('expense_date', { ascending: false }),
+    admin
+      .from('project_bills')
+      .select('id, amount_cents, bill_date, vendor, notes, cost_line_id')
+      .eq('project_id', projectId)
+      .not('cost_line_id', 'is', null)
+      .order('bill_date', { ascending: false }),
+    admin
+      .from('purchase_order_items')
+      .select(
+        'id, label, qty, unit, line_total_cents, created_at, cost_line_id, purchase_orders!inner(vendor, status, project_id)',
+      )
+      .eq('purchase_orders.project_id', projectId)
+      .not('cost_line_id', 'is', null)
+      .order('created_at', { ascending: false }),
+  ]);
+
+  function bucket(costLineId: string): CostLineActualsSummary {
+    let s = result.get(costLineId);
+    if (!s) {
+      s = {
+        total_cents: 0,
+        labour_hours: 0,
+        labour_cents: 0,
+        expenses_cents: 0,
+        bills_cents: 0,
+        po_cents: 0,
+        rows: [],
+      };
+      result.set(costLineId, s);
+    }
+    return s;
+  }
+
+  for (const t of (timeRes.data ?? []) as Array<{
+    id: string;
+    hours: number;
+    hourly_rate_cents: number | null;
+    entry_date: string;
+    notes: string | null;
+    cost_line_id: string;
+  }>) {
+    const s = bucket(t.cost_line_id);
+    const cents = Math.round((t.hours ?? 0) * (t.hourly_rate_cents ?? 0));
+    s.labour_hours += t.hours ?? 0;
+    s.labour_cents += cents;
+    s.total_cents += cents;
+    s.rows.push({
+      kind: 'labour',
+      id: t.id,
+      label: `${t.hours} hrs`,
+      sublabel: t.notes ?? null,
+      amount_cents: cents,
+      hours: t.hours,
+      occurred_at: t.entry_date,
+    });
+  }
+
+  for (const e of (expensesRes.data ?? []) as Array<{
+    id: string;
+    amount_cents: number;
+    expense_date: string;
+    vendor: string | null;
+    description: string | null;
+    cost_line_id: string;
+  }>) {
+    const s = bucket(e.cost_line_id);
+    s.expenses_cents += e.amount_cents;
+    s.total_cents += e.amount_cents;
+    s.rows.push({
+      kind: 'expense',
+      id: e.id,
+      label: e.vendor ?? 'Expense',
+      sublabel: e.description ?? null,
+      amount_cents: e.amount_cents,
+      occurred_at: e.expense_date,
+    });
+  }
+
+  for (const b of (billsRes.data ?? []) as Array<{
+    id: string;
+    amount_cents: number;
+    bill_date: string;
+    vendor: string | null;
+    notes: string | null;
+    cost_line_id: string;
+  }>) {
+    const s = bucket(b.cost_line_id);
+    s.bills_cents += b.amount_cents;
+    s.total_cents += b.amount_cents;
+    s.rows.push({
+      kind: 'bill',
+      id: b.id,
+      label: b.vendor ?? 'Bill',
+      sublabel: b.notes ?? null,
+      amount_cents: b.amount_cents,
+      occurred_at: b.bill_date,
+    });
+  }
+
+  for (const p of (poItemsRes.data ?? []) as Array<{
+    id: string;
+    label: string | null;
+    qty: number | null;
+    unit: string | null;
+    line_total_cents: number;
+    created_at: string;
+    cost_line_id: string;
+    purchase_orders:
+      | { vendor: string | null; status: string }
+      | { vendor: string | null; status: string }[]
+      | null;
+  }>) {
+    const s = bucket(p.cost_line_id);
+    s.po_cents += p.line_total_cents;
+    s.total_cents += p.line_total_cents;
+    const po = Array.isArray(p.purchase_orders) ? p.purchase_orders[0] : p.purchase_orders;
+    s.rows.push({
+      kind: 'po',
+      id: p.id,
+      label: po?.vendor ? `${po.vendor} · ${p.label ?? 'PO line'}` : (p.label ?? 'PO line'),
+      sublabel: po?.status ? `PO ${po.status}` : null,
+      amount_cents: p.line_total_cents,
+      occurred_at: p.created_at,
+    });
+  }
+
+  // Sort each bucket's rows newest-first.
+  for (const s of result.values()) {
+    s.rows.sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
+  }
+
+  return result;
+}

@@ -7,6 +7,7 @@ import { ScopeScaffoldGenerator } from '@/components/features/projects/scope-sca
 import { StarterTemplatePicker } from '@/components/features/projects/starter-template-picker';
 import { Button } from '@/components/ui/button';
 import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
+import { getCostLineActualsByProject } from '@/lib/db/queries/cost-line-actuals';
 import { listCostLines } from '@/lib/db/queries/cost-lines';
 import { listMaterialsCatalog } from '@/lib/db/queries/materials-catalog';
 import { getBudgetVsActual } from '@/lib/db/queries/project-budget-categories';
@@ -37,14 +38,16 @@ export default async function BudgetTabServer({
    * `?expand=` URL override. */
   defaultExpanded: boolean;
 }) {
-  const [budget, costLines, catalog, project, coContributions, versions] = await Promise.all([
-    getBudgetVsActual(projectId),
-    listCostLines(projectId),
-    listMaterialsCatalog(),
-    getProject(projectId),
-    getProjectChangeOrderContributions(projectId),
-    listProjectVersions(projectId),
-  ]);
+  const [budget, costLines, catalog, project, coContributions, versions, actualsByLineId] =
+    await Promise.all([
+      getBudgetVsActual(projectId),
+      listCostLines(projectId),
+      listMaterialsCatalog(),
+      getProject(projectId),
+      getProjectChangeOrderContributions(projectId),
+      listProjectVersions(projectId),
+      getCostLineActualsByProject(projectId),
+    ]);
 
   const stage = (project?.lifecycle_stage ?? 'planning') as LifecycleStage;
   const isPreApproval = stage === 'planning' || stage === 'awaiting_approval';
@@ -101,6 +104,7 @@ export default async function BudgetTabServer({
         costLines={costLines}
         catalog={catalog}
         coContributionsByCategoryId={Object.fromEntries(coContributions.byCategoryId)}
+        actualsByLineId={Object.fromEntries(actualsByLineId)}
         defaultExpanded={defaultExpanded}
         headerActions={showSaveAsTemplate ? <SaveAsTemplateButton projectId={projectId} /> : null}
       />

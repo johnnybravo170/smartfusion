@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-orders';
+import type { CostLineActualsSummary } from '@/lib/db/queries/cost-line-actuals';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import type { BudgetLine } from '@/lib/db/queries/project-budget-categories';
@@ -54,6 +55,9 @@ type BudgetCategoriesTableProps = {
   catalog: MaterialsCatalogRow[];
   /** Audit lens — categories touched by applied COs get a chip. */
   coContributionsByCategoryId?: Record<string, AppliedChangeOrderContribution[]>;
+  /** Pre-fetched per-line actuals, keyed by cost_line_id. Pre-fetched
+   * at page level so per-line expansion doesn't trigger a round-trip. */
+  actualsByLineId?: Record<string, CostLineActualsSummary>;
   /** Whether sections start expanded. Page derives from lifecycle
    * (planning → true) and `?expand=` URL override. Defaults true so
    * legacy callers still see the authoring layout. */
@@ -70,6 +74,7 @@ export function BudgetCategoriesTable({
   costLines,
   catalog,
   coContributionsByCategoryId = {},
+  actualsByLineId = {},
   defaultExpanded = true,
   headerActions,
 }: BudgetCategoriesTableProps) {
@@ -469,6 +474,7 @@ export function BudgetCategoriesTable({
                         saveEditName={saveEditName}
                         startEditName={startEditName}
                         coContributions={coContributionsByCategoryId[line.budget_category_id] ?? []}
+                        actualsByLineId={actualsByLineId}
                       />
                     );
                   })}
@@ -609,6 +615,7 @@ type BudgetCategoryRowProps = {
   saveEditName: (id: string, originalName: string) => void;
   startEditName: (line: BudgetLine) => void;
   coContributions: AppliedChangeOrderContribution[];
+  actualsByLineId: Record<string, CostLineActualsSummary>;
 };
 
 function BudgetCategoryRow(props: BudgetCategoryRowProps) {
@@ -649,6 +656,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
     saveEditName,
     startEditName,
     coContributions,
+    actualsByLineId,
   } = props;
   // Distinct CO chip per CO (a CO may have multiple lines in this category;
   // we still want one chip per CO).
@@ -1078,6 +1086,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                                     projectId={projectId}
                                     costLineId={cl.id}
                                     costLineLabel={cl.label}
+                                    actuals={actualsByLineId[cl.id]}
                                   />
                                 </td>
                               </tr>

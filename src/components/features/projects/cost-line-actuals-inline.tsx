@@ -1,22 +1,20 @@
 'use client';
 
 /**
- * Inline expansion under a cost line in Budget Executing mode. Shows
+ * Inline expansion under a cost line on the unified Budget tab. Shows
  * what's been spent specifically on this line — hours billed, bills,
- * expenses, PO line items — pulled from the new cost_line_id FKs
- * added in migration 0166.
+ * expenses, PO line items — pulled from the cost_line_id FKs added
+ * in migration 0166.
  *
- * Loads on first expand (not on render) so collapsed lines stay free.
- * Re-fetches when the actuals query action is invalidated by a write
- * elsewhere — caller can pass a key to force re-mount if needed.
+ * Pre-fetched at the page level via getCostLineActualsByProject and
+ * passed in as a prop. No per-expand round-trips, no loading states —
+ * the data is already on the page when the operator clicks.
  */
 
-import { ArrowUpRight, Banknote, Clock, FileText, Loader2, ShoppingBag } from 'lucide-react';
+import { ArrowUpRight, Banknote, Clock, FileText, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
 import type { CostLineActualsSummary } from '@/lib/db/queries/cost-line-actuals';
 import { formatCurrency } from '@/lib/pricing/calculator';
-import { fetchCostLineActualsAction } from '@/server/actions/cost-line-actuals';
 
 const KIND_ICONS = {
   labour: Clock,
@@ -32,52 +30,29 @@ const KIND_LABELS = {
   po: 'PO',
 } as const;
 
+const EMPTY: CostLineActualsSummary = {
+  total_cents: 0,
+  labour_hours: 0,
+  labour_cents: 0,
+  expenses_cents: 0,
+  bills_cents: 0,
+  po_cents: 0,
+  rows: [],
+};
+
 export function CostLineActualsInline({
   projectId,
   costLineId,
   costLineLabel,
+  actuals,
 }: {
   projectId: string;
   costLineId: string;
   costLineLabel: string;
+  /** Pre-fetched line actuals; undefined = no actuals on this line. */
+  actuals?: CostLineActualsSummary;
 }) {
-  const [data, setData] = useState<CostLineActualsSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchCostLineActualsAction(costLineId)
-      .then((res) => {
-        if (cancelled) return;
-        if (!res.ok) {
-          setError(res.error);
-          return;
-        }
-        setData(res.actuals);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(String(err));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [costLineId]);
-
-  if (error) {
-    return (
-      <div className="rounded-md border border-amber-200 bg-amber-50/40 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
-        Couldn’t load spend for this line: {error}
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-        <Loader2 className="size-3.5 animate-spin" /> Loading spend…
-      </div>
-    );
-  }
+  const data = actuals ?? EMPTY;
 
   if (data.rows.length === 0) {
     return (
