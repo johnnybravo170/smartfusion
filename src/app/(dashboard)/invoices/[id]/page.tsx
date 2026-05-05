@@ -75,7 +75,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     : invoice.amount_cents + lineItemsTotal;
   const totalCents = taxInclusive ? invoice.amount_cents : subtotalCents + invoice.tax_cents;
   const showSubtotalRow = !(taxInclusive && lineItems.length > 0);
-  const taxCtx = tenant ? await canadianTax.getContext(tenant.id) : null;
+  const taxCtx = tenant ? await canadianTax.getCustomerFacingContext(tenant.id) : null;
   const ratePct = taxCtx ? Math.round(taxCtx.totalRate * 100) : 5;
   const taxLabel = taxInclusive ? `GST (${ratePct}%, included)` : `GST (${ratePct}%)`;
   const isDraft = invoice.status === 'draft';
