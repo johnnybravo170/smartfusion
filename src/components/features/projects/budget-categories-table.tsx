@@ -1100,6 +1100,22 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                               </td>
                             </tr>
                           ) : null}
+                          {/* Edit form renders inline under the row being */}
+                          {/* edited so the operator's eye doesn't have to */}
+                          {/* travel to the bottom of the section. */}
+                          {editingLine?.id === cl.id ? (
+                            <tr>
+                              <td colSpan={6} className="bg-muted/40 px-3 py-3">
+                                <CostLineForm
+                                  projectId={projectId}
+                                  initial={editingLine}
+                                  catalog={catalog}
+                                  defaultCategoryId={line.budget_category_id}
+                                  onDone={() => setEditingLine(null)}
+                                />
+                              </td>
+                            </tr>
+                          ) : null}
                         </Fragment>
                       );
                     })}
@@ -1107,15 +1123,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                 </table>
               )}
 
-              {editingLine && editingLine.budget_category_id === line.budget_category_id ? (
-                <CostLineForm
-                  projectId={projectId}
-                  initial={editingLine}
-                  catalog={catalog}
-                  defaultCategoryId={line.budget_category_id}
-                  onDone={() => setEditingLine(null)}
-                />
-              ) : addingLineFor === line.budget_category_id ? (
+              {addingLineFor === line.budget_category_id ? (
                 <CostLineForm
                   projectId={projectId}
                   catalog={catalog}
