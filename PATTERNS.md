@@ -248,7 +248,38 @@ When you add a new caller (or extend the duplicate-detection rule to a new entit
 
 ---
 
-## 16. Mobile width: grid + truncate min-width gotchas
+## 16. AI-assisted entity import (Henry-powered onboarding)
+
+Bringing existing data into the app — customers today, projects/invoices/expenses later — uses a single recipe:
+
+1. **Operator drops a file or pastes text.** The dropzone reuses §1's `intake-dropzone` (file-shape-agnostic) plus a paste textarea. Either input is accepted; the operator picks whichever feels easiest.
+2. **Henry classifies via the gateway.** A schema-driven `gateway().runStructured()` call with task `onboarding_<entity>_classify` turns whatever shape came in into a typed proposal array. **Pinned to high-quality models** (Sonnet 4.6, no tier-climb secondary) — this is a Day-1 first-impression moment, cost is irrelevant, sloppy classification undermines the entire product.
+3. **Deterministic dedup runs server-side.** AI proposes; deterministic logic decides what's a match. See `src/lib/customers/dedup.ts` for the customer tier system (email > phone > name+city > name). Add a sibling file under `src/lib/<entity>/dedup.ts` for each new entity type.
+4. **Preview is ephemeral.** No staging table — the proposal array is round-tripped through the client and edited in place. Operator chooses Create / Merge / Skip per row, optionally edits any field, optionally adds an audit note.
+5. **Commit writes an `import_batch` row + tags every created entity with `import_batch_id`.** This gives provenance and rollback. See migration `0185_import_batches.sql` and the matching FK column on customers. New entity phases (projects / invoices / expenses) MUST add their own `import_batch_id` FK in the same shape — don't invent a parallel mechanism.
+6. **Rollback is admin-grade and always available.** `rollbackCustomerImportAction(batchId)` soft-deletes via `deleted_at` (NOT hard delete; the records may already be referenced) and stamps the batch row's `rolled_back_at`. Surface a "rolled back" indicator anywhere a tagged row appears.
+
+**Non-negotiables when extending to projects/invoices/expenses:**
+
+- Reuse the `gateway().runStructured()` pattern — never bypass it for "simpler" provider calls.
+- Reuse the deterministic dedup contract (return `{ tier, existingId, existingName }`) so the wizard UI is generic across entity types.
+- Money + tax math on imported invoices must FREEZE at the rate effective on the historical date, not recompute at today's rate. The customer-facing tax helper in `src/lib/providers/tax/canadian.ts` accepts an explicit override for exactly this case.
+- Cross-entity FKs (invoice.customer_id resolved from the customer phase): commit phases in topological order — customers first, then projects, then invoices.
+
+Files in this family today:
+
+- `supabase/migrations/0185_import_batches.sql` — `import_batches` table + storage bucket
+- `src/lib/customers/dedup.ts` — Phase A dedup engine
+- `src/lib/ai-gateway/{tasks,routing}.ts` — `onboarding_customer_classify` task
+- `src/server/actions/onboarding-import.ts` — parse + commit + rollback actions
+- `src/components/features/onboarding/customer-import-wizard.tsx` — three-stage client wizard
+- `src/app/(dashboard)/contacts/import/page.tsx` — entry route
+
+The kanban card "Henry-powered onboarding import wizard" tracks broader phasing (B: projects, C: invoices). Don't expand scope mid-PR.
+
+---
+
+## 17. Mobile width: grid + truncate min-width gotchas
 
 Two tightly-related Tailwind/CSS pitfalls that can silently push a layout past the iPhone viewport. Both surfaced together while chasing a "dashboard too wide" bug — neither showed up under static inspection or with `overflow-x-hidden` on `<main>` (that just clipped the visual; the layout had already escaped).
 

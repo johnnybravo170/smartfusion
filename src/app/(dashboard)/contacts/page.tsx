@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Plus, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { CustomerEmptyState } from '@/components/features/customers/customer-empty-state';
@@ -74,12 +74,20 @@ export default async function ContactsPage({
                 : `${grandTotal} contact${grandTotal === 1 ? '' : 's'} on file`}
           </p>
         </div>
-        <Button asChild>
-          <Link href="/contacts/new">
-            <Plus className="size-3.5" />
-            New contact
-          </Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild variant="outline">
+            <Link href="/contacts/import">
+              <Sparkles className="size-3.5" />
+              Import with Henry
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/contacts/new">
+              <Plus className="size-3.5" />
+              New contact
+            </Link>
+          </Button>
+        </div>
       </header>
 
       {grandTotal > 0 ? (
