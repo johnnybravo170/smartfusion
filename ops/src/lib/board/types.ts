@@ -197,33 +197,37 @@ export type BoardDecision = z.infer<typeof decisionSchema>;
 
 // ---- Engine I/O schemas (what we ask the LLM to produce) -------------
 
-/** Phase B: chair extracts cruxes from opening statements. */
+/** Phase B: chair extracts cruxes from opening statements.
+ *  Be GENEROUS on string lengths — model outputs vary and we'd rather
+ *  carry a long summary than fail the whole session. We're parsing JSON
+ *  shape, not enforcing UX limits here. */
 export const cruxExtractionSchema = z.object({
-  consensus: z.array(z.string()).max(20),
+  consensus: z.array(z.string()).max(40),
   cruxes: z
     .array(
       z.object({
-        label: z.string().min(1).max(200),
+        label: z.string().min(1).max(500),
         /** Advisors centrally involved in this disagreement (slugs). */
-        advisors: z.array(z.string()).min(1).max(10),
+        advisors: z.array(z.string()).min(1).max(20),
         /** Optional one-line of what's actually in dispute. */
-        summary: z.string().max(400).optional(),
+        summary: z.string().max(4000).optional(),
       }),
     )
     .min(0)
-    .max(8),
+    .max(12),
 });
 export type CruxExtraction = z.infer<typeof cruxExtractionSchema>;
 
-/** Phase C: chair picks the next move. */
+/** Phase C: chair picks the next move. String limits are intentionally
+ *  generous — we'd rather carry a long prompt/reasoning than fail. */
 export const chairActionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('exchange'),
     crux_id: z.string().uuid(),
     advisor_a: z.string().uuid(),
     advisor_b: z.string().uuid(),
-    prompt: z.string().min(10).max(2000),
-    reasoning: z.string().min(1).max(1000),
+    prompt: z.string().min(1).max(8000),
+    reasoning: z.string().min(1).max(4000),
     new_information: z.boolean(),
   }),
   z.object({
@@ -231,27 +235,27 @@ export const chairActionSchema = z.discriminatedUnion('action', [
     crux_id: z.string().uuid(),
     challenger_id: z.string().uuid(),
     target_id: z.string().uuid(),
-    prompt: z.string().min(10).max(2000),
-    reasoning: z.string().min(1).max(1000),
+    prompt: z.string().min(1).max(8000),
+    reasoning: z.string().min(1).max(4000),
     new_information: z.boolean(),
   }),
   z.object({
     action: z.literal('poll'),
     crux_id: z.string().uuid(),
-    question: z.string().min(5).max(500),
-    reasoning: z.string().min(1).max(1000),
+    question: z.string().min(1).max(2000),
+    reasoning: z.string().min(1).max(4000),
     new_information: z.boolean(),
   }),
   z.object({
     action: z.literal('next_crux'),
     crux_id: z.string().uuid(),
     crux_status: z.enum(['resolved', 'deadlock', 'dropped']),
-    resolution_summary: z.string().min(1).max(2000),
+    resolution_summary: z.string().min(1).max(8000),
     new_information: z.boolean(),
   }),
   z.object({
     action: z.literal('close'),
-    reasoning: z.string().min(1).max(1000),
+    reasoning: z.string().min(1).max(4000),
   }),
 ]);
 export type ChairAction = z.infer<typeof chairActionSchema>;
@@ -259,35 +263,35 @@ export type ChairAction = z.infer<typeof chairActionSchema>;
 /** Phase D: each advisor's structured final position. */
 export const finalPositionSchema = z.object({
   overall: z.object({
-    stance: z.string().min(1).max(500),
+    stance: z.string().min(1).max(4000),
     confidence: z.number().int().min(1).max(5),
-    rationale: z.string().min(1).max(3000),
+    rationale: z.string().min(1).max(8000),
   }),
   cruxes: z
     .array(
       z.object({
         crux_id: z.string().uuid(),
-        stance: z.string().min(1).max(500),
+        stance: z.string().min(1).max(4000),
         confidence: z.number().int().min(1).max(5),
-        rationale: z.string().min(1).max(2000),
+        rationale: z.string().min(1).max(8000),
       }),
     )
-    .max(20),
-  shifted_from_opening: z.array(z.string().uuid()).max(20),
+    .max(40),
+  shifted_from_opening: z.array(z.string().uuid()).max(40),
 });
 export type FinalPosition = z.infer<typeof finalPositionSchema>;
 
 /** Phase D: chair synthesis. Trailing JSON tail captures credits. */
 export const chairSynthesisSchema = z.object({
-  decision_text: z.string().min(1).max(2000),
-  reasoning: z.string().min(1).max(5000),
-  feedback_loop_check: z.string().min(1).max(2000),
-  action_items: z.array(actionItemSchema).max(10),
-  dissenting_views: z.string().max(3000).optional().nullable(),
+  decision_text: z.string().min(1).max(8000),
+  reasoning: z.string().min(1).max(20_000),
+  feedback_loop_check: z.string().min(1).max(8000),
+  action_items: z.array(actionItemSchema).max(20),
+  dissenting_views: z.string().max(8000).optional().nullable(),
   chair_overrode_majority: z.boolean(),
-  chair_disagreement_note: z.string().max(3000).optional().nullable(),
-  credited_advisor_ids: z.array(z.string().uuid()).max(20),
-  overruled_advisor_ids: z.array(z.string().uuid()).max(20),
+  chair_disagreement_note: z.string().max(8000).optional().nullable(),
+  credited_advisor_ids: z.array(z.string().uuid()).max(40),
+  overruled_advisor_ids: z.array(z.string().uuid()).max(40),
   overrule_reasons: z.record(z.string(), z.string()),
 });
 export type ChairSynthesis = z.infer<typeof chairSynthesisSchema>;

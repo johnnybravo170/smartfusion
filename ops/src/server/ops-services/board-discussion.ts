@@ -199,7 +199,17 @@ async function runPhaseB(
   });
   await incrementSessionSpend(session.id, res.cost_cents);
 
-  const parsed = parseJson(res.text, cruxExtractionSchema, 'crux extraction');
+  // Be lenient. If the chair returns malformed JSON or strings exceed
+  // the schema, log and proceed with NO cruxes — better to land a
+  // synthesis from openings + final positions than fail a $5 session
+  // because the chair was verbose.
+  let parsed: import('@/lib/board/types').CruxExtraction;
+  try {
+    parsed = parseJson(res.text, cruxExtractionSchema, 'crux extraction');
+  } catch (err) {
+    console.warn(`[board.PhaseB] crux extraction parse failed; proceeding with no cruxes:`, err);
+    parsed = { consensus: [], cruxes: [] };
+  }
 
   // Persist cruxes. We persist regardless of whether they map cleanly to
   // advisor IDs; the chair occasionally cites slugs or names instead.

@@ -25,64 +25,97 @@ export type BoardContextSnapshot = {
   incidents: Array<{ title: string; severity: string; status: string; created_at: string }>;
   worklog: Array<{ summary: string; created_at: string }>;
   competitors: Array<{ name: string; last_checked_at: string | null }>;
+  /** Knowledge docs the advisors should be aware of. Bodies truncated to
+   *  ~1500 chars each so the context block stays bounded. Excludes docs
+   *  tagged 'advisor' or 'imprint' (those are per-persona, loaded
+   *  separately via advisor.knowledge_id). */
+  knowledge: Array<{
+    slug: string;
+    title: string;
+    tags: string[];
+    body: string;
+    truncated: boolean;
+  }>;
 };
+
+const KNOWLEDGE_BODY_MAX = 1500;
+const KNOWLEDGE_DOC_LIMIT = 20;
+/** Tags that signal a doc is per-advisor / per-persona, NOT general
+ *  context. We skip these because each advisor already gets its own
+ *  skill body inlined separately. */
+const KNOWLEDGE_EXCLUDE_TAGS = new Set(['advisor', 'imprint']);
 
 export async function loadContextSnapshot(): Promise<BoardContextSnapshot> {
   const svc = createServiceClient();
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const since_week = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [decisionsRes, ideasRes, roadmapRes, kanbanRes, incidentsRes, worklogRes, competitorsRes] =
-    await Promise.all([
-      svc
-        .schema('ops')
-        .from('decisions')
-        .select('title, status, summary, created_at')
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
-        .limit(15),
-      svc
-        .schema('ops')
-        .from('ideas')
-        .select('title, status, tags, created_at')
-        .gte('created_at', since)
-        .is('archived_at', null)
-        .order('created_at', { ascending: false })
-        .limit(20),
-      svc
-        .schema('ops')
-        .from('roadmap_items')
-        .select('title, status, phase')
-        .order('updated_at', { ascending: false })
-        .limit(20),
-      svc
-        .schema('ops')
-        .from('kanban_cards')
-        .select('title, column_key, tags, priority, board_id, kanban_boards:board_id(slug)')
-        .neq('column_key', 'done')
-        .order('priority', { ascending: false, nullsFirst: false })
-        .limit(20),
-      svc
-        .schema('ops')
-        .from('incidents')
-        .select('title, severity, status, created_at')
-        .neq('status', 'resolved')
-        .order('created_at', { ascending: false })
-        .limit(10),
-      svc
-        .schema('ops')
-        .from('worklog_entries')
-        .select('summary, created_at')
-        .gte('created_at', since_week)
-        .order('created_at', { ascending: false })
-        .limit(20),
-      svc
-        .schema('ops')
-        .from('competitors')
-        .select('name, last_checked_at')
-        .order('last_checked_at', { ascending: false, nullsFirst: false })
-        .limit(10),
-    ]);
+  const [
+    decisionsRes,
+    ideasRes,
+    roadmapRes,
+    kanbanRes,
+    incidentsRes,
+    worklogRes,
+    competitorsRes,
+    knowledgeRes,
+  ] = await Promise.all([
+    svc
+      .schema('ops')
+      .from('decisions')
+      .select('title, status, summary, created_at')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(15),
+    svc
+      .schema('ops')
+      .from('ideas')
+      .select('title, status, tags, created_at')
+      .gte('created_at', since)
+      .is('archived_at', null)
+      .order('created_at', { ascending: false })
+      .limit(20),
+    svc
+      .schema('ops')
+      .from('roadmap_items')
+      .select('title, status, phase')
+      .order('updated_at', { ascending: false })
+      .limit(20),
+    svc
+      .schema('ops')
+      .from('kanban_cards')
+      .select('title, column_key, tags, priority, board_id, kanban_boards:board_id(slug)')
+      .neq('column_key', 'done')
+      .order('priority', { ascending: false, nullsFirst: false })
+      .limit(20),
+    svc
+      .schema('ops')
+      .from('incidents')
+      .select('title, severity, status, created_at')
+      .neq('status', 'resolved')
+      .order('created_at', { ascending: false })
+      .limit(10),
+    svc
+      .schema('ops')
+      .from('worklog_entries')
+      .select('summary, created_at')
+      .gte('created_at', since_week)
+      .order('created_at', { ascending: false })
+      .limit(20),
+    svc
+      .schema('ops')
+      .from('competitors')
+      .select('name, last_checked_at')
+      .order('last_checked_at', { ascending: false, nullsFirst: false })
+      .limit(10),
+    svc
+      .schema('ops')
+      .from('knowledge_docs')
+      .select('slug, title, tags, body')
+      .is('archived_at', null)
+      .order('updated_at', { ascending: false })
+      .limit(KNOWLEDGE_DOC_LIMIT * 3), // overfetch; we filter out advisor/imprint docs in code
+  ]);
 
   // Best-effort: a single broken query shouldn't fail the whole snapshot.
   type KanbanRow = {
@@ -136,6 +169,27 @@ export async function loadContextSnapshot(): Promise<BoardContextSnapshot> {
       name: c.name,
       last_checked_at: c.last_checked_at ?? null,
     })),
+    knowledge: (
+      (knowledgeRes.data ?? []) as Array<{
+        slug: string;
+        title: string;
+        tags: string[] | null;
+        body: string | null;
+      }>
+    )
+      .filter((d) => !(d.tags ?? []).some((t) => KNOWLEDGE_EXCLUDE_TAGS.has(t)))
+      .slice(0, KNOWLEDGE_DOC_LIMIT)
+      .map((d) => {
+        const body = d.body ?? '';
+        const truncated = body.length > KNOWLEDGE_BODY_MAX;
+        return {
+          slug: d.slug,
+          title: d.title,
+          tags: d.tags ?? [],
+          body: truncated ? `${body.slice(0, KNOWLEDGE_BODY_MAX)}…` : body,
+          truncated,
+        };
+      }),
   };
 }
 
@@ -186,6 +240,20 @@ export function renderContextBlock(s: BoardContextSnapshot): string {
         `- ${c.name}${c.last_checked_at ? ` (checked ${c.last_checked_at.slice(0, 10)})` : ''}`,
       );
     lines.push('');
+  }
+  if (s.knowledge.length) {
+    lines.push('### Knowledge docs (HeyHenry-the-business reference material)');
+    lines.push(
+      `(Each is a short doc Jonathan or an agent has written down. Pull from them when relevant; ask for clarification if the right doc seems missing.)`,
+    );
+    lines.push('');
+    for (const d of s.knowledge) {
+      const tagStr = d.tags.length ? ` {${d.tags.join(', ')}}` : '';
+      lines.push(`#### ${d.title}${tagStr} \`(${d.slug})\``);
+      if (d.body) lines.push(d.body);
+      if (d.truncated) lines.push(`*(truncated; full doc available via knowledge slug)*`);
+      lines.push('');
+    }
   }
 
   return lines.join('\n').trim();

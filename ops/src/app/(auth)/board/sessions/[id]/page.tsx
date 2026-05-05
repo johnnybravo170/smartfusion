@@ -9,6 +9,7 @@ import {
   listPositions,
 } from '@/server/ops-services/board';
 import { DeleteSessionButton } from '../../delete-session-button';
+import { Markdown } from '../../markdown';
 import { AutoRefresh } from './auto-refresh';
 import { MessageRating } from './message-rating';
 import { ReviewPanel } from './review-panel';
@@ -95,9 +96,9 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
             Decision ({decision.status})
           </h2>
           <div className="space-y-3 rounded-md border border-[var(--border)] p-4">
-            <p className="text-base font-medium">
-              {decision.edited_decision_text ?? decision.decision_text}
-            </p>
+            <div className="text-base font-medium">
+              <Markdown>{decision.edited_decision_text ?? decision.decision_text}</Markdown>
+            </div>
             {decision.edited_decision_text ? (
               <p className="text-xs italic text-[var(--muted-foreground)]">
                 Edited at accept-time. Original synthesis: "{decision.decision_text}"
@@ -107,13 +108,13 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
               <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
                 Reasoning
               </p>
-              <p className="text-sm whitespace-pre-wrap">{decision.reasoning}</p>
+              <Markdown>{decision.reasoning}</Markdown>
             </div>
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
                 Feedback-loop check
               </p>
-              <p className="text-sm whitespace-pre-wrap">{decision.feedback_loop_check}</p>
+              <Markdown>{decision.feedback_loop_check}</Markdown>
             </div>
             {(decision.edited_action_items ?? decision.action_items).length > 0 ? (
               <div>
@@ -140,9 +141,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
                 <p className="text-xs font-medium uppercase tracking-wide text-amber-600">
                   Where the chair disagreed
                 </p>
-                <p className="text-sm whitespace-pre-wrap">
-                  {decision.chair_disagreement_note ?? '(no note)'}
-                </p>
+                <Markdown>{decision.chair_disagreement_note ?? '(no note)'}</Markdown>
               </div>
             ) : null}
             <div className="flex flex-wrap gap-3 text-xs text-[var(--muted-foreground)]">
@@ -247,7 +246,9 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
                     </div>
                     <span>{fmtDate(m.created_at)}</span>
                   </div>
-                  <div className="mt-2 whitespace-pre-wrap text-sm">{m.content}</div>
+                  <div className="mt-2">
+                    <Markdown>{m.content}</Markdown>
+                  </div>
                   {m.cost_cents !== null && m.cost_cents !== undefined ? (
                     <p className="mt-2 text-xs text-[var(--muted-foreground)]">
                       {m.provider}/{m.model} · {m.prompt_tokens}+{m.completion_tokens} tok · $
