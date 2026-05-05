@@ -928,40 +928,59 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
           />
         </td>
         <td className="px-2 py-1.5 text-right">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                size="xs"
-                variant="ghost"
-                className="text-destructive hover:text-destructive"
-                aria-label={`Remove ${line.budget_category_name}`}
-              >
-                ×
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Remove {line.budget_category_name}?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {categoryLines.length > 0
-                    ? `This category has ${categoryLines.length} cost line${categoryLines.length === 1 ? '' : 's'}. They will be orphaned (kept on the project but unlinked from any category) so no spend history is lost.`
-                    : 'This category has no cost lines.'}{' '}
-                  If any time entries or expenses are linked to this category, the removal will be
-                  blocked — reassign those first.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => removeCategory(line.budget_category_id)}
-                  disabled={isPending}
-                  className="bg-destructive/10 text-destructive hover:bg-destructive/20"
+          {/* Empty category (no lines, no description) deletes in one */}
+          {/* click — there's nothing to lose. The server action still */}
+          {/* blocks if time/expense rows are linked, and the toast */}
+          {/* surfaces that error. Categories with content show the */}
+          {/* AlertDialog so the operator sees the line count before */}
+          {/* orphaning anything. */}
+          {categoryLines.length === 0 && !line.budget_category_description ? (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              aria-label={`Remove ${line.budget_category_name}`}
+              onClick={() => removeCategory(line.budget_category_id)}
+              disabled={isPending}
+            >
+              ×
+            </Button>
+          ) : (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  aria-label={`Remove ${line.budget_category_name}`}
                 >
-                  Remove category
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                  ×
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove {line.budget_category_name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {categoryLines.length > 0
+                      ? `This category has ${categoryLines.length} cost line${categoryLines.length === 1 ? '' : 's'}. They will be orphaned (kept on the project but unlinked from any category) so no spend history is lost.`
+                      : 'This category has a description that will be lost.'}{' '}
+                    If any time entries or expenses are linked to this category, the removal will be
+                    blocked — reassign those first.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => removeCategory(line.budget_category_id)}
+                    disabled={isPending}
+                    className="bg-destructive/10 text-destructive hover:bg-destructive/20"
+                  >
+                    Remove category
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </td>
       </tr>
       {isExpanded && (
