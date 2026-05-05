@@ -8,7 +8,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { CustomerPickerWithCreate } from '@/components/features/customers/customer-picker-with-create';
@@ -34,6 +34,21 @@ export type ProjectFormCustomerOption = {
 
 export type ProjectFormDefaults = Partial<ProjectInput> & { id?: string };
 
+/**
+ * AI-pre-fill payload from IntakeAccelerator. Each field is optional;
+ * only non-empty fields the operator hasn't already typed into get
+ * applied. `customer_name` is a fuzzy hint — the form tries to match
+ * an existing customer; if no match it surfaces a "Create new
+ * customer 'X'?" affordance via the existing CustomerPickerWithCreate.
+ */
+export type ProjectFormSuggestions = {
+  customer_name?: string | null;
+  name?: string | null;
+  description?: string | null;
+  start_date?: string | null;
+  target_end_date?: string | null;
+};
+
 export type ProjectFormProps = {
   mode: 'create' | 'edit';
   customers: ProjectFormCustomerOption[];
@@ -41,6 +56,13 @@ export type ProjectFormProps = {
   action: (input: ProjectInput & { id?: string }) => Promise<ProjectActionResult>;
   submitLabel?: string;
   cancelHref?: string;
+  /** Optional AI-extracted suggestions. When this prop changes, the form
+   * fills any empty (or operator-untouched) field. */
+  suggestions?: ProjectFormSuggestions;
+  /** Called when the form falls back to operator-decision because a
+   * customer suggestion couldn't be matched to an existing record.
+   * Parent can show a hint or surface the New Customer dialog. */
+  onUnmatchedCustomer?: (name: string) => void;
 };
 
 const EMPTY: ProjectInput = {
@@ -59,6 +81,8 @@ export function ProjectForm({
   action,
   submitLabel,
   cancelHref = '/projects',
+  suggestions,
+  onUnmatchedCustomer,
 }: ProjectFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -71,6 +95,40 @@ export function ProjectForm({
     resolver: zodResolver(projectCreateSchema),
     defaultValues: { ...EMPTY, ...defaults },
   });
+
+  // Apply AI-pre-fill suggestions exactly once per distinct payload.
+  // Skip fields the operator has already typed into (dirty) — the
+  // accelerator should never overwrite human work.
+  const appliedSuggestionsRef = useRef<ProjectFormSuggestions | null>(null);
+  useEffect(() => {
+    if (!suggestions) return;
+    if (appliedSuggestionsRef.current === suggestions) return;
+    appliedSuggestionsRef.current = suggestions;
+
+    const dirty = form.formState.dirtyFields;
+    const apply = (
+      key: 'name' | 'description' | 'start_date' | 'target_end_date',
+      value: string | null | undefined,
+    ) => {
+      if (!value) return;
+      if (dirty[key]) return;
+      form.setValue(key, value, { shouldValidate: true, shouldDirty: false });
+    };
+    apply('name', suggestions.name);
+    apply('description', suggestions.description);
+    apply('start_date', suggestions.start_date);
+    apply('target_end_date', suggestions.target_end_date);
+
+    if (suggestions.customer_name && !dirty.customer_id) {
+      const needle = suggestions.customer_name.trim().toLowerCase();
+      const match = customers.find((c) => c.name.toLowerCase().includes(needle));
+      if (match) {
+        form.setValue('customer_id', match.id, { shouldValidate: true, shouldDirty: false });
+      } else {
+        onUnmatchedCustomer?.(suggestions.customer_name);
+      }
+    }
+  }, [suggestions, customers, form, onUnmatchedCustomer]);
 
   const watched = form.watch();
   const selectedCustomer = customers.find((c) => c.id === watched.customer_id);

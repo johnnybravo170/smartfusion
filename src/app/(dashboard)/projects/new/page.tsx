@@ -1,6 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { LeadIntakeForm } from '@/components/features/leads/lead-intake-form';
+import { NewProjectFormSurface } from '@/components/features/projects/new-project-page';
 import { ProjectForm } from '@/components/features/projects/project-form';
 import { listCustomers } from '@/lib/db/queries/customers';
 import { loadIntakeDraft } from '@/lib/db/queries/intake-drafts';
@@ -110,11 +111,14 @@ export default async function NewProjectPage({
     );
   }
 
-  // Default: manual-first. Operator can start a project from scratch
-  // and add scope later on the budget tab. The guided AI intake (drop
-  // a quote PDF / voice memo) is one click away via ?intake=full —
-  // a future revision will fold that drop-zone into this same page
-  // as an optional accelerator above the form.
+  // Default: unified surface. Manual ProjectForm is the primary input;
+  // an optional drop-zone accelerator above it pre-fills fields when
+  // an artifact is provided. Both paths produce the same project
+  // create; the operator never has to "choose" between them.
+  //
+  // The deeper guided flow (multi-step scope review + customer reply
+  // drafting + draft persistence) still lives at /projects/new?intake=full
+  // for inbound-lead use cases that need it.
   return (
     <div className="mx-auto w-full max-w-3xl">
       <div className="mb-6">
@@ -127,27 +131,25 @@ export default async function NewProjectPage({
         </Link>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">New project</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Pick a customer, give the project a name, save. You can build the budget on the next
-          screen.
+          Pick a customer, give the project a name, save. Build the budget on the next screen. Got a
+          quote or voice memo? Drop it in the accelerator below to pre-fill the fields.
         </p>
       </div>
 
-      <ProjectForm
-        mode="create"
+      <NewProjectFormSurface
         customers={customers.map((c) => ({ id: c.id, name: c.name }))}
         action={createProjectAction}
       />
 
-      <div className="mt-8 rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-        Got a quote PDF, photos, or a voice memo about the job?{' '}
+      <p className="mt-8 text-center text-xs text-muted-foreground">
+        Need the full guided intake (scope review + customer reply draft)?{' '}
         <Link
           href="/projects/new?intake=full"
           className="font-medium text-foreground underline-offset-2 hover:underline"
         >
-          Use the guided AI intake →
-        </Link>{' '}
-        Henry will extract scope, build a starting estimate, and draft a customer reply.
-      </div>
+          Open guided intake →
+        </Link>
+      </p>
     </div>
   );
 }
