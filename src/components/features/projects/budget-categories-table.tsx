@@ -9,11 +9,12 @@
  */
 
 import {
-  closestCenter,
+  closestCorners,
   DndContext,
   type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -234,16 +235,40 @@ export function BudgetCategoriesTable({
       section: l.section,
     }));
     const fromIdx = flat.findIndex((r) => r.id === activeId);
-    const toIdx = flat.findIndex((r) => r.id === overId);
-    if (fromIdx === -1 || toIdx === -1) return;
+    if (fromIdx === -1) return;
 
-    const newSection = flat[toIdx].section;
-    const moved = { id: activeId, section: newSection };
-    const without = flat.filter((_, i) => i !== fromIdx);
-    // After removing active, toIdx may shift by one if active was
-    // before over.
-    const insertAt = fromIdx < toIdx ? toIdx - 1 : toIdx;
-    const next = [...without.slice(0, insertAt), moved, ...without.slice(insertAt)];
+    let next: { id: string; section: string }[];
+
+    if (overId.startsWith('section:')) {
+      // Dropped on a section's whitespace (not on a specific row) —
+      // append to the end of that section. This is the only path that
+      // works for moving a category to a section that's currently
+      // visually below the source: the cursor naturally lands in the
+      // section's empty footer area, not on a sibling row.
+      const targetSection = overId.slice('section:'.length);
+      const moved = { id: activeId, section: targetSection };
+      const without = flat.filter((_, i) => i !== fromIdx);
+      // Insert after the last entry currently in that section so the
+      // moved category sits at the bottom of its new home.
+      const lastInTarget = (() => {
+        let last = -1;
+        without.forEach((r, i) => {
+          if (r.section === targetSection) last = i;
+        });
+        return last;
+      })();
+      next = [...without.slice(0, lastInTarget + 1), moved, ...without.slice(lastInTarget + 1)];
+    } else {
+      const toIdx = flat.findIndex((r) => r.id === overId);
+      if (toIdx === -1) return;
+      const newSection = flat[toIdx].section;
+      const moved = { id: activeId, section: newSection };
+      const without = flat.filter((_, i) => i !== fromIdx);
+      // After removing active, toIdx may shift by one if active was
+      // before over.
+      const insertAt = fromIdx < toIdx ? toIdx - 1 : toIdx;
+      next = [...without.slice(0, insertAt), moved, ...without.slice(insertAt)];
+    }
 
     const previous = localOrder;
     setLocalOrder(next);
@@ -437,7 +462,7 @@ export function BudgetCategoriesTable({
   }
 
   return (
-    <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndContext sensors={dndSensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -503,7 +528,7 @@ export function BudgetCategoriesTable({
           const isRenamingSection = editingSectionName === section;
 
           return (
-            <div key={section}>
+            <SectionDroppable key={section} section={section}>
               <div className="group mb-2 flex items-center gap-1">
                 {isRenamingSection ? (
                   // PATTERNS.md §4 keyboard contract: Enter saves,
@@ -749,11 +774,34 @@ export function BudgetCategoriesTable({
                   </tfoot>
                 </table>
               </div>
-            </div>
+            </SectionDroppable>
           );
         })}
       </div>
     </DndContext>
+  );
+}
+
+/**
+ * Wrapper that registers the section's whitespace as a drop zone.
+ * Without this, dragging a category to a section that's currently
+ * empty (or just below the source section, where the cursor lands
+ * between rows) wouldn't have a useSortable target — the drop would
+ * silently no-op. With it, dropping anywhere within the section
+ * appends the dragged category to the bottom of that section.
+ *
+ * `isOver` ring lets the operator see the drop target before they
+ * release.
+ */
+function SectionDroppable({ section, children }: { section: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `section:${section}` });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn('rounded-md transition-shadow', isOver && 'ring-2 ring-primary/30')}
+    >
+      {children}
+    </div>
   );
 }
 
