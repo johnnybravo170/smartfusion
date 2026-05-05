@@ -966,11 +966,17 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
       </tr>
       {isExpanded && (
         // Stronger bg + a left accent stripe that visually attaches the
-        // expanded detail to its parent category row above. Eyes can follow
-        // "this content belongs to that category" without re-reading.
+        // expanded detail to its parent category row above. The stripe
+        // is a pseudo-element so it doesn't take layout width — that
+        // way the inner table's columns align exactly with the parent
+        // table's columns. (Previously the px-3 on this td shifted
+        // everything inside ~12px right of the parent.)
         <tr className="border-b bg-muted/40">
           <td />
-          <td colSpan={6} className="border-l-2 border-primary/40 px-3 py-3">
+          <td
+            colSpan={6}
+            className="relative py-3 before:absolute before:top-0 before:bottom-0 before:left-0 before:w-0.5 before:bg-primary/40 before:content-['']"
+          >
             <div className="space-y-3">
               {/* Slim spend-by-source strip. Inline pill, ~24px tall. */}
               {/* Each value links to the tab where the underlying */}
