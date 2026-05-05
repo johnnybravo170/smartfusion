@@ -484,4 +484,29 @@ export function registerBoardTools(server: McpServer) {
       }
     },
   );
+
+  server.tool(
+    'board_decision_mark_outcome',
+    "Retroactively mark how an accepted board decision turned out: 'proven_right', 'proven_wrong', or 'obsolete' (no longer relevant). This drives long-horizon credit attribution — proven_right boosts advisors the chair credited; proven_wrong is a discredit. Can also pass 'pending' to clear a prior mark. Only works on accepted/edited decisions. Notes are high-signal — the chair sees them next session.",
+    {
+      decision_id: z.string().uuid().describe('board_decisions.id (NOT session_id)'),
+      outcome: z.enum(['pending', 'proven_right', 'proven_wrong', 'obsolete']),
+      notes: z.string().trim().max(4000).optional().describe('Why this turned out the way it did'),
+    },
+    async (args) => {
+      try {
+        await opsRequest('POST', `/api/ops/board/decisions/${args.decision_id}/outcome`, {
+          outcome: args.outcome,
+          notes: args.notes ?? null,
+        });
+        return textResult(
+          `Marked decision ${args.decision_id.slice(0, 8)} as ${args.outcome}.${
+            args.notes ? `\nNotes: ${args.notes}` : ''
+          }`,
+        );
+      } catch (err) {
+        return errorResult(describeError(err));
+      }
+    },
+  );
 }

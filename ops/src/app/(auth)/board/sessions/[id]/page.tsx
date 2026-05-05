@@ -8,6 +8,7 @@ import {
   listMessages,
   listPositions,
 } from '@/server/ops-services/board';
+import { OutcomeMarker } from '../../decisions/outcome-marker';
 import { DeleteSessionButton } from '../../delete-session-button';
 import { Markdown } from '../../markdown';
 import { AutoRefresh } from './auto-refresh';
@@ -185,6 +186,23 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
 
           {session.status === 'awaiting_review' && decision.status === 'proposed' ? (
             <ReviewPanel session={session} decision={decision} />
+          ) : null}
+
+          {decision.status === 'accepted' || decision.status === 'edited' ? (
+            <div className="rounded-md border border-[var(--border)] p-4">
+              <h3 className="mb-2 text-sm font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+                Outcome
+              </h3>
+              <p className="mb-3 text-xs text-[var(--muted-foreground)]">
+                Mark how this decision turned out once you have signal. Drives the long-horizon
+                advisor records and the chair's recalibration on the next session.
+              </p>
+              <OutcomeMarker
+                decisionId={decision.id}
+                initialOutcome={decision.outcome}
+                initialNotes={decision.outcome_notes}
+              />
+            </div>
           ) : null}
         </section>
       ) : null}

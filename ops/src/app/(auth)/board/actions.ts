@@ -9,6 +9,7 @@ import {
   createSession,
   deleteSession,
   getDecision,
+  getDecisionById,
   getSession,
   rateMessage,
   updateDecision,
@@ -233,6 +234,59 @@ export async function rerunSessionAction(
     revalidatePath('/board');
     revalidatePath(`/board/sessions/${source.id}`);
     return { ok: true, id: fresh.id };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'failed' };
+  }
+}
+
+// ── Outcome marking (slice 5) ────────────────────────────────────────
+
+const markOutcomeSchema = z.object({
+  decision_id: z.string().uuid(),
+  outcome: z.enum(['pending', 'proven_right', 'proven_wrong', 'obsolete']),
+  notes: z.string().trim().max(4000).nullable(),
+});
+
+/**
+ * Retroactively mark whether a decision turned out right, wrong, or
+ * obsolete. Drives the long-horizon proven_right_credit /
+ * proven_wrong_credit / overruled_but_right columns in the advisor_stats
+ * view, and feeds into the Chair's track-record block on next session.
+ *
+ * Setting outcome='pending' clears a previous mark. Notes are optional
+ * but high-signal — they're what the Chair sees ("this turned out wrong
+ * because…").
+ *
+ * Allowed only on accepted/edited decisions. Rejected and proposed
+ * decisions never had real-world consequences to evaluate.
+ */
+export async function markDecisionOutcomeAction(
+  input: z.input<typeof markOutcomeSchema>,
+): Promise<ActionResult> {
+  await requireAdmin();
+  const parsed = markOutcomeSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: 'invalid input' };
+
+  try {
+    const decision = await getDecisionById(parsed.data.decision_id);
+    if (!decision) return { ok: false, error: 'decision not found' };
+    if (decision.status !== 'accepted' && decision.status !== 'edited') {
+      return {
+        ok: false,
+        error: `cannot mark outcome on a ${decision.status} decision`,
+      };
+    }
+
+    await updateDecision(decision.id, {
+      outcome: parsed.data.outcome,
+      outcome_marked_at: parsed.data.outcome === 'pending' ? null : new Date().toISOString(),
+      outcome_notes: parsed.data.notes,
+    });
+
+    revalidatePath('/board/decisions');
+    revalidatePath(`/board/sessions/${decision.session_id}`);
+    revalidatePath('/board/advisors');
+    return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'failed' };
   }

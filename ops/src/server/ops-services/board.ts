@@ -353,6 +353,63 @@ export async function createDecision(
   return data as BoardDecision;
 }
 
+export async function getDecisionById(decision_id: string): Promise<BoardDecision | null> {
+  const { data, error } = await svc()
+    .schema('ops')
+    .from('board_decisions')
+    .select('*')
+    .eq('id', decision_id)
+    .maybeSingle();
+  if (error) throw new Error(`getDecisionById: ${error.message}`);
+  return (data ?? null) as BoardDecision | null;
+}
+
+/** List accepted/edited decisions for the outcome-marking queue. Joined to
+ *  the source session so the UI can show context. */
+export type DecisionForOutcomeQueue = BoardDecision & {
+  session_title: string;
+  session_topic: string;
+};
+
+export async function listDecisionsForOutcomeQueue(
+  opts: {
+    limit?: number;
+    /** When true, only show decisions still pending an outcome mark. */
+    only_pending?: boolean;
+    /** When set, only return decisions accepted at least this many days ago. */
+    min_age_days?: number;
+  } = {},
+): Promise<DecisionForOutcomeQueue[]> {
+  const limit = opts.limit ?? 100;
+  let q = svc()
+    .schema('ops')
+    .from('board_decisions')
+    .select('*, board_sessions:session_id(title, topic)')
+    .in('status', ['accepted', 'edited'])
+    .order('accepted_at', { ascending: true });
+
+  if (opts.only_pending) q = q.eq('outcome', 'pending');
+  if (opts.min_age_days !== undefined) {
+    const cutoff = new Date(Date.now() - opts.min_age_days * 86_400_000).toISOString();
+    q = q.lte('accepted_at', cutoff);
+  }
+
+  const { data, error } = await q.limit(limit);
+  if (error) throw new Error(`listDecisionsForOutcomeQueue: ${error.message}`);
+
+  type Row = BoardDecision & {
+    board_sessions: { title: string; topic: string } | { title: string; topic: string }[] | null;
+  };
+  return ((data ?? []) as Row[]).map((d) => {
+    const s = Array.isArray(d.board_sessions) ? d.board_sessions[0] : d.board_sessions;
+    return {
+      ...d,
+      session_title: s?.title ?? '(unknown)',
+      session_topic: s?.topic ?? '',
+    };
+  });
+}
+
 export async function updateDecision(
   id: string,
   patch: Partial<
