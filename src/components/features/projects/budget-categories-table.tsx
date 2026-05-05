@@ -448,7 +448,7 @@ export function BudgetCategoriesTable({
                 {/* while the section is in view. As you scroll past one */}
                 {/* section the next section's thead seamlessly takes */}
                 {/* over (each section is its own table). */}
-                <thead className="sticky top-0 z-10 bg-muted/50">
+                <thead className="sticky top-0 z-10 [&>tr>th]:bg-muted">
                   <tr className="border-b">
                     <th className="px-1 py-1.5" />
                     <th className="px-2 py-1.5 text-left font-medium">Category</th>
