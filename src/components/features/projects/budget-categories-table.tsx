@@ -8,12 +8,23 @@
  * from categories" button that seeds cost lines from category estimates.
  */
 
-import { Check, ChevronDown, ChevronRight, ChevronUp, Pencil, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Pencil } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { CostLineActualsInline } from '@/components/features/projects/cost-line-actuals-inline';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -208,7 +219,6 @@ export function BudgetCategoriesTable({
   }
 
   function removeCategory(categoryId: string) {
-    if (!confirm('Remove this category? Any line items attached will be orphaned.')) return;
     startTransition(async () => {
       const result = await removeBudgetCategoryAction({ id: categoryId, project_id: projectId });
       if (result.ok) toast.success('Category removed');
@@ -712,41 +722,22 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         <td className="px-2 py-1.5">
           <div className="group flex flex-wrap items-center gap-1.5">
             {editingNameId === line.budget_category_id ? (
-              <span className="inline-flex items-center gap-1">
-                <Input
-                  className="h-7 w-auto min-w-[200px] text-sm"
-                  value={editNameValue}
-                  onChange={(e) => setEditNameValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter')
-                      saveEditName(line.budget_category_id, line.budget_category_name);
-                    if (e.key === 'Escape') setEditingNameId(null);
-                  }}
-                  onBlur={() => saveEditName(line.budget_category_id, line.budget_category_name)}
-                  autoFocus
-                  disabled={isPending}
-                />
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => saveEditName(line.budget_category_id, line.budget_category_name)}
-                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  aria-label="Save"
-                  disabled={isPending}
-                >
-                  <Check className="size-4" />
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setEditingNameId(null)}
-                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  aria-label="Cancel"
-                  disabled={isPending}
-                >
-                  <X className="size-4" />
-                </button>
-              </span>
+              // Keyboard contract per PATTERNS.md §4: Enter saves, Escape
+              // cancels, blur saves. No save/cancel chrome — would just
+              // duplicate what the keyboard already does.
+              <Input
+                className="h-7 w-auto min-w-[200px] text-sm"
+                value={editNameValue}
+                onChange={(e) => setEditNameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter')
+                    saveEditName(line.budget_category_id, line.budget_category_name);
+                  if (e.key === 'Escape') setEditingNameId(null);
+                }}
+                onBlur={() => saveEditName(line.budget_category_id, line.budget_category_name)}
+                autoFocus
+                disabled={isPending}
+              />
             ) : (
               <>
                 {/* Click anywhere on the name (or the "X lines" hint) to */}
@@ -793,7 +784,8 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
             ))}
           </div>
           {editingDescId === line.budget_category_id ? (
-            <div className="mt-1 flex items-start gap-1">
+            // Keyboard contract per PATTERNS.md §4.
+            <div className="mt-1">
               <Textarea
                 className="min-h-[4.5rem] resize-y text-xs"
                 rows={3}
@@ -810,15 +802,6 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                 placeholder="Description (shown on estimate). Enter to save, Shift+Enter for new line."
                 autoFocus
               />
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setEditingDescId(null)}
-                aria-label="Cancel"
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <X className="size-3.5" />
-              </button>
             </div>
           ) : (
             <button
@@ -842,46 +825,24 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         </td>
         <td className="px-3 py-1.5 text-right">
           {editingId === line.budget_category_id ? (
-            <div className="relative z-10 flex items-center justify-end gap-1 bg-background">
-              <div className="relative">
-                <span className="-translate-y-1/2 absolute top-1/2 left-2 text-muted-foreground text-sm">
-                  $
-                </span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  className="h-7 w-[120px] bg-background pl-5 text-right text-sm"
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') saveEdit(line.budget_category_id);
-                    if (e.key === 'Escape') setEditingId(null);
-                  }}
-                  onBlur={() => saveEdit(line.budget_category_id)}
-                  autoFocus
-                />
-              </div>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => saveEdit(line.budget_category_id)}
-                disabled={isPending}
-                aria-label="Save"
-                title="Save (Enter)"
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-              >
-                <Check className="size-4" />
-              </button>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setEditingId(null)}
-                aria-label="Cancel"
-                title="Cancel (Esc)"
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <X className="size-4" />
-              </button>
+            // Keyboard contract per PATTERNS.md §4.
+            <div className="relative z-10 flex items-center justify-end bg-background">
+              <span className="-translate-y-1/2 absolute top-1/2 left-2 z-10 text-muted-foreground text-sm">
+                $
+              </span>
+              <Input
+                type="number"
+                step="0.01"
+                className="h-7 w-[120px] bg-background pl-5 text-right text-sm"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveEdit(line.budget_category_id);
+                  if (e.key === 'Escape') setEditingId(null);
+                }}
+                onBlur={() => saveEdit(line.budget_category_id)}
+                autoFocus
+              />
             </div>
           ) : (
             <div className="flex flex-col items-end">
@@ -954,14 +915,40 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         {/* doesn't render (would be 40px of dead space on every row). */}
         {mode === 'editing' ? (
           <td className="px-2 py-1.5 text-right">
-            <Button
-              size="xs"
-              variant="ghost"
-              className="text-destructive hover:text-destructive"
-              onClick={() => removeCategory(line.budget_category_id)}
-            >
-              ×
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  aria-label={`Remove ${line.budget_category_name}`}
+                >
+                  ×
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove {line.budget_category_name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {categoryLines.length > 0
+                      ? `This category has ${categoryLines.length} cost line${categoryLines.length === 1 ? '' : 's'}. They will be orphaned (kept on the project but unlinked from any category) so no spend history is lost.`
+                      : 'This category has no cost lines.'}{' '}
+                    If any time entries or expenses are linked to this category, the removal will be
+                    blocked — reassign those first.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => removeCategory(line.budget_category_id)}
+                    disabled={isPending}
+                    className="bg-destructive/10 text-destructive hover:bg-destructive/20"
+                  >
+                    Remove category
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </td>
         ) : null}
       </tr>
