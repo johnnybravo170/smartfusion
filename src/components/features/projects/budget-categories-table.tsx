@@ -1010,6 +1010,20 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                   <tbody>
                     {categoryLines.map((cl) => {
                       const isLineExpanded = expandedLineIds.has(cl.id);
+                      const lineActuals = actualsByLineId[cl.id];
+                      const lineSpentCents = lineActuals
+                        ? lineActuals.labour_cents +
+                          lineActuals.bills_cents +
+                          lineActuals.expenses_cents
+                        : 0;
+                      const lineCommittedCents = lineActuals?.po_cents ?? 0;
+                      const lineRemainingCents =
+                        cl.line_price_cents - lineSpentCents - lineCommittedCents;
+                      const lineActuallyOver = lineSpentCents > cl.line_price_cents;
+                      const lineProjectedOver =
+                        !lineActuallyOver &&
+                        lineSpentCents + lineCommittedCents > cl.line_price_cents;
+                      const hasActivity = lineSpentCents > 0 || lineCommittedCents > 0;
                       return (
                         <Fragment key={cl.id}>
                           <tr className="border-t hover:bg-muted/40">
@@ -1056,12 +1070,37 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                                 ) : null}
                               </div>
                             </td>
+                            {/* Click-the-number to edit. Same affordance as */}
+                            {/* the Pencil icon, but where Jon's eye lands. */}
                             <td className="px-3 py-1.5 text-right align-top">
-                              <Money cents={cl.line_price_cents} emphasis />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingLine(cl);
+                                  setAddingLineFor(null);
+                                }}
+                                className="hover:underline"
+                                title="Click to edit this line"
+                              >
+                                <Money cents={cl.line_price_cents} emphasis />
+                              </button>
                             </td>
-                            <td />
-                            <td />
-                            <td />
+                            <td className="px-3 py-1.5 text-right align-top text-muted-foreground">
+                              {lineSpentCents > 0 ? <Money cents={lineSpentCents} /> : ''}
+                            </td>
+                            <td className="px-3 py-1.5 text-right align-top text-muted-foreground">
+                              {lineCommittedCents > 0 ? <Money cents={lineCommittedCents} /> : ''}
+                            </td>
+                            <td
+                              className={cn(
+                                'px-3 py-1.5 text-right align-top',
+                                lineActuallyOver && 'text-red-600',
+                                lineProjectedOver && 'text-amber-600',
+                                !lineActuallyOver && !lineProjectedOver && 'text-muted-foreground',
+                              )}
+                            >
+                              {hasActivity ? <Money cents={Math.abs(lineRemainingCents)} /> : ''}
+                            </td>
                             <td className="px-2 py-1.5 align-top">
                               <div className="flex items-center justify-end gap-1">
                                 <button
