@@ -81,3 +81,47 @@ export async function updateTenantSlugAction(
   revalidatePath('/settings');
   return { ok: true };
 }
+
+const MAX_DOC_FIELD_LEN = 4000;
+
+function normalizeDocField(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+export async function updateInvoiceDefaultsAction(input: {
+  payment_instructions?: string | null;
+  terms?: string | null;
+  policies?: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const payment = normalizeDocField(input.payment_instructions);
+  const terms = normalizeDocField(input.terms);
+  const policies = normalizeDocField(input.policies);
+
+  for (const v of [payment, terms, policies]) {
+    if (v && v.length > MAX_DOC_FIELD_LEN) {
+      return { ok: false, error: `Each field must be at most ${MAX_DOC_FIELD_LEN} characters.` };
+    }
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('tenants')
+    .update({
+      invoice_payment_instructions: payment,
+      invoice_terms: terms,
+      invoice_policies: policies,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', tenant.id);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/settings/invoicing');
+  revalidatePath('/invoices', 'layout');
+  return { ok: true };
+}
