@@ -36,6 +36,34 @@ import type { BudgetLine } from '@/lib/db/queries/project-budget-categories';
 import { withFrom } from '@/lib/nav/from-link';
 import { formatCurrencyCompact } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
+
+/**
+ * Renders an amount with the currency symbol muted so the digits read
+ * first. Use throughout the budget table — the symbol is redundant in
+ * a column where every cell is the same currency.
+ */
+function Money({
+  cents,
+  className,
+  emphasis,
+}: {
+  cents: number;
+  className?: string;
+  emphasis?: boolean;
+}) {
+  const text = formatCurrencyCompact(cents);
+  // Split leading symbol(s) (e.g. `$`, `CA$`) from the digits.
+  const m = text.match(/^([^\d-]+)?(-?[\d,.]+)$/);
+  const symbol = m?.[1] ?? '';
+  const number = m?.[2] ?? text;
+  return (
+    <span className={cn('tabular-nums', emphasis && 'font-medium', className)}>
+      <span className="text-muted-foreground/60">{symbol}</span>
+      {number}
+    </span>
+  );
+}
+
 import {
   addBudgetCategoryAction,
   moveSectionAction,
@@ -395,7 +423,7 @@ export function BudgetCategoriesTable({
                   <col className="w-24" />
                   <col className="w-24" />
                   <col className="w-28" />
-                  <col className="w-10" />
+                  <col className="w-16" />
                 </colgroup>
                 <thead>
                   <tr className="border-b bg-muted/50">
@@ -486,13 +514,13 @@ export function BudgetCategoriesTable({
                       {section.charAt(0).toUpperCase() + section.slice(1)} Total
                     </td>
                     <td className="px-3 py-1.5 text-right">
-                      {formatCurrencyCompact(sectionTotal)}
+                      <Money cents={sectionTotal} />
                     </td>
                     <td className="px-3 py-1.5 text-right">
-                      {formatCurrencyCompact(sectionActual)}
+                      <Money cents={sectionActual} />
                     </td>
                     <td className="px-3 py-1.5 text-right text-muted-foreground">
-                      {sectionCommitted > 0 ? formatCurrencyCompact(sectionCommitted) : ''}
+                      {sectionCommitted > 0 ? <Money cents={sectionCommitted} /> : ''}
                     </td>
                     <td
                       className={cn(
@@ -503,9 +531,7 @@ export function BudgetCategoriesTable({
                           'text-amber-600',
                       )}
                     >
-                      {formatCurrencyCompact(
-                        Math.abs(sectionTotal - sectionActual - sectionCommitted),
-                      )}
+                      <Money cents={Math.abs(sectionTotal - sectionActual - sectionCommitted)} />
                       {sectionActual > sectionTotal
                         ? ' over'
                         : sectionActual + sectionCommitted > sectionTotal
@@ -794,14 +820,15 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
               className="mt-0.5 block w-full text-left text-xs text-muted-foreground hover:text-foreground"
             >
               {line.budget_category_description ? (
-                // Clamp to 2 lines so each row is predictable height.
-                // Full text available via title tooltip on hover, or by
-                // clicking to edit.
-                <span className="line-clamp-2 whitespace-pre-wrap">
+                // Lighter weight + smaller than the label so the eye
+                // reads the category name first, the dollar amounts
+                // second, the prose context third. Clamped to 2 lines;
+                // full text on hover via title or click-to-edit.
+                <span className="line-clamp-2 whitespace-pre-wrap text-[11px] text-muted-foreground/80">
                   {line.budget_category_description}
                 </span>
               ) : (
-                <span className="italic opacity-60">+ Add description</span>
+                <span className="text-[11px] italic opacity-50">+ Add description</span>
               )}
             </button>
           )}
@@ -834,10 +861,9 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
           // line prices directly to move this number.
           line.lines_total_cents > 0 ? (
             <span
-              className="text-muted-foreground"
               title={`Sum of ${categoryLines.length} cost line${categoryLines.length === 1 ? '' : 's'}. Edit a line below to change this number.`}
             >
-              {formatCurrencyCompact(line.estimate_cents)}
+              <Money cents={line.estimate_cents} />
             </span>
           ) : (
             <button
@@ -846,13 +872,15 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
               onClick={() => startEdit(line)}
               title="Click to set an envelope. Once you add priced lines, the line sum takes over."
             >
-              {formatCurrencyCompact(line.estimate_cents)}
+              <Money cents={line.estimate_cents} />
             </button>
           )}
         </td>
-        <td className="px-3 py-1.5 text-right">{formatCurrencyCompact(line.actual_cents)}</td>
+        <td className="px-3 py-1.5 text-right">
+          <Money cents={line.actual_cents} />
+        </td>
         <td className="px-3 py-1.5 text-right text-muted-foreground">
-          {line.committed_cents > 0 ? formatCurrencyCompact(line.committed_cents) : ''}
+          {line.committed_cents > 0 ? <Money cents={line.committed_cents} /> : ''}
         </td>
         {/* Remaining + progress merged: dollar amount on top, thin bar */}
         {/* underneath. Multi-segment so the operator can tell at a glance */}
@@ -867,7 +895,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
           )}
         >
           <div>
-            {formatCurrencyCompact(Math.abs(line.remaining_cents))}
+            <Money cents={Math.abs(line.remaining_cents)} />
             {isActuallyOver ? ' over' : isProjectedOver ? ' projected over' : ''}
           </div>
           <BudgetProgressBar
@@ -919,48 +947,45 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         // "this content belongs to that category" without re-reading.
         <tr className="border-b bg-muted/40">
           <td />
-          <td colSpan={5} className="border-l-2 border-primary/40 px-3 py-3">
+          <td colSpan={6} className="border-l-2 border-primary/40 px-3 py-3">
             <div className="space-y-3">
-              {/* Actuals breakdown by source — synthesized from */}
-              {/* time_entries, expenses, project_bills. Slim inline */}
-              {/* strip rather than a panel; each chunk deep-links to */}
-              {/* the tab where the underlying records live. */}
+              {/* Slim 3-up cards: where the spend went. Each card */}
+              {/* deep-links to the tab where the underlying records */}
+              {/* live, but only renders if it has any value (no */}
+              {/* empty $0 cards adding visual noise). */}
               {line.labor_cents > 0 || line.bills_cents > 0 || line.expense_cents > 0 ? (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-blue-200 bg-blue-50/80 px-3 py-1.5 text-xs dark:border-blue-900/60 dark:bg-blue-950/30">
-                  <span className="font-medium uppercase tracking-wide text-[10px] text-muted-foreground">
-                    Spent
-                  </span>
+                <div className="grid grid-cols-3 gap-2">
                   {line.labor_cents > 0 ? (
                     <Link
                       href={`/projects/${projectId}?tab=time&focus=${line.budget_category_id}`}
-                      className="text-muted-foreground hover:text-foreground"
+                      className="group rounded-md border bg-background px-3 py-1.5 hover:border-primary/40"
                     >
-                      Labour{' '}
-                      <span className="font-medium tabular-nums text-foreground">
-                        {formatCurrencyCompact(line.labor_cents)}
-                      </span>
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                        Labour
+                      </div>
+                      <Money cents={line.labor_cents} emphasis className="text-sm" />
                     </Link>
                   ) : null}
                   {line.bills_cents > 0 ? (
                     <Link
                       href={`/projects/${projectId}?tab=costs&focus=${line.budget_category_id}`}
-                      className="text-muted-foreground hover:text-foreground"
+                      className="group rounded-md border bg-background px-3 py-1.5 hover:border-primary/40"
                     >
-                      Bills{' '}
-                      <span className="font-medium tabular-nums text-foreground">
-                        {formatCurrencyCompact(line.bills_cents)}
-                      </span>
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                        Bills
+                      </div>
+                      <Money cents={line.bills_cents} emphasis className="text-sm" />
                     </Link>
                   ) : null}
                   {line.expense_cents > 0 ? (
                     <Link
                       href={`/projects/${projectId}?tab=costs&focus=${line.budget_category_id}`}
-                      className="text-muted-foreground hover:text-foreground"
+                      className="group rounded-md border bg-background px-3 py-1.5 hover:border-primary/40"
                     >
-                      Expenses{' '}
-                      <span className="font-medium tabular-nums text-foreground">
-                        {formatCurrencyCompact(line.expense_cents)}
-                      </span>
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                        Expenses
+                      </div>
+                      <Money cents={line.expense_cents} emphasis className="text-sm" />
                     </Link>
                   ) : null}
                 </div>
@@ -969,134 +994,118 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
               {categoryLines.length === 0 ? (
                 <p className="text-xs text-muted-foreground">No line items in this category yet.</p>
               ) : (
-                // Line items have 7 cols (Label + 5 numeric + actions) which
-                // do not fit a 390px mobile viewport — Editing mode collapsed
-                // view fits natively, but when expanded the cell would crush
-                // the Label col and clip Total. Local overflow-x-auto + a
-                // table-level min-w keeps the collapsed table tidy and lets
-                // only this sub-table scroll horizontally when expanded.
-                <div className="overflow-x-auto rounded-md border bg-background">
-                  {/* Cost column dropped — internal authoring info, only */}
-                  {/* relevant when editing a line (visible in CostLineForm). */}
-                  {/* Operators reading the budget see Price + Total which */}
-                  {/* are the customer-facing numbers. */}
-                  <table className="w-full min-w-[520px] table-fixed text-xs">
-                    <colgroup>
-                      <col />
-                      <col className="w-12" />
-                      <col className="w-14" />
-                      <col className="w-20" />
-                      <col className="w-24" />
-                      {/* Actions: Pencil + Trash icons, ~64px + gap. */}
-                      <col className="w-20" />
-                    </colgroup>
-                    <thead>
-                      <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
-                        <th className="px-2 py-1.5 text-left font-medium">Label</th>
-                        <th className="px-2 py-1.5 text-right font-medium">Qty</th>
-                        <th className="px-2 py-1.5 text-left font-medium">Unit</th>
-                        <th className="px-2 py-1.5 text-right font-medium">Price</th>
-                        <th className="px-2 py-1.5 text-right font-medium">Total</th>
-                        <th className="px-2 py-1.5" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {categoryLines.map((cl) => {
-                        const isLineExpanded = expandedLineIds.has(cl.id);
-                        return (
-                          <Fragment key={cl.id}>
-                            <tr className="border-t hover:bg-muted/40">
-                              <td className="px-2 py-1.5 align-top">
-                                {/* Label toggles the inline spend */}
-                                {/* breakdown for this specific line. */}
-                                {/* Description drops to muted text-xs */}
-                                {/* underneath (clamped to 2 lines, full */}
-                                {/* text on hover via title). */}
-                                <div className="flex flex-col gap-0.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleLineSpend(cl.id)}
-                                    className="inline-flex items-start gap-1 text-left font-medium hover:text-foreground"
-                                    aria-expanded={isLineExpanded}
-                                    title={
-                                      isLineExpanded
-                                        ? 'Hide spend on this line'
-                                        : 'See spend on this line'
-                                    }
-                                  >
-                                    {isLineExpanded ? (
-                                      <ChevronDown className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                                    ) : (
-                                      <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                                    )}
-                                    <span>{cl.label}</span>
-                                  </button>
-                                  {cl.notes ? (
-                                    <span
-                                      className="line-clamp-2 text-[11px] text-muted-foreground"
-                                      title={cl.notes}
-                                    >
-                                      {cl.notes}
-                                    </span>
+                // Sub-table column structure mirrors the parent so the
+                // line's Total lands in the same x-position as the
+                // category's Estimate (semantic match: lines sum to
+                // estimate). Empty cells in the Spent/Committed/
+                // Remaining columns keep the visual rhythm.
+                <table className="w-full table-fixed text-xs">
+                  <colgroup>
+                    <col />
+                    <col className="w-28" />
+                    <col className="w-24" />
+                    <col className="w-24" />
+                    <col className="w-28" />
+                    <col className="w-16" />
+                  </colgroup>
+                  <tbody>
+                    {categoryLines.map((cl) => {
+                      const isLineExpanded = expandedLineIds.has(cl.id);
+                      return (
+                        <Fragment key={cl.id}>
+                          <tr className="border-t hover:bg-muted/40">
+                            <td className="px-2 py-1.5 align-top">
+                              <div className="flex flex-col gap-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleLineSpend(cl.id)}
+                                  className="inline-flex items-start gap-1 text-left font-medium hover:text-foreground"
+                                  aria-expanded={isLineExpanded}
+                                  title={
+                                    isLineExpanded
+                                      ? 'Hide spend on this line'
+                                      : 'See spend on this line'
+                                  }
+                                >
+                                  {isLineExpanded ? (
+                                    <ChevronDown className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                                  )}
+                                  <span>{cl.label}</span>
+                                </button>
+                                {/* Qty / unit / per-unit price collapse */}
+                                {/* into a single subtext line so the */}
+                                {/* sub-table can share the parent's */}
+                                {/* column structure. */}
+                                <span className="ml-[1.125rem] text-[11px] text-muted-foreground/80">
+                                  {Number(cl.qty)} {cl.unit}
+                                  {cl.unit_price_cents > 0 ? (
+                                    <>
+                                      {' @ '}
+                                      <Money cents={cl.unit_price_cents} />
+                                    </>
                                   ) : null}
-                                </div>
-                              </td>
-                              <td className="px-2 py-1.5 text-right align-top tabular-nums">
-                                {Number(cl.qty)}
-                              </td>
-                              <td className="px-2 py-1.5 align-top text-muted-foreground">
-                                {cl.unit}
-                              </td>
-                              <td className="px-2 py-1.5 text-right align-top tabular-nums">
-                                {formatCurrencyCompact(cl.unit_price_cents)}
-                              </td>
-                              <td className="px-2 py-1.5 text-right align-top font-medium tabular-nums">
-                                {formatCurrencyCompact(cl.line_price_cents)}
-                              </td>
-                              <td className="px-2 py-1.5 align-top">
-                                <div className="flex items-center justify-end gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditingLine(cl);
-                                      setAddingLineFor(null);
-                                    }}
-                                    aria-label={`Edit ${cl.label}`}
-                                    title="Edit line"
-                                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                </span>
+                                {cl.notes ? (
+                                  <span
+                                    className="ml-[1.125rem] line-clamp-2 text-[11px] text-muted-foreground/70"
+                                    title={cl.notes}
                                   >
-                                    <Pencil className="size-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteLine(cl.id)}
-                                    aria-label={`Delete ${cl.label}`}
-                                    title="Delete line"
-                                    className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </button>
-                                </div>
+                                    {cl.notes}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="px-3 py-1.5 text-right align-top">
+                              <Money cents={cl.line_price_cents} emphasis />
+                            </td>
+                            <td />
+                            <td />
+                            <td />
+                            <td className="px-2 py-1.5 align-top">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingLine(cl);
+                                    setAddingLineFor(null);
+                                  }}
+                                  aria-label={`Edit ${cl.label}`}
+                                  title="Edit line"
+                                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                >
+                                  <Pencil className="size-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteLine(cl.id)}
+                                  aria-label={`Delete ${cl.label}`}
+                                  title="Delete line"
+                                  className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isLineExpanded ? (
+                            <tr>
+                              <td colSpan={6} className="bg-muted/30 px-3 py-2">
+                                <CostLineActualsInline
+                                  projectId={projectId}
+                                  costLineId={cl.id}
+                                  costLineLabel={cl.label}
+                                  actuals={actualsByLineId[cl.id]}
+                                />
                               </td>
                             </tr>
-                            {isLineExpanded ? (
-                              <tr>
-                                <td colSpan={6} className="bg-muted/30 px-3 py-2">
-                                  <CostLineActualsInline
-                                    projectId={projectId}
-                                    costLineId={cl.id}
-                                    costLineLabel={cl.label}
-                                    actuals={actualsByLineId[cl.id]}
-                                  />
-                                </td>
-                              </tr>
-                            ) : null}
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
               )}
 
               {editingLine && editingLine.budget_category_id === line.budget_category_id ? (
