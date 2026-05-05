@@ -17,18 +17,31 @@ type Props = {
   sentAt: string | null;
   customerName: string | null;
   approvalCode: string | null;
+  /** IANA tz of the contractor — server renders default to UTC otherwise. */
+  timezone: string;
 };
 
-export function EstimateSentBanner({ estimateStatus, sentAt, customerName, approvalCode }: Props) {
+export function EstimateSentBanner({
+  estimateStatus,
+  sentAt,
+  customerName,
+  approvalCode,
+  timezone,
+}: Props) {
   if (estimateStatus !== 'pending_approval' || !sentAt) return null;
 
   const date = new Date(sentAt);
-  const dateText = date.toLocaleDateString('en-CA', {
+  const dateText = new Intl.DateTimeFormat('en-CA', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
-  const timeText = date.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' });
+    timeZone: timezone,
+  }).format(date);
+  const timeText = new Intl.DateTimeFormat('en-CA', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: timezone,
+  }).format(date);
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
@@ -41,7 +54,7 @@ export function EstimateSentBanner({ estimateStatus, sentAt, customerName, appro
       </div>
       {approvalCode ? (
         <Link
-          href={`/approve/${approvalCode}`}
+          href={`/estimate/${approvalCode}`}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide hover:underline"

@@ -6,6 +6,7 @@ import { SaveAsTemplateButton } from '@/components/features/projects/save-as-tem
 import { ScopeScaffoldGenerator } from '@/components/features/projects/scope-scaffold-generator';
 import { StarterTemplatePicker } from '@/components/features/projects/starter-template-picker';
 import { Button } from '@/components/ui/button';
+import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
 import { getCostLineActualsByProject } from '@/lib/db/queries/cost-line-actuals';
 import { listCostLines } from '@/lib/db/queries/cost-lines';
@@ -38,7 +39,7 @@ export default async function BudgetTabServer({
    * `?expand=` URL override. */
   defaultExpanded: boolean;
 }) {
-  const [budget, costLines, catalog, project, coContributions, versions, actualsByLineId] =
+  const [budget, costLines, catalog, project, coContributions, versions, actualsByLineId, tenant] =
     await Promise.all([
       getBudgetVsActual(projectId),
       listCostLines(projectId),
@@ -47,6 +48,7 @@ export default async function BudgetTabServer({
       getProjectChangeOrderContributions(projectId),
       listProjectVersions(projectId),
       getCostLineActualsByProject(projectId),
+      getCurrentTenant(),
     ]);
 
   const stage = (project?.lifecycle_stage ?? 'planning') as LifecycleStage;
@@ -73,6 +75,7 @@ export default async function BudgetTabServer({
         sentAt={(project?.estimate_sent_at as string | null) ?? null}
         customerName={project?.customer?.name ?? null}
         approvalCode={(project?.estimate_approval_code as string | null) ?? null}
+        timezone={tenant?.timezone ?? 'America/Vancouver'}
       />
 
       {/* Merged signed-estimate banner. Renders only when the estimate */}
