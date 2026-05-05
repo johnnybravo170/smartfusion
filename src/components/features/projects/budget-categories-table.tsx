@@ -992,7 +992,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
         // everything inside ~12px right of the parent.)
         <tr className="border-b bg-muted/40">
           <td className="relative before:absolute before:top-0 before:bottom-0 before:left-3 before:w-0.5 before:bg-primary/40 before:content-['']" />
-          <td colSpan={6} className="py-3">
+          <td colSpan={6} className="px-2 py-3">
             <div className="space-y-3">
               {/* Slim spend-by-source strip. Inline pill, ~24px tall. */}
               {/* Each value links to the tab where the underlying */}
@@ -1040,7 +1040,7 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                 // category's Estimate (semantic match: lines sum to
                 // estimate). Empty cells in the Spent/Committed/
                 // Remaining columns keep the visual rhythm.
-                <table className="w-full table-fixed text-xs">
+                <table className="-mx-2 w-[calc(100%+1rem)] table-fixed text-xs">
                   <colgroup>
                     <col />
                     <col className="w-28" />
