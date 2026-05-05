@@ -387,7 +387,14 @@ export async function parseInboundLeadAction(
         files.push(f);
         visualFilesForClassify.push({ index: thisIndex, file: f });
       }
-      await admin.storage.from('intake-audio').remove([path]);
+      // Artifacts persist in `intake-audio` storage until the project
+      // is accepted — `acceptInboundLeadAction` sweeps them at that
+      // point. Keeping them around enables thumbnail previews on the
+      // chip row, future "iterate on draft" with original visuals,
+      // and post-failure manual diagnosis. The oversize-reject and
+      // transcribe-failure paths above still delete (rejected files
+      // shouldn't linger; failed Whisper means the audio was
+      // unprocessable).
     }
   }
   const transcript = transcriptParts.length > 0 ? transcriptParts.join('\n\n---\n\n') : null;
@@ -776,7 +783,8 @@ export async function appendToIntakeDraftAction(
       } else if (type.startsWith('image/') || type === 'application/pdf') {
         newVisualFilesForClassify.push({ index: thisIndex, file: f });
       }
-      await admin.storage.from('intake-audio').remove([path]);
+      // Same as the main parse loop — artifacts persist until accept.
+      // The oversize-reject path above still deletes.
     }
   }
 
@@ -997,13 +1005,33 @@ export async function acceptInboundLeadAction(
   });
 
   // Stamp the draft row so we can trace project → draft → transcript
-  // for evals and quality work. Best-effort — don't fail acceptance
-  // if the stamp fails (the project is created and shouldn't roll back
-  // for a metadata write).
+  // for evals and quality work, then sweep the artifact files we kept
+  // around in storage during the draft's lifetime. Best-effort —
+  // don't fail acceptance if the stamp/sweep fails (the project is
+  // created and shouldn't roll back for a storage hiccup).
   if (options?.draftId) {
+    const { data: draftRow } = await supabase
+      .from('intake_drafts')
+      .select('artifacts')
+      .eq('id', options.draftId)
+      .maybeSingle();
+    const paths = ((draftRow?.artifacts as IntakeArtifact[] | null) ?? [])
+      .map((a) => a.path)
+      .filter((p): p is string => typeof p === 'string' && p.length > 0);
+    if (paths.length > 0) {
+      const admin = createAdminClient();
+      await admin.storage
+        .from('intake-audio')
+        .remove(paths)
+        .catch(() => {
+          // Best-effort. The accepted_project_id stamp tells us which
+          // draft consumed the project; a future cleanup script can
+          // sweep any orphaned paths from accepted drafts.
+        });
+    }
     await supabase
       .from('intake_drafts')
-      .update({ accepted_project_id: proj.id })
+      .update({ accepted_project_id: proj.id, artifacts: [] })
       .eq('id', options.draftId);
   }
 

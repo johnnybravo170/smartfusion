@@ -408,7 +408,11 @@ function AppendMoreZone({
   );
 }
 
-function ArtifactChipRow({ artifacts }: { artifacts: IntakeArtifact[] | null }) {
+function ArtifactChipRow({
+  artifacts,
+}: {
+  artifacts: Array<IntakeArtifact & { signedUrl?: string | null }> | null;
+}) {
   if (!artifacts || artifacts.length === 0) return null;
   const allClassified = artifacts.every((a) => !!a.kind);
   return (
@@ -426,18 +430,48 @@ function ArtifactChipRow({ artifacts }: { artifacts: IntakeArtifact[] | null }) 
         {artifacts.map((a, i) => {
           const meta = a.kind ? ARTIFACT_KIND_META[a.kind] : null;
           const Icon = meta?.Icon ?? FileQuestion;
-          return (
-            <div
-              // biome-ignore lint/suspicious/noArrayIndexKey: artifacts are positionally meaningful (referenced by index in classifications)
-              key={`${a.path}-${i}`}
-              className="inline-flex max-w-full items-center gap-2 rounded-full border bg-background px-3 py-1.5"
-              title={a.label ?? a.name}
-            >
-              <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+          const isImage = a.mime?.startsWith('image/');
+          // Click-to-preview: open the signed URL in a new tab. Only
+          // wired for visual artifacts (image / pdf). Audio chips stay
+          // non-clickable — there's no audio player surface yet.
+          const url = a.signedUrl ?? null;
+          const chipBody = (
+            <>
+              {isImage && url ? (
+                <span className="size-5 shrink-0 overflow-hidden rounded-sm bg-muted">
+                  {/* biome-ignore lint/performance/noImgElement: signed URL bypasses next/image */}
+                  <img src={url} alt="" className="size-full object-cover" loading="lazy" />
+                </span>
+              ) : (
+                <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+              )}
               <span className="shrink-0 text-xs font-medium">{meta?.label ?? 'Classifying…'}</span>
               {a.label ? (
                 <span className="truncate text-xs text-muted-foreground">— {a.label}</span>
               ) : null}
+            </>
+          );
+          const chipClass =
+            'inline-flex max-w-full items-center gap-2 rounded-full border bg-background px-3 py-1.5';
+          // biome-ignore lint/suspicious/noArrayIndexKey: artifacts are positionally meaningful (referenced by index in classifications)
+          const key = `${a.path}-${i}`;
+          if (url) {
+            return (
+              <a
+                key={key}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`${chipClass} hover:bg-muted/60 transition-colors`}
+                title={a.label ?? a.name}
+              >
+                {chipBody}
+              </a>
+            );
+          }
+          return (
+            <div key={key} className={chipClass} title={a.label ?? a.name}>
+              {chipBody}
             </div>
           );
         })}
