@@ -948,43 +948,39 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
           <td />
           <td colSpan={6} className="border-l-2 border-primary/40 px-3 py-3">
             <div className="space-y-3">
-              {/* Slim 3-up cards: where the spend went. Each card */}
-              {/* deep-links to the tab where the underlying records */}
-              {/* live, but only renders if it has any value (no */}
-              {/* empty $0 cards adding visual noise). */}
+              {/* Slim spend-by-source strip. Inline pill, ~24px tall. */}
+              {/* Each value links to the tab where the underlying */}
+              {/* records live; entries hide when their value is 0. */}
               {line.labor_cents > 0 || line.bills_cents > 0 || line.expense_cents > 0 ? (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-muted/30 px-3 py-1.5 text-xs">
+                  <span className="font-medium uppercase tracking-wide text-[10px] text-muted-foreground">
+                    Spent by source
+                  </span>
                   {line.labor_cents > 0 ? (
                     <Link
                       href={`/projects/${projectId}?tab=time&focus=${line.budget_category_id}`}
-                      className="group rounded-md border bg-background px-3 py-1.5 hover:border-primary/40"
+                      className="text-muted-foreground hover:text-foreground"
                     >
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
-                        Labour
-                      </div>
-                      <Money cents={line.labor_cents} emphasis className="text-sm" />
+                      Labour{' '}
+                      <Money cents={line.labor_cents} className="font-medium text-foreground" />
                     </Link>
                   ) : null}
                   {line.bills_cents > 0 ? (
                     <Link
                       href={`/projects/${projectId}?tab=costs&focus=${line.budget_category_id}`}
-                      className="group rounded-md border bg-background px-3 py-1.5 hover:border-primary/40"
+                      className="text-muted-foreground hover:text-foreground"
                     >
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
-                        Bills
-                      </div>
-                      <Money cents={line.bills_cents} emphasis className="text-sm" />
+                      Bills{' '}
+                      <Money cents={line.bills_cents} className="font-medium text-foreground" />
                     </Link>
                   ) : null}
                   {line.expense_cents > 0 ? (
                     <Link
                       href={`/projects/${projectId}?tab=costs&focus=${line.budget_category_id}`}
-                      className="group rounded-md border bg-background px-3 py-1.5 hover:border-primary/40"
+                      className="text-muted-foreground hover:text-foreground"
                     >
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
-                        Expenses
-                      </div>
-                      <Money cents={line.expense_cents} emphasis className="text-sm" />
+                      Expenses{' '}
+                      <Money cents={line.expense_cents} className="font-medium text-foreground" />
                     </Link>
                   ) : null}
                 </div>
