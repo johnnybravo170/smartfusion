@@ -2,8 +2,10 @@ import { DecisionForm } from '@/components/features/portal/decision-form';
 import { DecisionList } from '@/components/features/portal/decision-list';
 import { DecisionSuggestions } from '@/components/features/portal/decision-suggestions';
 import { PhaseRail } from '@/components/features/portal/phase-rail';
+import { PortalBudgetVisibilityToggle } from '@/components/features/portal/portal-budget-visibility-toggle';
 import { PortalToggle } from '@/components/features/portal/portal-toggle';
 import { PortalUpdateForm } from '@/components/features/portal/portal-update-form';
+import { getCurrentTenant } from '@/lib/auth/helpers';
 import { listDecisionsForProject } from '@/lib/db/queries/project-decisions';
 import { listPhasesForProject } from '@/lib/db/queries/project-phases';
 import { createClient } from '@/lib/supabase/server';
@@ -11,24 +13,50 @@ import { createClient } from '@/lib/supabase/server';
 export default async function PortalTabServer({ projectId }: { projectId: string }) {
   const supabase = await createClient();
 
-  const [{ data: portalUpdates }, { data: portalData }, phases, decisions] = await Promise.all([
+  const tenant = await getCurrentTenant();
+  const [
+    { data: portalUpdates },
+    { data: portalData },
+    phases,
+    decisions,
+    { data: tenantSettings },
+  ] = await Promise.all([
     supabase
       .from('project_portal_updates')
       .select('id, type, title, body, photo_url, created_at')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
       .limit(50),
-    supabase.from('projects').select('portal_slug, portal_enabled').eq('id', projectId).single(),
+    supabase
+      .from('projects')
+      .select('portal_slug, portal_enabled, portal_show_budget')
+      .eq('id', projectId)
+      .single(),
     listPhasesForProject(projectId),
     listDecisionsForProject(projectId),
+    tenant
+      ? supabase.from('tenants').select('portal_show_budget').eq('id', tenant.id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const portalEnabled = (portalData?.portal_enabled as boolean) ?? false;
   const portalSlug = (portalData?.portal_slug as string | null) ?? null;
+  const portalShowBudget = (portalData?.portal_show_budget as boolean | null | undefined) ?? null;
+  const tenantShowBudget = Boolean(tenantSettings?.portal_show_budget);
 
   return (
     <div className="space-y-6">
       <PortalToggle projectId={projectId} portalEnabled={portalEnabled} portalSlug={portalSlug} />
+
+      {portalEnabled ? (
+        <div className="rounded-lg border bg-card p-4">
+          <PortalBudgetVisibilityToggle
+            projectId={projectId}
+            initialValue={portalShowBudget}
+            tenantDefault={tenantShowBudget}
+          />
+        </div>
+      ) : null}
 
       {phases.length > 0 ? <PhaseRail phases={phases} projectId={projectId} /> : null}
 
