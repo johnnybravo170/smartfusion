@@ -17,6 +17,15 @@ import { getSystemPrompt } from '@/lib/ai/system-prompt';
 import { executeToolCall, getToolDefinitions, setToolTimezone } from '@/lib/ai/tools';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 
+// Vercel's default function timeout is 10s, which the chat blows past whenever
+// Claude does a tool call or returns a longer response. When the function is
+// killed, the HTTP stream closes cleanly without a `done` event — the client
+// just sees an empty / truncated reply with no error. Match the rest of the
+// long-running routes in this codebase.
+export const maxDuration = 60;
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 // ---------------------------------------------------------------------------
 // Lazy-init Anthropic client (same pattern as Stripe/Resend)
 // ---------------------------------------------------------------------------
