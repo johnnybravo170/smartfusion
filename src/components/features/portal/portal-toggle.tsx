@@ -88,6 +88,14 @@ export function PortalToggle({
             <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 text-xs">
               {portalUrl}
             </code>
+            <a
+              href={portalUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted/50"
+            >
+              Open
+            </a>
             <button
               type="button"
               onClick={handleCopy}
