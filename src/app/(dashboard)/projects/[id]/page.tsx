@@ -1,4 +1,4 @@
-import { FileText, ImageIcon, Link2, Mic, Palette, Users } from 'lucide-react';
+import { FileText, ImageIcon, Link2, MessageCircle, Mic, Palette, Users } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
@@ -17,6 +17,7 @@ import DocumentsTabServer from '@/components/features/projects/tabs/documents-ta
 import GalleryTabServer from '@/components/features/projects/tabs/gallery-tab-server';
 import InvoicesTabServer from '@/components/features/projects/tabs/invoices-tab-server';
 import MemosTabServer from '@/components/features/projects/tabs/memos-tab-server';
+import MessagesTabServer from '@/components/features/projects/tabs/messages-tab-server';
 import OverviewTabServer from '@/components/features/projects/tabs/overview-tab-server';
 import PortalTabServer from '@/components/features/projects/tabs/portal-tab-server';
 import SelectionsTabServer from '@/components/features/projects/tabs/selections-tab-server';
@@ -55,6 +56,7 @@ type Tab =
   | 'portal'
   | 'selections'
   | 'documents'
+  | 'messages'
   | 'crew';
 
 /**
@@ -107,13 +109,27 @@ export default async function ProjectDetailPage({
   // Shell-only queries. getProject is React.cache-wrapped, so generateMetadata
   // + the shell + any inner tab that also calls it (e.g. OverviewTab) dedupe
   // to a single DB hit per request.
-  const [project, projectCategories, progress, draws] = await Promise.all([
+  const [project, projectCategories, progress, draws, unreadMessagesRes] = await Promise.all([
     getProject(id),
     listBudgetCategoriesForProject(id),
     getProjectProgress(id),
     getProjectDrawSummary(id),
+    // Unread inbound messages count for the Messages tab badge. Cheap
+    // query thanks to idx_pm_tenant_unread_inbound. Failure is non-fatal
+    // (we just hide the badge).
+    (async () => {
+      const supabase = await import('@/lib/supabase/server').then((m) => m.createClient());
+      const c = await supabase;
+      return c
+        .from('project_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('project_id', id)
+        .eq('direction', 'inbound')
+        .is('read_by_operator_at', null);
+    })(),
   ]);
   if (!project) notFound();
+  const unreadMessages = unreadMessagesRes.count ?? 0;
 
   // Stage-aware default tab when the operator hits /projects/[id] without a
   // ?tab=... query. Planning lands on Budget (the work to do); active and
@@ -142,8 +158,9 @@ export default async function ProjectDetailPage({
   const secondaryTabs: {
     key: Tab;
     label: string;
-    icon: 'gallery' | 'portal' | 'memos' | 'crew' | 'selections' | 'documents';
+    icon: 'gallery' | 'portal' | 'memos' | 'crew' | 'selections' | 'documents' | 'messages';
   }[] = [
+    { key: 'messages', label: 'Messages', icon: 'messages' },
     { key: 'gallery', label: 'Gallery', icon: 'gallery' },
     { key: 'portal', label: 'Portal', icon: 'portal' },
     { key: 'selections', label: 'Selections', icon: 'selections' },
@@ -222,7 +239,10 @@ export default async function ProjectDetailPage({
                       ? FileText
                       : s.icon === 'memos'
                         ? Mic
-                        : Users;
+                        : s.icon === 'messages'
+                          ? MessageCircle
+                          : Users;
+            const showBadge = s.key === 'messages' && unreadMessages > 0;
             return (
               <Link
                 key={s.key}
@@ -236,6 +256,11 @@ export default async function ProjectDetailPage({
               >
                 <Icon className="size-3.5" />
                 {s.label}
+                {showBadge ? (
+                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                    {unreadMessages > 9 ? '9+' : unreadMessages}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
@@ -321,6 +346,7 @@ export default async function ProjectDetailPage({
         {tab === 'portal' ? <PortalTabServer projectId={id} /> : null}
         {tab === 'selections' ? <SelectionsTabServer projectId={id} /> : null}
         {tab === 'documents' ? <DocumentsTabServer projectId={id} /> : null}
+        {tab === 'messages' ? <MessagesTabServer projectId={id} /> : null}
         {tab === 'crew' ? <CrewTabServer projectId={id} /> : null}
       </Suspense>
     </div>
