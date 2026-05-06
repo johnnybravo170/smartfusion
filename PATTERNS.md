@@ -421,9 +421,13 @@ The helpers live in `src/lib/messaging/email-outbound.ts`. **Don't roll your own
 
 Multi-tenant safety: the resolver bounces on ambiguity rather than guess. We never surface a customer reply to the wrong tenant.
 
-**Customer SMS routing (Phase 3).** Twilio webhook at `/api/twilio/webhook/inbound` handles STOP/START first (existing CASL flow) then routes normal-text messages via `handleCustomerInboundSms` in `src/lib/messaging/sms-customer-router.ts`. Single-tier resolver (recent outbound within 30 days) since SMS has no header threading. Multi-tenant collision case bounces silently (no insert) — privacy contract is the same as email: never surface to the wrong tenant.
+**Customer SMS routing (Phase 3).** Twilio webhook at `/api/twilio/webhook/inbound` handles STOP/START first (existing CASL flow) then routes normal-text messages via `handleCustomerInboundSms` in `src/lib/messaging/sms-customer-router.ts`. Two-tier resolver: (1) when the To-number matches `tenants.twilio_from_number`, narrow candidates to that tenant — the trivial routing case once 10DLC + per-tenant numbers are live; (2) otherwise, recent-outbound-within-30-days disambiguator. Multi-tenant collision case bounces silently (no insert).
 
 Outbound SMS to the customer is already covered by Phase 1's `sendMessageNotification` (cron drainer), which sends SMS when the customer has a phone. Phase 3 only adds the inbound side.
+
+**Per-tenant Twilio numbers.** Tenants have an optional `twilio_from_number` column (migration 0200). `sendSms` calls `pickTenantFromNumber(tenantId, to)` which prefers the tenant's assigned number, falling back to the country-routed platform default (`pickFromNumber` env vars) for tenants that haven't been provisioned yet. This lets 10DLC roll out tenant-by-tenant — newly-provisioned tenants get the dedicated experience; older tenants keep the shared platform fallback until their number is assigned.
+
+Provisioning is currently manual (Twilio Console + direct SQL update of `tenants.twilio_from_number`). A self-serve settings UI is a future enhancement.
 
 **Read tracking.** Each message has `read_by_operator_at` / `read_by_customer_at`. Operator side fires `markProjectMessagesReadAction` on tab mount; portal side fires `markCustomerPortalMessagesReadAction`. Unread counts drive the badge on the operator's Messages tab pill and the portal's Messages tab.
 

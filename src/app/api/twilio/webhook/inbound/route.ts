@@ -43,13 +43,23 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient();
 
-  // Log the inbound message. We don't yet have a tenant routing story, so
-  // tenant_id is nullable conceptually — but our schema requires it. Park
-  // under the platform admin tenant via env, or skip logging if unset.
-  const platformTenantId = process.env.PLATFORM_TENANT_ID;
-  if (platformTenantId) {
+  // Route by To-number → tenant when the recipient is a per-tenant
+  // 10DLC number (tenants.twilio_from_number). Falls back to the
+  // platform tenant for shared/unassigned numbers during the rollout
+  // window.
+  let resolvedTenantId: string | null = null;
+  if (to) {
+    const { data: tenantByNumber } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('twilio_from_number', to)
+      .maybeSingle();
+    resolvedTenantId = (tenantByNumber?.id as string | undefined) ?? null;
+  }
+  const loggedTenantId = resolvedTenantId ?? process.env.PLATFORM_TENANT_ID ?? null;
+  if (loggedTenantId) {
     await supabase.from('twilio_messages').insert({
-      tenant_id: platformTenantId,
+      tenant_id: loggedTenantId,
       sid,
       direction: 'inbound',
       identity: 'operator',
@@ -123,6 +133,10 @@ export async function POST(request: Request) {
         fromPhone: from,
         toPhone: to,
         body,
+        // Hint when the To-number is owned by a tenant — the resolver
+        // narrows candidate search to that tenant first, eliminating
+        // multi-tenant collisions on shared numbers.
+        toTenantId: resolvedTenantId,
       });
       projectRouted = result.ok;
     } catch (err) {

@@ -134,6 +134,25 @@ function pickFromNumber(to: string): string {
 }
 
 /**
+ * Resolve the From number for a tenant. Prefers the tenant's assigned
+ * `tenants.twilio_from_number` (per-tenant 10DLC number). Falls back to
+ * the country-routed platform default for tenants that haven't been
+ * provisioned yet — important during the migration window when 10DLC is
+ * being rolled out tenant-by-tenant.
+ */
+async function pickTenantFromNumber(tenantId: string, to: string): Promise<string> {
+  const supabase = createAdminClient();
+  const { data } = await supabase
+    .from('tenants')
+    .select('twilio_from_number')
+    .eq('id', tenantId)
+    .maybeSingle();
+  const tenantNumber = (data?.twilio_from_number as string | null) ?? null;
+  if (tenantNumber) return tenantNumber;
+  return pickFromNumber(to);
+}
+
+/**
  * Minimal table of Canadian area codes. Not exhaustive — covers the
  * provinces we actually serve (BC, AB, ON) plus the common ones. A full
  * NPA table lives in the CNA database but this is sufficient until we
@@ -240,7 +259,7 @@ export async function sendSms(input: SendSmsInput): Promise<SendSmsResult> {
     };
   }
 
-  const from = pickFromNumber(normalizedTo);
+  const from = await pickTenantFromNumber(tenantId, normalizedTo);
   if (!from) {
     return { ok: false, error: 'No Twilio from-number configured' };
   }
