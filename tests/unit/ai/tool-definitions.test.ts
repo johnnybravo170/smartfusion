@@ -5,7 +5,7 @@ describe('AI tool definitions', () => {
   it('exports a stable number of tools', () => {
     // Bump this when intentionally adding/removing tools. Hard-coded so
     // drift is caught in CI instead of surfacing as a runtime surprise.
-    expect(allTools).toHaveLength(52);
+    expect(allTools).toHaveLength(53);
   });
 
   it('each tool has a name, description, and valid input_schema', () => {
@@ -28,10 +28,10 @@ describe('AI tool definitions', () => {
 
   it('getToolDefinitions returns core tools when no vertical specified', () => {
     const defs = getToolDefinitions();
-    expect(defs).toHaveLength(38);
+    expect(defs).toHaveLength(39);
   });
 
-  it('getToolDefinitions returns all tools (52) for renovation vertical', () => {
+  it('getToolDefinitions returns all tools (53) for renovation vertical', () => {
     const defs = getToolDefinitions('renovation');
     expect(defs).toHaveLength(allTools.length);
     for (let i = 0; i < defs.length; i++) {

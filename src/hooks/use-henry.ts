@@ -18,6 +18,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { findFeatureByPath } from '@/lib/ai/feature-catalog';
 import { CLIENT_TOOL_NAMES } from '@/lib/henry/openai-tools';
 import { useHenryScreen } from '@/lib/henry/screen-context';
 
@@ -102,8 +103,15 @@ function runClientTool(
 ): string {
   if (name === 'get_current_screen_context') {
     const form = screen.form;
+    const feature = findFeatureByPath(screen.route);
     return JSON.stringify({
       route: screen.route,
+      page: feature
+        ? {
+            name: feature.name,
+            summary: feature.summary,
+          }
+        : null,
       form: form
         ? {
             formId: form.formId,

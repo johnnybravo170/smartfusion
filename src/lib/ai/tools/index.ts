@@ -3,6 +3,7 @@ import { catalogTools } from './catalog';
 import { changeOrderTools } from './change-orders';
 import { customerTools } from './customers';
 import { dashboardTools, setDashboardTimezone } from './dashboard';
+import { featureTools } from './features';
 import { invoiceTools, setInvoiceTimezone } from './invoices';
 import { jobTools } from './jobs';
 import { projectTools } from './projects';
@@ -25,6 +26,7 @@ const coreTools: AiTool[] = [
   ...worklogTools,
   ...catalogTools,
   ...smsTools,
+  ...featureTools,
 ];
 
 /** Renovation-specific tools (projects, budget, time/expense, change orders). */
