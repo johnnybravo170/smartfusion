@@ -6,6 +6,7 @@ import {
   CreditCard,
   FileText,
   HardHat,
+  History,
   Layers,
   Mic,
   Ruler,
@@ -386,6 +387,26 @@ export default function SettingsPage() {
                   <CardTitle>Invoicing</CardTitle>
                   <CardDescription>
                     Payment instructions, terms, and policies that show on every invoice and draw.
+                  </CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Card>
+      </Link>
+
+      <Link href="/settings/imports" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History className="size-5" />
+                <div>
+                  <CardTitle>Imports</CardTitle>
+                  <CardDescription>
+                    Every batch of data Henry has brought in. Roll one back if something landed
+                    wrong.
                   </CardDescription>
                 </div>
               </div>

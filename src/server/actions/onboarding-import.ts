@@ -27,7 +27,7 @@
  */
 
 import { gateway, isAiError } from '@/lib/ai-gateway';
-import { getCurrentTenant } from '@/lib/auth/helpers';
+import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import {
   type DedupTier,
   type ExistingCustomer,
@@ -313,6 +313,7 @@ export async function commitCustomerImportAction(input: {
   }
 
   // Create the batch row first so we have an id to tag the customers with.
+  const user = await getCurrentUser();
   const { data: batch, error: batchErr } = await supabase
     .from('import_batches')
     .insert({
@@ -322,6 +323,7 @@ export async function commitCustomerImportAction(input: {
       source_storage_path: input.sourceStoragePath,
       summary: { created: toCreate.length, merged, skipped },
       note: input.note?.trim() || null,
+      created_by: user?.id ?? null,
     })
     .select('id')
     .single();
@@ -399,9 +401,10 @@ export async function rollbackCustomerImportAction(
     .select('id');
   if (delErr) return { ok: false, error: delErr.message };
 
+  const user = await getCurrentUser();
   const { error: markErr } = await supabase
     .from('import_batches')
-    .update({ rolled_back_at: now })
+    .update({ rolled_back_at: now, rolled_back_by: user?.id ?? null })
     .eq('id', batchId);
   if (markErr) return { ok: false, error: markErr.message };
 
