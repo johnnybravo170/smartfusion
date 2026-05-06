@@ -276,6 +276,30 @@ const RLS_TABLE_CASES: RlsCase[] = [
     skipInsertReject: true,
   },
   {
+    table: 'payment_sources',
+    seed: async ({ admin, tenant, stamp }) => {
+      const r = await admin
+        .from('payment_sources')
+        .insert({
+          tenant_id: tenant.tenantId,
+          label: `seed-${stamp}`,
+          kind: 'debit',
+          paid_by: 'business',
+        })
+        .select('id')
+        .single();
+      if (r.error || !r.data) throw new Error(r.error?.message ?? 'payment_sources seed failed');
+      return r.data.id as string;
+    },
+    updatePayload: { label: 'cross-tenant tamper' },
+    insertAcrossTenants: ({ tenant, stamp }) => ({
+      tenant_id: tenant.tenantId,
+      label: `inject-${stamp}`,
+      kind: 'debit',
+      paid_by: 'business',
+    }),
+  },
+  {
     table: 'owner_draws',
     seed: async ({ admin, tenant, stamp }) => {
       const r = await admin

@@ -7,6 +7,7 @@ import {
   listExpenseCategories,
 } from '@/lib/db/queries/expense-categories';
 import { listOverheadExpenses } from '@/lib/db/queries/overhead-expenses';
+import { listPaymentSources, toLite } from '@/lib/db/queries/payment-sources';
 import { formatCurrency } from '@/lib/pricing/calculator';
 
 export const metadata = {
@@ -28,11 +29,13 @@ export default async function BookkeeperExpensesPage({
   // Overhead appears with a "—" in the project column; project-linked
   // shows a link back to the project so the bookkeeper can verify
   // context if needed.
-  const [expenses, categoryRows] = await Promise.all([
+  const [expenses, categoryRows, sourceRows] = await Promise.all([
     listOverheadExpenses({ includeProjectExpenses: true, uncategorizedOnly }),
     listExpenseCategories(),
+    listPaymentSources(),
   ]);
   const pickerOptions = buildPickerOptions(buildCategoryTree(categoryRows));
+  const paymentSources = toLite(sourceRows);
   const total = expenses.reduce((s, e) => s + e.amount_cents, 0);
   const totalTax = expenses.reduce((s, e) => s + e.tax_cents, 0);
 
@@ -97,7 +100,12 @@ export default async function BookkeeperExpensesPage({
           </p>
         </div>
       ) : (
-        <ExpensesTable expenses={expenses} categories={pickerOptions} showProjectColumn />
+        <ExpensesTable
+          expenses={expenses}
+          categories={pickerOptions}
+          paymentSources={paymentSources}
+          showProjectColumn
+        />
       )}
     </div>
   );

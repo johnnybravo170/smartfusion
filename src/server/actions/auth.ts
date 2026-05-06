@@ -126,6 +126,15 @@ export async function signupAction(input: {
         if (error) console.warn('Failed to seed expense categories:', error.message);
       });
 
+    // Seed default payment sources (Business / Personal / Petty cash) so
+    // the receipt forms have something to fall back on before any cards
+    // are labeled. Non-fatal.
+    await admin
+      .rpc('seed_default_payment_sources', { p_tenant_id: tenant.id })
+      .then(({ error }) => {
+        if (error) console.warn('Failed to seed payment sources:', error.message);
+      });
+
     // Auto-generate a referral code for the new tenant.
     const code = generateReferralCode(businessName);
     const suffix = Math.random().toString(36).slice(2, 6);

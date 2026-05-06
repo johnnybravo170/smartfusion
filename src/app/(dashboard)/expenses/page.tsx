@@ -1,4 +1,4 @@
-import { Plus, Receipt, Sparkles, Tag } from 'lucide-react';
+import { CreditCard, Plus, Receipt, Sparkles, Tag } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ExpensesTable } from '@/components/features/expenses/expenses-table';
@@ -12,6 +12,7 @@ import {
 } from '@/lib/db/queries/expense-categories';
 import { listActiveRecurringRules } from '@/lib/db/queries/expense-recurring';
 import { listOverheadExpenses } from '@/lib/db/queries/overhead-expenses';
+import { listPaymentSources, toLite } from '@/lib/db/queries/payment-sources';
 import { formatCurrency } from '@/lib/pricing/calculator';
 
 export const metadata = {
@@ -22,12 +23,14 @@ export default async function OverheadExpensesPage() {
   const { tenant } = await requireTenant();
   if (tenant.member.role === 'worker') redirect('/w');
 
-  const [expenses, recurringRules, categoryRows] = await Promise.all([
+  const [expenses, recurringRules, categoryRows, sourceRows] = await Promise.all([
     listOverheadExpenses({}),
     listActiveRecurringRules(),
     listExpenseCategories(),
+    listPaymentSources(),
   ]);
   const pickerOptions = buildPickerOptions(buildCategoryTree(categoryRows));
+  const paymentSources = toLite(sourceRows);
   const total = expenses.reduce((s, e) => s + e.amount_cents, 0);
   const totalTax = expenses.reduce((s, e) => s + e.tax_cents, 0);
 
@@ -51,6 +54,12 @@ export default async function OverheadExpensesPage() {
             <Link href="/settings/categories?from=expenses">
               <Tag className="size-3.5" />
               Categories
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/settings/payment-sources?from=expenses">
+              <CreditCard className="size-3.5" />
+              Payment sources
             </Link>
           </Button>
           <Button asChild variant="outline" size="sm">
@@ -97,7 +106,11 @@ export default async function OverheadExpensesPage() {
           </Button>
         </div>
       ) : (
-        <ExpensesTable expenses={expenses} categories={pickerOptions} />
+        <ExpensesTable
+          expenses={expenses}
+          categories={pickerOptions}
+          paymentSources={paymentSources}
+        />
       )}
 
       <RecurringRulesCard rules={recurringRules} />
