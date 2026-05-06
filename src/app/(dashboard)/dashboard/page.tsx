@@ -114,8 +114,9 @@ export default async function DashboardPage() {
             {profile?.name ?? tenant.name}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {firstName ? `${greeting}, ${firstName}.` : `${greeting}.`} Here&apos;s your business at
-            a glance.
+            {firstName
+              ? `${greeting}, ${firstName}. Here's your business at a glance.`
+              : `${greeting}. Here's your business at a glance.`}
           </p>
         </div>
       </div>
