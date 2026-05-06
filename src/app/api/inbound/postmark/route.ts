@@ -13,6 +13,10 @@
 
 import { NextResponse } from 'next/server';
 import { sendUnknownSenderBounce } from '@/lib/inbound-email/bounce';
+import {
+  type CustomerMessageHandlerInput,
+  handleCustomerInboundMessage,
+} from '@/lib/inbound-email/customer-message-handler';
 import { processInboundEmail } from '@/lib/inbound-email/processor';
 import { resolveSenderToTenant } from '@/lib/inbound-email/sender-resolver';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -27,6 +31,8 @@ type PostmarkAttachment = {
   ContentLength: number;
 };
 
+type PostmarkHeader = { Name: string; Value: string };
+
 type PostmarkInbound = {
   MessageID: string;
   From: string;
@@ -36,6 +42,7 @@ type PostmarkInbound = {
   Subject?: string;
   TextBody?: string;
   HtmlBody?: string;
+  Headers?: PostmarkHeader[];
   Attachments?: PostmarkAttachment[];
 };
 
@@ -60,8 +67,39 @@ export async function POST(request: Request) {
   const tenantId = await resolveSenderToTenant(payload.From);
   const admin = createAdminClient();
 
-  // Unknown / ambiguous sender — bounce, persist for visibility, return 200.
+  // Sender isn't a tenant member — try the customer-reply branch
+  // (Phase 2 of PROJECT_MESSAGING_PLAN.md). The handler resolves to a
+  // (tenant, project) tuple via In-Reply-To → footer token → recency,
+  // and bounces on ambiguity rather than guessing.
   if (!tenantId) {
+    const handlerInput: CustomerMessageHandlerInput = {
+      postmarkMessageId: payload.MessageID,
+      fromHeader: payload.From,
+      fromName: payload.FromName ?? null,
+      subject: payload.Subject ?? null,
+      bodyText: payload.TextBody ?? null,
+      bodyHtml: payload.HtmlBody ?? null,
+      headers: payload.Headers ?? [],
+    };
+    const customerResult = await handleCustomerInboundMessage(handlerInput);
+
+    if (customerResult.ok) {
+      return NextResponse.json({
+        ok: true,
+        kind: 'customer_message',
+        id: customerResult.messageId,
+        projectId: customerResult.projectId,
+      });
+    }
+
+    if (customerResult.reason === 'loop_guard') {
+      // Drop autoresponders silently — no row, no bounce. The customer
+      // didn't actually send anything; their server did.
+      return NextResponse.json({ ok: true, dropped: 'autoresponder' });
+    }
+
+    // Unresolved (unknown sender or ambiguous tenant match) — bounce,
+    // persist a row for abuse / ops visibility, return 200.
     try {
       await sendUnknownSenderBounce({
         to: payload.From,
@@ -80,7 +118,6 @@ export async function POST(request: Request) {
       subject: payload.Subject ?? null,
       body_text: payload.TextBody ?? null,
       body_html: payload.HtmlBody ?? null,
-      // Strip base64 from bounced rows to keep the table small.
       attachments: (payload.Attachments ?? []).map((a) => ({
         filename: a.Name,
         contentType: a.ContentType,
@@ -88,7 +125,7 @@ export async function POST(request: Request) {
       })),
       raw_payload: null,
       status: 'bounced',
-      error_message: 'Sender not allowlisted (must be a tenant owner/admin email)',
+      error_message: 'Sender not on a tenant_member or matched customer for any project',
     });
 
     return NextResponse.json({ ok: true, bounced: true });

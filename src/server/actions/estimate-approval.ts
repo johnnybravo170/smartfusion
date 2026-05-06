@@ -18,6 +18,7 @@ import {
   estimateViewedEmailHtml,
   looksLikeBot,
 } from '@/lib/email/templates/estimate-viewed-notification';
+import { appendCustomerEmailFooter, CUSTOMER_REPLY_TO } from '@/lib/messaging/email-outbound';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -170,7 +171,8 @@ export async function sendEstimateForApprovalAction(input: {
     tenantId: tenant.id,
     to: recipientEmails,
     subject: `Estimate for ${p.name as string} — ${tenant.name}`,
-    html,
+    html: appendCustomerEmailFooter(html, input.projectId),
+    replyTo: CUSTOMER_REPLY_TO,
     caslCategory: 'transactional',
     relatedType: 'estimate',
     relatedId: input.projectId,
