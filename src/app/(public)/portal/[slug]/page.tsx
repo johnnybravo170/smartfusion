@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { DecisionPanel, type PortalDecision } from '@/components/features/portal/decision-panel';
 import { PhaseRail, type PhaseRailPhoto } from '@/components/features/portal/phase-rail';
+import { PortalBudgetDetail } from '@/components/features/portal/portal-budget-detail';
 import {
   type PortalDocument,
   PortalDocuments,
@@ -15,6 +16,7 @@ import {
 import { PortalSelections } from '@/components/features/portal/portal-selections';
 import { TradeContactsList } from '@/components/features/portal/trade-contacts-list';
 import { PublicViewLogger } from '@/components/features/public/public-view-logger';
+import { getPortalBudgetSummary, shouldShowPortalBudget } from '@/lib/db/queries/portal-budget';
 import type { ProjectSubContact } from '@/lib/db/queries/project-documents';
 import type { ProjectPhase } from '@/lib/db/queries/project-phases';
 import { groupSelectionsByRoom, type ProjectSelection } from '@/lib/db/queries/project-selections';
@@ -64,8 +66,8 @@ export default async function PortalPage({
     .from('projects')
     .select(
       `id, name, lifecycle_stage, percent_complete, start_date, target_end_date,
-       portal_slug, portal_enabled,
-       tenants:tenant_id (name, logo_storage_path),
+       portal_slug, portal_enabled, portal_show_budget,
+       tenants:tenant_id (name, logo_storage_path, portal_show_budget),
        customers:customer_id (name)`,
     )
     .eq('portal_slug', slug)
@@ -228,6 +230,17 @@ export default async function PortalPage({
   }
 
   const totalBudget = originalEstimate + approvedCOTotal;
+
+  // Per-bucket budget breakdown for the customer (gated by tenant +
+  // per-project toggles, defaults off). Operator opts in via Settings →
+  // Profile or per-project on the Portal tab.
+  const portalShowBudget = shouldShowPortalBudget(
+    p.portal_show_budget as boolean | null | undefined,
+    tenant?.portal_show_budget as boolean | null | undefined,
+  );
+  const portalBudgetSummary = portalShowBudget
+    ? await getPortalBudgetSummary(admin, projectId)
+    : null;
 
   // Slice 3 — pending homeowner decisions for the queue panel.
   const { data: decisionRows } = await admin
@@ -688,6 +701,9 @@ export default async function PortalPage({
               </p>
             </div>
           </div>
+
+          {/* Per-bucket "spent so far" breakdown — gated by operator opt-in. */}
+          {portalBudgetSummary ? <PortalBudgetDetail summary={portalBudgetSummary} /> : null}
 
           {/* Photo gallery — operator-tagged photos grouped by category.
           Behind-the-wall section is collapsed by default. */}
