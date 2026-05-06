@@ -79,9 +79,21 @@ async function listCustomerCandidatesForPhone(phone: string): Promise<SmsCustome
 
 export async function resolveProjectForSmsReply(
   fromPhone: string,
+  toTenantId: string | null = null,
 ): Promise<SmsResolvedProject | null> {
-  const candidates = await listCustomerCandidatesForPhone(fromPhone);
+  let candidates = await listCustomerCandidatesForPhone(fromPhone);
   if (candidates.length === 0) return null;
+
+  // Tier 1 — when the To-number is a per-tenant 10DLC number, narrow
+  // candidate search to that tenant first. This is the trivial routing
+  // case once 10DLC + per-tenant numbers are live: customer texts a
+  // tenant's number, that tenant owns the conversation, done. Falls
+  // through to the recency disambiguator only if the To hint doesn't
+  // match any candidate (shouldn't happen in practice).
+  if (toTenantId) {
+    const narrowed = candidates.filter((c) => c.tenantId === toTenantId);
+    if (narrowed.length > 0) candidates = narrowed;
+  }
 
   // Single candidate — easy case, the common one.
   if (candidates.length === 1) {
@@ -174,8 +186,11 @@ export async function handleCustomerInboundSms(input: {
   fromPhone: string;
   toPhone: string;
   body: string;
+  /** Tenant owning the To-number, when known. Lets the resolver skip
+   *  recency-disambiguation and route by exact tenant match. */
+  toTenantId?: string | null;
 }): Promise<SmsHandlerResult> {
-  const resolved = await resolveProjectForSmsReply(input.fromPhone);
+  const resolved = await resolveProjectForSmsReply(input.fromPhone, input.toTenantId ?? null);
   if (!resolved) return { ok: false, reason: 'unresolved' };
 
   const body = input.body.trim().slice(0, 10_000);
