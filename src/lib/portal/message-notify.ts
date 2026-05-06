@@ -12,6 +12,13 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail } from '@/lib/email/send';
+import {
+  appendCustomerEmailFooter,
+  bareMessageId,
+  CUSTOMER_REPLY_TO,
+  customerOutboundHeaders,
+  outboundMessageId,
+} from '@/lib/messaging/email-outbound';
 import { sendSms } from '@/lib/twilio/client';
 
 function escapeHtml(s: string): string {
@@ -81,7 +88,17 @@ export async function sendMessageNotification(input: SendMessageNotificationInpu
   }
 
   if (emailRaw) {
-    const html = `<!DOCTYPE html>
+    // Pre-write the Message-ID we're about to send onto the row's
+    // external_id so the inbound resolver can match the customer's reply
+    // even if Resend overrides our header. Belt-and-suspenders with the
+    // body footer below.
+    const messageIdHeader = outboundMessageId(input.messageId);
+    await input.supabase
+      .from('project_messages')
+      .update({ external_id: bareMessageId(messageIdHeader) })
+      .eq('id', input.messageId);
+
+    const baseHtml = `<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#222;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
   <tr><td align="center" style="padding:32px 16px;">
@@ -93,18 +110,22 @@ export async function sendMessageNotification(input: SendMessageNotificationInpu
         <div style="margin:0 0 20px;border-left:3px solid #2563eb;padding:12px 16px;background:#f8fafc;border-radius:4px;">
           <p style="margin:0;font-size:14px;line-height:1.5;color:#222;white-space:pre-wrap;">${escapeHtml(input.body)}</p>
         </div>
-        <p style="margin:0 0 16px;font-size:14px;color:#444;">Hi ${escapeHtml(first)} — reply on your portal and we'll see it right away.</p>
+        <p style="margin:0 0 16px;font-size:14px;color:#444;">Hi ${escapeHtml(first)} — reply directly to this email or open your portal. Either way, we'll see it.</p>
         <p style="margin:0;"><a href="${portalUrl}" style="display:inline-block;padding:10px 16px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open your portal</a></p>
       </td></tr>
     </table>
   </td></tr>
 </table>
 </body></html>`;
+    const html = appendCustomerEmailFooter(baseHtml, input.projectId);
+
     await sendEmail({
       tenantId: input.tenantId,
       to: emailRaw,
       subject: `${projectName} — new message from ${businessName}`,
       html,
+      replyTo: CUSTOMER_REPLY_TO,
+      headers: customerOutboundHeaders(input.messageId),
       caslCategory: 'transactional',
       relatedType: 'job',
       relatedId: input.projectId,

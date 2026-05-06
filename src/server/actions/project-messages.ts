@@ -17,11 +17,9 @@
 
 import { revalidatePath } from 'next/cache';
 import { getCurrentTenant } from '@/lib/auth/helpers';
-import { sendEmail } from '@/lib/email/send';
-import { projectMessageOperatorNotificationHtml } from '@/lib/email/templates/project-message-operator-notification';
+import { dispatchCustomerMessageToOperators } from '@/lib/portal/customer-message-operator-notify';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
-import { sendSms } from '@/lib/twilio/client';
 
 export type MessageActionResult = { ok: true; id: string } | { ok: false; error: string };
 export type SimpleResult = { ok: true } | { ok: false; error: string };
@@ -345,91 +343,4 @@ export async function markCustomerPortalMessagesReadAction(
 
   if (error) return { ok: false, error: error.message };
   return { ok: true };
-}
-
-// ============================================================================
-// Operator notification dispatch (immediate — no defer)
-// ============================================================================
-
-/**
- * Fire the operator-side notifications when a customer posts a message
- * in the portal. Mirrors dispatchFeedbackNotifications in
- * estimate-approval.ts — owner/admin members only, per-member
- * notify_prefs, best-effort email + SMS.
- */
-async function dispatchCustomerMessageToOperators(args: {
-  admin: ReturnType<typeof createAdminClient>;
-  tenantId: string;
-  projectId: string;
-  projectName: string;
-  customerName: string;
-  body: string;
-}): Promise<void> {
-  const { admin, tenantId, projectId, projectName, customerName, body } = args;
-
-  const { data: members } = await admin
-    .from('tenant_members')
-    .select('user_id, notification_phone, notify_prefs, role')
-    .eq('tenant_id', tenantId)
-    .in('role', ['owner', 'admin']);
-
-  const memberRows = members ?? [];
-  if (memberRows.length === 0) return;
-
-  const { data: users } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  const emailByUserId = new Map<string, string>();
-  for (const u of users?.users ?? []) {
-    if (u.id && u.email) emailByUserId.set(u.id, u.email);
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.heyhenry.io';
-  const projectUrl = `${appUrl}/projects/${projectId}?tab=messages`;
-  const subject = `💬 New message from ${customerName} on ${projectName}`;
-  const html = projectMessageOperatorNotificationHtml({
-    customerName,
-    projectName,
-    projectUrl,
-    body,
-  });
-  const smsExcerpt = body.length > 120 ? `${body.slice(0, 117).trimEnd()}…` : body;
-  const smsBody = `${customerName}: "${smsExcerpt}"\n${projectUrl}`;
-
-  for (const m of memberRows) {
-    // Reuse the customer_feedback notify pref. Project messages and
-    // estimate feedback are the same shape of event from the operator's
-    // POV: "the customer said something on the portal." Splitting them
-    // would create two adjacent prefs that nobody distinguishes.
-    const prefs = (m.notify_prefs as Record<string, Record<string, boolean> | undefined>) ?? {};
-    const want = prefs.customer_feedback ?? { email: true, sms: false };
-
-    if (want.email) {
-      const email = emailByUserId.get(m.user_id as string);
-      if (email) {
-        await sendEmail({
-          tenantId,
-          to: email,
-          subject,
-          html,
-          caslCategory: 'transactional',
-          relatedType: 'job',
-          relatedId: projectId,
-          caslEvidence: { kind: 'project_message_internal_notify', projectId },
-        }).catch((err) => console.error('[project-message] email send failed:', err));
-      }
-    }
-
-    if (want.sms) {
-      const phone = (m.notification_phone as string | null) ?? '';
-      if (phone) {
-        await sendSms({
-          tenantId,
-          to: phone,
-          body: smsBody,
-          relatedType: 'platform',
-          caslCategory: 'transactional',
-          caslEvidence: { kind: 'project_message_internal_notify', projectId },
-        }).catch((err) => console.error('[project-message] sms send failed:', err));
-      }
-    }
-  }
 }

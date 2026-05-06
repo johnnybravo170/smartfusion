@@ -12,6 +12,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail } from '@/lib/email/send';
+import { appendCustomerEmailFooter, CUSTOMER_REPLY_TO } from '@/lib/messaging/email-outbound';
 import { sendSms } from '@/lib/twilio/client';
 
 function escapeHtml(s: string): string {
@@ -96,7 +97,8 @@ export async function sendPhaseNotification(input: SendPhaseNotificationInput): 
       tenantId: input.tenantId,
       to: emailRaw,
       subject: `${projectName} — ${input.phaseName}`,
-      html,
+      html: appendCustomerEmailFooter(html, input.projectId),
+      replyTo: CUSTOMER_REPLY_TO,
       caslCategory: 'transactional',
       relatedType: 'job',
       relatedId: input.projectId,

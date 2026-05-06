@@ -96,18 +96,32 @@ Inbound notifications (customer → operator): fire immediately, respect `tenant
 
 #### Email (Phase 2)
 
-Outbound: every operator email that wants a reply uses `reply-to: proj-{slug}@inbox.heyhenry.io` instead of the operator's personal address. Notification emails (estimate viewed/approved/feedback today) get the swap. The slug is generated lazily on first send and cached on `projects.messaging_slug`.
+**Single inbox address.** All inbound goes through `henry@heyhenry.io` — same address used for the operator's bill / sub-quote forwards. No per-project slugs, no `inbox.heyhenry.io` subdomain, no DNS gymnastics. The `projects.messaging_slug` column added in 0195 stays unused (forward-compat for some hypothetical future need).
 
-Inbound: extend the **existing** `/api/inbound/postmark` webhook (don't create a second one). Routing rule:
+**Outbound:** every operator email that wants a reply sets `reply-to: henry@heyhenry.io` instead of the operator's personal email. Notification emails (estimate viewed/approved/feedback, the new portal-message customer notification) all switch. Resend's `replyTo` field handles the From/Reply-To split — the customer still sees the operator's name + the heyhenry sender, but Reply autofills `henry@heyhenry.io`.
 
-| To address pattern | Routes to |
+**Inbound routing — sender-based, not address-based.** The existing `/api/inbound/postmark` webhook gets a second classifier branch keyed off the **From** address:
+
+| Sender identity | Routes to |
 |---|---|
-| `henry@heyhenry.io` | Existing operator-side ingestion (bills / sub-quotes) — see `INBOUND_EMAIL_PLAN.md` |
-| `proj-{slug}@inbox.heyhenry.io` | New customer-reply ingestion → `project_messages` with `channel='email'`, `sender_kind='customer'`, `direction='inbound'` |
+| `auth.users.email` of an owner/admin tenant_member | Existing bill / sub-quote ingestion (per `INBOUND_EMAIL_PLAN.md`) |
+| Active customer email on at least one project | New project-message handler → `project_messages` with `channel='email'`, `sender_kind='customer'`, `direction='inbound'` |
+| Neither | Polite bounce |
 
-Sender allowlist for the project channel: the project's customer's known email addresses (from `customers` and any prior outbound `to_email`). Unknown senders to a project address: bounce *or* park with a "needs review" status — TBD (open question Q3 below).
+Tenant-member match wins if a sender qualifies as both (rare edge case — a contractor who is also a customer on a different tenant gets the operator-ingestion path).
 
-Threading on inbound: parse `In-Reply-To` and `References` headers; match against `external_id` of prior outbound rows to set `in_reply_to`.
+**Project resolution** (the multi-tenant safety bit):
+
+1. **Primary — `In-Reply-To` header.** Every outbound message's `Message-ID` is stored on its `project_messages.external_id`. The customer's reply carries `In-Reply-To: <that-id>`. Walk back to the row → exact tenant + project + thread, **regardless of how many tenants share that customer email.** This is the source of truth.
+2. **Secondary — body footer token.** Every outbound includes a small footer like `[Ref: P-abc123]` (where `abc123` is a 6-char token tied to the project). Most clients quote the body on reply, so the token survives header mangling. Parse it on inbound as a redundant identifier.
+3. **Tertiary — recency-within-tenant.** If both primary and secondary fail AND the sender's email matches **exactly one** tenant's customers with recent outbound, use that project. Recency window: outbound within last 30 days.
+4. **Bounce** — if all three fail (mangled headers, missing footer, ambiguous tenant match), bounce with: "We couldn't match this reply to a project. Please reply with the original quoted thread, or message your contractor directly."
+
+Privacy guarantee: we **never** surface a customer reply to the wrong tenant. When in doubt, bounce.
+
+**Threading within a tenant:** `in_reply_to` on `project_messages` chains via `In-Reply-To` header → `external_id` of prior outbound row, regardless of which side wrote it.
+
+**Loop guard:** drop inbound where `Auto-Submitted` header is set OR `Precedence: bulk|auto_reply` is present. Customer's autoresponder doesn't become a thread message.
 
 #### SMS (Phase 3)
 
@@ -117,15 +131,17 @@ Inbound: Twilio webhook (likely already exists for STOP handling). Match the inb
 
 ### How the feedback notification email evolves
 
-Today (just shipped): the email includes the feedback bodies inline. Phase 2 extension: same email's `reply-to` becomes the project address, so the operator can hit Reply in Gmail and the response lands in `project_messages` as `channel='email'`, `direction='outbound'`, the customer sees it in the portal *and* in their inbox (because we mirror back outbound).
+Today (Phase 1 shipped): the email includes the feedback bodies inline. Phase 2 extension: the email's `reply-to` becomes `henry@heyhenry.io`, so the **customer's** reply (when they hit Reply on this notification — wait, no: this email goes TO the operator, not the customer; the operator's reply doesn't matter here, since they're already inside HeyHenry).
 
-Mirror logic: when an `email`-channel inbound message lands for a project, schedule an outbound email to the customer for any subsequent operator reply on that project, regardless of whether the operator typed it in the portal or replied via email. (Same way Slack mirrors a message to email if the recipient prefers.)
+The relevant evolution is on the customer-facing emails — estimate approval, viewed/accepted notifications, and the new portal-message customer notification from Phase 1. Those today have the customer's reply going to the operator's personal email. Phase 2 routes them to `henry@heyhenry.io`, where they land in the project thread.
+
+**Mirror logic:** when an `email`-channel inbound message lands for a project (i.e. the customer has emailed at least once), schedule an outbound email to the customer for any subsequent operator reply on that project, regardless of whether the operator typed it in the portal or replied via email. Same way Slack mirrors a message to email if the recipient prefers.
 
 ## Phase plan
 
 Each phase is independently shippable. Phase 1 is the meaningful first cut.
 
-### Phase 1 — Portal comments only (1-2 days)
+### Phase 1 — Portal comments only (SHIPPED 2026-05-06)
 
 The smallest shippable unit. No inbound email/SMS yet; just a portal-only thread.
 
@@ -146,20 +162,35 @@ The smallest shippable unit. No inbound email/SMS yet; just a portal-only thread
 
 ### Phase 2 — Inbound + outbound email convergence (2-3 days)
 
-- [ ] Migration: add `messaging_slug` to `projects`, generation function (`gen_random_bytes(4)` → base32 lowercase, retry on collision)
-- [ ] DNS / Postmark: confirm the existing inbound forward catches `proj-*@inbox.heyhenry.io` (subdomain-wildcard, ideally a separate Postmark inbound server from the `henry@` one to keep rules clean — A0 in `INBOUND_EMAIL_PLAN.md` covers the pattern for `heyhenry.io`; `inbox.heyhenry.io` may be a fresh setup)
-- [ ] Webhook: add a `to-address` switch at the top of `/api/inbound/postmark` route — `henry@` → existing flow; `proj-{slug}@inbox.heyhenry.io` → new project-message inbound handler
-- [ ] New handler: lookup project by slug, validate sender against customer email allowlist, insert `project_messages` row with `external_id = MessageID`, `in_reply_to` resolved from `In-Reply-To` header against existing `external_id`s
-- [ ] Outbound email: every operator-side email that wants replies uses `reply-to: proj-{slug}@inbox.heyhenry.io`. Update:
-  - Estimate approval email (today: customer's reply goes to operator)
-  - Estimate viewed/accepted/feedback notifications (today: operator's reply goes to operator's own inbox — irrelevant since these are notifications, not customer-facing, but the *forward* / *reply-all* could land here)
-  - New portal-message notifications from Phase 1
-- [ ] Mirror outbound: when operator types a portal message and the customer has previously emailed (i.e. there's at least one inbound email row for the project), include the customer's email in the deferred-notify outbound email send.
+**No DNS / Postmark dashboard work required.** All inbound stays on `henry@heyhenry.io`, which is already configured per `INBOUND_EMAIL_PLAN.md` A0.
+
+- [ ] **Helpers — project ref token.** Generate per-project 6-char base32 tokens for the body footer (`P-abc123`). Two options: (a) reuse `messaging_slug` column already on `projects` (rename concept, generate lazily on first outbound), or (b) derive deterministically from `project_id` (HMAC-shorten). Option (b) is simpler — no column writes, no collision retry. Going with (b).
+- [ ] **Outbound `reply-to` swap.** Every customer-facing email switches `reply-to` from operator-personal to `henry@heyhenry.io`. Touch:
+  - `src/server/actions/estimate-approval.ts` — estimate approval email + viewed/accepted/feedback notifications
+  - `src/lib/portal/message-notify.ts` — Phase 1's customer-facing portal-message email
+  - Audit any other customer-facing send via `grep -rn "sendEmail" src/` and update if customer is the recipient
+- [ ] **Outbound footer.** Every customer-facing email body gets a `[Ref: P-xxxxxx]` footer (project ref token). Small text, near the email's own footer. One helper: `appendProjectRefFooter(html, projectId)` — wraps the email HTML.
+- [ ] **Outbound `Message-ID` capture.** Resend assigns Message-IDs; pull from the send response and write to a new `project_messages` row (or to `external_id` on the row that triggered the send). For the deferred-notify cron drainer, this means the row exists BEFORE the send so we have a place to stamp it; that already matches Phase 1's design.
+- [ ] **Inbound webhook — sender classifier.** Extend `/api/inbound/postmark` route: after parsing the payload, look up sender:
+  - Try `resolve_inbound_sender(from)` RPC (existing per INBOUND_EMAIL_PLAN.md) → tenant_member match → existing flow
+  - Else lookup `customers` table where lower(email) = lower(from) AND deleted_at IS NULL → list of (tenant_id, customer_id, project_ids)
+  - If neither matches: bounce with the existing helper
+- [ ] **Project resolver** for customer-classified inbound:
+  - Primary: parse `In-Reply-To` and `References` headers; lookup `project_messages.external_id` IN (parsed ids); pick the matching row → project + tenant
+  - Secondary: regex the body for `\[Ref: P-([a-z0-9]{6})\]`; verify against derived token for any of the candidate projects
+  - Tertiary: among candidate (tenant, project) tuples, find those with outbound to this email in the last 30 days; if exactly one, use it; if zero or multiple, fall through
+  - On all-fail: bounce with "couldn't match to a project" message; log as `inbound_emails` with `status='bounced'` for ops visibility
+- [ ] **Project-message inbound handler.** Insert into `project_messages` with `channel='email'`, `sender_kind='customer'`, `direction='inbound'`, `external_id=MessageID`, `in_reply_to` resolved from header chain. Fire immediate operator notification (reuse Phase 1's dispatcher).
+- [ ] **Loop guard.** In the inbound handler, drop messages with `Auto-Submitted: auto-replied` OR `Precedence: bulk|auto_reply` BEFORE inserting. Log to console for debug.
+- [ ] **Mirror outbound.** Modify Phase 1's `sendMessageNotification` helper: if there's at least one `project_messages` row for this project with `channel='email'` and `direction='inbound'`, the email send is unconditional (today it's already unconditional based on customer email existence — no change needed, just verifies). Confirm by reading the helper.
+- [ ] **Verify on live with two-tenant scenario.** Create a second test tenant, give it a customer with the same email as a customer on the original tenant. Send a notification from each. Customer replies to one — verify the reply lands on the right project. Reply with mangled header (forward + edit subject) — verify footer fallback works.
 
 **Verify:**
-- Customer replies to an estimate-feedback notification email from their own inbox → message appears in portal scrollback within 1 minute.
-- Operator types in portal → customer gets an email + sees the message in portal.
-- Customer replies again → in_reply_to chains correctly across email/portal hops.
+- Customer replies to an estimate-feedback notification email → message appears in portal scrollback within 1 minute.
+- Operator types in portal → customer gets an email + sees the message in portal (Phase 1, regression check).
+- Customer replies again → `in_reply_to` chains correctly across email/portal hops.
+- Multi-tenant scenario: same customer email on two tenants, reply to one → lands only on the right project, doesn't leak to the other tenant.
+- Auto-responder: customer's vacation autoresponder fires on receipt → no row appears in either tenant.
 
 ### Phase 3 — SMS two-way (1-2 days, after Twilio short-code or 10DLC is sorted)
 
@@ -181,18 +212,20 @@ This phase is intentionally a **view-only** merge so we don't migrate data eager
 
 ## Open questions
 
-1. **Per-project email slug format.** `proj-a8k4z2@inbox.heyhenry.io` is short but reveals nothing. Alternative: `{customer-first-name}-{slug}@inbox.heyhenry.io` (more human but reveals more in BCC contexts). Default to the short slug.
-2. **Should operator-typed emails (Gmail "Reply" to a notification) land in the project?** This means the operator's `reply-to` would need to also point at `proj-{slug}@…`, but the operator should still see the original customer's address as the visible recipient. Achievable via the From/Reply-To split in Resend. Worth doing — it makes Gmail a viable operator-side surface — but adds inbound sender allowlist edge cases (operators sending from their personal email that may or may not match `auth.users.email`).
-3. **Unknown sender to a project address.** Spam, mistaken forward, customer's spouse's email. Bounce, or stage with `status='needs_review'` for the operator to allowlist? Default: bounce with a clear message ("only the original recipient can reply to this thread").
-4. **How does Henry participate?** Henry is `sender_kind='henry'` when summarizing or auto-responding. Out of scope for V1 but the column shape supports it.
+1. ~~**Per-project email slug format.**~~ Resolved 2026-05-06: dropped the slug entirely. Single `henry@heyhenry.io` inbox; route by sender identity + In-Reply-To header + body footer token.
+2. **Should operator-typed emails (Gmail "Reply" to a portal-message notification) land in the project?** Today the operator's notification email has reply-to defaulted to whatever Resend sets — usually the operator's own address. So the operator hits Reply, lands in their own inbox, ignored. Phase 2 could ALSO swap the operator-notification reply-to to `henry@heyhenry.io`, but the inbound handler then needs to handle "operator email replying to own notification" as a new case (insert as `direction='outbound'`). Adds inbound sender allowlist edge cases. Defer to Phase 2.5.
+3. **Unknown sender to henry@heyhenry.io.** Spam, mistaken forward, customer's spouse's email. Existing inbound plan already bounces unknown senders. Same path here — no change.
+4. **How does Henry participate?** Henry is `sender_kind='henry'` when summarizing or auto-responding. Out of scope for V2 but the column shape supports it.
 5. **Multi-tenant projects (subs/GCs in the same project).** Out of scope — see Non-goals. Current customer-only model is fine.
+6. **Project ref token derivation.** Going with HMAC of project_id truncated to 6 base32 chars (no DB column writes, no collision handling). Token is reversible only with the server-side secret; harmless if leaked (worst case: spammer learns one project token, still bounces unless they match a customer email).
 
 ## Risks
 
-- **Email loop.** Outbound to customer triggers customer auto-responder, which lands as inbound, which we treat as a real reply. Mitigation: detect `Auto-Submitted` header and `Precedence: bulk/auto_reply`; drop those.
-- **Slug enumeration.** Someone could hit `proj-aaa1@inbox.heyhenry.io` and brute-force project slugs. Sender allowlist mitigates content access; bounce-volume could be DoS. Use 8+ chars of base32 (~40 bits) and rate-limit unknown-sender bounces.
-- **Notification fatigue.** A chatty thread + immediate notify on every inbound = spam. Mitigation: deferred-notify on inbound *too*, with a slightly longer window (~2 min) so a customer's three-message burst becomes one notification.
-- **PostgreSQL `IN_REPLY_TO` resolution edge cases.** Apple Mail mangles `In-Reply-To` on some forwards. Fall back to subject-line "Re:" matching only as a last resort, and accept that some replies won't thread perfectly.
+- **Email loop.** Outbound to customer triggers customer auto-responder, which lands as inbound, which we treat as a real reply. Mitigation: detect `Auto-Submitted` header and `Precedence: bulk|auto_reply`; drop those.
+- **Multi-tenant cross-leak.** Same customer email on two tenants, reply lands on the wrong project. Mitigation: 3-tier resolver (In-Reply-To → footer token → recency), and BOUNCE on ambiguity rather than guess. Privacy guarantee: never surface a reply to the wrong tenant.
+- **Notification fatigue.** A chatty thread + immediate notify on every inbound = spam. Mitigation: deferred-notify on inbound *too*, with a slightly longer window (~2 min) so a customer's three-message burst becomes one notification. (Defer to Phase 2.5 if it shows up in practice.)
+- **`In-Reply-To` mangling.** Apple Mail mangles headers on forwards; some clients strip them entirely. The body footer token (`[Ref: P-xxxxxx]`) is the redundant fallback. If both fail and recency is ambiguous, bounce gracefully.
+- **Footer token leak.** A spammer who learns one project's token still bounces unless they ALSO match a customer email on that project. The token is not a secret; it's a project disambiguator inside an already-authenticated (via sender) flow.
 
 ## Sequencing recommendation
 

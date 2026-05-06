@@ -407,6 +407,20 @@ When you change one of these surfaces, **evaluate the other and surface to the u
 
 **Polling, not realtime.** Both sides poll every 5s via the relevant get*MessagesAction. Realtime is the obvious upgrade path but adds infra; defer until the polling load is real.
 
+**Customer-facing email contract (Phase 2).** Every email that goes TO a customer must:
+1. Set `replyTo: CUSTOMER_REPLY_TO` (= `henry@heyhenry.io`) so the reply lands on `/api/inbound/postmark`.
+2. Wrap the HTML body via `appendCustomerEmailFooter(html, projectId)` — adds the `[Ref: P-xxxxxx]` token used as the resolver's tier-2 fallback.
+3. If the email is tied to a specific `project_messages` row (currently only the customer-facing portal-message notification fired by the cron drainer), set `headers: customerOutboundHeaders(messageRowId)` and pre-write `external_id` on the row before send.
+
+The helpers live in `src/lib/messaging/email-outbound.ts`. **Don't roll your own** — consistency is what makes the inbound resolver work across tenants. Touched callsites today: `src/lib/portal/message-notify.ts`, `src/lib/portal/phase-notify.ts`, `src/server/actions/estimate-approval.ts` (estimate approval send only — viewed/accepted/feedback notifications go TO operators, not customers).
+
+**Customer reply routing (Phase 2).** Inbound webhook at `/api/inbound/postmark` branches by sender:
+1. Tenant_member match → existing bills/sub-quotes flow (`INBOUND_EMAIL_PLAN.md`).
+2. Customer email match → `handleCustomerInboundMessage` in `src/lib/inbound-email/customer-message-handler.ts` → 3-tier project resolver (In-Reply-To → footer token → recency-within-tenant) → insert `project_messages` row + immediate operator notify.
+3. Neither → bounce.
+
+Multi-tenant safety: the resolver bounces on ambiguity rather than guess. We never surface a customer reply to the wrong tenant.
+
 **Read tracking.** Each message has `read_by_operator_at` / `read_by_customer_at`. Operator side fires `markProjectMessagesReadAction` on tab mount; portal side fires `markCustomerPortalMessagesReadAction`. Unread counts drive the badge on the operator's Messages tab pill and the portal's Messages tab.
 
 When adding new channels (Phase 2 email, Phase 3 SMS), the table shape and notification dispatcher stay the same; new feeders just write rows with their channel value. See `PROJECT_MESSAGING_PLAN.md`.
