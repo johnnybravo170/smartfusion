@@ -52,9 +52,12 @@ test.describe
       await expect(page.getByText(/incl\.\s+\$238\.10\s+gst/i)).toBeVisible();
 
       // Submit. Form action redirects to /invoices/<id>; landing there
-      // confirms the action ran and the row was inserted.
+      // confirms the action ran and the row was inserted. The redirect
+      // appends ?from=...&fromLabel=... so the back-link on the invoice
+      // page returns to Customer Billing — match the UUID without
+      // anchoring on the end of the URL.
       await page.getByRole('button', { name: /^create draw$/i }).click();
-      await page.waitForURL(/\/invoices\/[0-9a-f-]{36}$/, { timeout: 20_000 });
+      await page.waitForURL(/\/invoices\/[0-9a-f-]{36}(?:\?|$)/, { timeout: 20_000 });
 
       // Verify the DB row matches what we asked for.
       const { data: invoice } = await seed.admin

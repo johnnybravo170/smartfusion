@@ -6,12 +6,15 @@
  * Without an audit trail, the operator can't tell what came from
  * which CO. This spec verifies the audit lens we shipped:
  *
- *   - Estimate tab shows "CO XXXXXXXX" chips next to lines that an
- *     applied CO modified, plus a "Change Order history" panel
- *     listing the applied COs with running impact total.
- *   - Budget tab shows the same chip on category rows the CO touched.
+ *   - Budget tab shows "CO XXXXXXXX" chips next to lines/categories
+ *     an applied CO modified, plus the AppliedChangeOrdersBanner
+ *     summarizing how many COs are applied (with an inline history
+ *     timeline behind a "See history" toggle).
  *   - Overview "Revenue" composition card shows each applied CO as
  *     its own row, separate from the original line items.
+ *
+ * The unified Budget tab (commit ef132b2) absorbed the old standalone
+ * Estimate / Change Orders tabs; ?tab=estimate now aliases to budget.
  */
 
 import { expect, test } from '@playwright/test';
@@ -99,30 +102,31 @@ test.describe
       if (seed) await tearDownDemo(seed);
     });
 
-    test('Estimate tab shows CO chip on the modified line + history panel', async ({ page }) => {
+    test('Budget tab shows CO chip on the modified line + applied-CO banner', async ({ page }) => {
       await signInAsOwner(page, seed);
-      await page.goto(`/projects/${seed.projectId}?tab=estimate`);
+      await page.goto(`/projects/${seed.projectId}?tab=budget`);
 
-      // Chip on the affected line. There can be more than one chip on
-      // the page (history panel also has one); first() is the line.
+      // Chip on the affected line in the budget table.
       const chip = page.getByText(`CO ${coShortId}`, { exact: false }).first();
       await expect(chip).toBeVisible();
 
-      // History panel: heading + applied CO row with the title +
-      // running impact total.
-      await expect(page.getByText(/change order history/i)).toBeVisible();
+      // AppliedChangeOrdersBanner — replaces the old "Change Order
+      // history" panel. Shows the applied count inline; expanding "See
+      // history" reveals the per-CO timeline with the title.
+      await expect(page.getByText(/applied change order/i).first()).toBeVisible();
+      await page.getByRole('button', { name: /see history/i }).click();
       await expect(page.getByText(co_title)).toBeVisible();
-      await expect(page.getByText(/\+\$1,500\.00/).first()).toBeVisible();
     });
 
     test('Budget tab shows CO chip linking to the applied CO', async ({ page }) => {
       await signInAsOwner(page, seed);
       await page.goto(`/projects/${seed.projectId}?tab=budget`);
 
-      // The chip is an <a> linking to /projects/.../change-orders/<co.id>.
-      // Targeting by href is unambiguous — there's only one chip on the
-      // Budget tab in this scenario (one CO touching one category).
-      const chip = page.locator(`a[href="/projects/${seed.projectId}/change-orders/${coId}"]`);
+      // The chip is an <a> linking to /projects/.../change-orders/<co.id>
+      // with a `?from=...&fromLabel=...` smart-back suffix. Match the
+      // path prefix; there's only one such chip on the Budget tab in
+      // this scenario (one CO touching one category).
+      const chip = page.locator(`a[href^="/projects/${seed.projectId}/change-orders/${coId}"]`);
       await expect(chip).toBeVisible();
       await expect(chip).toHaveText(new RegExp(`CO ${coShortId}`, 'i'));
     });
@@ -132,9 +136,9 @@ test.describe
       await page.goto(`/projects/${seed.projectId}?tab=overview`);
 
       // The composition card has an "Applied CO: <title>" entry with
-      // the cost impact, alongside Original line items + Management fee.
+      // the cost impact, alongside Original scope + Management fee.
       await expect(page.getByText(`Applied CO: ${co_title}`)).toBeVisible();
-      await expect(page.getByText(/original line items/i)).toBeVisible();
-      await expect(page.getByText(/management fee/i)).toBeVisible();
+      await expect(page.getByText(/original scope/i)).toBeVisible();
+      await expect(page.getByText(/management fee/i).first()).toBeVisible();
     });
   });
