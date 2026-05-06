@@ -111,6 +111,7 @@ URL-param driven (`?tab=estimate`); `router.replace()` to avoid history pollutio
 - `src/components/features/inbox/inbox-tabs.tsx`
 - `src/components/features/projects/project-tab-select.tsx` (mobile select)
 - The project detail page renders a row of `<Link>` tabs above `lg`, the select below it.
+- The customer portal at `/portal/[slug]` introduces a minimal "Project" / "Messages" split via the same `?tab=` query param. Future PRs will likely break the Project tab into Updates / Budget / Photos / Files sub-tabs as those surfaces grow.
 - `src/components/features/tasks/job-tabs.tsx` — distinct-route variant on the job detail page (`/jobs/[id]` vs `/jobs/[id]/tasks`). Used when each tab needs its own server component shell rather than re-rendering off a query param.
 
 ---
@@ -191,7 +192,9 @@ Send-path families to keep aligned when CASL evidence shape changes:
 - **Invoice flow** — `src/server/actions/invoices.ts` (2 sends)
 - **Job lifecycle** — `src/server/actions/jobs.ts`,
   `src/server/actions/project-phases.ts`, `src/server/actions/pulse.ts`,
-  `src/server/actions/portal-updates.ts`
+  `src/server/actions/portal-updates.ts`,
+  `src/server/actions/project-messages.ts` (operator notify),
+  `src/lib/portal/message-notify.ts` (customer notify, drained by cron)
 - **Account / auth** — `src/server/actions/auth.ts`,
   `src/server/actions/onboarding-verification.ts`,
   `src/server/actions/team.ts`, `src/server/actions/billing.ts`
@@ -383,3 +386,27 @@ Two tightly-related Tailwind/CSS pitfalls that can silently push a layout past t
 - `src/components/features/dashboard/money-at-risk-card.tsx` — break-all on phone/email
 - `src/components/features/tasks/task-row.tsx` — hover-only Delete button hidden on mobile
 - `src/components/layout/workspace-switcher.tsx`, settings/calendar-feed-card, settings/public-quote-link-card, portal/portal-toggle, calendar/assign-workers-dialog, calendar/owner-calendar, expenses/overhead-expense-form, projects/estimate-tab, team/invite-worker-card, team/invite-bookkeeper-card — all `flex-1 truncate` rows that needed `min-w-0`.
+
+---
+
+## 18. Project conversation thread (project_messages)
+
+Single project-scoped messaging log shared by both the operator side (`/projects/[id]?tab=messages`) and the customer portal (`/portal/[slug]?tab=messages`). Every channel — portal, email (Phase 2), SMS (Phase 3) — feeds into the same `project_messages` table so the operator and customer always see the same scrollback.
+
+Outbound (operator → customer) notifications use the **deferred-notify** pattern: schedule on the message row, cancel-and-reschedule when the operator types again within the window, drain via cron. Inbound (customer → operator) notifications fire immediately. Same shape as `project_phases.notify_*` columns — see `PORTAL_PHASES_PLAN.md` Phase 2.
+
+When you change one of these surfaces, **evaluate the other and surface to the user**:
+
+- `src/components/features/messages/messages-thread.tsx` — operator-side thread + composer + 30s pending-send chip with Undo
+- `src/components/features/portal/portal-messages-panel.tsx` — customer-side thread + composer (no Undo — customer messages send immediately)
+- `src/components/features/projects/tabs/messages-tab-server.tsx` — operator tab server component (loads thread + portal slug + customer)
+- `src/server/actions/project-messages.ts` — both sides: `postProjectMessageAction` (operator), `postCustomerPortalMessageAction` (customer via portal slug), `cancelProjectMessageNotifyAction` (Undo), polling fetches, mark-read actions
+- `src/lib/portal/message-notify.ts` — customer-facing send helper used by the cron drainer
+- `src/lib/email/templates/project-message-operator-notification.ts` — operator-facing email template (matches feedback notification style)
+- `src/app/api/cron/project-message-notify/route.ts` — drainer (mirror of portal-phase-notify)
+
+**Polling, not realtime.** Both sides poll every 5s via the relevant get*MessagesAction. Realtime is the obvious upgrade path but adds infra; defer until the polling load is real.
+
+**Read tracking.** Each message has `read_by_operator_at` / `read_by_customer_at`. Operator side fires `markProjectMessagesReadAction` on tab mount; portal side fires `markCustomerPortalMessagesReadAction`. Unread counts drive the badge on the operator's Messages tab pill and the portal's Messages tab.
+
+When adding new channels (Phase 2 email, Phase 3 SMS), the table shape and notification dispatcher stay the same; new feeders just write rows with their channel value. See `PROJECT_MESSAGING_PLAN.md`.
