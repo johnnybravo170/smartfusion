@@ -67,8 +67,15 @@ Available categories (id — label):
 ${categoryLines}`;
 }
 
+// OpenAI strict-mode structured output requires every property in
+// `properties` to also appear in `required`, and `additionalProperties:
+// false`. Otherwise the API 400s before any model runs (visible as
+// status=invalid_input, latency_ms=0 in ai_calls). Gemini is more
+// forgiving but the gateway falls over to OpenAI on overload, so the
+// schema must satisfy the strictest provider.
 const RECEIPT_SCHEMA = {
   type: 'object',
+  additionalProperties: false,
   properties: {
     amount_cents: { type: ['integer', 'null'] },
     tax_cents: { type: ['integer', 'null'] },
@@ -78,7 +85,15 @@ const RECEIPT_SCHEMA = {
     description: { type: ['string', 'null'] },
     category_id: { type: ['string', 'null'] },
   },
-  required: ['amount_cents', 'vendor', 'expense_date', 'description'],
+  required: [
+    'amount_cents',
+    'tax_cents',
+    'vendor',
+    'vendor_gst_number',
+    'expense_date',
+    'description',
+    'category_id',
+  ],
 };
 
 type RawReceipt = {

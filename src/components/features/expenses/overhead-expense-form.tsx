@@ -216,8 +216,18 @@ export function OverheadExpenseForm({
     setParsing(true);
     const fd = new FormData();
     fd.append('receipt', file);
-    const res = await extractOverheadReceiptAction(fd);
-    setParsing(false);
+    let res: Awaited<ReturnType<typeof extractOverheadReceiptAction>>;
+    try {
+      res = await extractOverheadReceiptAction(fd);
+    } catch (err) {
+      // Network drop / function timeout / unexpected throw: don't strand
+      // the spinner — let the operator fill the form by hand.
+      console.error('extractOverheadReceiptAction failed', err);
+      toast.error('Receipt scan failed — fill the form manually.');
+      return;
+    } finally {
+      setParsing(false);
+    }
     if (!res.ok) {
       toast.error(`OCR: ${res.error}`);
       return;
