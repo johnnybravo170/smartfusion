@@ -13,6 +13,7 @@ import { registerDecisionTools } from './decisions';
 import { registerDocsTools } from './docs';
 import { registerEmailTools } from './email';
 import { registerEscalateTools } from './escalate';
+import { registerHelpDocsTools } from './help_docs';
 import { registerIdeaTools } from './ideas';
 import { registerIncidentTools } from './incidents';
 import { registerKanbanTools } from './kanban';
@@ -42,6 +43,9 @@ export function registerScopedTools(server: McpServer, ctx: McpToolCtx) {
   }
   if (any(ctx.scopes, 'read:knowledge', 'write:knowledge')) {
     registerKnowledgeTools(server, ctx);
+  }
+  if (any(ctx.scopes, 'read:help_docs', 'write:help_docs', 'admin:help_docs')) {
+    registerHelpDocsTools(server, ctx);
   }
   if (any(ctx.scopes, 'read:worklog', 'write:worklog')) {
     registerWorklogTools(server, ctx);
