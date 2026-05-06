@@ -11,6 +11,10 @@
     {
       "path": "/api/ops/triage-feedback/run",
       "schedule": "10 * * * *"
+    },
+    {
+      "path": "/api/ops/help-doc-writer/run",
+      "schedule": "30 13 * * *"
     }
   ]
 }
