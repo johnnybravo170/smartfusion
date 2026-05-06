@@ -32,3 +32,35 @@ export function countMissingDocFields(fields: InvoiceDocFields): number {
     (v) => v == null || v.trim().length === 0,
   ).length;
 }
+
+/**
+ * Resolve effective doc fields for a single invoice render. Override columns
+ * on the invoice row (set via the operator detail page) win over the tenant
+ * defaults; null/empty falls through. The render surfaces (email + public
+ * view) only need the resolved values — the source distinction is just for
+ * the override-active indicator on the operator page.
+ */
+export function resolveInvoiceDocFields(args: {
+  override: Partial<InvoiceDocFields>;
+  tenant: InvoiceDocFields;
+}): InvoiceDocFields {
+  const pick = (o: string | null | undefined, t: string | null) => {
+    const trimmed = o?.trim();
+    if (trimmed && trimmed.length > 0) return trimmed;
+    return t;
+  };
+  return {
+    payment_instructions: pick(
+      args.override.payment_instructions,
+      args.tenant.payment_instructions,
+    ),
+    terms: pick(args.override.terms, args.tenant.terms),
+    policies: pick(args.override.policies, args.tenant.policies),
+  };
+}
+
+export function hasAnyOverride(override: Partial<InvoiceDocFields>): boolean {
+  return [override.payment_instructions, override.terms, override.policies].some(
+    (v) => v != null && v.trim().length > 0,
+  );
+}

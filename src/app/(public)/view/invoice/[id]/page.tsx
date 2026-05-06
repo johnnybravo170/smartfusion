@@ -27,7 +27,7 @@ export default async function PublicInvoiceViewPage({
   const { data: invoice } = await supabase
     .from('invoices')
     .select(
-      'id, tenant_id, customer_id, status, doc_type, tax_inclusive, percent_complete, amount_cents, tax_cents, line_items, customer_note, pdf_url, sent_at, paid_at, created_at',
+      'id, tenant_id, customer_id, status, doc_type, tax_inclusive, percent_complete, amount_cents, tax_cents, line_items, customer_note, pdf_url, sent_at, paid_at, created_at, payment_instructions_override, terms_override, policies_override',
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -65,9 +65,22 @@ export default async function PublicInvoiceViewPage({
   const businessName = tenant?.name ?? 'Our Company';
   const gstNumber = (tenant?.gst_number as string | null) ?? null;
   const wcbNumber = (tenant?.wcb_number as string | null) ?? null;
-  const docPayment = (tenant?.invoice_payment_instructions as string | null) ?? null;
-  const docTerms = (tenant?.invoice_terms as string | null) ?? null;
-  const docPolicies = (tenant?.invoice_policies as string | null) ?? null;
+  const { resolveInvoiceDocFields } = await import('@/lib/invoices/default-doc-fields');
+  const resolvedDocs = resolveInvoiceDocFields({
+    override: {
+      payment_instructions: (invoice.payment_instructions_override as string | null) ?? null,
+      terms: (invoice.terms_override as string | null) ?? null,
+      policies: (invoice.policies_override as string | null) ?? null,
+    },
+    tenant: {
+      payment_instructions: (tenant?.invoice_payment_instructions as string | null) ?? null,
+      terms: (tenant?.invoice_terms as string | null) ?? null,
+      policies: (tenant?.invoice_policies as string | null) ?? null,
+    },
+  });
+  const docPayment = resolvedDocs.payment_instructions;
+  const docTerms = resolvedDocs.terms;
+  const docPolicies = resolvedDocs.policies;
   const regParts = [
     gstNumber ? `GST: ${gstNumber}` : null,
     wcbNumber ? `WCB: ${wcbNumber}` : null,

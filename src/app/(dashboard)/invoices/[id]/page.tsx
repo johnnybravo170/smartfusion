@@ -5,6 +5,7 @@ import { InvoiceActions } from '@/components/features/invoices/invoice-actions';
 import { InvoiceDefaultsSetupBanner } from '@/components/features/invoices/invoice-defaults-setup-banner';
 import { InvoiceLineItems } from '@/components/features/invoices/invoice-line-items';
 import { InvoiceNote } from '@/components/features/invoices/invoice-note';
+import { InvoiceOverridesEditor } from '@/components/features/invoices/invoice-overrides-editor';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
 import { PrintButton } from '@/components/features/shared/print-button';
 import { DetailPageNav } from '@/components/layout/detail-page-nav';
@@ -204,6 +205,19 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
       {/* Inline default-fields setup — pops a dialog, no Settings detour */}
       {showSetupBanner ? <InvoiceDefaultsSetupBanner current={docFields} /> : null}
+
+      {/* Per-invoice override of payment instructions / terms / policies */}
+      {showSetupBanner ? (
+        <InvoiceOverridesEditor
+          invoiceId={invoice.id}
+          override={{
+            payment_instructions: invoice.payment_instructions_override ?? null,
+            terms: invoice.terms_override ?? null,
+            policies: invoice.policies_override ?? null,
+          }}
+          tenant={docFields}
+        />
+      ) : null}
 
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-2">

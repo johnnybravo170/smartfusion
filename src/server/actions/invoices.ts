@@ -191,7 +191,7 @@ export async function sendInvoiceAction(input: {
   const { data: invoice, error: invErr } = await supabase
     .from('invoices')
     .select(
-      'id, status, amount_cents, tax_cents, tax_inclusive, line_items, customer_note, job_id, customer_id',
+      'id, status, amount_cents, tax_cents, tax_inclusive, line_items, customer_note, job_id, customer_id, payment_instructions_override, terms_override, policies_override',
     )
     .eq('id', parsed.data.invoice_id)
     .is('deleted_at', null)
@@ -215,9 +215,22 @@ export async function sendInvoiceAction(input: {
     .single();
 
   const stripeAccountId = tenantRow?.stripe_account_id as string | null;
-  const docPayment = (tenantRow?.invoice_payment_instructions as string | null) ?? null;
-  const docTerms = (tenantRow?.invoice_terms as string | null) ?? null;
-  const docPolicies = (tenantRow?.invoice_policies as string | null) ?? null;
+  const { resolveInvoiceDocFields } = await import('@/lib/invoices/default-doc-fields');
+  const docFields = resolveInvoiceDocFields({
+    override: {
+      payment_instructions: (invoice.payment_instructions_override as string | null) ?? null,
+      terms: (invoice.terms_override as string | null) ?? null,
+      policies: (invoice.policies_override as string | null) ?? null,
+    },
+    tenant: {
+      payment_instructions: (tenantRow?.invoice_payment_instructions as string | null) ?? null,
+      terms: (tenantRow?.invoice_terms as string | null) ?? null,
+      policies: (tenantRow?.invoice_policies as string | null) ?? null,
+    },
+  });
+  const docPayment = docFields.payment_instructions;
+  const docTerms = docFields.terms;
+  const docPolicies = docFields.policies;
 
   // Load customer for the checkout line item and email.
   const { data: customer } = await supabase
@@ -398,7 +411,7 @@ export async function resendInvoiceAction(input: {
   const { data: invoice, error: invErr } = await supabase
     .from('invoices')
     .select(
-      'id, status, amount_cents, tax_cents, tax_inclusive, line_items, customer_note, job_id, customer_id, pdf_url',
+      'id, status, amount_cents, tax_cents, tax_inclusive, line_items, customer_note, job_id, customer_id, pdf_url, payment_instructions_override, terms_override, policies_override',
     )
     .eq('id', input.invoiceId)
     .is('deleted_at', null)
@@ -417,15 +430,28 @@ export async function resendInvoiceAction(input: {
     return { ok: false, error: 'No payment link found. Send the invoice first.' };
   }
 
-  // Load tenant invoice doc defaults.
+  // Load tenant invoice doc defaults and resolve against per-invoice overrides.
   const { data: tenantDocs } = await supabase
     .from('tenants')
     .select('invoice_payment_instructions, invoice_terms, invoice_policies')
     .eq('id', tenant.id)
     .single();
-  const docPayment = (tenantDocs?.invoice_payment_instructions as string | null) ?? null;
-  const docTerms = (tenantDocs?.invoice_terms as string | null) ?? null;
-  const docPolicies = (tenantDocs?.invoice_policies as string | null) ?? null;
+  const { resolveInvoiceDocFields } = await import('@/lib/invoices/default-doc-fields');
+  const resolvedDocs = resolveInvoiceDocFields({
+    override: {
+      payment_instructions: (invoice.payment_instructions_override as string | null) ?? null,
+      terms: (invoice.terms_override as string | null) ?? null,
+      policies: (invoice.policies_override as string | null) ?? null,
+    },
+    tenant: {
+      payment_instructions: (tenantDocs?.invoice_payment_instructions as string | null) ?? null,
+      terms: (tenantDocs?.invoice_terms as string | null) ?? null,
+      policies: (tenantDocs?.invoice_policies as string | null) ?? null,
+    },
+  });
+  const docPayment = resolvedDocs.payment_instructions;
+  const docTerms = resolvedDocs.terms;
+  const docPolicies = resolvedDocs.policies;
 
   // Load customer for email. Tenant name/logo come from getEmailBrandingForTenant below.
   const { data: customer } = await supabase
@@ -948,6 +974,62 @@ export async function updateInvoiceNoteAction(input: {
   if (updateErr) return { ok: false, error: `Failed to update note: ${updateErr.message}` };
 
   revalidatePath(`/invoices/${input.invoiceId}`);
+  return { ok: true, id: input.invoiceId };
+}
+
+const MAX_DOC_FIELD_LEN = 4000;
+
+function normalizeOverrideField(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+export async function updateInvoiceOverridesAction(input: {
+  invoiceId: string;
+  payment_instructions?: string | null;
+  terms?: string | null;
+  policies?: string | null;
+}): Promise<InvoiceActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+  const { data: invoice, error: invErr } = await supabase
+    .from('invoices')
+    .select('id, status')
+    .eq('id', input.invoiceId)
+    .is('deleted_at', null)
+    .single();
+  if (invErr || !invoice) return { ok: false, error: 'Invoice not found.' };
+  if (invoice.status !== 'draft' && invoice.status !== 'sent') {
+    return { ok: false, error: 'Can only override on draft or sent invoices.' };
+  }
+
+  const payment = normalizeOverrideField(input.payment_instructions);
+  const terms = normalizeOverrideField(input.terms);
+  const policies = normalizeOverrideField(input.policies);
+
+  for (const v of [payment, terms, policies]) {
+    if (v && v.length > MAX_DOC_FIELD_LEN) {
+      return { ok: false, error: `Each field must be at most ${MAX_DOC_FIELD_LEN} characters.` };
+    }
+  }
+
+  const { error: updateErr } = await supabase
+    .from('invoices')
+    .update({
+      payment_instructions_override: payment,
+      terms_override: terms,
+      policies_override: policies,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.invoiceId);
+
+  if (updateErr) return { ok: false, error: `Failed to save overrides: ${updateErr.message}` };
+
+  revalidatePath(`/invoices/${input.invoiceId}`);
+  revalidatePath(`/view/invoice/${input.invoiceId}`);
   return { ok: true, id: input.invoiceId };
 }
 
