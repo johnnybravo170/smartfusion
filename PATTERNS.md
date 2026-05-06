@@ -266,16 +266,24 @@ Bringing existing data into the app — customers today, projects/invoices/expen
 - Money + tax math on imported invoices must FREEZE at the rate effective on the historical date, not recompute at today's rate. The customer-facing tax helper in `src/lib/providers/tax/canadian.ts` accepts an explicit override for exactly this case.
 - Cross-entity FKs (invoice.customer_id resolved from the customer phase): commit phases in topological order — customers first, then projects, then invoices.
 
+**Cross-entity FK resolution (Phase B onward):**
+
+When an entity references another (e.g. project → customer), the wizard surfaces a per-row resolution column showing whether the reference matched an existing row, will create a new row, or is unattached. Defaults: matched if a strong dedup tier hit; create-new with the reference's name otherwise. The commit pipeline creates the side-effect rows FIRST (tagged with the SAME batch_id) so the FKs land cleanly, then inserts the primary entity rows. Rollback removes the side-effect rows too — this preserves "rollback removes everything from that operation" without forcing a multi-step UX.
+
 Files in this family today:
 
 - `supabase/migrations/0185_import_batches.sql` — `import_batches` table + storage bucket
-- `src/lib/customers/dedup.ts` — Phase A dedup engine
-- `src/lib/ai-gateway/{tasks,routing}.ts` — `onboarding_customer_classify` task
-- `src/server/actions/onboarding-import.ts` — parse + commit + rollback actions
-- `src/components/features/onboarding/customer-import-wizard.tsx` — three-stage client wizard
-- `src/app/(dashboard)/contacts/import/page.tsx` — entry route
+- `supabase/migrations/0186_projects_import_batch.sql` — `projects.import_batch_id`
+- `src/lib/customers/dedup.ts` / `src/lib/projects/dedup.ts` — per-entity dedup engines
+- `src/lib/ai-gateway/{tasks,routing}.ts` — `onboarding_customer_classify`, `onboarding_project_classify` tasks
+- `src/server/actions/onboarding-import.ts` — Phase A (customers) actions
+- `src/server/actions/onboarding-import-projects.ts` — Phase B (projects + side-effect customers) actions
+- `src/components/features/onboarding/customer-import-wizard.tsx` — Phase A wizard
+- `src/components/features/onboarding/project-import-wizard.tsx` — Phase B wizard
+- `src/components/features/onboarding/imports-list.tsx` — `/settings/imports` rollback list (per-kind dispatch)
+- `src/app/(dashboard)/contacts/import/page.tsx` + `src/app/(dashboard)/projects/import/page.tsx` — entry routes
 
-The kanban card "Henry-powered onboarding import wizard" tracks broader phasing (B: projects, C: invoices). Don't expand scope mid-PR.
+The kanban card "Henry-powered onboarding import wizard" tracks broader phasing (C: invoices with tax-math freeze, D: expenses + bulk PDF receipts). Don't expand scope mid-PR.
 
 ---
 

@@ -27,12 +27,20 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { rollbackCustomerImportAction } from '@/server/actions/onboarding-import';
+import { rollbackProjectImportAction } from '@/server/actions/onboarding-import-projects';
 
 export type ImportBatchRow = {
   id: string;
   kind: 'customers' | 'projects' | 'invoices' | 'expenses';
   sourceFilename: string | null;
-  summary: { created?: number; merged?: number; skipped?: number };
+  /** customersCreated only set for kind='projects' (side-effect customers
+   *  created when project rows referenced new customer names). */
+  summary: {
+    created?: number;
+    merged?: number;
+    skipped?: number;
+    customersCreated?: number;
+  };
   note: string | null;
   createdAt: string;
   createdByEmail: string | null;
@@ -83,21 +91,39 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  const isCustomerBatch = batch.kind === 'customers';
+  const rollbackable = batch.kind === 'customers' || batch.kind === 'projects';
   const rolledBack = !!batch.rolledBackAt;
   const created = batch.summary.created ?? 0;
   const merged = batch.summary.merged ?? 0;
   const skipped = batch.summary.skipped ?? 0;
+  const sideEffectCustomers = batch.summary.customersCreated ?? 0;
 
   function handleRollback() {
-    if (!isCustomerBatch) return;
+    if (!rollbackable) return;
     startTransition(async () => {
-      const res = await rollbackCustomerImportAction(batch.id);
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
+      if (batch.kind === 'customers') {
+        const res = await rollbackCustomerImportAction(batch.id);
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        toast.success(
+          `Rolled back. ${res.deleted} customer${res.deleted === 1 ? '' : 's'} removed.`,
+        );
+      } else if (batch.kind === 'projects') {
+        const res = await rollbackProjectImportAction(batch.id);
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        const parts = [`${res.deletedProjects} project${res.deletedProjects === 1 ? '' : 's'}`];
+        if (res.deletedCustomers > 0) {
+          parts.push(
+            `${res.deletedCustomers} side-effect customer${res.deletedCustomers === 1 ? '' : 's'}`,
+          );
+        }
+        toast.success(`Rolled back. ${parts.join(' + ')} removed.`);
       }
-      toast.success(`Rolled back. ${res.deleted} customer${res.deleted === 1 ? '' : 's'} removed.`);
       setOpen(false);
       router.refresh();
     });
@@ -126,6 +152,12 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
                 {skipped} skipped
               </Badge>
             ) : null}
+            {sideEffectCustomers > 0 && batch.kind === 'projects' ? (
+              <Badge variant="outline" className="text-xs">
+                + {sideEffectCustomers} new customer
+                {sideEffectCustomers === 1 ? '' : 's'}
+              </Badge>
+            ) : null}
             {rolledBack ? (
               <Badge variant="secondary" className="bg-amber-100 text-amber-900 text-xs">
                 Rolled back
@@ -151,10 +183,12 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
             <Button
               variant="outline"
               size="sm"
-              disabled={!isCustomerBatch || pending}
+              disabled={!rollbackable || pending}
               title={
-                isCustomerBatch
-                  ? 'Soft-delete every customer that came from this batch.'
+                rollbackable
+                  ? batch.kind === 'projects'
+                    ? 'Soft-delete every project (and any side-effect customers) from this batch.'
+                    : 'Soft-delete every customer that came from this batch.'
                   : `Rollback for ${batch.kind} batches will land in a later phase.`
               }
               onClick={() => setOpen(true)}
@@ -167,11 +201,26 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
                 <AlertDialogTitle>Roll this batch back?</AlertDialogTitle>
                 <AlertDialogDescription asChild>
                   <div className="space-y-2 text-sm">
-                    <p>
-                      We'll soft-delete the {created} {created === 1 ? 'customer' : 'customers'}{' '}
-                      that Henry created in this batch. Your existing customers (the ones marked as
-                      merged) stay put.
-                    </p>
+                    {batch.kind === 'projects' ? (
+                      <p>
+                        We'll soft-delete the {created} {created === 1 ? 'project' : 'projects'}{' '}
+                        Henry created in this batch
+                        {sideEffectCustomers > 0 ? (
+                          <>
+                            , plus the {sideEffectCustomers}{' '}
+                            {sideEffectCustomers === 1 ? 'customer' : 'customers'} created alongside
+                            them
+                          </>
+                        ) : null}
+                        . Existing projects/customers (anything marked merged) stay put.
+                      </p>
+                    ) : (
+                      <p>
+                        We'll soft-delete the {created} {created === 1 ? 'customer' : 'customers'}{' '}
+                        that Henry created in this batch. Your existing customers (the ones marked
+                        as merged) stay put.
+                      </p>
+                    )}
                     <p className="text-muted-foreground">
                       Soft-delete means they're hidden but recoverable — get in touch if you need to
                       undo a rollback.

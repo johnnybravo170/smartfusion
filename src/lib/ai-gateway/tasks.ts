@@ -38,6 +38,7 @@ export const KNOWN_TASKS = [
   'intake_artifact_classify', // Gemini Flash batch classification of intake artifacts (per-artifact chip row)
   'intake_scope_augment', // post-parse "what's likely missing from this scope?" pass
   'onboarding_customer_classify', // Day-1 import wizard: file/paste → proposed customer rows
+  'onboarding_project_classify', // Day-1 import wizard: file/paste → proposed project rows + customer references
 ] as const;
 
 export type KnownTask = (typeof KNOWN_TASKS)[number];

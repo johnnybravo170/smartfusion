@@ -181,6 +181,16 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     primary: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
     fallback_chain: ['anthropic', 'openai'],
   },
+
+  // Phase B of the onboarding wizard. Same quality bar as Phase A; the
+  // model has more reasoning to do here since each row carries a
+  // customer reference that needs to be teased out separately from the
+  // project name. Sonnet 4.6 is the right level for that — Opus is
+  // overkill, Flash drops detail.
+  onboarding_project_classify: {
+    primary: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+    fallback_chain: ['anthropic', 'openai'],
+  },
 };
 
 export function lookupRoute(task: string, custom?: Record<string, RouteConfig>): RouteConfig {

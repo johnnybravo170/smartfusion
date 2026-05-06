@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Plus, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { AwaitingApprovalList } from '@/components/features/projects/awaiting-approval-list';
@@ -80,12 +80,20 @@ export default async function ProjectsPage({
             {total === 0 ? 'No projects yet.' : `${active} active · ${counts.complete} complete`}
           </p>
         </div>
-        <Button asChild>
-          <Link href="/projects/new">
-            <Plus className="size-3.5" />
-            New project
-          </Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild variant="outline">
+            <Link href="/projects/import">
+              <Sparkles className="size-3.5" />
+              Import with Henry
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/projects/new">
+              <Plus className="size-3.5" />
+              New project
+            </Link>
+          </Button>
+        </div>
       </header>
 
       {total > 0 && (
