@@ -10,6 +10,11 @@ import { sendEmail } from '@/lib/email/send';
 import { estimateAcceptedEmailHtml } from '@/lib/email/templates/estimate-accepted-notification';
 import { estimateApprovalEmailHtml } from '@/lib/email/templates/estimate-approval';
 import {
+  estimateFeedbackEmailHtml,
+  estimateFeedbackSmsBody,
+  type FeedbackEmailComment,
+} from '@/lib/email/templates/estimate-feedback-notification';
+import {
   estimateViewedEmailHtml,
   looksLikeBot,
 } from '@/lib/email/templates/estimate-viewed-notification';
@@ -661,7 +666,10 @@ export async function submitEstimateFeedbackAction(
     projectId,
     projectName,
     customerName,
-    commentCount: rows.length,
+    comments: cleaned.map((c) => ({
+      body: c.body,
+      isLineItem: Boolean(c.costLineId),
+    })),
   }).catch((err) => {
     console.error('[feedback] notification dispatch failed:', err);
   });
@@ -675,9 +683,9 @@ async function dispatchFeedbackNotifications(args: {
   projectId: string;
   projectName: string;
   customerName: string;
-  commentCount: number;
+  comments: FeedbackEmailComment[];
 }) {
-  const { admin, tenantId, projectId, projectName, customerName, commentCount } = args;
+  const { admin, tenantId, projectId, projectName, customerName, comments } = args;
 
   // Scope notifications to operator-level roles. Workers (field crew) and
   // any future role-restricted staff should NEVER see customer-pricing
@@ -697,8 +705,22 @@ async function dispatchFeedbackNotifications(args: {
     if (u.id && u.email) emailByUserId.set(u.id, u.email);
   }
 
-  const feedbackUrl = `https://app.heyhenry.io/projects/${projectId}?tab=estimate#feedback`;
-  const preview = `${customerName} left ${commentCount} comment${commentCount === 1 ? '' : 's'} on the estimate for ${projectName}.`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.heyhenry.io';
+  const feedbackUrl = `${appUrl}/projects/${projectId}?tab=estimate#feedback`;
+  const count = comments.length;
+  const noun = count === 1 ? 'comment' : 'comments';
+  const subject = `💬 ${customerName} left ${count} ${noun} on your estimate`;
+  const html = estimateFeedbackEmailHtml({
+    customerName,
+    projectName,
+    projectUrl: feedbackUrl,
+    comments,
+  });
+  const smsBody = estimateFeedbackSmsBody({
+    customerName,
+    comments,
+    projectUrl: feedbackUrl,
+  });
 
   for (const m of members ?? []) {
     const prefs = (m.notify_prefs as Record<string, Record<string, boolean> | undefined>) ?? {};
@@ -710,8 +732,8 @@ async function dispatchFeedbackNotifications(args: {
         await sendEmail({
           tenantId,
           to: email,
-          subject: `New estimate feedback from ${customerName}`,
-          html: `<p>${preview}</p><p><a href="${feedbackUrl}">Open in HeyHenry</a></p>`,
+          subject,
+          html,
           caslCategory: 'transactional',
           relatedType: 'feedback',
           relatedId: projectId,
@@ -726,7 +748,7 @@ async function dispatchFeedbackNotifications(args: {
         await sendSms({
           tenantId,
           to: phone,
-          body: `${preview} ${feedbackUrl}`,
+          body: smsBody,
           relatedType: 'platform',
           caslCategory: 'transactional',
           caslEvidence: { kind: 'feedback_internal_notify', projectId },
