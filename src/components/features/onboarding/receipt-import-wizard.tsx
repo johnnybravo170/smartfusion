@@ -83,7 +83,16 @@ export function ReceiptImportWizard() {
       const file = files[i];
       const fd = new FormData();
       fd.set('file', file);
-      const res = await parseReceiptForImportAction(fd);
+      let res: Awaited<ReturnType<typeof parseReceiptForImportAction>>;
+      try {
+        res = await parseReceiptForImportAction(fd);
+      } catch (err) {
+        // One thrown call (network / function timeout) used to freeze the
+        // whole batch on the processing stage. Treat it like a parse error
+        // so the loop continues and the operator can retry that file.
+        console.error('parseReceiptForImportAction failed', err);
+        res = { ok: false, error: 'Could not read this receipt.', filename: file.name };
+      }
       if (res.ok) {
         // Categories come back identical on every successful parse,
         // but we capture once on the first hit so the picker is ready
