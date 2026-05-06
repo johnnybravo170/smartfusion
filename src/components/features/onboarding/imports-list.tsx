@@ -3,10 +3,9 @@
 /**
  * /settings/imports — list of every import batch with a rollback button.
  *
- * Phase A handles `customers` batches only. Other kinds (projects,
- * invoices, expenses) render in the list but their rollback button is
- * disabled with a tooltip until their phase ships and adds the
- * corresponding rollback action.
+ * All four phases (customers / projects / invoices / expenses) are
+ * wired with their own rollback action; this component dispatches by
+ * `batch.kind`.
  */
 
 import { History, Loader2, Sparkles, Undo2 } from 'lucide-react';
@@ -77,15 +76,34 @@ function EmptyState() {
       <History className="size-6 text-muted-foreground" />
       <p className="text-sm font-medium">Nothing imported yet</p>
       <p className="text-xs text-muted-foreground">
-        When Henry brings in a batch of customers (or later, projects / invoices), it lands here so
-        you can roll it back if you ever need to.
+        Every batch Henry brings in lands here so you can roll it back if you ever need to.
       </p>
-      <Button asChild className="mt-2">
-        <Link href="/contacts/import">
-          <Sparkles className="size-3.5" />
-          Import customers
-        </Link>
-      </Button>
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+        <Button asChild size="sm">
+          <Link href="/contacts/import">
+            <Sparkles className="size-3.5" />
+            Customers
+          </Link>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/projects/import">
+            <Sparkles className="size-3.5" />
+            Projects
+          </Link>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/invoices/import">
+            <Sparkles className="size-3.5" />
+            Invoices
+          </Link>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/expenses/import">
+            <Sparkles className="size-3.5" />
+            Receipts
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 }
