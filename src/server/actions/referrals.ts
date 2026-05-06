@@ -3,8 +3,10 @@
 /**
  * Server actions for the referral system (Plan A: owner-to-owner referrals).
  *
- * All actions require auth except where noted. The referral link uses
- * the public domain (heyhenry.io/r/{code}).
+ * All actions require auth except where noted. The referral link points at
+ * the app domain (app.heyhenry.io/r/{code}) since that's where the
+ * (public)/r/[code] landing route is served from. The marketing site at
+ * heyhenry.io does not host this route.
  */
 
 import { getCurrentTenant } from '@/lib/auth/helpers';
@@ -18,7 +20,7 @@ import { sendEmail } from '@/lib/email/send';
 import { referralInviteHtml, referralInviteSubject } from '@/lib/email/templates/referral-invite';
 import { referralEmailSchema, referralSMSSchema } from '@/lib/validators/referral';
 
-const PUBLIC_DOMAIN = 'https://heyhenry.io';
+const PUBLIC_DOMAIN = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.heyhenry.io';
 
 export type ReferralActionResult<T = unknown> =
   | { ok: true; data: T }
