@@ -421,6 +421,10 @@ The helpers live in `src/lib/messaging/email-outbound.ts`. **Don't roll your own
 
 Multi-tenant safety: the resolver bounces on ambiguity rather than guess. We never surface a customer reply to the wrong tenant.
 
+**Customer SMS routing (Phase 3).** Twilio webhook at `/api/twilio/webhook/inbound` handles STOP/START first (existing CASL flow) then routes normal-text messages via `handleCustomerInboundSms` in `src/lib/messaging/sms-customer-router.ts`. Single-tier resolver (recent outbound within 30 days) since SMS has no header threading. Multi-tenant collision case bounces silently (no insert) — privacy contract is the same as email: never surface to the wrong tenant.
+
+Outbound SMS to the customer is already covered by Phase 1's `sendMessageNotification` (cron drainer), which sends SMS when the customer has a phone. Phase 3 only adds the inbound side.
+
 **Read tracking.** Each message has `read_by_operator_at` / `read_by_customer_at`. Operator side fires `markProjectMessagesReadAction` on tab mount; portal side fires `markCustomerPortalMessagesReadAction`. Unread counts drive the badge on the operator's Messages tab pill and the portal's Messages tab.
 
 When adding new channels (Phase 2 email, Phase 3 SMS), the table shape and notification dispatcher stay the same; new feeders just write rows with their channel value. See `PROJECT_MESSAGING_PLAN.md`.

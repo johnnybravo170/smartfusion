@@ -192,16 +192,20 @@ The smallest shippable unit. No inbound email/SMS yet; just a portal-only thread
 - Multi-tenant scenario: same customer email on two tenants, reply to one → lands only on the right project, doesn't leak to the other tenant.
 - Auto-responder: customer's vacation autoresponder fires on receipt → no row appears in either tenant.
 
-### Phase 3 — SMS two-way (1-2 days, after Twilio short-code or 10DLC is sorted)
+### Phase 3 — SMS two-way (SHIPPED 2026-05-06; live activation pending Twilio 10DLC)
 
-- [ ] Audit current `sendSms` callsites — wrap project-context calls in `sendProjectSms` that writes a `project_messages` row with `channel='sms'`
-- [ ] Twilio inbound webhook: route by recipient number → tenant; lookup most-recent outbound to that From number → project_id; insert with `channel='sms'`, `direction='inbound'`
-- [ ] Quiet hours: enforce on outbound notifications per launch-checklist item §14
-- [ ] CASL evidence on every outbound (already standard)
+Outbound path was already covered by Phase 1's cron drainer (`sendMessageNotification` sends SMS when the customer has a phone). Phase 3 closes the loop on the inbound side.
 
-**Verify:**
-- Customer texts back the SMS reminder → message appears in project thread.
-- Operator types in portal → customer gets SMS (if their channel pref is SMS) and email (if email).
+- [x] **Inbound routing.** Twilio webhook at `/api/twilio/webhook/inbound` extended with a project-message branch after STOP/START handling. Sender phone → `customers` lookup → list of (tenant, project) candidates → resolver picks one or bounces.
+- [x] **SMS resolver.** `src/lib/messaging/sms-customer-router.ts` — single tier (recent outbound match within 30 days). Common case (one customer record per phone) is trivial; multi-tenant collision case bounces by NOT inserting (silent) since Twilio webhook can't easily reply with a clarifying SMS in the response without confusing the customer.
+- [x] **Reuses** Phase 2's `dispatchCustomerMessageToOperators` for immediate operator notification when an SMS lands.
+- [ ] **Quiet hours** on outbound — already enforced via existing CASL/SMS pipeline.
+- [ ] **Live activation** — blocked on Twilio 10DLC / short-code per launch-checklist §14. Code lands now; route is live when 10DLC is approved and per-tenant numbers are configured.
+
+**Verify (post-10DLC):**
+- Customer texts back the SMS notification → message appears in project Messages thread.
+- Operator types in portal → customer gets SMS (Phase 1 path, regression check) AND sees the message in portal.
+- Multi-tenant: customer with two contractors who've both texted them recently — bounces gracefully (no row appears in either tenant).
 
 ### Phase 4 — Fold legacy estimate feedback into the unified view (0.5 day)
 

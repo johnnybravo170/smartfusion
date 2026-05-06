@@ -18,6 +18,7 @@
  */
 
 import twilio from 'twilio';
+import { handleCustomerInboundSms } from '@/lib/messaging/sms-customer-router';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const STOP_KEYWORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']);
@@ -108,14 +109,41 @@ export async function POST(request: Request) {
     );
   }
 
-  // TwiML reply. Empty for non-keyword messages, explicit confirmation for
-  // STOP/START so carriers see we're respecting the opt-out lifecycle.
+  // Phase 3 of PROJECT_MESSAGING_PLAN.md — for non-STOP/START messages,
+  // try to route to a project_messages thread. If the sender's phone
+  // matches a customer on exactly one (tenant, project) tuple — or
+  // disambiguates via recent outbound — we insert as channel='sms',
+  // direction='inbound' and notify the operators. Best-effort; failure
+  // doesn't block the TwiML response.
+  let projectRouted = false;
+  if (!isStop && !isStart && body.length > 0) {
+    try {
+      const result = await handleCustomerInboundSms({
+        twilioSid: sid,
+        fromPhone: from,
+        toPhone: to,
+        body,
+      });
+      projectRouted = result.ok;
+    } catch (err) {
+      console.error('[twilio-inbound] project routing failed', err);
+    }
+  }
+
+  // TwiML reply. Empty for normal messages (the customer already sees
+  // their own SMS — a bot reply would be confusing), explicit
+  // confirmation for STOP/START so carriers see we're respecting the
+  // opt-out lifecycle.
   const twiml = new twilio.twiml.MessagingResponse();
   if (isStop) {
     twiml.message("You've been unsubscribed. Reply START to opt back in.");
   } else if (isStart) {
     twiml.message("You're re-subscribed. Reply STOP any time to opt out.");
   }
+  // projectRouted intentionally produces no TwiML — the operator will
+  // see the message in their portal/Messages tab and respond there.
+
+  void projectRouted;
 
   return new Response(twiml.toString(), {
     status: 200,
