@@ -432,3 +432,26 @@ Provisioning is currently manual (Twilio Console + direct SQL update of `tenants
 **Read tracking.** Each message has `read_by_operator_at` / `read_by_customer_at`. Operator side fires `markProjectMessagesReadAction` on tab mount; portal side fires `markCustomerPortalMessagesReadAction`. Unread counts drive the badge on the operator's Messages tab pill and the portal's Messages tab.
 
 When adding new channels (Phase 2 email, Phase 3 SMS), the table shape and notification dispatcher stay the same; new feeders just write rows with their channel value. See `PROJECT_MESSAGING_PLAN.md`.
+
+---
+
+## 19. Customer-driven scratchpad (write-mostly-from-customer surfaces)
+
+A surface where the **customer authors content into a project** without operator curation, and the operator's only cue is a passive in-app badge — never an external notification. The first instance is the customer idea board (CUSTOMER_IDEA_BOARD_PLAN.md). Future surfaces of this shape (e.g. a customer-side punch-list of post-handoff issues) should follow the same conventions.
+
+Defining traits:
+- **Customer writes via portal_slug + admin client** (no Supabase auth context). Operator reads via the standard authed server client + RLS. Mirror `src/server/actions/project-idea-board.ts` for the pair of paths.
+- **No external notifications fire on customer writes.** Critical — the whole point of this surface category is that the customer feels safe dumping content. Operator-side passive cue only.
+- **Per-item operator-side `read_by_operator_at`** drives a tab-pill unread badge. Mark-read fires server-side on tab open (in the tab's server component), not via a client useEffect — robust to JS-disabled views, no flicker.
+- **Operator never deletes customer content in V1.** Customer can delete their own. If a moderation need surfaces later, prefer a `hidden_from_operator_at` flag over actual delete.
+
+Files this pattern was applied to:
+
+- `src/components/features/portal/portal-idea-board.tsx` — customer composer + grid (image / link / note kinds)
+- `src/components/features/projects/customer-ideas-section.tsx` — operator read-only view rendered inside the Selections tab
+- `src/server/actions/project-idea-board.ts` — paired customer-side (admin client, portal_slug auth) and operator-side (server client, RLS) actions
+- `src/components/features/projects/tabs/selections-tab-server.tsx` — operator-side host that mark-reads on render
+- `src/lib/storage/idea-board.ts` — storage path helper that reuses the `photos` bucket under a `idea-board-${projectId}` path prefix (no companion `photos` table row)
+- `src/lib/idea-board/url-preview.ts` — server-side URL preview fetcher (Pinterest oEmbed + og:image scrape) with SSRF guards + per-slug rate limit
+
+When you change one of these surfaces, evaluate every sibling instance in this family and surface to the user before silently propagating.

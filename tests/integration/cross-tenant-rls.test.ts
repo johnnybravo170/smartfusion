@@ -435,6 +435,30 @@ const RLS_TABLE_CASES: RlsCase[] = [
       customer_name: `intake-inject-${stamp}`,
     }),
   },
+  {
+    table: 'project_idea_board_items',
+    seed: async ({ admin, tenant, stamp }) => {
+      const { data, error } = await admin
+        .from('project_idea_board_items')
+        .insert({
+          tenant_id: tenant.tenantId,
+          project_id: tenant.projectId,
+          kind: 'note',
+          notes: `pibi-${stamp}`,
+        })
+        .select('id')
+        .single();
+      if (error || !data) throw new Error(error?.message ?? 'pibi seed failed');
+      return data.id as string;
+    },
+    updatePayload: { notes: 'cross-tenant tamper' },
+    insertAcrossTenants: ({ tenant, stamp }) => ({
+      tenant_id: tenant.tenantId,
+      project_id: tenant.projectId,
+      kind: 'note',
+      notes: `pibi-inject-${stamp}`,
+    }),
+  },
 ];
 
 async function provisionTenant(

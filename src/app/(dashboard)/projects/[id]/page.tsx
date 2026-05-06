@@ -109,27 +109,40 @@ export default async function ProjectDetailPage({
   // Shell-only queries. getProject is React.cache-wrapped, so generateMetadata
   // + the shell + any inner tab that also calls it (e.g. OverviewTab) dedupe
   // to a single DB hit per request.
-  const [project, projectCategories, progress, draws, unreadMessagesRes] = await Promise.all([
-    getProject(id),
-    listBudgetCategoriesForProject(id),
-    getProjectProgress(id),
-    getProjectDrawSummary(id),
-    // Unread inbound messages count for the Messages tab badge. Cheap
-    // query thanks to idx_pm_tenant_unread_inbound. Failure is non-fatal
-    // (we just hide the badge).
-    (async () => {
-      const supabase = await import('@/lib/supabase/server').then((m) => m.createClient());
-      const c = await supabase;
-      return c
-        .from('project_messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('project_id', id)
-        .eq('direction', 'inbound')
-        .is('read_by_operator_at', null);
-    })(),
-  ]);
+  const [project, projectCategories, progress, draws, unreadMessagesRes, unreadIdeasRes] =
+    await Promise.all([
+      getProject(id),
+      listBudgetCategoriesForProject(id),
+      getProjectProgress(id),
+      getProjectDrawSummary(id),
+      // Unread inbound messages count for the Messages tab badge. Cheap
+      // query thanks to idx_pm_tenant_unread_inbound. Failure is non-fatal
+      // (we just hide the badge).
+      (async () => {
+        const supabase = await import('@/lib/supabase/server').then((m) => m.createClient());
+        const c = await supabase;
+        return c
+          .from('project_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('project_id', id)
+          .eq('direction', 'inbound')
+          .is('read_by_operator_at', null);
+      })(),
+      // Unread customer-idea-board items for the Selections tab badge.
+      // Cheap thanks to idx_pibi_tenant_unread. Failure is non-fatal.
+      (async () => {
+        const supabase = await import('@/lib/supabase/server').then((m) => m.createClient());
+        const c = await supabase;
+        return c
+          .from('project_idea_board_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('project_id', id)
+          .is('read_by_operator_at', null);
+      })(),
+    ]);
   if (!project) notFound();
   const unreadMessages = unreadMessagesRes.count ?? 0;
+  const unreadIdeas = unreadIdeasRes.count ?? 0;
 
   // Stage-aware default tab when the operator hits /projects/[id] without a
   // ?tab=... query. Planning lands on Budget (the work to do); active and
@@ -242,7 +255,9 @@ export default async function ProjectDetailPage({
                         : s.icon === 'messages'
                           ? MessageCircle
                           : Users;
-            const showBadge = s.key === 'messages' && unreadMessages > 0;
+            const badgeCount =
+              s.key === 'messages' ? unreadMessages : s.key === 'selections' ? unreadIdeas : 0;
+            const showBadge = badgeCount > 0;
             return (
               <Link
                 key={s.key}
@@ -258,7 +273,7 @@ export default async function ProjectDetailPage({
                 {s.label}
                 {showBadge ? (
                   <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
-                    {unreadMessages > 9 ? '9+' : unreadMessages}
+                    {badgeCount > 9 ? '9+' : badgeCount}
                   </span>
                 ) : null}
               </Link>

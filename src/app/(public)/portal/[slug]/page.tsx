@@ -6,6 +6,7 @@ import {
   type PortalDocument,
   PortalDocuments,
 } from '@/components/features/portal/portal-documents';
+import { PortalIdeaBoard } from '@/components/features/portal/portal-idea-board';
 import { PortalMessagesPanel } from '@/components/features/portal/portal-messages-panel';
 import {
   type PortalGalleryPhoto,
@@ -17,8 +18,10 @@ import { PublicViewLogger } from '@/components/features/public/public-view-logge
 import type { ProjectSubContact } from '@/lib/db/queries/project-documents';
 import type { ProjectPhase } from '@/lib/db/queries/project-phases';
 import { groupSelectionsByRoom, type ProjectSelection } from '@/lib/db/queries/project-selections';
+import { signIdeaBoardImageUrls } from '@/lib/storage/idea-board';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { isPortalPhotoTag, type PortalPhotoTag } from '@/lib/validators/portal-photo';
+import type { IdeaBoardItem } from '@/server/actions/project-idea-board';
 import type { MessageRow } from '@/server/actions/project-messages';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
@@ -48,8 +51,12 @@ export default async function PortalPage({
 }) {
   const { slug } = await params;
   const resolvedSearchParams = await searchParams;
-  const tab: 'project' | 'messages' =
-    resolvedSearchParams.tab === 'messages' ? 'messages' : 'project';
+  const tab: 'project' | 'messages' | 'ideas' =
+    resolvedSearchParams.tab === 'messages'
+      ? 'messages'
+      : resolvedSearchParams.tab === 'ideas'
+        ? 'ideas'
+        : 'project';
   const admin = createAdminClient();
 
   // Load project + tenant + customer
@@ -441,6 +448,39 @@ export default async function PortalPage({
   const initialMessages = (messageRows ?? []) as MessageRow[];
   const unreadFromBusiness = unreadFromBusinessRaw ?? 0;
 
+  // Idea board — customer-side scratchpad (CUSTOMER_IDEA_BOARD_PLAN.md
+  // Phase 1). Loaded eagerly so the Ideas tab renders without a client
+  // round-trip on first paint. No notification-firing reads here.
+  const { data: ideaRows } = await admin
+    .from('project_idea_board_items')
+    .select(
+      'id, project_id, customer_id, kind, image_storage_path, source_url, thumbnail_url, title, notes, room, read_by_operator_at, promoted_to_selection_id, promoted_at, created_at',
+    )
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false });
+  const ideaItemsRaw = (ideaRows ?? []) as IdeaBoardItem[];
+  const ideaImagePaths = ideaItemsRaw
+    .map((r) => r.image_storage_path)
+    .filter((p): p is string => Boolean(p));
+  const ideaSignedUrls = await signIdeaBoardImageUrls(admin, ideaImagePaths);
+  const initialIdeaItems: IdeaBoardItem[] = ideaItemsRaw.map((r) => ({
+    ...r,
+    image_url: r.image_storage_path ? (ideaSignedUrls.get(r.image_storage_path) ?? null) : null,
+  }));
+
+  // Room suggestions for the idea-board composer: combine distinct rooms
+  // from existing selections + prior idea-board entries.
+  const roomSuggestions = Array.from(
+    new Set(
+      [
+        ...selections.map((s) => s.room).filter((r): r is string => Boolean(r)),
+        ...initialIdeaItems.map((i) => i.room).filter((r): r is string => Boolean(r)),
+      ]
+        .map((r) => r.trim())
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
+
   // Group updates by date
   const updatesByDate = new Map<string, typeof updates>();
   for (const u of updates ?? []) {
@@ -496,9 +536,9 @@ export default async function PortalPage({
         {customerName ? <p className="mt-1 text-sm text-muted-foreground">{customerName}</p> : null}
       </header>
 
-      {/* Tab nav — Phase 1 of PROJECT_MESSAGING_PLAN.md introduces a
-          minimal "Project" / "Messages" split. Future PRs may break the
-          Project tab into Updates / Budget / Photos / Files sub-tabs. */}
+      {/* Tab nav — Project / Messages / Ideas. Messages and Ideas are
+          described in PROJECT_MESSAGING_PLAN.md and CUSTOMER_IDEA_BOARD_PLAN.md
+          respectively. */}
       <div className="mb-6 flex gap-1 border-b">
         <Link
           href={`/portal/${slug}`}
@@ -527,6 +567,17 @@ export default async function PortalPage({
             </span>
           ) : null}
         </Link>
+        <Link
+          href={`/portal/${slug}?tab=ideas`}
+          prefetch={false}
+          className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            tab === 'ideas'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground'
+          }`}
+        >
+          Ideas
+        </Link>
       </div>
 
       {tab === 'messages' ? (
@@ -535,6 +586,12 @@ export default async function PortalPage({
           initialMessages={initialMessages}
           customerName={customerName || 'You'}
           businessName={businessName}
+        />
+      ) : tab === 'ideas' ? (
+        <PortalIdeaBoard
+          portalSlug={slug}
+          initialItems={initialIdeaItems}
+          roomSuggestions={roomSuggestions}
         />
       ) : (
         <>
