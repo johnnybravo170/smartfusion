@@ -7,6 +7,11 @@ export const metadata = {
   title: 'Import customers — HeyHenry',
 };
 
+// Server actions inherit the route's maxDuration. The gateway call can
+// take a minute on a multi-thousand-row paste; default 60s is too tight
+// for the showcase moment.
+export const maxDuration = 300;
+
 export default async function CustomerImportPage() {
   // Same gate as the rest of /contacts — require an active tenant.
   const tenant = await getCurrentTenant();

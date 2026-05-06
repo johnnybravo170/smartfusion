@@ -38,7 +38,15 @@ import {
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
-const MAX_PASTE_BYTES = 1 * 1024 * 1024; // 1MB hard cap on paste/file content
+// Generous caps for the realistic onboarding case: a contractor might
+// paste a multi-year QBO export. Framework cap is 50MB
+// (`experimental.serverActions.bodySizeLimit` in next.config.ts); we
+// leave headroom for multipart overhead. The LLM slice is intentionally
+// large — Sonnet 4.6 has 1M context, and partial/truncated reads are
+// worse than slow ones. Files past the slice are truncated with a
+// marker so the model can flag the operator that we ran out of room.
+const MAX_PASTE_BYTES = 25 * 1024 * 1024; // 25MB
+const MAX_LLM_SLICE_CHARS = 800_000;
 
 // ─── Parse: file/paste → proposed customers ──────────────────────────────────
 
@@ -155,7 +163,7 @@ export async function parseCustomerImportAction(formData: FormData): Promise<Par
 
   if (file instanceof File && file.size > 0) {
     if (file.size > MAX_PASTE_BYTES) {
-      return { ok: false, error: 'File is larger than 1MB. Try splitting it up.' };
+      return { ok: false, error: 'File is larger than 25MB. Try splitting it up.' };
     }
     sourceFilename = file.name;
     const buf = Buffer.from(await file.arrayBuffer());
@@ -181,18 +189,21 @@ export async function parseCustomerImportAction(formData: FormData): Promise<Par
     }
   } else if (typeof text === 'string' && text.trim()) {
     if (text.length > MAX_PASTE_BYTES) {
-      return { ok: false, error: 'Pasted text is larger than 1MB. Try splitting it up.' };
+      return { ok: false, error: 'Pasted text is larger than 25MB. Try splitting it up.' };
     }
     payload = text;
   } else {
     return { ok: false, error: 'Upload a file or paste your customer list.' };
   }
 
-  // Truncation guard: Sonnet's context is plenty, but a 1MB CSV will
-  // chew through tokens. The prompt asks the model to skip rows it can't
-  // parse, so a partial pass is preferable to a timeout.
+  // Truncation guard. The prompt asks the model to skip rows it can't
+  // parse, so a partial pass is preferable to a timeout. Sonnet 4.6
+  // handles 200K+ tokens of input comfortably; this slice is a
+  // belt-and-suspenders cap.
   const promptInput =
-    payload.length > 200_000 ? `${payload.slice(0, 200_000)}\n[...truncated]` : payload;
+    payload.length > MAX_LLM_SLICE_CHARS
+      ? `${payload.slice(0, MAX_LLM_SLICE_CHARS)}\n[...truncated — too large for one pass; split the file]`
+      : payload;
 
   let raw: { customers: RawProposedCustomer[] };
   try {

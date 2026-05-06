@@ -27,19 +27,22 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { rollbackCustomerImportAction } from '@/server/actions/onboarding-import';
+import { rollbackInvoiceImportAction } from '@/server/actions/onboarding-import-invoices';
 import { rollbackProjectImportAction } from '@/server/actions/onboarding-import-projects';
 
 export type ImportBatchRow = {
   id: string;
   kind: 'customers' | 'projects' | 'invoices' | 'expenses';
   sourceFilename: string | null;
-  /** customersCreated only set for kind='projects' (side-effect customers
-   *  created when project rows referenced new customer names). */
+  /** customersCreated set when a non-customer batch created customers
+   *  as a side-effect (project import, invoice import). projectsCreated
+   *  set similarly by invoice import. */
   summary: {
     created?: number;
     merged?: number;
     skipped?: number;
     customersCreated?: number;
+    projectsCreated?: number;
   };
   note: string | null;
   createdAt: string;
@@ -91,12 +94,14 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  const rollbackable = batch.kind === 'customers' || batch.kind === 'projects';
+  const rollbackable =
+    batch.kind === 'customers' || batch.kind === 'projects' || batch.kind === 'invoices';
   const rolledBack = !!batch.rolledBackAt;
   const created = batch.summary.created ?? 0;
   const merged = batch.summary.merged ?? 0;
   const skipped = batch.summary.skipped ?? 0;
   const sideEffectCustomers = batch.summary.customersCreated ?? 0;
+  const sideEffectProjects = batch.summary.projectsCreated ?? 0;
 
   function handleRollback() {
     if (!rollbackable) return;
@@ -117,6 +122,24 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
           return;
         }
         const parts = [`${res.deletedProjects} project${res.deletedProjects === 1 ? '' : 's'}`];
+        if (res.deletedCustomers > 0) {
+          parts.push(
+            `${res.deletedCustomers} side-effect customer${res.deletedCustomers === 1 ? '' : 's'}`,
+          );
+        }
+        toast.success(`Rolled back. ${parts.join(' + ')} removed.`);
+      } else if (batch.kind === 'invoices') {
+        const res = await rollbackInvoiceImportAction(batch.id);
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        const parts = [`${res.deletedInvoices} invoice${res.deletedInvoices === 1 ? '' : 's'}`];
+        if (res.deletedProjects > 0) {
+          parts.push(
+            `${res.deletedProjects} side-effect project${res.deletedProjects === 1 ? '' : 's'}`,
+          );
+        }
         if (res.deletedCustomers > 0) {
           parts.push(
             `${res.deletedCustomers} side-effect customer${res.deletedCustomers === 1 ? '' : 's'}`,
@@ -152,10 +175,16 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
                 {skipped} skipped
               </Badge>
             ) : null}
-            {sideEffectCustomers > 0 && batch.kind === 'projects' ? (
+            {sideEffectCustomers > 0 && batch.kind !== 'customers' ? (
               <Badge variant="outline" className="text-xs">
                 + {sideEffectCustomers} new customer
                 {sideEffectCustomers === 1 ? '' : 's'}
+              </Badge>
+            ) : null}
+            {sideEffectProjects > 0 && batch.kind === 'invoices' ? (
+              <Badge variant="outline" className="text-xs">
+                + {sideEffectProjects} new project
+                {sideEffectProjects === 1 ? '' : 's'}
               </Badge>
             ) : null}
             {rolledBack ? (
@@ -186,9 +215,11 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
               disabled={!rollbackable || pending}
               title={
                 rollbackable
-                  ? batch.kind === 'projects'
-                    ? 'Soft-delete every project (and any side-effect customers) from this batch.'
-                    : 'Soft-delete every customer that came from this batch.'
+                  ? batch.kind === 'invoices'
+                    ? 'Soft-delete every invoice (and any side-effect projects/customers) from this batch.'
+                    : batch.kind === 'projects'
+                      ? 'Soft-delete every project (and any side-effect customers) from this batch.'
+                      : 'Soft-delete every customer that came from this batch.'
                   : `Rollback for ${batch.kind} batches will land in a later phase.`
               }
               onClick={() => setOpen(true)}
@@ -201,7 +232,26 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
                 <AlertDialogTitle>Roll this batch back?</AlertDialogTitle>
                 <AlertDialogDescription asChild>
                   <div className="space-y-2 text-sm">
-                    {batch.kind === 'projects' ? (
+                    {batch.kind === 'invoices' ? (
+                      <p>
+                        We'll soft-delete the {created} {created === 1 ? 'invoice' : 'invoices'}{' '}
+                        Henry created in this batch
+                        {sideEffectProjects > 0 ? (
+                          <>
+                            , plus the {sideEffectProjects} side-effect{' '}
+                            {sideEffectProjects === 1 ? 'project' : 'projects'}
+                          </>
+                        ) : null}
+                        {sideEffectCustomers > 0 ? (
+                          <>
+                            {sideEffectProjects > 0 ? ' and ' : ', plus '}
+                            {sideEffectCustomers} side-effect{' '}
+                            {sideEffectCustomers === 1 ? 'customer' : 'customers'}
+                          </>
+                        ) : null}
+                        . Existing rows (anything marked merged) stay put.
+                      </p>
+                    ) : batch.kind === 'projects' ? (
                       <p>
                         We'll soft-delete the {created} {created === 1 ? 'project' : 'projects'}{' '}
                         Henry created in this batch

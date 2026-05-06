@@ -46,7 +46,9 @@ import {
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
-const MAX_PASTE_BYTES = 1 * 1024 * 1024;
+// See onboarding-import.ts for cap rationale; same numbers apply.
+const MAX_PASTE_BYTES = 25 * 1024 * 1024; // 25MB
+const MAX_LLM_SLICE_CHARS = 800_000;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -201,7 +203,7 @@ export async function parseProjectImportAction(
 
   if (file instanceof File && file.size > 0) {
     if (file.size > MAX_PASTE_BYTES) {
-      return { ok: false, error: 'File is larger than 1MB. Try splitting it up.' };
+      return { ok: false, error: 'File is larger than 25MB. Try splitting it up.' };
     }
     sourceFilename = file.name;
     const buf = Buffer.from(await file.arrayBuffer());
@@ -220,7 +222,7 @@ export async function parseProjectImportAction(
     }
   } else if (typeof text === 'string' && text.trim()) {
     if (text.length > MAX_PASTE_BYTES) {
-      return { ok: false, error: 'Pasted text is larger than 1MB. Try splitting it up.' };
+      return { ok: false, error: 'Pasted text is larger than 25MB. Try splitting it up.' };
     }
     payload = text;
   } else {
@@ -228,7 +230,9 @@ export async function parseProjectImportAction(
   }
 
   const promptInput =
-    payload.length > 200_000 ? `${payload.slice(0, 200_000)}\n[...truncated]` : payload;
+    payload.length > MAX_LLM_SLICE_CHARS
+      ? `${payload.slice(0, MAX_LLM_SLICE_CHARS)}\n[...truncated — too large for one pass; split the file]`
+      : payload;
 
   let raw: { projects: RawProposedProject[] };
   try {

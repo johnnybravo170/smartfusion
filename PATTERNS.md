@@ -268,22 +268,33 @@ Bringing existing data into the app — customers today, projects/invoices/expen
 
 **Cross-entity FK resolution (Phase B onward):**
 
-When an entity references another (e.g. project → customer), the wizard surfaces a per-row resolution column showing whether the reference matched an existing row, will create a new row, or is unattached. Defaults: matched if a strong dedup tier hit; create-new with the reference's name otherwise. The commit pipeline creates the side-effect rows FIRST (tagged with the SAME batch_id) so the FKs land cleanly, then inserts the primary entity rows. Rollback removes the side-effect rows too — this preserves "rollback removes everything from that operation" without forcing a multi-step UX.
+When an entity references another (e.g. project → customer, invoice → customer + project), the wizard surfaces a per-row resolution column showing whether the reference matched an existing row, will create a new row, or is unattached. Defaults: matched if a strong dedup tier hit; create-new with the reference's name otherwise. The commit pipeline creates the side-effect rows FIRST (tagged with the SAME batch_id) so the FKs land cleanly, then inserts the primary entity rows. Rollback removes the side-effect rows too — this preserves "rollback removes everything from that operation" without forcing a multi-step UX.
+
+**Frozen money math (Phase C onward):**
+
+Imported invoices freeze their `amount_cents` and `tax_cents` exactly as the source recorded — NEVER recompute against today's customer-facing rate. The `import_batch_id IS NOT NULL` flag is the contract that downstream code must check. Same rule applies to historical management-fee rates on imported estimates when Phase C+ extends scope. Code that re-derives money from a different source (e.g. tax provider) MUST skip imported rows.
+
+**Volume / timeout / size:**
+
+Server-action body cap is 50MB framework-wide ([next.config.ts](next.config.ts)). Per-import-action cap is 25MB. LLM input slice is 800K chars (~200K tokens). Each import page sets `export const maxDuration = 300` so server actions get 5 minutes on Vercel. Very large files (10K+ rows) need chunking; not implemented yet — kanban entry tracks the gap.
 
 Files in this family today:
 
 - `supabase/migrations/0185_import_batches.sql` — `import_batches` table + storage bucket
 - `supabase/migrations/0186_projects_import_batch.sql` — `projects.import_batch_id`
-- `src/lib/customers/dedup.ts` / `src/lib/projects/dedup.ts` — per-entity dedup engines
-- `src/lib/ai-gateway/{tasks,routing}.ts` — `onboarding_customer_classify`, `onboarding_project_classify` tasks
+- `supabase/migrations/0187_invoices_import_batch.sql` — `invoices.import_batch_id` (frozen-math contract)
+- `src/lib/customers/dedup.ts` / `src/lib/projects/dedup.ts` / `src/lib/invoices/dedup.ts` — per-entity dedup engines
+- `src/lib/ai-gateway/{tasks,routing}.ts` — `onboarding_customer_classify`, `onboarding_project_classify`, `onboarding_invoice_classify` tasks (all pinned to Sonnet 4.6, no tier-climb)
 - `src/server/actions/onboarding-import.ts` — Phase A (customers) actions
 - `src/server/actions/onboarding-import-projects.ts` — Phase B (projects + side-effect customers) actions
+- `src/server/actions/onboarding-import-invoices.ts` — Phase C (invoices + side-effect projects + side-effect customers; frozen money math)
 - `src/components/features/onboarding/customer-import-wizard.tsx` — Phase A wizard
 - `src/components/features/onboarding/project-import-wizard.tsx` — Phase B wizard
+- `src/components/features/onboarding/invoice-import-wizard.tsx` — Phase C wizard (with editable money cells)
 - `src/components/features/onboarding/imports-list.tsx` — `/settings/imports` rollback list (per-kind dispatch)
-- `src/app/(dashboard)/contacts/import/page.tsx` + `src/app/(dashboard)/projects/import/page.tsx` — entry routes
+- `src/app/(dashboard)/contacts/import/page.tsx` + `/projects/import/page.tsx` + `/invoices/import/page.tsx` — entry routes (each with `maxDuration = 300`)
 
-The kanban card "Henry-powered onboarding import wizard" tracks broader phasing (C: invoices with tax-math freeze, D: expenses + bulk PDF receipts). Don't expand scope mid-PR.
+The kanban card "Henry-powered onboarding import wizard" tracks broader phasing (D: expenses + bulk PDF receipts). Don't expand scope mid-PR.
 
 ---
 

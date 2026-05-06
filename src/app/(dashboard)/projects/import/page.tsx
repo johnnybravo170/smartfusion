@@ -7,6 +7,11 @@ export const metadata = {
   title: 'Import projects — HeyHenry',
 };
 
+// Server actions inherit the route's maxDuration. The gateway call can
+// take a minute on a multi-thousand-row paste; default 60s is too tight
+// for the showcase moment.
+export const maxDuration = 300;
+
 export default async function ProjectImportPage() {
   const tenant = await getCurrentTenant();
   if (!tenant) redirect('/login?next=/projects/import');

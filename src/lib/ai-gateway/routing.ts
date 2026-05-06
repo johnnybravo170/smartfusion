@@ -191,6 +191,17 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     primary: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
     fallback_chain: ['anthropic', 'openai'],
   },
+
+  // Phase C of the onboarding wizard. Highest reasoning load of the
+  // family — invoices carry a customer ref AND optional project ref AND
+  // frozen money math (subtotal vs tax vs total) AND historical dates
+  // AND status. The model has to keep all of those columns straight
+  // across whatever shape the contractor's source happens to be in.
+  // Pinned to Sonnet 4.6 same as the others.
+  onboarding_invoice_classify: {
+    primary: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+    fallback_chain: ['anthropic', 'openai'],
+  },
 };
 
 export function lookupRoute(task: string, custom?: Record<string, RouteConfig>): RouteConfig {

@@ -39,6 +39,7 @@ export const KNOWN_TASKS = [
   'intake_scope_augment', // post-parse "what's likely missing from this scope?" pass
   'onboarding_customer_classify', // Day-1 import wizard: file/paste → proposed customer rows
   'onboarding_project_classify', // Day-1 import wizard: file/paste → proposed project rows + customer references
+  'onboarding_invoice_classify', // Day-1 import wizard: file/paste → proposed invoice rows + frozen tax math
 ] as const;
 
 export type KnownTask = (typeof KNOWN_TASKS)[number];
