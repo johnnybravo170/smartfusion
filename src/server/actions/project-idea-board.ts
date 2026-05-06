@@ -356,3 +356,42 @@ export async function markIdeaBoardItemsReadAction(projectId: string): Promise<S
   revalidatePath(`/projects/${projectId}`);
   return { ok: true };
 }
+
+/**
+ * Phase 2 — stamp an idea-board item as promoted to a specific selection.
+ *
+ * The selection itself was already created by SelectionFormDialog's
+ * onAfterCreate callback; this action is the second leg, recording the
+ * link so we can render the "Promoted" pill and avoid double-promotes.
+ *
+ * Idempotent on re-call. The original idea-board row stays intact —
+ * operators never delete customer-authored content.
+ */
+export async function markIdeaBoardItemPromotedAction(input: {
+  itemId: string;
+  selectionId: string;
+}): Promise<SimpleResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+  const { data: row, error: readErr } = await supabase
+    .from('project_idea_board_items')
+    .select('id, project_id')
+    .eq('id', input.itemId)
+    .single();
+  if (readErr || !row) return { ok: false, error: readErr?.message ?? 'Idea not found.' };
+
+  const { error } = await supabase
+    .from('project_idea_board_items')
+    .update({
+      promoted_to_selection_id: input.selectionId,
+      promoted_at: new Date().toISOString(),
+    })
+    .eq('id', input.itemId);
+  if (error) return { ok: false, error: error.message };
+
+  const projectId = (row as Record<string, unknown>).project_id as string;
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true };
+}

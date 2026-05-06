@@ -3,16 +3,26 @@
  *
  * Renders on the project Selections tab (above the operator-authored
  * selection list). Customer items are grouped by room, with an
- * "Unsorted" bucket for un-tagged items. No operator-side edit/delete
- * affordance in Phase 1 — operators never delete the customer's stuff.
- *
- * Phase 2 will add the "Promote to selection" button per card.
+ * "Unsorted" bucket for un-tagged items. Each unpromoted card carries
+ * a "Promote" affordance that opens the SelectionFormDialog pre-filled
+ * from the idea (see PromoteIdeaButton). Operators never delete the
+ * customer's stuff — there is no edit/delete affordance here.
  */
 
 import { Link as LinkIcon, StickyNote } from 'lucide-react';
+import {
+  PromotedBadge,
+  PromoteIdeaButton,
+} from '@/components/features/projects/promote-idea-button';
 import type { IdeaBoardItem } from '@/server/actions/project-idea-board';
 
-export function CustomerIdeasSection({ items }: { items: IdeaBoardItem[] }) {
+export function CustomerIdeasSection({
+  projectId,
+  items,
+}: {
+  projectId: string;
+  items: IdeaBoardItem[];
+}) {
   if (items.length === 0) return null;
 
   // Group by room. Items with no room go under an "Unsorted" header at
@@ -40,8 +50,8 @@ export function CustomerIdeasSection({ items }: { items: IdeaBoardItem[] }) {
             Customer ideas
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Inspiration the customer has dropped on their portal idea board. Read-only here —
-            promote one into a project selection in the next release.
+            Inspiration the customer has dropped on their portal idea board. Promote any one into a
+            project selection.
           </p>
         </div>
         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-800">
@@ -60,7 +70,7 @@ export function CustomerIdeasSection({ items }: { items: IdeaBoardItem[] }) {
               </h3>
               <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {groupItems.map((item) => (
-                  <CustomerIdeaCard key={item.id} item={item} />
+                  <CustomerIdeaCard key={item.id} projectId={projectId} item={item} />
                 ))}
               </ul>
             </div>
@@ -71,7 +81,7 @@ export function CustomerIdeasSection({ items }: { items: IdeaBoardItem[] }) {
   );
 }
 
-function CustomerIdeaCard({ item }: { item: IdeaBoardItem }) {
+function CustomerIdeaCard({ projectId, item }: { projectId: string; item: IdeaBoardItem }) {
   const promoted = Boolean(item.promoted_to_selection_id);
   return (
     <li className="flex flex-col overflow-hidden rounded-md border bg-card">
@@ -120,11 +130,10 @@ function CustomerIdeaCard({ item }: { item: IdeaBoardItem }) {
         {item.notes ? (
           <p className="whitespace-pre-wrap text-xs text-muted-foreground">{item.notes}</p>
         ) : null}
-        {promoted ? (
-          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
-            Promoted
-          </span>
-        ) : null}
+        <div className="flex items-center justify-between gap-2 pt-1">
+          {promoted ? <PromotedBadge /> : <span aria-hidden />}
+          {!promoted ? <PromoteIdeaButton projectId={projectId} item={item} /> : null}
+        </div>
       </div>
     </li>
   );

@@ -67,7 +67,7 @@ export default async function SelectionsTabServer({ projectId }: { projectId: st
 
   return (
     <div className="space-y-6">
-      <CustomerIdeasSection items={ideaItems} />
+      <CustomerIdeasSection projectId={projectId} items={ideaItems} />
 
       <div className="flex items-start justify-between gap-3">
         <div>

@@ -30,6 +30,25 @@ import {
 } from '@/lib/validators/project-selection';
 import { createSelectionAction, updateSelectionAction } from '@/server/actions/project-selections';
 
+/**
+ * Subset of selection fields that can be pre-filled via `initialValues`.
+ * Used by promote-from-idea-board: we ship a partial set, the operator
+ * fills the rest. Distinct from `selection` which signals "edit this
+ * existing row" (which keeps the form in edit mode + targets update RPC).
+ */
+export type SelectionFormInitialValues = Partial<{
+  room: string;
+  category: SelectionCategory;
+  brand: string;
+  name: string;
+  code: string;
+  finish: string;
+  supplier: string;
+  sku: string;
+  warranty_url: string;
+  notes: string;
+}>;
+
 type Props = {
   projectId: string;
   /** Pre-fill room name when adding a selection from a specific room's "+ Add" button. */
@@ -38,23 +57,52 @@ type Props = {
   selection?: ProjectSelection;
   /** Custom trigger; when omitted, renders a default "Add selection" button. */
   trigger?: React.ReactNode;
+  /** Pre-fill the create form (ignored when `selection` is set). */
+  initialValues?: SelectionFormInitialValues;
+  /** Optional override of the dialog's title — useful for "Promote to selection" framing. */
+  title?: string;
+  /** Optional override of the dialog's description copy. */
+  description?: string;
+  /** Fired AFTER a successful create — receives the new selection's id. Lets callers stamp linked rows (e.g. mark an idea-board item as promoted). */
+  onAfterCreate?: (selectionId: string) => void | Promise<void>;
+  /** Controlled-open variant: when supplied, owner controls the open state. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
-export function SelectionFormDialog({ projectId, defaultRoom, selection, trigger }: Props) {
+export function SelectionFormDialog({
+  projectId,
+  defaultRoom,
+  selection,
+  trigger,
+  initialValues,
+  title: titleOverride,
+  description: descriptionOverride,
+  onAfterCreate,
+  open: openProp,
+  onOpenChange,
+}: Props) {
   const editing = Boolean(selection);
-  const [open, setOpen] = useState(false);
-  const [room, setRoom] = useState(selection?.room ?? defaultRoom ?? '');
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (next: boolean) => {
+    onOpenChange?.(next);
+    if (openProp === undefined) setOpenState(next);
+  };
+  const [room, setRoom] = useState(selection?.room ?? initialValues?.room ?? defaultRoom ?? '');
   const [category, setCategory] = useState<SelectionCategory>(
-    (selection?.category as SelectionCategory | undefined) ?? 'paint',
+    (selection?.category as SelectionCategory | undefined) ?? initialValues?.category ?? 'paint',
   );
-  const [brand, setBrand] = useState(selection?.brand ?? '');
-  const [name, setName] = useState(selection?.name ?? '');
-  const [code, setCode] = useState(selection?.code ?? '');
-  const [finish, setFinish] = useState(selection?.finish ?? '');
-  const [supplier, setSupplier] = useState(selection?.supplier ?? '');
-  const [sku, setSku] = useState(selection?.sku ?? '');
-  const [warrantyUrl, setWarrantyUrl] = useState(selection?.warranty_url ?? '');
-  const [notes, setNotes] = useState(selection?.notes ?? '');
+  const [brand, setBrand] = useState(selection?.brand ?? initialValues?.brand ?? '');
+  const [name, setName] = useState(selection?.name ?? initialValues?.name ?? '');
+  const [code, setCode] = useState(selection?.code ?? initialValues?.code ?? '');
+  const [finish, setFinish] = useState(selection?.finish ?? initialValues?.finish ?? '');
+  const [supplier, setSupplier] = useState(selection?.supplier ?? initialValues?.supplier ?? '');
+  const [sku, setSku] = useState(selection?.sku ?? initialValues?.sku ?? '');
+  const [warrantyUrl, setWarrantyUrl] = useState(
+    selection?.warranty_url ?? initialValues?.warranty_url ?? '',
+  );
+  const [notes, setNotes] = useState(selection?.notes ?? initialValues?.notes ?? '');
   const [allowance, setAllowance] = useState(
     selection?.allowance_cents != null ? (selection.allowance_cents / 100).toFixed(2) : '',
   );
@@ -65,16 +113,16 @@ export function SelectionFormDialog({ projectId, defaultRoom, selection, trigger
 
   function reset() {
     if (editing) return; // edits keep their values
-    setRoom(defaultRoom ?? '');
-    setCategory('paint');
-    setBrand('');
-    setName('');
-    setCode('');
-    setFinish('');
-    setSupplier('');
-    setSku('');
-    setWarrantyUrl('');
-    setNotes('');
+    setRoom(initialValues?.room ?? defaultRoom ?? '');
+    setCategory(initialValues?.category ?? 'paint');
+    setBrand(initialValues?.brand ?? '');
+    setName(initialValues?.name ?? '');
+    setCode(initialValues?.code ?? '');
+    setFinish(initialValues?.finish ?? '');
+    setSupplier(initialValues?.supplier ?? '');
+    setSku(initialValues?.sku ?? '');
+    setWarrantyUrl(initialValues?.warranty_url ?? '');
+    setNotes(initialValues?.notes ?? '');
     setAllowance('');
     setActualCost('');
   }
@@ -124,6 +172,14 @@ export function SelectionFormDialog({ projectId, defaultRoom, selection, trigger
         return;
       }
       toast.success(editing ? 'Selection updated' : 'Selection added');
+      const newId = !editing && 'id' in res ? (res.id ?? null) : null;
+      if (!editing && newId && onAfterCreate) {
+        try {
+          await onAfterCreate(newId);
+        } catch (err) {
+          console.error('[selection-form] onAfterCreate failed:', err);
+        }
+      }
       reset();
       setOpen(false);
     });
@@ -131,19 +187,24 @@ export function SelectionFormDialog({ projectId, defaultRoom, selection, trigger
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button type="button" size="sm" variant="outline">
-            <Plus className="size-4" />
-            Add selection
-          </Button>
-        )}
-      </DialogTrigger>
+      {trigger || openProp === undefined ? (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button type="button" size="sm" variant="outline">
+              <Plus className="size-4" />
+              Add selection
+            </Button>
+          )}
+        </DialogTrigger>
+      ) : null}
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{editing ? 'Edit selection' : 'Add selection'}</DialogTitle>
+          <DialogTitle>
+            {titleOverride ?? (editing ? 'Edit selection' : 'Add selection')}
+          </DialogTitle>
           <DialogDescription>
-            Captures what was used in this room — paint codes, tile SKUs, finish, supplier.
+            {descriptionOverride ??
+              'Captures what was used in this room — paint codes, tile SKUs, finish, supplier.'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-3">
