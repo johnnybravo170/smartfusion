@@ -26,7 +26,14 @@ export type SendSmsInput = {
   to: string;
   body: string;
   identity?: SendIdentity;
-  relatedType?: 'job' | 'quote' | 'invoice' | 'customer' | 'support_ticket' | 'platform';
+  relatedType?:
+    | 'job'
+    | 'quote'
+    | 'invoice'
+    | 'customer'
+    | 'support_ticket'
+    | 'platform'
+    | 'referral';
   relatedId?: string;
   /**
    * CASL category. See `src/lib/db/schema/casl.ts`. Required for every send.

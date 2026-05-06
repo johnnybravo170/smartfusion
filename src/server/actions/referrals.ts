@@ -17,7 +17,12 @@ import {
   listReferrals,
 } from '@/lib/db/queries/referrals';
 import { sendEmail } from '@/lib/email/send';
-import { referralInviteHtml, referralInviteSubject } from '@/lib/email/templates/referral-invite';
+import {
+  referralInviteHtml,
+  referralInviteSms,
+  referralInviteSubject,
+} from '@/lib/email/templates/referral-invite';
+import { sendSms } from '@/lib/twilio/client';
 import { referralEmailSchema, referralSMSSchema } from '@/lib/validators/referral';
 
 const PUBLIC_DOMAIN = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.heyhenry.io';
@@ -72,6 +77,7 @@ export async function getReferralHistoryAction(): Promise<
     Array<{
       id: string;
       email: string | null;
+      phone: string | null;
       status: string;
       created_at: string;
     }>
@@ -86,6 +92,7 @@ export async function getReferralHistoryAction(): Promise<
     data: referrals.map((r) => ({
       id: r.id,
       email: r.referred_email,
+      phone: r.referred_phone,
       status: r.status,
       created_at: r.created_at,
     })),
@@ -146,14 +153,49 @@ export async function sendReferralEmailAction(
 }
 
 /**
- * SMS referral invite stub. Returns an error indicating SMS is not yet available.
+ * Send a referral invite SMS and create a pending referral row.
+ *
+ * Mirrors `sendReferralEmailAction` — see its CASL note. The referrer
+ * attests a personal-relationship (CASL implied-consent exemption);
+ * Phase B should capture an explicit attestation at submit time.
  */
-export async function sendReferralSMSAction(phone: string): Promise<ReferralActionResult<never>> {
-  // Validate to show we accept the input shape.
+export async function sendReferralSMSAction(
+  phone: string,
+): Promise<ReferralActionResult<{ sent: true }>> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
   const parsed = referralSMSSchema.safeParse({ phone });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid phone number.' };
   }
 
-  return { ok: false, error: 'SMS coming soon' };
+  const refCode = await getOrCreateReferralCode(tenant.id, tenant.name);
+  const referralUrl = `${PUBLIC_DOMAIN}/r/${refCode.code}`;
+
+  await createReferral({
+    referral_code_id: refCode.id,
+    referrer_tenant_id: tenant.id,
+    referred_phone: parsed.data.phone,
+  });
+
+  const result = await sendSms({
+    tenantId: tenant.id,
+    to: parsed.data.phone,
+    body: referralInviteSms({ referrerName: tenant.name, referralUrl }),
+    relatedType: 'referral',
+    relatedId: refCode.id,
+    caslCategory: 'response_to_request',
+    caslEvidence: {
+      kind: 'referral_invite',
+      referralCodeId: refCode.id,
+      referrerTenantId: tenant.id,
+    },
+  });
+
+  if (!result.ok) {
+    return { ok: false, error: result.error ?? 'Failed to send SMS.' };
+  }
+
+  return { ok: true, data: { sent: true } };
 }

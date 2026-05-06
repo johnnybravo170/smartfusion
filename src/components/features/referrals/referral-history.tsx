@@ -12,6 +12,7 @@ import {
 type ReferralEntry = {
   id: string;
   email: string | null;
+  phone: string | null;
   status: string;
   created_at: string;
 };
@@ -56,7 +57,7 @@ export function ReferralHistory({ referrals }: { referrals: ReferralEntry[] }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Email</TableHead>
+              <TableHead>Contact</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Date</TableHead>
             </TableRow>
@@ -64,7 +65,9 @@ export function ReferralHistory({ referrals }: { referrals: ReferralEntry[] }) {
           <TableBody>
             {referrals.map((r) => (
               <TableRow key={r.id}>
-                <TableCell className="font-mono text-sm">{r.email ?? 'Link signup'}</TableCell>
+                <TableCell className="font-mono text-sm">
+                  {r.email ?? r.phone ?? 'Link signup'}
+                </TableCell>
                 <TableCell>
                   <Badge variant={statusVariant[r.status] ?? 'outline'}>
                     {r.status.replace('_', ' ')}
