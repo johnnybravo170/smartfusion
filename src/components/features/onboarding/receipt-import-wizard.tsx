@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  type CategoryPickerOptionLite,
   type CommitReceiptImportRow,
   commitReceiptImportAction,
   dedupReceiptProposalsAction,
@@ -52,6 +53,7 @@ export function ReceiptImportWizard() {
   const [rows, setRows] = useState<RowState[]>([]);
   const [progress, setProgress] = useState({ done: 0, total: 0, errors: 0 });
   const [note, setNote] = useState('');
+  const [categories, setCategories] = useState<CategoryPickerOptionLite[]>([]);
 
   const [doneCounts, setDoneCounts] = useState<{
     created: number;
@@ -83,6 +85,12 @@ export function ReceiptImportWizard() {
       fd.set('file', file);
       const res = await parseReceiptForImportAction(fd);
       if (res.ok) {
+        // Categories come back identical on every successful parse,
+        // but we capture once on the first hit so the picker is ready
+        // for operator overrides as the rest stream in.
+        if (categories.length === 0 && res.categories.length > 0) {
+          setCategories(res.categories);
+        }
         const row: RowState = {
           ...res.proposed,
           rowKey: `r${i}`,
@@ -104,6 +112,8 @@ export function ReceiptImportWizard() {
           vendorGstNumber: null,
           expenseDateIso: null,
           description: null,
+          categoryId: null,
+          categoryLabel: null,
           decision: 'skip',
           match: { tier: null, label: '', existingId: null },
           parseError: res.error,
@@ -159,6 +169,7 @@ export function ReceiptImportWizard() {
         vendorGstNumber: r.vendorGstNumber,
         expenseDateIso: r.expenseDateIso,
         description: r.description,
+        categoryId: r.categoryId,
       }));
     startTransition(async () => {
       const res = await commitReceiptImportAction({
@@ -206,6 +217,7 @@ export function ReceiptImportWizard() {
       <PreviewStage
         rows={rows}
         updateRow={updateRow}
+        categories={categories}
         progress={progress}
         note={note}
         setNote={setNote}
@@ -324,6 +336,7 @@ function ProcessingStage({
 function PreviewStage({
   rows,
   updateRow,
+  categories,
   progress,
   note,
   setNote,
@@ -333,6 +346,7 @@ function PreviewStage({
 }: {
   rows: RowState[];
   updateRow: (rowKey: string, updater: (r: RowState) => RowState) => void;
+  categories: CategoryPickerOptionLite[];
   progress: { done: number; total: number; errors: number };
   note: string;
   setNote: (v: string) => void;
@@ -384,6 +398,7 @@ function PreviewStage({
               <th className="px-3 py-2 text-left font-medium">Date</th>
               <th className="px-3 py-2 text-right font-medium">Amount</th>
               <th className="px-3 py-2 text-right font-medium">Tax</th>
+              <th className="px-3 py-2 text-left font-medium">Category</th>
               <th className="px-3 py-2 text-left font-medium">Match</th>
               <th className="px-3 py-2 text-right font-medium">Decision</th>
             </tr>
@@ -441,6 +456,20 @@ function PreviewStage({
                   onChange={(c) => updateRow(r.rowKey, (row) => ({ ...row, taxCents: c }))}
                   disabled={pending || !!r.parseError}
                 />
+                <td className="px-3 py-2 align-top">
+                  <CategoryCell
+                    row={r}
+                    categories={categories}
+                    onChange={(id, label) =>
+                      updateRow(r.rowKey, (row) => ({
+                        ...row,
+                        categoryId: id,
+                        categoryLabel: label,
+                      }))
+                    }
+                    disabled={pending || !!r.parseError}
+                  />
+                </td>
                 <td className="px-3 py-2 align-top">
                   {r.match.tier ? (
                     <span className="text-xs text-amber-700">{r.match.label}</span>
@@ -538,6 +567,45 @@ function MoneyCell({
         className="w-20 rounded border-transparent bg-transparent px-1 text-right text-xs tabular-nums hover:border-input focus:border-input"
       />
     </td>
+  );
+}
+
+function CategoryCell({
+  row,
+  categories,
+  onChange,
+  disabled,
+}: {
+  row: RowState;
+  categories: CategoryPickerOptionLite[];
+  onChange: (id: string | null, label: string | null) => void;
+  disabled: boolean;
+}) {
+  const labelById = new Map(categories.map((c) => [c.id, c.label]));
+  const isHenrySuggestion =
+    row.categoryId !== null && row.categoryLabel !== null && !!row.categoryId;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <select
+        value={row.categoryId ?? ''}
+        onChange={(e) => {
+          const id = e.target.value || null;
+          onChange(id, id ? (labelById.get(id) ?? null) : null);
+        }}
+        disabled={disabled || categories.length === 0}
+        className="h-7 rounded border-transparent bg-transparent px-1 text-xs hover:border-input focus:border-input disabled:opacity-50"
+      >
+        <option value="">— uncategorized —</option>
+        {categories.map((c) => (
+          <option key={c.id} value={c.id} disabled={c.isParentHeader}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+      {isHenrySuggestion ? (
+        <span className="px-1 text-[10px] text-muted-foreground">Suggested by Henry</span>
+      ) : null}
+    </div>
   );
 }
 

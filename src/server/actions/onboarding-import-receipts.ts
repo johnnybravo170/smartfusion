@@ -33,6 +33,11 @@ import { randomUUID } from 'node:crypto';
 import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import {
+  buildCategoryTree,
+  buildPickerOptions,
+  listExpenseCategories,
+} from '@/lib/db/queries/expense-categories';
+import {
   type ExistingExpense,
   type ExpenseMatchTier,
   expenseTierLabel,
@@ -46,16 +51,21 @@ const RECEIPTS_BUCKET = 'receipts';
 
 // ─── Single-receipt parse ──────────────────────────────────────────────────
 
-const RECEIPT_PROMPT = `You extract structured fields from receipt photos or PDFs for a Canadian contractor's bulk import. Return ONLY JSON matching this exact shape — no prose, no markdown fences. Use null for any field you cannot read with confidence.
+function buildReceiptPrompt(categoryLines: string): string {
+  return `You extract structured fields from receipt photos or PDFs for a Canadian contractor's bulk import. Return ONLY JSON matching the schema. Use null for any field you cannot read with confidence.
 
-{
+Fields:
   "amount_cents": INTEGER cents — receipt grand total, tax INCLUDED. e.g. $18.40 → 1840.
   "tax_cents": INTEGER cents — the GST/HST portion if printed separately. null if not shown.
   "vendor": merchant name as shown.
   "vendor_gst_number": 9-digit (or 9+RT+4) Canadian GST/HST business number if printed. null if absent.
   "expense_date": "YYYY-MM-DD" — transaction date, not print time.
   "description": one short line describing what was purchased (e.g. "lumber and fasteners"). null if unclear.
-}`;
+  "category_id": pick the BEST matching category from the contractor's chart of accounts below. Match on the kind of purchase (lumber → "Materials"; gas → "Vehicle: Fuel"; etc.). If nothing fits or you genuinely can't tell, return null — don't force a guess.
+
+Available categories (id — label):
+${categoryLines}`;
+}
 
 const RECEIPT_SCHEMA = {
   type: 'object',
@@ -66,6 +76,7 @@ const RECEIPT_SCHEMA = {
     vendor_gst_number: { type: ['string', 'null'] },
     expense_date: { type: ['string', 'null'] },
     description: { type: ['string', 'null'] },
+    category_id: { type: ['string', 'null'] },
   },
   required: ['amount_cents', 'vendor', 'expense_date', 'description'],
 };
@@ -77,6 +88,7 @@ type RawReceipt = {
   vendor_gst_number?: unknown;
   expense_date: unknown;
   description: unknown;
+  category_id?: unknown;
 };
 
 export type ProposedReceiptExpense = {
@@ -90,10 +102,29 @@ export type ProposedReceiptExpense = {
   vendorGstNumber: string | null;
   expenseDateIso: string | null;
   description: string | null;
+  /** Henry's category suggestion, validated against the tenant's
+   *  expense_categories. null when no confident match. */
+  categoryId: string | null;
+  /** Pre-resolved label so the wizard doesn't have to round-trip. */
+  categoryLabel: string | null;
+};
+
+/** Returned alongside the first proposed result so the wizard can render
+ *  a category picker for operator overrides. */
+export type CategoryPickerOptionLite = {
+  id: string;
+  label: string;
+  isParentHeader: boolean;
 };
 
 export type ParseReceiptResult =
-  | { ok: true; proposed: ProposedReceiptExpense }
+  | {
+      ok: true;
+      proposed: ProposedReceiptExpense;
+      /** Categories returned with every parse so the client always has
+       *  the freshest picker options without an extra round-trip. */
+      categories: CategoryPickerOptionLite[];
+    }
   | { ok: false; error: string; filename: string };
 
 function userSafeError(
@@ -165,6 +196,19 @@ export async function parseReceiptForImportAction(formData: FormData): Promise<P
     return { ok: false, error: `Unsupported file type: ${mime}`, filename };
   }
 
+  // Pull the tenant's expense categories so Henry can suggest one per
+  // receipt — the showcase moment. listExpenseCategories is React.cache-
+  // wrapped so within a request it's free, and across requests it's a
+  // single index-backed query (~10ms).
+  const categoryRows = await listExpenseCategories();
+  const categoryTree = buildCategoryTree(categoryRows);
+  const pickerOptions = buildPickerOptions(categoryTree);
+  const categoryById = new Map(pickerOptions.map((o) => [o.id, o.label]));
+  // Hide parent-headers from the model so it never picks an unselectable
+  // bucket — only true leaf-or-childless categories.
+  const selectableCategories = pickerOptions.filter((o) => !o.isParentHeader);
+  const categoryLines = selectableCategories.map((o) => `  ${o.id} — ${o.label}`).join('\n');
+
   // OCR first, archive second — if the OCR call fails (quota, etc.) we
   // don't leave orphan storage objects around.
   const buf = Buffer.from(await file.arrayBuffer());
@@ -176,7 +220,7 @@ export async function parseReceiptForImportAction(formData: FormData): Promise<P
       kind: 'structured',
       task: 'receipt_ocr',
       tenant_id: tenant.id,
-      prompt: RECEIPT_PROMPT,
+      prompt: buildReceiptPrompt(categoryLines || '  (no categories configured)'),
       schema: RECEIPT_SCHEMA,
       file: { mime, base64, filename: file.name },
       temperature: 0.1,
@@ -198,6 +242,14 @@ export async function parseReceiptForImportAction(formData: FormData): Promise<P
     return { ok: false, error: `Receipt archive failed: ${upErr.message}`, filename };
   }
 
+  // Validate the model's category suggestion: only accept ids that
+  // exist in the tenant's selectable categories. Anything else (made-
+  // up id, parent-header id, stale id) drops to null silently — the
+  // operator picks via the wizard's category cell.
+  const rawCategoryId = pickString(raw.category_id);
+  const validCategoryId = rawCategoryId && categoryById.has(rawCategoryId) ? rawCategoryId : null;
+  const categoryLabel = validCategoryId ? (categoryById.get(validCategoryId) ?? null) : null;
+
   return {
     ok: true,
     proposed: {
@@ -209,7 +261,14 @@ export async function parseReceiptForImportAction(formData: FormData): Promise<P
       vendorGstNumber: pickString(raw.vendor_gst_number),
       expenseDateIso: pickDate(raw.expense_date),
       description: pickString(raw.description),
+      categoryId: validCategoryId,
+      categoryLabel,
     },
+    categories: pickerOptions.map((o) => ({
+      id: o.id,
+      label: o.label,
+      isParentHeader: o.isParentHeader,
+    })),
   };
 }
 
@@ -294,6 +353,9 @@ export type CommitReceiptImportRow = {
   vendorGstNumber: string | null;
   expenseDateIso: string | null;
   description: string | null;
+  /** Henry-suggested or operator-picked. null = uncategorized
+   *  (operator can categorize later via the expense detail page). */
+  categoryId: string | null;
 };
 
 export type CommitReceiptImportResult =
@@ -357,7 +419,7 @@ export async function commitReceiptImportAction(input: {
       project_id: null,
       budget_category_id: null,
       job_id: null,
-      category_id: null,
+      category_id: r.categoryId,
       amount_cents: r.amountCents ?? 0,
       tax_cents: r.taxCents ?? 0,
       vendor: r.vendor,
