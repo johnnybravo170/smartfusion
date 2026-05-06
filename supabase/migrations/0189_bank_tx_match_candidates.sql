@@ -1,4 +1,6 @@
--- 0171_bank_tx_match_candidates.sql
+-- 0189_bank_tx_match_candidates.sql (renumbered from 0171 to fix a CI-
+-- breaking duplicate-version collision; the SQL is fully idempotent
+-- — IF NOT EXISTS — so prod re-applies as a no-op)
 -- BR-5 (payment auto-detect): the matcher produces a ranked list of up to
 -- 3 candidates per bank_transaction. We store them denormalized on the
 -- transaction row so the BR-7 review queue renders without re-running

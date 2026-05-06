@@ -135,7 +135,7 @@ vendors:
     subprocessor_url: https://cloud.google.com/terms/subprocessors
     detection:
       packages: ['^@google/genai$', '^@google/generative-ai$']
-      env: ['^GEMINI_API_KEY$', '^GOOGLE_API_KEY$']
+      env: ['^GEMINI_API_KEY$', '^GEMINI_API_KEYS$', '^GOOGLE_API_KEY$']
 
   - slug: openai
     name: OpenAI
@@ -175,7 +175,7 @@ vendors:
     subprocessor_url: ''
     detection:
       packages: []
-      env: ['^R2_', '^BACKUP_DATABASE_URL$', '^BACKUP_ENCRYPTION_KEY$']
+      env: ['^R2_', '^AWS_', '^BACKUP_DATABASE_URL$', '^BACKUP_ENCRYPTION_KEY$']
     notes: |
       Dumps are encrypted client-side before upload. The provider
       sees only ciphertext.

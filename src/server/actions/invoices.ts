@@ -804,7 +804,7 @@ export async function addInvoiceLineItemAction(input: {
 
   const { data: invoice, error: invErr } = await supabase
     .from('invoices')
-    .select('id, status, amount_cents, line_items, job_id')
+    .select('id, status, amount_cents, line_items, job_id, import_batch_id')
     .eq('id', input.invoiceId)
     .is('deleted_at', null)
     .single();
@@ -812,6 +812,20 @@ export async function addInvoiceLineItemAction(input: {
   if (invErr || !invoice) return { ok: false, error: 'Invoice not found.' };
   if (invoice.status !== 'draft') {
     return { ok: false, error: 'Can only add items to draft invoices.' };
+  }
+  // Frozen-math contract (PATTERNS.md §16): imported invoices keep
+  // their historical amount_cents + tax_cents exactly as the source
+  // recorded. Adding a line item would force a tax recompute against
+  // today's customer-facing rate, silently rewriting history. Block
+  // the operation with a clear error so the operator decides — either
+  // create a new invoice for the new work, or roll back the import
+  // batch if it landed wrong.
+  if (invoice.import_batch_id) {
+    return {
+      ok: false,
+      error:
+        'This invoice was imported from a historical record — its math is frozen. Create a new invoice for any additional work.',
+    };
   }
 
   const existingItems = ((invoice.line_items as InvoiceLineItem[] | null) ??
@@ -858,7 +872,7 @@ export async function removeInvoiceLineItemAction(input: {
 
   const { data: invoice, error: invErr } = await supabase
     .from('invoices')
-    .select('id, status, amount_cents, line_items')
+    .select('id, status, amount_cents, line_items, import_batch_id')
     .eq('id', input.invoiceId)
     .is('deleted_at', null)
     .single();
@@ -866,6 +880,14 @@ export async function removeInvoiceLineItemAction(input: {
   if (invErr || !invoice) return { ok: false, error: 'Invoice not found.' };
   if (invoice.status !== 'draft') {
     return { ok: false, error: 'Can only modify draft invoices.' };
+  }
+  // Frozen-math contract — same as addInvoiceLineItemAction above.
+  if (invoice.import_batch_id) {
+    return {
+      ok: false,
+      error:
+        'This invoice was imported from a historical record — its math is frozen. Edit the original source instead, or roll back the import batch.',
+    };
   }
 
   const existingItems = ((invoice.line_items as InvoiceLineItem[] | null) ??
