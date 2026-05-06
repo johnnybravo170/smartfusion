@@ -22,6 +22,7 @@ export type ReferralRow = {
   referrer_tenant_id: string;
   referred_tenant_id: string | null;
   referred_email: string | null;
+  referred_phone: string | null;
   status: string;
   reward_status: string;
   signed_up_at: string | null;
@@ -124,11 +125,16 @@ export async function listReferrals(
 
 /**
  * Create a pending referral row. Runs under RLS.
+ *
+ * Provide exactly one of `referred_email` or `referred_phone` — the channel
+ * used to deliver the invite. Either may be omitted; both is allowed but
+ * unusual in practice.
  */
 export async function createReferral(data: {
   referral_code_id: string;
   referrer_tenant_id: string;
-  referred_email: string;
+  referred_email?: string;
+  referred_phone?: string;
 }): Promise<ReferralRow> {
   // Use admin client for the insert since RLS only allows SELECT on referrals.
   const admin = createAdminClient();

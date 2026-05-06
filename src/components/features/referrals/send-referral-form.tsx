@@ -7,11 +7,29 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { sendReferralEmailAction } from '@/server/actions/referrals';
+import { sendReferralEmailAction, sendReferralSMSAction } from '@/server/actions/referrals';
+
+/**
+ * Normalize a user-typed phone string into E.164. Strips spaces, dashes,
+ * parens; assumes North American (+1) when the user types 10 digits with
+ * no country code. The server-side schema is the authority — this is just
+ * a UX nicety so people don't have to remember the +1 prefix.
+ */
+function normalizeToE164(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('+')) return `+${trimmed.slice(1).replace(/\D/g, '')}`;
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return `+${digits}`;
+}
 
 export function SendReferralForm() {
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [pendingEmail, startEmailTransition] = useTransition();
+  const [pendingSms, startSmsTransition] = useTransition();
 
   function handleSendEmail(e: React.FormEvent) {
     e.preventDefault();
@@ -22,6 +40,22 @@ export function SendReferralForm() {
       if (result.ok) {
         toast.success('Referral invite sent!');
         setEmail('');
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  function handleSendSms(e: React.FormEvent) {
+    e.preventDefault();
+    const e164 = normalizeToE164(phone);
+    if (!e164) return;
+
+    startSmsTransition(async () => {
+      const result = await sendReferralSMSAction(e164);
+      if (result.ok) {
+        toast.success('Referral SMS sent!');
+        setPhone('');
       } else {
         toast.error(result.error);
       }
@@ -53,21 +87,23 @@ export function SendReferralForm() {
           </div>
         </form>
 
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            SMS
-            <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-              Coming soon
-            </span>
-          </Label>
+        <form onSubmit={handleSendSms} className="space-y-2">
+          <Label htmlFor="referral-phone">SMS</Label>
           <div className="flex gap-2">
-            <Input type="tel" placeholder="+16045551234" disabled />
-            <Button disabled>
+            <Input
+              id="referral-phone"
+              type="tel"
+              placeholder="+16045551234"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              disabled={pendingSms}
+            />
+            <Button type="submit" disabled={pendingSms || !phone.trim()}>
               <MessageSquare className="mr-2 h-4 w-4" />
-              Send
+              {pendingSms ? 'Sending...' : 'Send'}
             </Button>
           </div>
-        </div>
+        </form>
       </CardContent>
     </Card>
   );

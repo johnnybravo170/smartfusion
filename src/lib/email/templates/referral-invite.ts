@@ -34,3 +34,17 @@ export function referralInviteHtml({
 export function referralInviteSubject(referrerName: string): string {
   return `${referrerName} thinks you'd love HeyHenry`;
 }
+
+/**
+ * SMS body for referral invitations. Kept short so it fits a single
+ * 160-char segment when the referrer name is reasonable.
+ */
+export function referralInviteSms({
+  referrerName,
+  referralUrl,
+}: {
+  referrerName: string;
+  referralUrl: string;
+}): string {
+  return `${referrerName} invited you to try HeyHenry — quotes, jobs & invoices in one place. ${referralUrl}`;
+}
