@@ -192,16 +192,33 @@ export default async function PortalPage({
     0,
   );
 
-  // Load original budget estimate
-  const { data: buckets } = await admin
-    .from('project_budget_categories')
-    .select('estimate_cents')
-    .eq('project_id', projectId);
+  // "Original Estimate" = the v1 scope snapshot captured at customer
+  // acceptance (immutable). Falls back to the live cost-lines sum if
+  // no snapshot exists yet (e.g. portal previewed pre-send, or imported
+  // projects that never had an acceptance event).
+  // Reading project_budget_categories.estimate_cents was wrong: that
+  // column is a per-category envelope/cap that drifts from cost_lines
+  // on imports and non-CO edits, so the sum understates the estimate.
+  const { data: originalSnap } = await admin
+    .from('project_scope_snapshots')
+    .select('total_cents')
+    .eq('project_id', projectId)
+    .order('version_number', { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
-  const originalEstimate = (buckets ?? []).reduce(
-    (sum, row) => sum + ((row as Record<string, unknown>).estimate_cents as number),
-    0,
-  );
+  let originalEstimate =
+    ((originalSnap as { total_cents?: number } | null)?.total_cents as number | undefined) ?? 0;
+  if (!originalSnap) {
+    const { data: liveLines } = await admin
+      .from('project_cost_lines')
+      .select('line_price_cents')
+      .eq('project_id', projectId);
+    originalEstimate = (liveLines ?? []).reduce(
+      (sum, row) => sum + ((row as { line_price_cents: number }).line_price_cents ?? 0),
+      0,
+    );
+  }
 
   const totalBudget = originalEstimate + approvedCOTotal;
 
