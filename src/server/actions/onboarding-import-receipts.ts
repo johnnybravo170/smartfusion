@@ -38,6 +38,12 @@ import {
   listExpenseCategories,
 } from '@/lib/db/queries/expense-categories';
 import {
+  listPaymentSources,
+  type PaymentSourceLite,
+  type PaymentSourceNetwork,
+  toLite,
+} from '@/lib/db/queries/payment-sources';
+import {
   type ExistingExpense,
   type ExpenseMatchTier,
   expenseTierLabel,
@@ -62,6 +68,8 @@ Fields:
   "expense_date": "YYYY-MM-DD" — transaction date, not print time.
   "description": one short line describing what was purchased (e.g. "lumber and fasteners"). null if unclear.
   "category_id": pick the BEST matching category from the contractor's chart of accounts below. Match on the kind of purchase (lumber → "Materials"; gas → "Vehicle: Fuel"; etc.). If nothing fits or you genuinely can't tell, return null — don't force a guess.
+  "card_last4": LAST 4 DIGITS of the card used to pay, if visible. Receipts show this in many shapes: "VISA ****1234", "DEBIT XXXXXXXXXXXX1234", "Card # ...1234", "Account: ************1234". Return ONLY the 4 digits as a string ("1234"), not the masked prefix. Null if no card line is visible (cash/e-transfer/cheque receipts).
+  "card_network": one of "visa", "mastercard", "amex", "interac", "discover", "other" if the card brand is printed alongside the last 4. Return null if not visible. Map "DEBIT" with no other brand to "interac" (Canadian default debit).
 
 Available categories (id — label):
 ${categoryLines}`;
@@ -84,6 +92,8 @@ const RECEIPT_SCHEMA = {
     expense_date: { type: ['string', 'null'] },
     description: { type: ['string', 'null'] },
     category_id: { type: ['string', 'null'] },
+    card_last4: { type: ['string', 'null'] },
+    card_network: { type: ['string', 'null'] },
   },
   required: [
     'amount_cents',
@@ -93,6 +103,8 @@ const RECEIPT_SCHEMA = {
     'expense_date',
     'description',
     'category_id',
+    'card_last4',
+    'card_network',
   ],
 };
 
@@ -104,6 +116,8 @@ type RawReceipt = {
   expense_date: unknown;
   description: unknown;
   category_id?: unknown;
+  card_last4?: unknown;
+  card_network?: unknown;
 };
 
 export type ProposedReceiptExpense = {
@@ -122,6 +136,17 @@ export type ProposedReceiptExpense = {
   categoryId: string | null;
   /** Pre-resolved label so the wizard doesn't have to round-trip. */
   categoryLabel: string | null;
+  /** Card last 4 extracted from the receipt, if visible. */
+  cardLast4: string | null;
+  /** Card network if visible alongside the last 4. */
+  cardNetwork: PaymentSourceNetwork | null;
+  /** Pre-resolved payment source — either a registered card matching
+   *  card_last4 (label "JB Debit"), or the tenant default if no card
+   *  was seen. null only if even the default lookup failed. */
+  paymentSourceId: string | null;
+  /** Tag so the wizard can render an "Unknown card — label this?"
+   *  affordance vs a normal source pill. */
+  paymentSourceResolution: 'matched_card' | 'unknown_card' | 'fallback_default' | 'none';
 };
 
 /** Returned alongside the first proposed result so the wizard can render
@@ -139,6 +164,9 @@ export type ParseReceiptResult =
       /** Categories returned with every parse so the client always has
        *  the freshest picker options without an extra round-trip. */
       categories: CategoryPickerOptionLite[];
+      /** Same idea for payment sources — kept fresh between parses so
+       *  if the operator just labeled a card, the next row sees it. */
+      paymentSources: PaymentSourceLite[];
     }
   | { ok: false; error: string; filename: string };
 
@@ -224,6 +252,16 @@ export async function parseReceiptForImportAction(formData: FormData): Promise<P
   const selectableCategories = pickerOptions.filter((o) => !o.isParentHeader);
   const categoryLines = selectableCategories.map((o) => `  ${o.id} — ${o.label}`).join('\n');
 
+  // Payment sources: pull once per parse so we can pre-resolve last4 →
+  // source on the server (cheap, no extra round-trip from the wizard).
+  const paymentSourceRows = await listPaymentSources();
+  const paymentSourcesLite = toLite(paymentSourceRows);
+  const sourceByLast4 = new Map<string, PaymentSourceLite>();
+  for (const s of paymentSourcesLite) {
+    if (s.last4) sourceByLast4.set(s.last4, s);
+  }
+  const defaultSourceId = paymentSourcesLite.find((s) => s.is_default)?.id ?? null;
+
   // OCR first, archive second — if the OCR call fails (quota, etc.) we
   // don't leave orphan storage objects around.
   const buf = Buffer.from(await file.arrayBuffer());
@@ -265,6 +303,29 @@ export async function parseReceiptForImportAction(formData: FormData): Promise<P
   const validCategoryId = rawCategoryId && categoryById.has(rawCategoryId) ? rawCategoryId : null;
   const categoryLabel = validCategoryId ? (categoryById.get(validCategoryId) ?? null) : null;
 
+  // Card last 4 — strip everything except the last 4 digits, since
+  // models occasionally hand back the full mask ("****1234").
+  const rawCardLast4 = pickString(raw.card_last4);
+  const cardLast4 = rawCardLast4 ? extractLast4(rawCardLast4) : null;
+  const cardNetwork = normalizeNetwork(pickString(raw.card_network));
+
+  // Pre-resolve the payment source server-side so the wizard renders
+  // instantly without a follow-up round-trip per row.
+  let paymentSourceId: string | null = null;
+  let paymentSourceResolution: ProposedReceiptExpense['paymentSourceResolution'] = 'none';
+  if (cardLast4) {
+    const matched = sourceByLast4.get(cardLast4);
+    if (matched) {
+      paymentSourceId = matched.id;
+      paymentSourceResolution = 'matched_card';
+    } else {
+      paymentSourceResolution = 'unknown_card';
+    }
+  } else if (defaultSourceId) {
+    paymentSourceId = defaultSourceId;
+    paymentSourceResolution = 'fallback_default';
+  }
+
   return {
     ok: true,
     proposed: {
@@ -278,13 +339,41 @@ export async function parseReceiptForImportAction(formData: FormData): Promise<P
       description: pickString(raw.description),
       categoryId: validCategoryId,
       categoryLabel,
+      cardLast4,
+      cardNetwork,
+      paymentSourceId,
+      paymentSourceResolution,
     },
     categories: pickerOptions.map((o) => ({
       id: o.id,
       label: o.label,
       isParentHeader: o.isParentHeader,
     })),
+    paymentSources: paymentSourcesLite,
   };
+}
+
+const NETWORK_VALUES: PaymentSourceNetwork[] = [
+  'visa',
+  'mastercard',
+  'amex',
+  'interac',
+  'discover',
+  'other',
+];
+
+function normalizeNetwork(v: string | null): PaymentSourceNetwork | null {
+  if (!v) return null;
+  const lc = v.toLowerCase().trim();
+  return (NETWORK_VALUES as string[]).includes(lc) ? (lc as PaymentSourceNetwork) : null;
+}
+
+function extractLast4(raw: string): string | null {
+  // Pull the last 4 digits from anywhere in the string. Handles
+  // "****1234", "1234", "DEBIT 1234", "...1234" alike.
+  const digits = raw.replace(/\D+/g, '');
+  if (digits.length < 4) return null;
+  return digits.slice(-4);
 }
 
 // ─── Dedup-against-existing query ──────────────────────────────────────────
@@ -371,6 +460,14 @@ export type CommitReceiptImportRow = {
   /** Henry-suggested or operator-picked. null = uncategorized
    *  (operator can categorize later via the expense detail page). */
   categoryId: string | null;
+  /** Resolved at preview time — either matched-card, post-label-this-card,
+   *  or the tenant default. Falls back server-side to the tenant default
+   *  if the operator clears it. */
+  paymentSourceId: string | null;
+  /** Snapshot of the last 4 the OCR pulled, written verbatim to the
+   *  expense row for audit. Independent of paymentSourceId so the
+   *  receipt stays unambiguous if the source is later renamed/archived. */
+  cardLast4: string | null;
 };
 
 export type CommitReceiptImportResult =
@@ -428,6 +525,12 @@ export async function commitReceiptImportAction(input: {
   const batchId = batch.id as string;
 
   if (toCreate.length > 0) {
+    // Fall back to the tenant default source for any row the operator
+    // didn't explicitly resolve. Avoids leaving a fleet of rows with
+    // null payment_source_id just because OCR didn't see a card.
+    const fallbackSources = await listPaymentSources();
+    const fallbackDefaultId = fallbackSources.find((s) => s.is_default)?.id ?? null;
+
     const expenseRows = toCreate.map((r) => ({
       tenant_id: tenant.id,
       user_id: user.id,
@@ -443,6 +546,8 @@ export async function commitReceiptImportAction(input: {
       receipt_storage_path: r.storagePath,
       expense_date: r.expenseDateIso,
       import_batch_id: batchId,
+      payment_source_id: r.paymentSourceId ?? fallbackDefaultId,
+      card_last4: r.cardLast4,
     }));
     const { error: insErr } = await supabase.from('expenses').insert(expenseRows);
     if (insErr) {

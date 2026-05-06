@@ -16,16 +16,22 @@
  *   4. DONE — counts.
  */
 
-import { ArrowRight, Check, FileText, Loader2, Sparkles, Upload, X } from 'lucide-react';
+import { ArrowRight, Check, FileText, Loader2, Sparkles, Tag, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { IntakeDropzone } from '@/components/features/contacts/intake-dropzone';
+import {
+  LabelCardDialog,
+  type LabelCardResult,
+} from '@/components/features/payment-sources/label-card-dialog';
+import { PaymentSourcePill } from '@/components/features/payment-sources/payment-source-pill';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { PaymentSourceLite } from '@/lib/db/queries/payment-sources';
 import {
   type CategoryPickerOptionLite,
   type CommitReceiptImportRow,
@@ -44,6 +50,8 @@ type RowState = ProposedReceiptExpense & {
   parseError?: string;
 };
 
+const ADD_NEW_SOURCE_SENTINEL = '__add_new_source__';
+
 export function ReceiptImportWizard() {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>('input');
@@ -54,6 +62,12 @@ export function ReceiptImportWizard() {
   const [progress, setProgress] = useState({ done: 0, total: 0, errors: 0 });
   const [note, setNote] = useState('');
   const [categories, setCategories] = useState<CategoryPickerOptionLite[]>([]);
+  const [paymentSources, setPaymentSources] = useState<PaymentSourceLite[]>([]);
+  const [labelCardFor, setLabelCardFor] = useState<{
+    last4: string;
+    rowKey: string;
+    network: PaymentSourceLite['kind'] | null;
+  } | null>(null);
 
   const [doneCounts, setDoneCounts] = useState<{
     created: number;
@@ -94,11 +108,14 @@ export function ReceiptImportWizard() {
         res = { ok: false, error: 'Could not read this receipt.', filename: file.name };
       }
       if (res.ok) {
-        // Categories come back identical on every successful parse,
-        // but we capture once on the first hit so the picker is ready
-        // for operator overrides as the rest stream in.
+        // Categories + payment sources come back identical on every
+        // successful parse. Capture once on the first hit so the picker
+        // is ready for operator overrides as the rest stream in.
         if (categories.length === 0 && res.categories.length > 0) {
           setCategories(res.categories);
+        }
+        if (paymentSources.length === 0 && res.paymentSources.length > 0) {
+          setPaymentSources(res.paymentSources);
         }
         const row: RowState = {
           ...res.proposed,
@@ -123,6 +140,10 @@ export function ReceiptImportWizard() {
           description: null,
           categoryId: null,
           categoryLabel: null,
+          cardLast4: null,
+          cardNetwork: null,
+          paymentSourceId: null,
+          paymentSourceResolution: 'none',
           decision: 'skip',
           match: { tier: null, label: '', existingId: null },
           parseError: res.error,
@@ -179,6 +200,8 @@ export function ReceiptImportWizard() {
         expenseDateIso: r.expenseDateIso,
         description: r.description,
         categoryId: r.categoryId,
+        paymentSourceId: r.paymentSourceId,
+        cardLast4: r.cardLast4,
       }));
     startTransition(async () => {
       const res = await commitReceiptImportAction({
@@ -213,6 +236,41 @@ export function ReceiptImportWizard() {
     setRows((prev) => prev.map((r) => (r.rowKey === rowKey ? updater(r) : r)));
   }
 
+  /**
+   * Apply a freshly-labeled card to every sibling row in this batch
+   * that paid with the same last4. The whole point of the dialog —
+   * label once, splice everywhere.
+   */
+  function handleCardLabeled(saved: LabelCardResult) {
+    setPaymentSources((prev) => {
+      const without = prev.filter((p) => p.id !== saved.id);
+      return [
+        ...without,
+        {
+          id: saved.id,
+          label: saved.label,
+          last4: saved.last4,
+          kind: saved.kind,
+          paid_by: saved.paid_by,
+          is_default: false,
+        },
+      ];
+    });
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.cardLast4 !== saved.last4) return r;
+        return { ...r, paymentSourceId: saved.id, paymentSourceResolution: 'matched_card' };
+      }),
+    );
+    const matched = rows.filter((r) => r.cardLast4 === saved.last4).length;
+    toast.success(
+      matched > 1
+        ? `Tagged ${matched} receipts with ${saved.label}.`
+        : `Saved card ${saved.label}.`,
+    );
+    setLabelCardFor(null);
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────
 
   if (stage === 'input') {
@@ -223,17 +281,31 @@ export function ReceiptImportWizard() {
   }
   if (stage === 'preview') {
     return (
-      <PreviewStage
-        rows={rows}
-        updateRow={updateRow}
-        categories={categories}
-        progress={progress}
-        note={note}
-        setNote={setNote}
-        pending={pending}
-        onCommit={handleCommit}
-        onBack={handleReset}
-      />
+      <>
+        <PreviewStage
+          rows={rows}
+          updateRow={updateRow}
+          categories={categories}
+          paymentSources={paymentSources}
+          onLabelCard={(rowKey, last4) => setLabelCardFor({ rowKey, last4, network: null })}
+          progress={progress}
+          note={note}
+          setNote={setNote}
+          pending={pending}
+          onCommit={handleCommit}
+          onBack={handleReset}
+        />
+        {labelCardFor ? (
+          <LabelCardDialog
+            open
+            onOpenChange={(v) => {
+              if (!v) setLabelCardFor(null);
+            }}
+            last4={labelCardFor.last4}
+            onSaved={handleCardLabeled}
+          />
+        ) : null}
+      </>
     );
   }
   return <DoneStage counts={doneCounts} onAnother={handleReset} />;
@@ -346,6 +418,8 @@ function PreviewStage({
   rows,
   updateRow,
   categories,
+  paymentSources,
+  onLabelCard,
   progress,
   note,
   setNote,
@@ -356,6 +430,8 @@ function PreviewStage({
   rows: RowState[];
   updateRow: (rowKey: string, updater: (r: RowState) => RowState) => void;
   categories: CategoryPickerOptionLite[];
+  paymentSources: PaymentSourceLite[];
+  onLabelCard: (rowKey: string, last4: string) => void;
   progress: { done: number; total: number; errors: number };
   note: string;
   setNote: (v: string) => void;
@@ -408,6 +484,7 @@ function PreviewStage({
               <th className="px-3 py-2 text-right font-medium">Amount</th>
               <th className="px-3 py-2 text-right font-medium">Tax</th>
               <th className="px-3 py-2 text-left font-medium">Category</th>
+              <th className="px-3 py-2 text-left font-medium">Paid by</th>
               <th className="px-3 py-2 text-left font-medium">Match</th>
               <th className="px-3 py-2 text-right font-medium">Decision</th>
             </tr>
@@ -476,6 +553,23 @@ function PreviewStage({
                         categoryLabel: label,
                       }))
                     }
+                    disabled={pending || !!r.parseError}
+                  />
+                </td>
+                <td className="px-3 py-2 align-top">
+                  <SourceCell
+                    row={r}
+                    paymentSources={paymentSources}
+                    onPick={(id) =>
+                      updateRow(r.rowKey, (row) => ({
+                        ...row,
+                        paymentSourceId: id,
+                        paymentSourceResolution: id ? 'matched_card' : 'none',
+                      }))
+                    }
+                    onLabelCard={() => {
+                      if (r.cardLast4) onLabelCard(r.rowKey, r.cardLast4);
+                    }}
                     disabled={pending || !!r.parseError}
                   />
                 </td>
@@ -614,6 +708,71 @@ function CategoryCell({
       {isHenrySuggestion ? (
         <span className="px-1 text-[10px] text-muted-foreground">Suggested by Henry</span>
       ) : null}
+    </div>
+  );
+}
+
+function SourceCell({
+  row,
+  paymentSources,
+  onPick,
+  onLabelCard,
+  disabled,
+}: {
+  row: RowState;
+  paymentSources: PaymentSourceLite[];
+  onPick: (id: string | null) => void;
+  onLabelCard: () => void;
+  disabled: boolean;
+}) {
+  const sourceById = new Map(paymentSources.map((s) => [s.id, s]));
+  const selected = row.paymentSourceId ? sourceById.get(row.paymentSourceId) : undefined;
+
+  // Card was OCR'd but not registered yet → "Label this card" affordance.
+  const unknownCard = row.cardLast4 !== null && row.paymentSourceResolution === 'unknown_card';
+
+  return (
+    <div className="flex flex-col gap-1">
+      {selected ? (
+        <PaymentSourcePill source={selected} size="xs" />
+      ) : unknownCard ? (
+        <button
+          type="button"
+          onClick={onLabelCard}
+          disabled={disabled}
+          className="inline-flex items-center gap-1 rounded-full border border-dashed border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+          title={`OCR saw last 4 ${row.cardLast4} but no card with that number is labeled yet.`}
+        >
+          <Tag className="size-3" />
+          Label ····{row.cardLast4}
+        </button>
+      ) : (
+        <span className="text-xs text-muted-foreground">— pick —</span>
+      )}
+      <select
+        value={row.paymentSourceId === ADD_NEW_SOURCE_SENTINEL ? '' : (row.paymentSourceId ?? '')}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === ADD_NEW_SOURCE_SENTINEL) {
+            onLabelCard();
+            return;
+          }
+          onPick(v || null);
+        }}
+        disabled={disabled || paymentSources.length === 0}
+        className="h-6 rounded border-transparent bg-transparent px-1 text-[11px] text-muted-foreground hover:border-input focus:border-input disabled:opacity-50"
+      >
+        <option value="">— change source —</option>
+        {paymentSources.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.label}
+            {s.last4 ? ` ····${s.last4}` : ''}
+          </option>
+        ))}
+        {row.cardLast4 ? (
+          <option value={ADD_NEW_SOURCE_SENTINEL}>+ Label ····{row.cardLast4}…</option>
+        ) : null}
+      </select>
     </div>
   );
 }

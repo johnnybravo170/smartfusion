@@ -8,6 +8,7 @@ import {
   buildPickerOptions,
   listExpenseCategories,
 } from '@/lib/db/queries/expense-categories';
+import { listPaymentSources, toLite } from '@/lib/db/queries/payment-sources';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 
 export const metadata = {
@@ -18,11 +19,13 @@ export default async function NewOverheadExpensePage() {
   const { tenant } = await requireTenant();
   if (tenant.member.role === 'worker') redirect('/w');
 
-  const [rows, taxCtx] = await Promise.all([
+  const [rows, taxCtx, sourceRows] = await Promise.all([
     listExpenseCategories(),
     canadianTax.getContext(tenant.id).catch(() => null),
+    listPaymentSources(),
   ]);
   const pickerOptions = buildPickerOptions(buildCategoryTree(rows));
+  const paymentSources = toLite(sourceRows);
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
@@ -50,6 +53,7 @@ export default async function NewOverheadExpensePage() {
 
       <OverheadExpenseForm
         categories={pickerOptions}
+        paymentSources={paymentSources}
         gstRate={taxCtx?.gstRate ?? 0}
         gstLabel={
           taxCtx?.breakdown.find((b) => b.label.startsWith('GST') || b.label.startsWith('HST'))

@@ -10,7 +10,7 @@
  * submit so the receipt is attached to the expense row.
  */
 
-import { Loader2, Paperclip, X } from 'lucide-react';
+import { Loader2, Paperclip, Tag, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -18,6 +18,11 @@ import {
   type DuplicateExpense,
   DuplicateExpenseDialog,
 } from '@/components/features/expenses/duplicate-expense-dialog';
+import {
+  LabelCardDialog,
+  type LabelCardResult,
+} from '@/components/features/payment-sources/label-card-dialog';
+import { PaymentSourcePill } from '@/components/features/payment-sources/payment-source-pill';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -31,6 +36,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import type { CategoryPickerOption } from '@/lib/db/queries/expense-categories';
+import type { PaymentSourceLite } from '@/lib/db/queries/payment-sources';
 import { createExpenseCategoryAction } from '@/server/actions/expense-categories';
 import {
   extractOverheadReceiptAction,
@@ -53,10 +59,14 @@ export type OverheadExpenseInitialValues = {
   expenseDate: string;
   existingReceiptPath: string | null;
   existingReceiptUrl: string | null;
+  paymentSourceId: string | null;
+  cardLast4: string | null;
 };
 
 type Props = {
   categories: CategoryPickerOption[];
+  /** Tenant catalog of payment sources, with the default first. */
+  paymentSources: PaymentSourceLite[];
   /** Active GST/HST rate for the tenant (0-1). 0 disables auto-calc. */
   gstRate: number;
   /** Display label for the rate ("GST 5%", "HST 13%"). */
@@ -128,6 +138,7 @@ function TaxHint({
 
 export function OverheadExpenseForm({
   categories: initialCategories,
+  paymentSources: initialPaymentSources,
   gstRate,
   gstLabel,
   initialValues,
@@ -141,6 +152,17 @@ export function OverheadExpenseForm({
   // the list without a server round-trip to re-render the picker.
   const [categories, setCategories] = useState(initialCategories);
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
+
+  // Same idea for payment sources — labeling a new card splices
+  // optimistically.
+  const [paymentSources, setPaymentSources] = useState(initialPaymentSources);
+  const defaultSourceId = initialPaymentSources.find((s) => s.is_default)?.id ?? null;
+  const [paymentSourceId, setPaymentSourceId] = useState<string | null>(
+    initialValues?.paymentSourceId ?? defaultSourceId,
+  );
+  const [cardLast4, setCardLast4] = useState<string | null>(initialValues?.cardLast4 ?? null);
+  const [labelCardOpen, setLabelCardOpen] = useState(false);
+  const [unknownLast4, setUnknownLast4] = useState<string | null>(null);
 
   const [receipt, setReceipt] = useState<File | null>(null);
   // When editing: existingReceiptUrl is the signed URL for the already-
@@ -245,6 +267,21 @@ export function OverheadExpenseForm({
     if (!categoryId && res.fields.suggestedCategoryId)
       setCategoryId(res.fields.suggestedCategoryId);
 
+    // Payment source resolution. Three cases worth distinguishing:
+    //   - matched_card    → silently set the source.
+    //   - unknown_card    → keep current selection but expose a "Label
+    //                       ····xxxx" affordance under the picker.
+    //   - fallback_default→ keep the (already-set) default source.
+    if (res.fields.cardLast4) setCardLast4(res.fields.cardLast4);
+    if (res.fields.paymentSourceResolution === 'matched_card' && res.fields.paymentSourceId) {
+      setPaymentSourceId(res.fields.paymentSourceId);
+      setUnknownLast4(null);
+    } else if (res.fields.paymentSourceResolution === 'unknown_card' && res.fields.cardLast4) {
+      setUnknownLast4(res.fields.cardLast4);
+    } else {
+      setUnknownLast4(null);
+    }
+
     // Kick off a vendor-history lookup once we have a name. The OCR
     // model already sees vendor hints in its prompt; this second lookup
     // just surfaces the hint inline so the operator sees WHY a category
@@ -273,10 +310,34 @@ export function OverheadExpenseForm({
     fd.append('vendor_gst_number', vendorGstNumber);
     fd.append('description', description);
     fd.append('expense_date', expenseDate);
+    if (paymentSourceId) fd.append('payment_source_id', paymentSourceId);
+    if (cardLast4) fd.append('card_last4', cardLast4);
     if (receipt) fd.append('receipt', receipt);
     if (isEdit && removeExistingReceipt && !receipt) fd.append('remove_receipt', '1');
     if (force) fd.append('force', '1');
     return fd;
+  }
+
+  function handleCardLabeled(saved: LabelCardResult) {
+    setPaymentSources((prev) => {
+      const without = prev.filter((p) => p.id !== saved.id);
+      return [
+        ...without,
+        {
+          id: saved.id,
+          label: saved.label,
+          last4: saved.last4,
+          kind: saved.kind,
+          paid_by: saved.paid_by,
+          is_default: false,
+        },
+      ];
+    });
+    setPaymentSourceId(saved.id);
+    setCardLast4(saved.last4);
+    setUnknownLast4(null);
+    setLabelCardOpen(false);
+    toast.success(`Saved card ${saved.label}.`);
   }
 
   function runSave(force: boolean) {
@@ -500,6 +561,49 @@ export function OverheadExpenseForm({
         </div>
 
         <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <Label htmlFor="payment-source">Paid by</Label>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              id="payment-source"
+              value={paymentSourceId ?? ''}
+              onChange={(e) => setPaymentSourceId(e.target.value || null)}
+              className="flex h-9 flex-1 min-w-[180px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">— None —</option>
+              {paymentSources.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                  {s.last4 ? ` ····${s.last4}` : ''}
+                  {s.is_default ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+            {paymentSourceId
+              ? (() => {
+                  const sel = paymentSources.find((s) => s.id === paymentSourceId);
+                  return sel ? <PaymentSourcePill source={sel} /> : null;
+                })()
+              : null}
+          </div>
+          {unknownLast4 ? (
+            <p className="flex flex-wrap items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+              <Tag className="size-3" />
+              Receipt was paid with ····{unknownLast4} — that card isn&apos;t labeled yet.
+              <button
+                type="button"
+                onClick={() => setLabelCardOpen(true)}
+                className="font-medium underline-offset-2 hover:underline"
+              >
+                Label this card
+              </button>
+            </p>
+          ) : null}
+          {cardLast4 && !unknownLast4 ? (
+            <p className="text-xs text-muted-foreground">Card ····{cardLast4} read from receipt.</p>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
           <Label htmlFor="vendor-bn">
             Vendor GST/HST number{' '}
             <span className="font-normal text-muted-foreground">(optional)</span>
@@ -555,6 +659,15 @@ export function OverheadExpenseForm({
         }}
         busy={pending}
       />
+
+      {labelCardOpen && unknownLast4 ? (
+        <LabelCardDialog
+          open
+          onOpenChange={setLabelCardOpen}
+          last4={unknownLast4}
+          onSaved={handleCardLabeled}
+        />
+      ) : null}
     </form>
   );
 }

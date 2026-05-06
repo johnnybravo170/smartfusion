@@ -9,6 +9,7 @@ import {
   buildPickerOptions,
   listExpenseCategories,
 } from '@/lib/db/queries/expense-categories';
+import { listPaymentSources, toLite } from '@/lib/db/queries/payment-sources';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -33,7 +34,7 @@ export default async function EditOverheadExpensePage({
   const { data: expense } = await admin
     .from('expenses')
     .select(
-      'id, tenant_id, project_id, category_id, amount_cents, tax_cents, vendor, vendor_gst_number, description, expense_date, receipt_storage_path',
+      'id, tenant_id, project_id, category_id, amount_cents, tax_cents, vendor, vendor_gst_number, description, expense_date, receipt_storage_path, payment_source_id, card_last4',
     )
     .eq('id', id)
     .maybeSingle();
@@ -43,11 +44,13 @@ export default async function EditOverheadExpensePage({
     redirect(`/projects/${expense.project_id}`);
   }
 
-  const [rows, taxCtx] = await Promise.all([
+  const [rows, taxCtx, sourceRows] = await Promise.all([
     listExpenseCategories(),
     canadianTax.getContext(tenant.id).catch(() => null),
+    listPaymentSources(),
   ]);
   const pickerOptions = buildPickerOptions(buildCategoryTree(rows));
+  const paymentSources = toLite(sourceRows);
 
   // Sign the receipt so the form can link to it for review/download.
   let receiptUrl: string | null = null;
@@ -79,6 +82,7 @@ export default async function EditOverheadExpensePage({
 
       <OverheadExpenseForm
         categories={pickerOptions}
+        paymentSources={paymentSources}
         gstRate={taxCtx?.gstRate ?? 0}
         gstLabel={
           taxCtx?.breakdown.find((b) => b.label.startsWith('GST') || b.label.startsWith('HST'))
@@ -95,6 +99,8 @@ export default async function EditOverheadExpensePage({
           expenseDate: expense.expense_date as string,
           existingReceiptPath: (expense.receipt_storage_path as string | null) ?? null,
           existingReceiptUrl: receiptUrl,
+          paymentSourceId: (expense.payment_source_id as string | null) ?? null,
+          cardLast4: (expense.card_last4 as string | null) ?? null,
         }}
       />
     </div>

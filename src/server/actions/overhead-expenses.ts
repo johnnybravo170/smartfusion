@@ -22,6 +22,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
+import { listPaymentSources, type PaymentSourceNetwork } from '@/lib/db/queries/payment-sources';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const RECEIPTS_BUCKET = 'receipts';
@@ -138,6 +139,16 @@ const overheadSchema = z.object({
   vendor_gst_number: z.string().trim().max(40).optional().or(z.literal('')),
   description: z.string().trim().max(2000).optional().or(z.literal('')),
   expense_date: z.string().min(1, 'Date is required.'),
+  payment_source_id: z
+    .string()
+    .uuid()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  card_last4: z
+    .string()
+    .regex(/^\d{4}$/)
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
 });
 
 /**
@@ -158,6 +169,8 @@ export async function logOverheadExpenseAction(formData: FormData): Promise<Over
     vendor_gst_number: formData.get('vendor_gst_number') ?? '',
     description: formData.get('description') ?? '',
     expense_date: formData.get('expense_date'),
+    payment_source_id: formData.get('payment_source_id') ?? '',
+    card_last4: formData.get('card_last4') ?? '',
   });
   if (!parsed.success) {
     return {
@@ -232,6 +245,15 @@ export async function logOverheadExpenseAction(formData: FormData): Promise<Over
     receiptStoragePath = path;
   }
 
+  // Resolve payment source: explicit pick wins, otherwise fall back to
+  // the tenant default. Same model as the bulk-import commit so legacy
+  // and new entries land on the same source.
+  let resolvedSourceId = parsed.data.payment_source_id ?? null;
+  if (!resolvedSourceId) {
+    const sources = await listPaymentSources();
+    resolvedSourceId = sources.find((s) => s.is_default)?.id ?? null;
+  }
+
   const { data, error } = await admin
     .from('expenses')
     .insert({
@@ -248,6 +270,8 @@ export async function logOverheadExpenseAction(formData: FormData): Promise<Over
       description: parsed.data.description?.trim() || null,
       receipt_storage_path: receiptStoragePath,
       expense_date: parsed.data.expense_date,
+      payment_source_id: resolvedSourceId,
+      card_last4: parsed.data.card_last4 ?? null,
     })
     .select('id')
     .single();
@@ -279,6 +303,14 @@ export type OverheadReceiptExtraction =
         expenseDate: string | null;
         description: string | null;
         suggestedCategoryId: string | null;
+        /** Last 4 of the card used to pay (extracted from the receipt). */
+        cardLast4: string | null;
+        cardNetwork: PaymentSourceNetwork | null;
+        /** Resolved payment source: matched card → existing row id;
+         *  unknown card → null + resolution='unknown_card' so the form
+         *  can prompt to label it; no card visible → tenant default. */
+        paymentSourceId: string | null;
+        paymentSourceResolution: 'matched_card' | 'unknown_card' | 'fallback_default' | 'none';
       };
     }
   | { ok: false; error: string };
@@ -380,7 +412,9 @@ Field rules:
 - vendor: merchant name as printed at the top.
 - description: one-line summary of what was bought ("regular gas", "2x4s and drywall screws", "coffee").
 - vendor_gst_number: the vendor's GST/HST business number (BN) if printed on the receipt. Canadian format is 9 digits + "RT" + 4 digits. If only the 9-digit root is shown, return those 9 digits. Return null if not visible.
-- suggested_category_id: pick a selectable (non-parent) id from the list, or null if nothing fits well.`;
+- suggested_category_id: pick a selectable (non-parent) id from the list, or null if nothing fits well.
+- card_last4: LAST 4 DIGITS of the card used to pay, if visible. Many shapes: "VISA ****1234", "DEBIT XXXXXXXXXXXX1234", "Card # ...1234", "Account: ************1234". Return ONLY the 4 digits as a string ("1234"), not the masked prefix. Null if no card line is visible (cash/e-transfer/cheque receipts).
+- card_network: one of "visa", "mastercard", "amex", "interac", "discover", "other" if printed alongside the last 4. Map a plain "DEBIT" with no other brand to "interac" (Canadian default).`;
 
   const SCHEMA = {
     type: 'object',
@@ -393,6 +427,8 @@ Field rules:
       expense_date: { type: ['string', 'null'] },
       description: { type: ['string', 'null'] },
       suggested_category_id: { type: ['string', 'null'] },
+      card_last4: { type: ['string', 'null'] },
+      card_network: { type: ['string', 'null'] },
     },
     required: [
       'amount_cents',
@@ -402,6 +438,8 @@ Field rules:
       'expense_date',
       'description',
       'suggested_category_id',
+      'card_last4',
+      'card_network',
     ],
   };
 
@@ -413,6 +451,8 @@ Field rules:
     expense_date: string | null;
     description: string | null;
     suggested_category_id: string | null;
+    card_last4: string | null;
+    card_network: string | null;
   };
 
   let parsed: ParsedOverheadReceipt;
@@ -468,6 +508,31 @@ Field rules:
     }
   }
 
+  // Last 4 + network: extract digits, validate network against the
+  // small enum, then resolve against registered payment sources.
+  const cardLast4 = extractLast4(parsed.card_last4);
+  const cardNetwork = normalizeNetwork(parsed.card_network);
+
+  const paymentSources = await listPaymentSources();
+  let paymentSourceId: string | null = null;
+  let paymentSourceResolution: 'matched_card' | 'unknown_card' | 'fallback_default' | 'none' =
+    'none';
+  if (cardLast4) {
+    const matched = paymentSources.find((s) => s.last4 === cardLast4 && !s.archived_at);
+    if (matched) {
+      paymentSourceId = matched.id;
+      paymentSourceResolution = 'matched_card';
+    } else {
+      paymentSourceResolution = 'unknown_card';
+    }
+  } else {
+    const def = paymentSources.find((s) => s.is_default);
+    if (def) {
+      paymentSourceId = def.id;
+      paymentSourceResolution = 'fallback_default';
+    }
+  }
+
   return {
     ok: true,
     fields: {
@@ -478,8 +543,34 @@ Field rules:
       expenseDate: parsed.expense_date,
       description: parsed.description?.trim() || null,
       suggestedCategoryId: picked,
+      cardLast4,
+      cardNetwork,
+      paymentSourceId,
+      paymentSourceResolution,
     },
   };
+}
+
+const NETWORK_LITERALS: PaymentSourceNetwork[] = [
+  'visa',
+  'mastercard',
+  'amex',
+  'interac',
+  'discover',
+  'other',
+];
+
+function normalizeNetwork(v: string | null): PaymentSourceNetwork | null {
+  if (!v) return null;
+  const lc = v.toLowerCase().trim();
+  return (NETWORK_LITERALS as string[]).includes(lc) ? (lc as PaymentSourceNetwork) : null;
+}
+
+function extractLast4(raw: string | null): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D+/g, '');
+  if (digits.length < 4) return null;
+  return digits.slice(-4);
 }
 
 /**
@@ -506,6 +597,8 @@ export async function updateOverheadExpenseAction(
     vendor_gst_number: formData.get('vendor_gst_number') ?? '',
     description: formData.get('description') ?? '',
     expense_date: formData.get('expense_date'),
+    payment_source_id: formData.get('payment_source_id') ?? '',
+    card_last4: formData.get('card_last4') ?? '',
   });
   if (!parsed.success) {
     return {
@@ -624,6 +717,13 @@ export async function updateOverheadExpenseAction(
   if (receiptStoragePath !== undefined) {
     patch.receipt_storage_path = receiptStoragePath;
   }
+  // Always write payment_source_id from the form — even null clears
+  // any previous value so the operator can intentionally remove a
+  // source assignment. card_last4 is only set if the form supplied it.
+  patch.payment_source_id = parsed.data.payment_source_id ?? null;
+  if (parsed.data.card_last4 !== undefined) {
+    patch.card_last4 = parsed.data.card_last4;
+  }
 
   const { error: updErr } = await admin.from('expenses').update(patch).eq('id', id);
   if (updErr) return { ok: false, error: updErr.message };
@@ -722,6 +822,86 @@ export async function bulkRecategorizeExpensesAction(input: {
   revalidatePath('/expenses');
   revalidatePath('/bk/expenses');
   return { ok: true, updated: allowedIds.length };
+}
+
+/**
+ * Bulk set the payment source on a batch of overhead expenses.
+ * Project-linked rows skip (they have their own edit path).
+ * Books-closed rows skip (no touching locked periods).
+ *
+ * Resolves an arbitrary `payment_source_id` to its `last4` so we can
+ * stamp `card_last4` consistently on every row — keeps the UI's "Card
+ * ····xxxx" hint accurate after a bulk reassignment.
+ */
+export async function bulkSetPaymentSourceAction(input: {
+  ids: string[];
+  payment_source_id: string;
+}): Promise<{ ok: true; updated: number } | { ok: false; error: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  if (!Array.isArray(input.ids) || input.ids.length === 0) {
+    return { ok: false, error: 'Nothing selected.' };
+  }
+  if (
+    typeof input.payment_source_id !== 'string' ||
+    !/^[0-9a-f-]{36}$/i.test(input.payment_source_id)
+  ) {
+    return { ok: false, error: 'Invalid payment source.' };
+  }
+
+  const admin = createAdminClient();
+
+  // Confirm the source belongs to this tenant + grab last4 to stamp.
+  const { data: source } = await admin
+    .from('payment_sources')
+    .select('id, last4')
+    .eq('id', input.payment_source_id)
+    .eq('tenant_id', tenant.id)
+    .single();
+  if (!source) return { ok: false, error: 'Payment source not found.' };
+
+  const { data: rows } = await admin
+    .from('expenses')
+    .select('id, project_id, expense_date')
+    .in('id', input.ids)
+    .eq('tenant_id', tenant.id);
+
+  const { data: t } = await admin
+    .from('tenants')
+    .select('books_closed_through')
+    .eq('id', tenant.id)
+    .single();
+  const closedThrough = (t?.books_closed_through as string | null) ?? null;
+
+  const eligible = (rows ?? []).filter((r) => {
+    if (r.project_id) return false;
+    if (closedThrough && (r.expense_date as string) <= closedThrough) return false;
+    return true;
+  });
+
+  if (eligible.length === 0) {
+    return {
+      ok: false,
+      error: closedThrough
+        ? `All selected rows are in a locked period (books closed through ${closedThrough}) or are project-linked.`
+        : 'No eligible rows found (project-linked rows skip).',
+    };
+  }
+
+  const ids = eligible.map((r) => r.id as string);
+  const { error } = await admin
+    .from('expenses')
+    .update({
+      payment_source_id: input.payment_source_id,
+      card_last4: (source.last4 as string | null) ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .in('id', ids);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/expenses');
+  revalidatePath('/bk/expenses');
+  return { ok: true, updated: ids.length };
 }
 
 /**

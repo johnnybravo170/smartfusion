@@ -25,6 +25,16 @@ export type OverheadExpenseRow = {
   category_id: string | null;
   category_name: string | null;
   parent_category_name: string | null;
+  /** Snapshot of how this expense was paid for. Pulled from payment_sources
+   *  via FK; null when the row is legacy or the source was hard-deleted. */
+  payment_source: {
+    id: string;
+    label: string;
+    last4: string | null;
+    paid_by: 'business' | 'personal_reimbursable' | 'petty_cash';
+    kind: 'debit' | 'credit' | 'cash' | 'etransfer' | 'cheque' | 'other';
+  } | null;
+  card_last4: string | null;
 };
 
 export async function listOverheadExpenses(opts?: {
@@ -41,7 +51,7 @@ export async function listOverheadExpenses(opts?: {
   let query = supabase
     .from('expenses')
     .select(
-      'id, expense_date, amount_cents, tax_cents, vendor, description, receipt_storage_path, project_id, category_id, categories:category_id (name, parent:parent_id (name))',
+      'id, expense_date, amount_cents, tax_cents, vendor, description, receipt_storage_path, project_id, category_id, card_last4, categories:category_id (name, parent:parent_id (name)), payment_source:payment_source_id (id, label, last4, paid_by, kind)',
     )
     .order('expense_date', { ascending: false });
 
@@ -89,6 +99,39 @@ export async function listOverheadExpenses(opts?: {
     const parent = Array.isArray(parentRaw) ? parentRaw[0] : parentRaw;
     const receiptPath = (row.receipt_storage_path as string | null) ?? null;
     const isPdf = receiptPath?.toLowerCase().endsWith('.pdf') ?? false;
+
+    type RawSource = {
+      id?: string;
+      label?: string;
+      last4?: string | null;
+      paid_by?: OverheadExpenseRow['payment_source'] extends infer T
+        ? T extends { paid_by: infer P }
+          ? P
+          : never
+        : never;
+      kind?: OverheadExpenseRow['payment_source'] extends infer T
+        ? T extends { kind: infer K }
+          ? K
+          : never
+        : never;
+    };
+    const sourceRaw = (row as Record<string, unknown>).payment_source as
+      | RawSource
+      | RawSource[]
+      | null
+      | undefined;
+    const source = Array.isArray(sourceRaw) ? sourceRaw[0] : sourceRaw;
+    const paymentSource: OverheadExpenseRow['payment_source'] =
+      source && source.id && source.label && source.paid_by && source.kind
+        ? {
+            id: source.id,
+            label: source.label,
+            last4: source.last4 ?? null,
+            paid_by: source.paid_by,
+            kind: source.kind,
+          }
+        : null;
+
     return {
       id: row.id as string,
       expense_date: row.expense_date as string,
@@ -103,6 +146,8 @@ export async function listOverheadExpenses(opts?: {
       category_id: (row.category_id as string | null) ?? null,
       category_name: (cat?.name as string | undefined) ?? null,
       parent_category_name: (parent?.name as string | undefined) ?? null,
+      payment_source: paymentSource,
+      card_last4: (row.card_last4 as string | null) ?? null,
     };
   });
 }

@@ -20,6 +20,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { DeleteExpenseButton } from '@/components/features/expenses/delete-expense-button';
 import { ReceiptPreviewButton } from '@/components/features/expenses/receipt-preview-button';
+import { PaymentSourcePill } from '@/components/features/payment-sources/payment-source-pill';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -32,15 +33,18 @@ import {
 import { Label } from '@/components/ui/label';
 import type { CategoryPickerOption } from '@/lib/db/queries/expense-categories';
 import type { OverheadExpenseRow } from '@/lib/db/queries/overhead-expenses';
+import type { PaymentSourceLite } from '@/lib/db/queries/payment-sources';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import {
   bulkDeleteExpensesAction,
   bulkRecategorizeExpensesAction,
+  bulkSetPaymentSourceAction,
 } from '@/server/actions/overhead-expenses';
 
 type Props = {
   expenses: OverheadExpenseRow[];
   categories: CategoryPickerOption[];
+  paymentSources: PaymentSourceLite[];
   /** true on /bk/expenses (shows project column + links). */
   showProjectColumn?: boolean;
   /** true = link row to operator edit page. false = don't render links. */
@@ -50,6 +54,7 @@ type Props = {
 export function ExpensesTable({
   expenses,
   categories,
+  paymentSources,
   showProjectColumn,
   editHrefForOverhead,
 }: Props) {
@@ -57,6 +62,8 @@ export function ExpensesTable({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [recatOpen, setRecatOpen] = useState(false);
   const [targetCategory, setTargetCategory] = useState('');
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [targetSource, setTargetSource] = useState('');
   const [pending, startTransition] = useTransition();
 
   const selectable = useMemo(
@@ -102,6 +109,26 @@ export function ExpensesTable({
     });
   }
 
+  function runSetSource() {
+    if (!targetSource) return;
+    const ids = Array.from(selected);
+    startTransition(async () => {
+      const res = await bulkSetPaymentSourceAction({
+        ids,
+        payment_source_id: targetSource,
+      });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(`${res.updated} expense${res.updated === 1 ? '' : 's'} updated`);
+      setSelected(new Set());
+      setSourceOpen(false);
+      setTargetSource('');
+      router.refresh();
+    });
+  }
+
   function runDelete() {
     const ids = Array.from(selected);
     if (
@@ -140,6 +167,7 @@ export function ExpensesTable({
               <th className="px-4 py-3 text-left font-medium">Date</th>
               <th className="px-4 py-3 text-left font-medium">Category</th>
               <th className="px-4 py-3 text-left font-medium">Vendor</th>
+              <th className="px-4 py-3 text-left font-medium">Paid by</th>
               {showProjectColumn ? (
                 <th className="px-4 py-3 text-left font-medium">Project</th>
               ) : (
@@ -193,6 +221,13 @@ export function ExpensesTable({
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{e.vendor ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    {e.payment_source ? (
+                      <PaymentSourcePill source={e.payment_source} />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
                   {showProjectColumn ? (
                     <td className="px-4 py-3 text-muted-foreground">
                       {e.project_id ? (
@@ -246,6 +281,14 @@ export function ExpensesTable({
           <Button size="sm" variant="outline" onClick={() => setRecatOpen(true)} disabled={pending}>
             Recategorize
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSourceOpen(true)}
+            disabled={pending}
+          >
+            Set source
+          </Button>
           <Button size="sm" variant="outline" onClick={runDelete} disabled={pending}>
             <Trash2 className="size-3.5" />
             Delete
@@ -260,6 +303,51 @@ export function ExpensesTable({
           </button>
         </div>
       ) : null}
+
+      <Dialog open={sourceOpen} onOpenChange={setSourceOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              Set source on {selected.size} expense{selected.size === 1 ? '' : 's'}
+            </DialogTitle>
+            <DialogDescription>
+              Pick the card or funding source. Project-linked rows and rows in locked periods are
+              silently skipped.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="bulk-src">Paid by</Label>
+            <select
+              id="bulk-src"
+              value={targetSource}
+              onChange={(e) => setTargetSource(e.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">— Pick a source —</option>
+              {paymentSources.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                  {s.last4 ? ` ····${s.last4}` : ''}
+                  {s.is_default ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setSourceOpen(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={runSetSource} disabled={pending || !targetSource}>
+              {pending ? 'Updating…' : 'Apply'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={recatOpen} onOpenChange={setRecatOpen}>
         <DialogContent className="max-w-sm">

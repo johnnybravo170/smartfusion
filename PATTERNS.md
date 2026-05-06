@@ -305,7 +305,29 @@ All four phases of the kanban card "Henry-powered onboarding import wizard" are 
 
 ---
 
-## 17. Mobile width: grid + truncate min-width gotchas
+## 17. Payment sources (per-tenant card / funding-source catalog)
+
+Receipts log against a `payment_sources` row — debit/credit cards keyed by last 4, plus non-card sources (Personal-reimbursable, Petty cash). The OCR layer extracts `card_last4` and resolves it against the catalog server-side; new cards prompt an inline "Label this card" dialog whose result splices through every sibling row in the same batch.
+
+- `supabase/migrations/0194_payment_sources.sql` — table + RLS + columns on `expenses` (`payment_source_id`, `card_last4` snapshot) + `seed_default_payment_sources` RPC.
+- `src/lib/db/queries/payment-sources.ts` — listing, default lookup, lite/full row shapes, `paidByLabel` helper.
+- `src/server/actions/payment-sources.ts` — create/update/archive/setDefault/labelCard. `labelCardAction` is the upsert-by-last4 entry point used by the wizard.
+- `src/components/features/payment-sources/payment-source-pill.tsx` — read-only pill. Tone follows `paid_by` (amber for `personal_reimbursable`, blue for `petty_cash`, neutral for `business`).
+- `src/components/features/payment-sources/label-card-dialog.tsx` — shared inline dialog for naming a freshly-OCR'd unknown card.
+- `src/components/features/settings/payment-sources-manager.tsx` + `src/app/(dashboard)/settings/payment-sources/page.tsx` — full management UI.
+
+Sibling instances to keep aligned when this pattern changes:
+
+- `src/components/features/expenses/overhead-expense-form.tsx` — single-receipt form (Paid-by picker + "Label this card" affordance).
+- `src/components/features/onboarding/receipt-import-wizard.tsx` — bulk-receipt wizard's Source column (matched-card pill / unknown-card label button / source picker).
+- `src/components/features/expenses/expenses-table.tsx` — list view's "Paid by" column.
+- `src/server/actions/onboarding-import-receipts.ts` + `src/server/actions/overhead-expenses.ts` — both OCR paths must stay in sync on the `card_last4` + `card_network` extraction prompt and the `paymentSourceResolution` enum.
+
+The QB sync layer (deferred) branches on `payment_sources.paid_by`: business → bank/CC, personal_reimbursable → Owner Equity (reimbursable), petty_cash → Petty Cash. `default_account_code` per source overrides the category-level account code at sync time.
+
+---
+
+## 18. Mobile width: grid + truncate min-width gotchas
 
 Two tightly-related Tailwind/CSS pitfalls that can silently push a layout past the iPhone viewport. Both surfaced together while chasing a "dashboard too wide" bug — neither showed up under static inspection or with `overflow-x-hidden` on `<main>` (that just clipped the visual; the layout had already escaped).
 
