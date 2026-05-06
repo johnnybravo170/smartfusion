@@ -104,14 +104,9 @@ export async function sendPhaseNotification(input: SendPhaseNotificationInput): 
     }).catch((err) => console.error('[phase-notify] email failed:', err));
   }
 
-  // Mirror the homeowner-facing event into the operator-side feed so
-  // both views stay in sync. Done here (not at advance-click) because
-  // the homeowner only "saw" the event when this notify fired.
-  await input.supabase.from('project_portal_updates').insert({
-    project_id: input.projectId,
-    tenant_id: input.tenantId,
-    type: 'milestone',
-    title: input.phaseName,
-    body: `Phase advanced to ${input.phaseName}.`,
-  });
+  // The operator-side milestone row in project_portal_updates is
+  // written immediately on advance (see advancePhaseAction). The cron
+  // drainer only handles SMS + email — it does not write to the feed,
+  // because that would create duplicate rows alongside the immediate
+  // write.
 }

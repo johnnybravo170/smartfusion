@@ -72,11 +72,41 @@ async function schedulePhaseNotification(
 }
 
 /**
+ * Insert the operator-side milestone row immediately on advance, so the
+ * Portal-tab feed reflects the change right away. The homeowner-facing
+ * SMS / email is still deferred via the cron drainer.
+ *
+ * Why immediate (not deferred with the SMS): operators bulk-advancing
+ * during catch-up need visual confirmation that the click landed.
+ * Deferring the row alongside the SMS hid it for 5+ minutes and looked
+ * broken. The trade-off is that rapid catch-up creates a chain in the
+ * feed; the timestamps collapse visually and the SMS is still
+ * consolidated to one.
+ *
+ * On Undo: this row stays. It's a historical event log of "phase X
+ * started at time T". The notification suppression is a separate concern.
+ */
+async function writePhaseMilestone(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  input: { tenantId: string; projectId: string; phaseName: string },
+): Promise<void> {
+  await supabase.from('project_portal_updates').insert({
+    project_id: input.projectId,
+    tenant_id: input.tenantId,
+    type: 'milestone',
+    title: input.phaseName,
+    body: `Phase advanced to ${input.phaseName}.`,
+  });
+}
+
+/**
  * Mark the current `in_progress` phase complete and the next `upcoming`
  * phase `in_progress`. No-op (returns ok) if the project is already on
  * its last phase.
  */
 export async function advancePhaseAction(projectId: string): Promise<AdvancePhaseResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
   const supabase = await createClient();
 
   const { data: phases, error: listErr } = await supabase
@@ -105,6 +135,11 @@ export async function advancePhaseAction(projectId: string): Promise<AdvancePhas
       .eq('id', firstUpcoming.id);
     if (error) return { ok: false, error: error.message };
     const scheduledAt = await schedulePhaseNotification(supabase, firstUpcoming.id);
+    await writePhaseMilestone(supabase, {
+      tenantId: tenant.id,
+      projectId,
+      phaseName: firstUpcoming.name,
+    });
     revalidatePath(`/projects/${projectId}`);
     return { ok: true, notifyScheduledAt: scheduledAt, nextPhaseName: firstUpcoming.name };
   }
@@ -142,6 +177,11 @@ export async function advancePhaseAction(projectId: string): Promise<AdvancePhas
   if (e2) return { ok: false, error: e2.message };
 
   const scheduledAt = await schedulePhaseNotification(supabase, next.id);
+  await writePhaseMilestone(supabase, {
+    tenantId: tenant.id,
+    projectId,
+    phaseName: next.name,
+  });
 
   revalidatePath(`/projects/${projectId}`);
   return { ok: true, notifyScheduledAt: scheduledAt, nextPhaseName: next.name };
