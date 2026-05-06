@@ -5,6 +5,7 @@
     { "path": "/api/projects/estimate-nudge", "schedule": "0 * * * *" },
     { "path": "/api/workers/time-nudge", "schedule": "0 1 * * *" },
     { "path": "/api/cron/recurring-expenses", "schedule": "0 13 * * *" },
-    { "path": "/api/cron/henry-nightly", "schedule": "0 13 * * *" }
+    { "path": "/api/cron/henry-nightly", "schedule": "0 13 * * *" },
+    { "path": "/api/cron/portal-phase-notify", "schedule": "* * * * *" }
   ]
 }

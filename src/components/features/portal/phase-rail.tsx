@@ -57,6 +57,7 @@ import {
   renamePhaseAction,
   reorderPhasesAction,
 } from '@/server/actions/project-phases';
+import { showPhaseNotifyToast } from './phase-notify-toast';
 
 export type PhaseRailPhoto = {
   id: string;
@@ -114,7 +115,20 @@ export function PhaseRail({ phases, projectId, phasePhotos = [] }: PhaseRailProp
     if (!projectId) return;
     startTransition(async () => {
       const res = await advancePhaseAction(projectId);
-      if (!res.ok) toast.error(res.error);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      // Notification was scheduled — show the countdown toast with Undo.
+      // No notify when there's no next phase (project finished its last
+      // phase) or no phase to advance to (already all complete).
+      if (res.notifyScheduledAt && res.nextPhaseName) {
+        showPhaseNotifyToast({
+          projectId,
+          phaseName: res.nextPhaseName,
+          scheduledAt: res.notifyScheduledAt,
+        });
+      }
     });
   }
   function onRegress() {
