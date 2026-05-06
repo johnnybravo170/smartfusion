@@ -396,17 +396,17 @@ export default function SettingsPage() {
         </Card>
       </Link>
 
-      <Link href="/settings/imports" className="block">
+      <Link href="/import" className="block">
         <Card className="transition-colors hover:bg-muted/50">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <History className="size-5" />
                 <div>
-                  <CardTitle>Imports</CardTitle>
+                  <CardTitle>Import data</CardTitle>
                   <CardDescription>
-                    Every batch of data Henry has brought in. Roll one back if something landed
-                    wrong.
+                    Bring in customers, projects, invoices, or a stack of receipts — Henry handles
+                    whatever shape they&rsquo;re in. Audit + rollback included.
                   </CardDescription>
                 </div>
               </div>

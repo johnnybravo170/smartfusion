@@ -31,6 +31,28 @@ const FALLBACK_NAV: VerticalNavItem[] = [
   { href: '/settings', label: 'Settings', icon: 'Settings' },
 ];
 
+/**
+ * Cross-vertical sidebar entry for the Henry import hub. Injected at
+ * load time (rather than persisted into every vertical's nav_items
+ * JSON) so we don't have to coordinate per-vertical DB writes when
+ * platform-level surfaces ship. Placed just above /settings since it
+ * shares an "operator config" feel — primary entity surfaces stay
+ * grouped at the top.
+ */
+const IMPORT_HUB_NAV: VerticalNavItem = {
+  href: '/import',
+  label: 'Import',
+  icon: 'Sparkles',
+};
+
+function withImportHub(navItems: VerticalNavItem[]): VerticalNavItem[] {
+  // Already injected somewhere? Don't double-add.
+  if (navItems.some((i) => i.href === '/import')) return navItems;
+  const settingsIdx = navItems.findIndex((i) => i.href === '/settings');
+  if (settingsIdx === -1) return [...navItems, IMPORT_HUB_NAV];
+  return [...navItems.slice(0, settingsIdx), IMPORT_HUB_NAV, ...navItems.slice(settingsIdx)];
+}
+
 export async function loadVerticalPack(vertical: string | null | undefined): Promise<VerticalPack> {
   const v = vertical || 'pressure_washing';
   const admin = createAdminClient();
@@ -42,7 +64,7 @@ export async function loadVerticalPack(vertical: string | null | undefined): Pro
     .maybeSingle();
 
   if (error || !data) {
-    return { vertical: v, displayName: v, navItems: FALLBACK_NAV };
+    return { vertical: v, displayName: v, navItems: withImportHub(FALLBACK_NAV) };
   }
 
   const cfg = (data.config as Record<string, unknown> | null) ?? {};
@@ -59,6 +81,6 @@ export async function loadVerticalPack(vertical: string | null | undefined): Pro
   return {
     vertical: data.vertical as string,
     displayName: (data.display_name as string) ?? v,
-    navItems,
+    navItems: withImportHub(navItems),
   };
 }
