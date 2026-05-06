@@ -1,4 +1,4 @@
-import { Plus, Receipt, Tag } from 'lucide-react';
+import { Plus, Receipt, Sparkles, Tag } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ExpensesTable } from '@/components/features/expenses/expenses-table';
@@ -51,6 +51,12 @@ export default async function OverheadExpensesPage() {
             <Link href="/settings/categories?from=expenses">
               <Tag className="size-3.5" />
               Categories
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/expenses/import">
+              <Sparkles className="size-3.5" />
+              Import receipts
             </Link>
           </Button>
           <Button asChild>

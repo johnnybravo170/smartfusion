@@ -276,25 +276,32 @@ Imported invoices freeze their `amount_cents` and `tax_cents` exactly as the sou
 
 **Volume / timeout / size:**
 
-Server-action body cap is 50MB framework-wide ([next.config.ts](next.config.ts)). Per-import-action cap is 25MB. LLM input slice is 800K chars (~200K tokens). Each import page sets `export const maxDuration = 300` so server actions get 5 minutes on Vercel. Very large files (10K+ rows) need chunking; not implemented yet — kanban entry tracks the gap.
+Server-action body cap is 50MB framework-wide ([next.config.ts](next.config.ts)). Per-import-action cap is 25MB for text-shaped imports (A/B/C), 10MB per file for receipts (D — matches the live single-receipt flow). LLM input slice is 800K chars (~200K tokens) on text imports. Each import page sets `export const maxDuration = 300` so server actions get 5 minutes on Vercel. Very large files (10K+ rows) need chunking; not implemented yet — kanban entry tracks the gap.
+
+**File-shaped inputs (Phase D onward):**
+
+Receipts and other file-pile imports don't fit the single-shot text recipe — OCR per file is 5–15s, so a 50-receipt batch in one server action would blow past `maxDuration`. The pattern is **client-side fan-out**: the wizard iterates over the dropped files and calls a single-file parse action per receipt, building the preview list with progress UI as results arrive. The commit action takes the aggregated preview state and bulk-inserts in one call. Failed parses don't fail the batch — they render as red rows the operator can either retry, fill in manually, or skip.
 
 Files in this family today:
 
 - `supabase/migrations/0185_import_batches.sql` — `import_batches` table + storage bucket
 - `supabase/migrations/0186_projects_import_batch.sql` — `projects.import_batch_id`
 - `supabase/migrations/0187_invoices_import_batch.sql` — `invoices.import_batch_id` (frozen-math contract)
-- `src/lib/customers/dedup.ts` / `src/lib/projects/dedup.ts` / `src/lib/invoices/dedup.ts` — per-entity dedup engines
-- `src/lib/ai-gateway/{tasks,routing}.ts` — `onboarding_customer_classify`, `onboarding_project_classify`, `onboarding_invoice_classify` tasks (all pinned to Sonnet 4.6, no tier-climb)
+- `supabase/migrations/0188_expenses_import_batch.sql` — `expenses.import_batch_id` (frozen-math contract)
+- `src/lib/customers/dedup.ts` / `src/lib/projects/dedup.ts` / `src/lib/invoices/dedup.ts` / `src/lib/expenses/dedup.ts` — per-entity dedup engines
+- `src/lib/ai-gateway/{tasks,routing}.ts` — `onboarding_customer_classify`, `onboarding_project_classify`, `onboarding_invoice_classify` tasks (all pinned to Sonnet 4.6, no tier-climb). Phase D reuses `receipt_ocr` (Gemini-primary) per-file.
 - `src/server/actions/onboarding-import.ts` — Phase A (customers) actions
 - `src/server/actions/onboarding-import-projects.ts` — Phase B (projects + side-effect customers) actions
 - `src/server/actions/onboarding-import-invoices.ts` — Phase C (invoices + side-effect projects + side-effect customers; frozen money math)
+- `src/server/actions/onboarding-import-receipts.ts` — Phase D (one-file-at-a-time OCR + bulk-insert expenses)
 - `src/components/features/onboarding/customer-import-wizard.tsx` — Phase A wizard
 - `src/components/features/onboarding/project-import-wizard.tsx` — Phase B wizard
 - `src/components/features/onboarding/invoice-import-wizard.tsx` — Phase C wizard (with editable money cells)
-- `src/components/features/onboarding/imports-list.tsx` — `/settings/imports` rollback list (per-kind dispatch)
-- `src/app/(dashboard)/contacts/import/page.tsx` + `/projects/import/page.tsx` + `/invoices/import/page.tsx` — entry routes (each with `maxDuration = 300`)
+- `src/components/features/onboarding/receipt-import-wizard.tsx` — Phase D wizard (multi-file fan-out + per-file progress)
+- `src/components/features/onboarding/imports-list.tsx` — `/settings/imports` rollback list (per-kind dispatch across all four phases)
+- `src/app/(dashboard)/contacts/import/page.tsx` + `/projects/import/page.tsx` + `/invoices/import/page.tsx` + `/expenses/import/page.tsx` — entry routes (each with `maxDuration = 300`)
 
-The kanban card "Henry-powered onboarding import wizard" tracks broader phasing (D: expenses + bulk PDF receipts). Don't expand scope mid-PR.
+All four phases of the kanban card "Henry-powered onboarding import wizard" are wired. Open follow-up: chunked classification for very large text imports (10K+ rows in one paste), and dogfooding with real customer data.
 
 ---
 

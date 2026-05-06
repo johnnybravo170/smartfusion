@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { rollbackCustomerImportAction } from '@/server/actions/onboarding-import';
 import { rollbackInvoiceImportAction } from '@/server/actions/onboarding-import-invoices';
 import { rollbackProjectImportAction } from '@/server/actions/onboarding-import-projects';
+import { rollbackReceiptImportAction } from '@/server/actions/onboarding-import-receipts';
 
 export type ImportBatchRow = {
   id: string;
@@ -95,7 +96,10 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
   const [pending, startTransition] = useTransition();
 
   const rollbackable =
-    batch.kind === 'customers' || batch.kind === 'projects' || batch.kind === 'invoices';
+    batch.kind === 'customers' ||
+    batch.kind === 'projects' ||
+    batch.kind === 'invoices' ||
+    batch.kind === 'expenses';
   const rolledBack = !!batch.rolledBackAt;
   const created = batch.summary.created ?? 0;
   const merged = batch.summary.merged ?? 0;
@@ -146,6 +150,15 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
           );
         }
         toast.success(`Rolled back. ${parts.join(' + ')} removed.`);
+      } else if (batch.kind === 'expenses') {
+        const res = await rollbackReceiptImportAction(batch.id);
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        toast.success(
+          `Rolled back. ${res.deleted} expense${res.deleted === 1 ? '' : 's'} removed.`,
+        );
       }
       setOpen(false);
       router.refresh();
@@ -199,9 +212,9 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
             {formatTimestamp(batch.createdAt, timezone)}
             {batch.createdByEmail ? <> by {batch.createdByEmail}</> : null}
           </p>
-          {rolledBack ? (
+          {rolledBack && batch.rolledBackAt ? (
             <p className="text-xs text-amber-700">
-              Rolled back {formatTimestamp(batch.rolledBackAt!, timezone)}
+              Rolled back {formatTimestamp(batch.rolledBackAt, timezone)}
               {batch.rolledBackByEmail ? <> by {batch.rolledBackByEmail}</> : null}
             </p>
           ) : null}
@@ -219,7 +232,9 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
                     ? 'Soft-delete every invoice (and any side-effect projects/customers) from this batch.'
                     : batch.kind === 'projects'
                       ? 'Soft-delete every project (and any side-effect customers) from this batch.'
-                      : 'Soft-delete every customer that came from this batch.'
+                      : batch.kind === 'expenses'
+                        ? 'Delete every expense in this batch. Receipt files in storage stay (recoverable).'
+                        : 'Soft-delete every customer that came from this batch.'
                   : `Rollback for ${batch.kind} batches will land in a later phase.`
               }
               onClick={() => setOpen(true)}
@@ -232,7 +247,13 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
                 <AlertDialogTitle>Roll this batch back?</AlertDialogTitle>
                 <AlertDialogDescription asChild>
                   <div className="space-y-2 text-sm">
-                    {batch.kind === 'invoices' ? (
+                    {batch.kind === 'expenses' ? (
+                      <p>
+                        We&rsquo;ll delete the {created} {created === 1 ? 'expense' : 'expenses'}{' '}
+                        Henry created in this batch. The receipt files themselves stay in storage so
+                        you can re-import if you change your mind.
+                      </p>
+                    ) : batch.kind === 'invoices' ? (
                       <p>
                         We'll soft-delete the {created} {created === 1 ? 'invoice' : 'invoices'}{' '}
                         Henry created in this batch
