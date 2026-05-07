@@ -20,6 +20,7 @@ import MemosTabServer from '@/components/features/projects/tabs/memos-tab-server
 import MessagesTabServer from '@/components/features/projects/tabs/messages-tab-server';
 import OverviewTabServer from '@/components/features/projects/tabs/overview-tab-server';
 import PortalTabServer from '@/components/features/projects/tabs/portal-tab-server';
+import ScheduleTabServer from '@/components/features/projects/tabs/schedule-tab-server';
 import SelectionsTabServer from '@/components/features/projects/tabs/selections-tab-server';
 import { TabSkeleton } from '@/components/features/projects/tabs/tab-skeleton';
 import TimeTabServer from '@/components/features/projects/tabs/time-tab-server';
@@ -54,6 +55,7 @@ type Tab =
   | 'gallery'
   | 'change-orders'
   | 'portal'
+  | 'schedule'
   | 'selections'
   | 'documents'
   | 'messages'
@@ -165,6 +167,7 @@ export default async function ProjectDetailPage({
     { key: 'budget', label: 'Budget' },
     { key: 'costs', label: 'Spend' },
     { key: 'time', label: 'Time' },
+    { key: 'schedule', label: 'Schedule' },
     { key: 'invoices', label: 'Customer Billing' },
     { key: 'overview', label: 'Overview' },
   ];
@@ -356,6 +359,7 @@ export default async function ProjectDetailPage({
         {tab === 'variance' ? <OverviewTabServer projectId={id} /> : null}
         {tab === 'invoices' ? <InvoicesTabServer projectId={id} /> : null}
         {tab === 'time' ? <TimeTabServer projectId={id} /> : null}
+        {tab === 'schedule' ? <ScheduleTabServer projectId={id} /> : null}
         {tab === 'memos' ? <MemosTabServer projectId={id} /> : null}
         {tab === 'gallery' ? <GalleryTabServer projectId={id} /> : null}
         {tab === 'portal' ? <PortalTabServer projectId={id} /> : null}
