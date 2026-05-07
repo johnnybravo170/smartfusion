@@ -495,11 +495,15 @@ export function ChangeOrderDiffForm({
     <div className="space-y-6">
       {error ? <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
 
-      {/* Sticky total-impact header. Sits above the form metadata so it's the */}
-      {/* first thing the operator sees and stays anchored as they scroll the */}
-      {/* line items below. Solid background + high z-index so nothing peeks */}
-      {/* through. */}
-      <div className="sticky top-0 z-30 flex items-baseline justify-between gap-4 rounded-lg border bg-background p-4 shadow-sm">
+      {/* Total-impact header. Sits above the form metadata so it's the first */}
+      {/* thing the operator sees and stays anchored as they scroll the line */}
+      {/* items below. Inline `position: sticky` because Tailwind's `sticky` */}
+      {/* class was reportedly being overridden / failing to pin in this */}
+      {/* layout — explicit style is the durable fix. */}
+      <div
+        style={{ position: 'sticky', top: 0, zIndex: 30 }}
+        className="flex items-baseline justify-between gap-4 rounded-lg border bg-background p-4 shadow-sm"
+      >
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Cost Impact</p>
           <p
