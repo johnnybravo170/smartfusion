@@ -16,6 +16,7 @@ import {
 import { PortalSelectionsPanel } from '@/components/features/portal/portal-selections-panel';
 import { TradeContactsList } from '@/components/features/portal/trade-contacts-list';
 import { PublicViewLogger } from '@/components/features/public/public-view-logger';
+import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getPortalBudgetSummary, shouldShowPortalBudget } from '@/lib/db/queries/portal-budget';
 import type { ProjectSubContact } from '@/lib/db/queries/project-documents';
 import type { ProjectPhase } from '@/lib/db/queries/project-phases';
@@ -33,7 +34,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     .from('projects')
     .select('name, tenants:tenant_id (name)')
     .eq('portal_slug', slug)
-    .eq('portal_enabled', true)
     .is('deleted_at', null)
     .single();
 
@@ -41,6 +41,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const tenant = (project as Record<string, unknown>).tenants as Record<string, unknown> | null;
   return {
     title: `${project.name} — ${(tenant?.name as string) ?? 'HeyHenry'}`,
+    // Don't index preview pages, even though they 404 to non-operators.
+    robots: { index: false, follow: false },
   };
 }
 
@@ -63,21 +65,38 @@ export default async function PortalPage({
           : 'project';
   const admin = createAdminClient();
 
-  // Load project + tenant + customer
+  // Load project + tenant + customer. We DON'T filter by portal_enabled
+  // here — instead we resolve the project regardless and gate visibility
+  // below. If portal is disabled, only an authed operator from the
+  // owning tenant gets through (preview mode); otherwise 404.
   const { data: project } = await admin
     .from('projects')
     .select(
-      `id, name, lifecycle_stage, percent_complete, start_date, target_end_date,
+      `id, name, tenant_id, lifecycle_stage, percent_complete, start_date, target_end_date,
        portal_slug, portal_enabled, portal_show_budget,
        tenants:tenant_id (name, logo_storage_path, portal_show_budget),
        customers:customer_id (name)`,
     )
     .eq('portal_slug', slug)
-    .eq('portal_enabled', true)
     .is('deleted_at', null)
     .single();
 
   if (!project) notFound();
+
+  // Operator-preview gate. Public visitors only see the portal when
+  // portal_enabled is true. Operators on the owning tenant can preview
+  // even when disabled — they get a banner indicating that.
+  const portalEnabledLive = Boolean((project as Record<string, unknown>).portal_enabled);
+  const projectTenantId = (project as Record<string, unknown>).tenant_id as string;
+  let isOperatorPreview = false;
+  if (!portalEnabledLive) {
+    const operatorTenant = await getCurrentTenant().catch(() => null);
+    if (operatorTenant && operatorTenant.id === projectTenantId) {
+      isOperatorPreview = true;
+    } else {
+      notFound();
+    }
+  }
 
   const p = project as Record<string, unknown>;
   const tenant = p.tenants as Record<string, unknown> | null;
@@ -546,7 +565,15 @@ export default async function PortalPage({
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <PublicViewLogger resourceType="portal" identifier={slug} />
+      {isOperatorPreview ? (
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <strong>Preview mode.</strong> The portal is currently disabled — your customer
+          can&rsquo;t see this page. Turn the toggle on from the project&rsquo;s Portal tab to share
+          with them.
+        </div>
+      ) : (
+        <PublicViewLogger resourceType="portal" identifier={slug} />
+      )}
       {/* Header */}
       <header className="mb-8 text-center">
         {logoUrl ? (

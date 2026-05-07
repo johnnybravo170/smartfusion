@@ -82,7 +82,7 @@ export function PortalToggle({
         </button>
       </div>
 
-      {enabled && portalUrl ? (
+      {portalUrl ? (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 text-xs">
@@ -94,7 +94,7 @@ export function PortalToggle({
               rel="noreferrer"
               className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted/50"
             >
-              Open
+              {enabled ? 'Open' : 'Preview'}
             </a>
             <button
               type="button"
@@ -104,14 +104,22 @@ export function PortalToggle({
               {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
-          <button
-            type="button"
-            onClick={handleSendInvite}
-            disabled={loading}
-            className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted/50 disabled:opacity-50"
-          >
-            Share with Customer
-          </button>
+          {!enabled ? (
+            <p className="text-xs text-muted-foreground">
+              Portal is off — only you can see this URL. Turn it on above to share with the
+              customer.
+            </p>
+          ) : null}
+          {enabled ? (
+            <button
+              type="button"
+              onClick={handleSendInvite}
+              disabled={loading}
+              className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted/50 disabled:opacity-50"
+            >
+              Share with Customer
+            </button>
+          ) : null}
         </div>
       ) : null}
 
