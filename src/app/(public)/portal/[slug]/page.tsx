@@ -13,6 +13,10 @@ import {
   type PortalGalleryPhoto,
   PortalPhotoGallery,
 } from '@/components/features/portal/portal-photo-gallery';
+import {
+  PortalScheduleGantt,
+  type PortalScheduleTaskView,
+} from '@/components/features/portal/portal-schedule-gantt';
 import { PortalSelectionsPanel } from '@/components/features/portal/portal-selections-panel';
 import { TradeContactsList } from '@/components/features/portal/trade-contacts-list';
 import { PublicViewLogger } from '@/components/features/public/public-view-logger';
@@ -30,6 +34,30 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { isPortalPhotoTag, type PortalPhotoTag } from '@/lib/validators/portal-photo';
 import type { IdeaBoardItem } from '@/server/actions/project-idea-board';
 import type { MessageRow } from '@/server/actions/project-messages';
+
+/**
+ * Per-trade disruption warning copy shown under high-disruption tasks
+ * on the customer portal Gantt. Trade-specific where it adds clarity;
+ * the rest fall through to a generic "plan to be out" message.
+ */
+function disruptionWarningCopy(tradeSlug: string): string {
+  switch (tradeSlug) {
+    case 'demo':
+      return 'Loud, dusty';
+    case 'drywall':
+      return 'Heavy dust during sanding';
+    case 'tile':
+      return 'Saw cuts — loud and dusty';
+    case 'flooring':
+      return 'Disruptive in occupied rooms';
+    case 'painting':
+      return 'Fumes — ventilate; you may want to be out';
+    case 'plumbing_fixtures':
+      return 'Water off during install';
+    default:
+      return 'Plan to be out — disruptive';
+  }
+}
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -59,7 +87,7 @@ export default async function PortalPage({
 }) {
   const { slug } = await params;
   const resolvedSearchParams = await searchParams;
-  const tab: 'project' | 'budget' | 'messages' | 'ideas' | 'selections' | 'photos' =
+  const tab: 'project' | 'budget' | 'schedule' | 'messages' | 'ideas' | 'selections' | 'photos' =
     resolvedSearchParams.tab === 'messages'
       ? 'messages'
       : resolvedSearchParams.tab === 'ideas'
@@ -70,7 +98,9 @@ export default async function PortalPage({
             ? 'photos'
             : resolvedSearchParams.tab === 'budget'
               ? 'budget'
-              : 'project';
+              : resolvedSearchParams.tab === 'schedule'
+                ? 'schedule'
+                : 'project';
   const admin = createAdminClient();
 
   // Load project + tenant + customer. We DON'T filter by portal_enabled
@@ -174,6 +204,8 @@ export default async function PortalPage({
   let roomSuggestions: string[] = [];
 
   let initialMessages: MessageRow[] = [];
+
+  let scheduleTasks: PortalScheduleTaskView[] = [];
 
   if (tab === 'project') {
     // Round 1: kick off every row query in parallel.
@@ -572,6 +604,39 @@ export default async function PortalPage({
       .eq('project_id', projectId)
       .order('created_at', { ascending: true });
     initialMessages = (messageRows ?? []) as MessageRow[];
+  } else if (tab === 'schedule') {
+    // Customer-visible schedule rows + the small set of trade templates
+    // they reference (for disruption warnings). Two flat selects, no
+    // PostgREST embed — same robustness reasoning as the operator tab.
+    const [{ data: taskRows }, { data: tradeRows }] = await Promise.all([
+      admin
+        .from('project_schedule_tasks')
+        .select(
+          'id, project_id, name, trade_template_id, budget_category_id, phase_id, planned_start_date, planned_duration_days, actual_start_date, actual_end_date, status, confidence, client_visible, display_order, notes',
+        )
+        .eq('project_id', projectId)
+        .eq('client_visible', true)
+        .is('deleted_at', null)
+        .order('display_order', { ascending: true }),
+      admin.from('trade_templates').select('id, slug, disruption_level'),
+    ]);
+    const tradeBySlugMap = new Map<string, { slug: string; disruption_level: string }>();
+    for (const tr of tradeRows ?? []) {
+      const r = tr as Record<string, unknown>;
+      tradeBySlugMap.set(r.id as string, {
+        slug: r.slug as string,
+        disruption_level: r.disruption_level as string,
+      });
+    }
+    scheduleTasks = (taskRows ?? []).map((row) => {
+      const r = row as Record<string, unknown>;
+      const tradeId = r.trade_template_id as string | null;
+      const trade = tradeId ? tradeBySlugMap.get(tradeId) : null;
+      return {
+        ...(r as unknown as PortalScheduleTaskView),
+        warning: trade?.disruption_level === 'high' ? disruptionWarningCopy(trade.slug) : null,
+      };
+    });
   }
 
   const cadFormat = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' });
@@ -654,6 +719,17 @@ export default async function PortalPage({
           }`}
         >
           Budget
+        </Link>
+        <Link
+          href={`/portal/${slug}?tab=schedule`}
+          prefetch={false}
+          className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            tab === 'schedule'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground'
+          }`}
+        >
+          Schedule
         </Link>
         <Link
           href={`/portal/${slug}?tab=photos`}
@@ -772,6 +848,19 @@ export default async function PortalPage({
 
           {portalShowBudget ? <PortalBudgetDetail summary={portalBudgetSummary} /> : null}
         </>
+      ) : tab === 'schedule' ? (
+        scheduleTasks.length > 0 ? (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Dates are estimates and may shift. ⚠ marks days you may want to plan to be out.
+            </p>
+            <PortalScheduleGantt tasks={scheduleTasks} />
+          </div>
+        ) : (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            No schedule yet. Your contractor will publish one as the project firms up.
+          </p>
+        )
       ) : (
         <>
           {/* Decision queue — pinned to the top because urgent ask. */}
