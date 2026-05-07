@@ -3,13 +3,13 @@
  *
  * Same CSS-grid autoscale as the operator's view, but tuned for the
  * homeowner: hides internal-only labels, hides the operator's
- * confidence-vs-status visual variants (customer just wants to know
- * roughly when things happen), and renders a small "plan to be out"
- * warning under any task whose underlying trade is high-disruption.
+ * confidence-vs-status visual variants, and renders a small
+ * "plan to be out" warning under any task whose underlying trade is
+ * high-disruption.
  *
- * Data shape includes a per-task disruption hint and warning copy so
- * this component stays pure rendering — the tab-server resolves the
- * trade-template lookup once and feeds it in.
+ * Layered backing per row gives the eye a reference frame: weekend
+ * bands, Monday gridlines, day-of-month markers, and a today indicator
+ * if today falls in range.
  */
 
 import type { ProjectScheduleTask } from '@/lib/db/queries/project-schedule';
@@ -54,6 +54,52 @@ function monthHeaderSegments(
   return segments;
 }
 
+type DayMeta = {
+  isWeekend: boolean;
+  isMonday: boolean;
+  isToday: boolean;
+  weekStartLabel: number | null;
+};
+
+function computeDayMeta(earliest: Date, totalDays: number): DayMeta[] {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const todayIndex = diffDays(today, earliest);
+  const meta: DayMeta[] = [];
+  for (let i = 0; i < totalDays; i++) {
+    const d = addDays(earliest, i);
+    const dow = d.getUTCDay();
+    const isMonday = dow === 1;
+    meta.push({
+      isWeekend: dow === 0 || dow === 6,
+      isMonday,
+      isToday: i === todayIndex,
+      weekStartLabel: isMonday || i === 0 ? d.getUTCDate() : null,
+    });
+  }
+  return meta;
+}
+
+function DayBacking({ meta }: { meta: DayMeta[] }) {
+  return (
+    <>
+      {meta.map((m, i) => (
+        <div
+          // biome-ignore lint/suspicious/noArrayIndexKey: positional, never reorders
+          key={i}
+          aria-hidden="true"
+          className={`pointer-events-none ${
+            m.isWeekend ? 'bg-muted/40' : ''
+          } ${m.isMonday ? 'border-l border-border/60' : ''} ${
+            m.isToday ? 'border-l-2 border-amber-500/80' : ''
+          }`}
+          style={{ gridColumnStart: i + 1 }}
+        />
+      ))}
+    </>
+  );
+}
+
 export type PortalScheduleTaskView = ProjectScheduleTask & {
   /** Generic warning copy when the underlying trade is high-disruption. */
   warning: string | null;
@@ -69,20 +115,21 @@ export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[]
   const totalDays = Math.max(1, diffDays(latest, earliest));
 
   const months = monthHeaderSegments(earliest, totalDays);
+  const dayMeta = computeDayMeta(earliest, totalDays);
+  const gridCols = `repeat(${totalDays}, 1fr)`;
 
   return (
     <div className="rounded-lg border bg-card">
       <div className="grid grid-cols-[140px_1fr] gap-x-3 px-3 py-2 text-xs">
         <div />
-        <div
-          className="grid border-b pb-1"
-          style={{ gridTemplateColumns: `repeat(${totalDays}, 1fr)` }}
-        >
+        <div className="grid auto-rows-min" style={{ gridTemplateColumns: gridCols }}>
+          <DayBacking meta={dayMeta} />
           {months.map((m) => (
             <div
               key={`${m.label}-${m.start}`}
-              className="truncate font-medium text-muted-foreground"
+              className="truncate font-semibold text-foreground"
               style={{
+                gridRow: 1,
                 gridColumnStart: m.start,
                 gridColumnEnd: `span ${m.span}`,
               }}
@@ -90,6 +137,22 @@ export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[]
               {m.label}
             </div>
           ))}
+          {dayMeta.map((m, i) =>
+            m.weekStartLabel !== null ? (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: positional
+                key={`d-${i}`}
+                className="text-[10px] tabular-nums text-muted-foreground"
+                style={{ gridRow: 2, gridColumnStart: i + 1 }}
+              >
+                {m.weekStartLabel}
+              </div>
+            ) : null,
+          )}
+          <div
+            className="border-b"
+            style={{ gridRow: 3, gridColumnStart: 1, gridColumnEnd: `span ${totalDays}` }}
+          />
         </div>
 
         {tasks.map((task, i) => {
@@ -99,7 +162,7 @@ export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[]
           const isDone = task.status === 'done';
           return (
             <div key={task.id} className="contents">
-              <div className="flex flex-col justify-center truncate py-1.5 text-sm">
+              <div className="flex min-h-8 flex-col justify-center truncate py-1 text-sm">
                 <span className={isDone ? 'text-muted-foreground line-through' : ''}>
                   {task.name}
                 </span>
@@ -109,15 +172,14 @@ export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[]
                   </span>
                 ) : null}
               </div>
-              <div
-                className="grid items-center py-1.5"
-                style={{ gridTemplateColumns: `repeat(${totalDays}, 1fr)` }}
-              >
+              <div className="relative grid min-h-8" style={{ gridTemplateColumns: gridCols }}>
+                <DayBacking meta={dayMeta} />
                 <div
-                  className={`h-5 rounded-sm ${
+                  className={`my-1 h-5 self-center rounded-md shadow-sm ${
                     isDone ? 'bg-emerald-500' : task.warning ? 'bg-amber-500' : 'bg-primary'
                   }`}
                   style={{
+                    gridRow: 1,
                     gridColumnStart: colStart,
                     gridColumnEnd: `span ${colSpan}`,
                   }}
