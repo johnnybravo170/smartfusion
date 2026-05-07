@@ -9,7 +9,11 @@ import { type BillingCycle, formatCad, PLAN_CATALOG, type PlanCopy } from '@/lib
 import { cn } from '@/lib/utils';
 import { startCheckoutAction } from '@/server/actions/billing';
 
-const PLAN_ORDER: Plan[] = ['starter', 'growth', 'pro', 'scale'];
+// Self-serve picker shows Growth only. Other tiers (Starter, Pro, Scale)
+// still exist (prices, feature gates, Stripe products) but are direct-sales
+// for now — keeping the signup surface focused on the one plan we want
+// early customers on.
+const PLAN_ORDER: Plan[] = ['growth'];
 
 type Props = {
   initialPlan: Plan | null;
@@ -48,8 +52,10 @@ export function PlanPicker({ initialPlan, initialCycle, initialPromo, skipTrial 
         </p>
         {initialPromo ? (
           <p className="text-sm font-medium text-emerald-600">
-            Promo code <span className="font-mono">{initialPromo}</span> will be applied at
-            checkout.
+            Promo code <span className="font-mono">{initialPromo}</span> applied at checkout
+            {initialPromo.toUpperCase() === 'FOUNDER'
+              ? ' — Growth $199/mo CAD (regular $399).'
+              : '.'}
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
@@ -83,7 +89,7 @@ export function PlanPicker({ initialPlan, initialCycle, initialPromo, skipTrial 
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mx-auto w-full max-w-md">
         {PLAN_ORDER.map((plan) => (
           <PlanCard
             key={plan}
