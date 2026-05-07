@@ -97,8 +97,8 @@ function ProjectRollup({ summary }: { summary: PortalBudgetSummary }) {
 
   return (
     <div
-      className={`rounded-lg border p-3 ${
-        spentOver ? 'border-amber-300 bg-amber-50' : 'bg-muted/30'
+      className={`rounded-lg border p-4 shadow-sm ${
+        spentOver ? 'border-amber-300 bg-amber-50' : 'border-primary/30 bg-primary/5'
       }`}
     >
       {/* Spent bar */}
