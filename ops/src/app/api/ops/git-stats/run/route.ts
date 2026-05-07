@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { withAgentRun } from '@/lib/agents';
 import { createServiceClient } from '@/lib/supabase';
 
 /**
@@ -56,6 +57,24 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const result = await withAgentRun(
+    { slug: 'git-stats', trigger: fromVercelCron ? 'schedule' : 'manual' },
+    async (report) => {
+      const r = await runGitStats();
+      report({
+        outcome: 'success',
+        items_scanned: r.commits,
+        items_acted: r.days_updated,
+        summary: `${r.commits} commits across ${r.days_updated} days`,
+        payload: r,
+      });
+      return r;
+    },
+  );
+  return NextResponse.json(result);
+}
+
+async function runGitStats() {
   const repo = process.env.GITHUB_REPO ?? 'johnnybravo170/heyhenry';
   const token = process.env.GITHUB_TOKEN ?? null;
 
@@ -147,5 +166,5 @@ export async function GET(req: NextRequest) {
     if (!error) daysUpdated += 1;
   }
 
-  return NextResponse.json({ ok: true, days_updated: daysUpdated, commits: commits.length });
+  return { ok: true, days_updated: daysUpdated, commits: commits.length };
 }

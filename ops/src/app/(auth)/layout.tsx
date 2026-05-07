@@ -14,6 +14,7 @@ const PRIMARY_NAV = [
   { href: '/admin/kanban', label: 'Kanban' },
   { href: '/decisions', label: 'Decisions' },
   { href: '/knowledge', label: 'Knowledge' },
+  { href: '/agents', label: 'Agents' },
   { href: '/board', label: 'Board' },
 ];
 

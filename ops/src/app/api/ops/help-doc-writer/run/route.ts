@@ -21,6 +21,7 @@
 
 import { GoogleGenAI } from '@google/genai';
 import { type NextRequest, NextResponse } from 'next/server';
+import { finishAgentRun, recordAgentRun } from '@/lib/agents';
 import { contentHash, embedText } from '@/lib/embed';
 import { createServiceClient } from '@/lib/supabase';
 
@@ -129,11 +130,55 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const run = await recordAgentRun({
+    slug: 'help-doc-writer',
+    trigger: fromVercelCron ? 'schedule' : 'manual',
+  }).catch(() => null);
+
+  try {
+    const result = await runHelpDocWriter(req);
+    if (run) {
+      const drafted = result.drafted ?? 0;
+      const skipped = result.skipped ?? 0;
+      const failed = result.failed ?? 0;
+      await finishAgentRun(run.id, {
+        outcome: failed > 0 ? 'failure' : drafted === 0 ? 'skipped' : 'success',
+        items_scanned: result.candidates ?? 0,
+        items_acted: drafted,
+        summary: `${drafted} drafted, ${skipped} skipped${failed ? `, ${failed} failed` : ''}`,
+        payload: result,
+      }).catch(() => undefined);
+    }
+    return NextResponse.json(result);
+  } catch (e) {
+    if (run) {
+      await finishAgentRun(run.id, {
+        outcome: 'failure',
+        error: e instanceof Error ? e.message : String(e),
+      }).catch(() => undefined);
+    }
+    throw e;
+  }
+}
+
+type HelpDocWriterResult = {
+  ok: boolean;
+  scanned?: number;
+  candidates?: number;
+  drafted?: number;
+  skipped?: number;
+  failed?: number;
+  actions?: Action[];
+  note?: string;
+  error?: string;
+};
+
+async function runHelpDocWriter(_req: NextRequest): Promise<HelpDocWriterResult> {
   const repo = process.env.GITHUB_REPO ?? 'johnnybravo170/heyhenry';
   const ghToken = process.env.GITHUB_TOKEN ?? null;
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY not set' }, { status: 500 });
+    throw new Error('GEMINI_API_KEY not set');
   }
 
   const now = new Date();
@@ -149,7 +194,7 @@ export async function GET(req: NextRequest) {
   const candidates = commits.filter((c) => TYPE_REGEX.test(commitFirstLine(c.commit.message)));
 
   if (candidates.length === 0) {
-    return NextResponse.json({ ok: true, scanned: commits.length, drafted: 0, actions: [] });
+    return { ok: true, scanned: commits.length, drafted: 0, actions: [] };
   }
 
   // 3. Dedup against existing help_docs (source_commit).
@@ -163,14 +208,14 @@ export async function GET(req: NextRequest) {
   const todo = candidates.filter((c) => !seen.has(c.sha));
 
   if (todo.length === 0) {
-    return NextResponse.json({
+    return {
       ok: true,
       scanned: commits.length,
       candidates: candidates.length,
       drafted: 0,
       actions: [],
       note: 'all candidate commits already have a draft',
-    });
+    };
   }
 
   // 4. For each candidate, fetch detail + decide + draft.
@@ -297,7 +342,7 @@ export async function GET(req: NextRequest) {
       );
   }
 
-  return NextResponse.json({
+  return {
     ok: true,
     scanned: commits.length,
     candidates: candidates.length,
@@ -305,7 +350,7 @@ export async function GET(req: NextRequest) {
     skipped,
     failed,
     actions,
-  });
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────
