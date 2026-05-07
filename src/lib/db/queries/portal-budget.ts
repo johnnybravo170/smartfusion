@@ -48,12 +48,6 @@ export async function getPortalBudgetSummary(
   admin: ReturnType<typeof createAdminClient>,
   projectId: string,
 ): Promise<PortalBudgetSummary> {
-  // Pull jobs first so we can fetch draws in the same parallel batch
-  // below. Draws live on `invoices` keyed by job_id; one project can
-  // have N jobs.
-  const { data: jobs } = await admin.from('jobs').select('id').eq('project_id', projectId);
-  const jobIds = (jobs ?? []).map((j) => (j as { id: string }).id);
-
   const [
     { data: categories },
     { data: timeData },
@@ -87,15 +81,13 @@ export async function getPortalBudgetSummary(
       .select('cost_impact_cents, cost_breakdown')
       .eq('project_id', projectId)
       .eq('status', 'approved'),
-    jobIds.length > 0
-      ? admin
-          .from('invoices')
-          .select('amount_cents, tax_cents, tax_inclusive, status')
-          .in('job_id', jobIds)
-          .eq('doc_type', 'draw')
-          .is('deleted_at', null)
-          .in('status', ['sent', 'paid'])
-      : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+    admin
+      .from('invoices')
+      .select('amount_cents, tax_cents, tax_inclusive, status')
+      .eq('project_id', projectId)
+      .eq('doc_type', 'draw')
+      .is('deleted_at', null)
+      .in('status', ['sent', 'paid']),
   ]);
 
   const sumByCategory = (
