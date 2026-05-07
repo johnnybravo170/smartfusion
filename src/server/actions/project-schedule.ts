@@ -30,13 +30,24 @@ export type BootstrapSource =
 export type BootstrapResult = { ok: true; tasksCreated: number } | { ok: false; error: string };
 
 type ResolvedTrade = {
-  trade_template_id: string;
+  /** Null when bootstrapping from an unmapped budget category. */
+  trade_template_id: string | null;
   name: string;
   duration_days: number;
   sequence_position: number;
   typical_phase: string | null;
   budget_category_id: string | null;
 };
+
+/**
+ * Default duration (days) for tasks bootstrapped from a budget category
+ * that has no trade-template mapping. Long enough to be visible on the
+ * Gantt; the GC will firm it up later. Pulled out as a const so v1's
+ * "add custom task" UI can reuse the same default.
+ */
+const UNMAPPED_TASK_DURATION_DAYS = 3;
+/** Mid-timeline default for unmapped tasks so mapped trades sort first. */
+const UNMAPPED_SEQUENCE_POSITION = 50;
 
 /**
  * Lay out a sequenced list of tasks starting from `startDate`. Each task
@@ -99,7 +110,7 @@ export async function bootstrapProjectScheduleAction(
       ok: false,
       error:
         source.kind === 'budget'
-          ? 'No budget categories are mapped to trades yet. Pick a project-type template instead, or map your budget categories first.'
+          ? 'This project has no budget categories yet. Add some on the Budget tab, or pick a project-type template instead.'
           : 'Template has no trades configured.',
     };
   }
@@ -239,27 +250,45 @@ async function resolveTrades(
       .filter((t): t is ResolvedTrade => t !== null);
   }
 
-  // source.kind === 'budget'
+  // source.kind === 'budget' — include EVERY budget category, mapped or
+  // not. Mapped categories pull duration / sequence / phase rollup from
+  // the trade template (good intelligence). Unmapped ones get a sensible
+  // default so the GC's full budget shows up as draft tasks they can
+  // refine — better than only showing the small subset that happen to
+  // match a trade name exactly.
   const { data: rows } = await supabase
     .from('project_budget_categories')
     .select(
-      'id, trade_template_id, trade_templates(id, name, default_duration_days, sequence_position, typical_phase)',
+      'id, name, display_order, trade_template_id, trade_templates(id, name, default_duration_days, sequence_position, typical_phase)',
     )
-    .eq('project_id', projectId)
-    .not('trade_template_id', 'is', null);
+    .eq('project_id', projectId);
 
-  return (rows ?? [])
-    .map((r): ResolvedTrade | null => {
-      const t = pickOne((r as Record<string, unknown>).trade_templates);
-      if (!t) return null;
+  return (rows ?? []).map((r): ResolvedTrade => {
+    const row = r as Record<string, unknown>;
+    const trade = pickOne(row.trade_templates);
+    const budgetCategoryId = row.id as string;
+    const budgetName = (row.name as string) ?? 'Untitled';
+    const displayOrder = (row.display_order as number | null) ?? 0;
+
+    if (trade) {
       return {
-        trade_template_id: t.id as string,
-        name: t.name as string,
-        duration_days: t.default_duration_days as number,
-        sequence_position: t.sequence_position as number,
-        typical_phase: (t.typical_phase as string | null) ?? null,
-        budget_category_id: (r as Record<string, unknown>).id as string,
+        trade_template_id: trade.id as string,
+        name: trade.name as string,
+        duration_days: trade.default_duration_days as number,
+        sequence_position: trade.sequence_position as number,
+        typical_phase: (trade.typical_phase as string | null) ?? null,
+        budget_category_id: budgetCategoryId,
       };
-    })
-    .filter((t): t is ResolvedTrade => t !== null);
+    }
+    return {
+      trade_template_id: null,
+      name: budgetName,
+      duration_days: UNMAPPED_TASK_DURATION_DAYS,
+      // Bias unmapped tasks toward the middle of the timeline, then break
+      // ties by their position in the budget so the order isn't random.
+      sequence_position: UNMAPPED_SEQUENCE_POSITION + Math.min(displayOrder, 49),
+      typical_phase: null,
+      budget_category_id: budgetCategoryId,
+    };
+  });
 }
