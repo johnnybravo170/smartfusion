@@ -55,14 +55,16 @@ export default async function PortalPage({
 }) {
   const { slug } = await params;
   const resolvedSearchParams = await searchParams;
-  const tab: 'project' | 'messages' | 'ideas' | 'selections' =
+  const tab: 'project' | 'messages' | 'ideas' | 'selections' | 'photos' =
     resolvedSearchParams.tab === 'messages'
       ? 'messages'
       : resolvedSearchParams.tab === 'ideas'
         ? 'ideas'
         : resolvedSearchParams.tab === 'selections'
           ? 'selections'
-          : 'project';
+          : resolvedSearchParams.tab === 'photos'
+            ? 'photos'
+            : 'project';
   const admin = createAdminClient();
 
   // Load project + tenant + customer. We DON'T filter by portal_enabled
@@ -577,12 +579,17 @@ export default async function PortalPage({
       {/* Header */}
       <header className="mb-8 text-center">
         {logoUrl ? (
-          // biome-ignore lint/performance/noImgElement: signed URL bypasses next/image
-          <img
-            src={logoUrl}
-            alt={businessName}
-            className="mx-auto mb-3 max-h-12 w-auto object-contain"
-          />
+          // Container gives every contractor's logo the same visual mass
+          // regardless of aspect — square badges, wide wordmarks, and tall
+          // crests all fill h-16 / max-w-[260px] without distortion.
+          <div className="mx-auto mb-3 flex h-20 max-w-[280px] items-center justify-center">
+            {/* biome-ignore lint/performance/noImgElement: signed URL bypasses next/image */}
+            <img
+              src={logoUrl}
+              alt={businessName}
+              className="max-h-full max-w-full object-contain"
+            />
+          </div>
         ) : (
           <p className="text-sm font-medium text-muted-foreground">{businessName}</p>
         )}
@@ -590,7 +597,7 @@ export default async function PortalPage({
         {customerName ? <p className="mt-1 text-sm text-muted-foreground">{customerName}</p> : null}
       </header>
 
-      {/* Tab nav — Project / Selections / Ideas / Messages. */}
+      {/* Tab nav — Project / Photos / Selections / Ideas / Messages. */}
       <div className="mb-6 flex gap-1 border-b">
         <Link
           href={`/portal/${slug}`}
@@ -602,6 +609,17 @@ export default async function PortalPage({
           }`}
         >
           Project
+        </Link>
+        <Link
+          href={`/portal/${slug}?tab=photos`}
+          prefetch={false}
+          className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            tab === 'photos'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground'
+          }`}
+        >
+          Photos
         </Link>
         <Link
           href={`/portal/${slug}?tab=selections`}
@@ -662,6 +680,14 @@ export default async function PortalPage({
           initialSelections={selectionsForPanel}
           roomSuggestions={roomSuggestions}
         />
+      ) : tab === 'photos' ? (
+        galleryPhotos.length > 0 ? (
+          <PortalPhotoGallery photos={galleryPhotos} />
+        ) : (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            No photos yet. Your contractor will add them as work progresses.
+          </p>
+        )
       ) : (
         <>
           {/* Decision queue — pinned to the top because urgent ask. */}
@@ -778,15 +804,8 @@ export default async function PortalPage({
             </div>
           ) : null}
 
-          {/* Photo gallery — operator-tagged photos grouped by category.
-          Behind-the-wall section is collapsed by default. */}
-          {galleryPhotos.length > 0 ? (
-            <div className="mb-8">
-              <PortalPhotoGallery photos={galleryPhotos} />
-            </div>
-          ) : null}
-
-          {/* Selections moved to its own tab (`?tab=selections`) where the
+          {/* Photo gallery moved to its own tab (`?tab=photos`).
+          Selections moved to its own tab (`?tab=selections`) where the
           customer can both browse the operator-authored install spec and
           add their own picks. */}
 

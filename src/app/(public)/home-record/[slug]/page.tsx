@@ -146,12 +146,14 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
       {/* Header */}
       <header className="mb-10 text-center">
         {logoUrl ? (
-          // biome-ignore lint/performance/noImgElement: signed URL bypasses next/image
-          <img
-            src={logoUrl}
-            alt={snapshot.contractor.name}
-            className="mx-auto mb-4 max-h-14 w-auto object-contain"
-          />
+          <div className="mx-auto mb-4 flex h-20 max-w-[280px] items-center justify-center">
+            {/* biome-ignore lint/performance/noImgElement: signed URL bypasses next/image */}
+            <img
+              src={logoUrl}
+              alt={snapshot.contractor.name}
+              className="max-h-full max-w-full object-contain"
+            />
+          </div>
         ) : null}
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Home Record

@@ -187,12 +187,14 @@ export default function JoinPage() {
     <Card>
       <CardHeader>
         {logoUrl ? (
-          // biome-ignore lint/performance/noImgElement: external tenant logo URL
-          <img
-            src={logoUrl}
-            alt={`${tenantName} logo`}
-            className="mb-3 h-16 w-auto object-contain"
-          />
+          <div className="mb-3 flex h-20 max-w-[280px] items-center justify-center">
+            {/* biome-ignore lint/performance/noImgElement: external tenant logo URL */}
+            <img
+              src={logoUrl}
+              alt={`${tenantName} logo`}
+              className="max-h-full max-w-full object-contain"
+            />
+          </div>
         ) : null}
         <CardTitle className="text-2xl">Join {tenantName}</CardTitle>
         <CardDescription>
