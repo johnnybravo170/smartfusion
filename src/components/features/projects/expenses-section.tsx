@@ -12,6 +12,7 @@
 
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { ReceiptPreviewButton } from '@/components/features/expenses/receipt-preview-button';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -40,6 +41,7 @@ export type ExpenseItem = {
   worker_profile_id: string | null;
   worker_name: string | null;
   receipt_url: string | null;
+  receipt_mime_hint: 'image' | 'pdf' | null;
 };
 
 type Category = { id: string; name: string; cost_lines: Array<{ id: string; label: string }> };
@@ -432,18 +434,27 @@ export function ExpensesSection({
                   <td className="px-3 py-2 text-right tabular-nums">
                     {formatCurrency(exp.amount_cents)}
                   </td>
-                  <td className="px-3 py-2">{exp.vendor || '—'}</td>
+                  <td className="px-3 py-2">
+                    {exp.vendor ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingExpense(exp)}
+                        className="text-left text-primary hover:underline"
+                      >
+                        {exp.vendor}
+                      </button>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-muted-foreground">{exp.description || '—'}</td>
                   <td className="px-3 py-2">
                     {exp.receipt_url ? (
-                      <a
-                        href={exp.receipt_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary underline"
-                      >
-                        View
-                      </a>
+                      <ReceiptPreviewButton
+                        url={exp.receipt_url}
+                        mimeHint={exp.receipt_mime_hint}
+                        vendor={exp.vendor}
+                      />
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
