@@ -51,10 +51,14 @@ test.describe
       // (PR #87's table layout — sibling to the chevron button).
       await page.getByRole('button', { name: /^Cabinets/ }).click();
 
-      // Existing Cabinets line: qty=1, unit_price=$13,000. Bump to
-      // $14,500 — a +$1,500 modification. defaultValue renders as the
-      // value attribute, which is stable to target.
-      await page.locator('input[value="13000.00"]').fill('14500');
+      // Existing Cabinets line: qty=1, unit_price=$13,000. Unmodified
+      // lines render in a compact view (PR #87) where qty/price are
+      // buttons, not inputs — click the price to enter edit mode, then
+      // the inputs mount. Pick the unit-price input (second number
+      // input in the row) and bump to $14,500 — a +$1,500 modification.
+      const shakerRow = page.locator('tr', { hasText: 'Shaker uppers' });
+      await shakerRow.getByTitle('Click to edit price').click();
+      await shakerRow.locator('input[type="number"]').nth(1).fill('14500');
 
       // Live delta should now show +$1,500 (regression check on the
       // running total computation).
