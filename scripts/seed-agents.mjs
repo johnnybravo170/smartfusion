@@ -90,6 +90,19 @@ const FLEET = [
     tags: ['ai-ops', 'ideas', 'digest'],
     backfill_actor_name: 'ideas-digest',
   },
+  {
+    slug: 'ideas-review',
+    name: 'Ideas Review (Sonnet snooze judge)',
+    description:
+      'Daily 17:00 UTC. Sweeps ideas with remind_at <= now() and review_status=pending, asks Claude Sonnet 4.6 whether each is actionable in current business context (roadmap + decisions + kanban + worklog), dispatches: actionable→email+actioned, not_yet→re-snooze, dismiss→archive. Shadow mode (IDEAS_REVIEW_SHADOW=true) emails every verdict for human verification first 2 weeks.',
+    agent_type: 'cron',
+    schedule: '0 17 * * *',
+    external_link: 'https://vercel.com/johnnybravo170s-projects',
+    owner: 'jonathan',
+    expected_max_gap_minutes: 60 * 30,
+    tags: ['ai-ops', 'ideas', 'sonnet', 'review'],
+    backfill_actor_name: 'ideas-review',
+  },
 
   // ─── Claude Code Routines ──────────────────────────────────────────
   {
