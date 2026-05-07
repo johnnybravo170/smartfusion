@@ -667,6 +667,35 @@ export default async function PortalPage({
           {/* Decision queue — pinned to the top because urgent ask. */}
           <DecisionPanel decisions={portalDecisions} defaultCustomerName={customerName} />
 
+          {/* Financials — three-number summary + optional per-bucket
+              breakdown. Sits high on the page (right after any urgent
+              decisions) so the customer sees the project's money state
+              without scrolling. The per-bucket breakdown shows only
+              when the operator has opted in via portal_show_budget. */}
+          <div className="mb-8 grid grid-cols-3 gap-3">
+            <div className="rounded-lg border p-3 text-center">
+              <p className="text-xs text-muted-foreground">Original Estimate</p>
+              <p className="text-sm font-semibold tabular-nums">
+                {cadFormat.format(originalEstimate / 100)}
+              </p>
+            </div>
+            <div className="rounded-lg border p-3 text-center">
+              <p className="text-xs text-muted-foreground">Change Orders</p>
+              <p className="text-sm font-semibold tabular-nums">
+                {approvedCOTotal >= 0 ? '+' : ''}
+                {cadFormat.format(approvedCOTotal / 100)}
+              </p>
+            </div>
+            <div className="rounded-lg border p-3 text-center">
+              <p className="text-xs text-muted-foreground">Current Total</p>
+              <p className="text-sm font-semibold tabular-nums">
+                {cadFormat.format(totalBudget / 100)}
+              </p>
+            </div>
+          </div>
+
+          {portalBudgetSummary ? <PortalBudgetDetail summary={portalBudgetSummary} /> : null}
+
           {/* Phase rail — homeowner-facing milestone tracker. Read-only here;
           operator advances/regresses from the project detail Portal tab. */}
           {phases.length > 0 ? (
@@ -708,35 +737,6 @@ export default async function PortalPage({
               </div>
             </div>
           </div>
-
-          {/* Financials — three-number summary + optional per-bucket
-              breakdown. Sits high on the page (right after the status
-              bar) so the customer sees the project's money state without
-              scrolling. The per-bucket breakdown shows only when the
-              operator has opted in via portal_show_budget. */}
-          <div className="mb-8 grid grid-cols-3 gap-3">
-            <div className="rounded-lg border p-3 text-center">
-              <p className="text-xs text-muted-foreground">Original Estimate</p>
-              <p className="text-sm font-semibold tabular-nums">
-                {cadFormat.format(originalEstimate / 100)}
-              </p>
-            </div>
-            <div className="rounded-lg border p-3 text-center">
-              <p className="text-xs text-muted-foreground">Change Orders</p>
-              <p className="text-sm font-semibold tabular-nums">
-                {approvedCOTotal >= 0 ? '+' : ''}
-                {cadFormat.format(approvedCOTotal / 100)}
-              </p>
-            </div>
-            <div className="rounded-lg border p-3 text-center">
-              <p className="text-xs text-muted-foreground">Current Total</p>
-              <p className="text-sm font-semibold tabular-nums">
-                {cadFormat.format(totalBudget / 100)}
-              </p>
-            </div>
-          </div>
-
-          {portalBudgetSummary ? <PortalBudgetDetail summary={portalBudgetSummary} /> : null}
 
           {/* Pending Approvals */}
           {(pendingCOs ?? []).length > 0 ? (

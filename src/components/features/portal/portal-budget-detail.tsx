@@ -136,10 +136,12 @@ function ProjectRollup({ summary }: { summary: PortalBudgetSummary }) {
           {outOfPocket > 0 ? (
             <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
               Your contractor has spent{' '}
-              <strong className="text-foreground">{formatCents(spent)}</strong> on the job and
-              collected <strong className="text-foreground">{formatCents(paid)}</strong> from you so
-              far. They&rsquo;re currently{' '}
-              <strong className="text-foreground">{formatCents(outOfPocket)}</strong> out of pocket.
+              <strong className="text-foreground">{formatCents(spent)}</strong>
+              {' on the job and collected '}
+              <strong className="text-foreground">{formatCents(paid)}</strong>
+              {' from you so far. They’re currently '}
+              <strong className="text-foreground">{formatCents(outOfPocket)}</strong>
+              {' out of pocket.'}
             </p>
           ) : null}
         </>
