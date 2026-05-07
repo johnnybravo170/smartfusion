@@ -13,9 +13,9 @@ The HeyHenry-scoped routines running at claude.ai/code/routines, all Remote (Ant
 | `ai-tools-scout.md` | `ai-tools-scout` | Daily 7 AM | AI/ML tooling scan → `ops.ideas` + email digest |
 | `business-scout.md` | `business-scout` | Daily 6 AM | Strategic moves synthesis → `ops.ideas` + email |
 | `helpdesk-triage.md` | `helpdesk-triage` | Daily 9 AM | Codebase-grounded diagnosis on `triage:claude` kanban cards |
-| _(no file)_ | `pain-points-research` | Daily 7 AM | Scrapes contractor-community sources → `social_drafts` + `ideas` |
-| _(no file)_ | `security-probe` | Daily 4 AM | Reviews recent changes for security issues → opens incidents |
-| _(no file)_ | `competitive-research` | Daily 6 AM | Refreshes `ops.competitors` corpus |
+| `security-probe.md` | `security-probe` | Daily 4 AM | Reviews production surfaces for security regressions → opens incidents |
+| `competitive-research.md` | `competitive-research` | Daily 6 AM | Refreshes `ops.competitors` corpus with structured findings |
+| `pain-points-research.md` | `pain-points-research` | Daily 7 AM | Mines contractor-community pain points → `ops.social_drafts` |
 
 All connect to the **HeyHenry Ops MCP** at `https://ops.heyhenry.io/api/mcp`.
 
@@ -46,6 +46,8 @@ If `agent_run_start` fails, log it but continue — instrumentation must never g
 
 In-repo crons live under `ops/src/app/api/ops/<name>/run/route.ts` and use `ops/src/lib/agents/{recordAgentRun, finishAgentRun, withAgentRun}` instead of the MCP tools.
 
-## TODO — capture missing prompts
+## All 8 routines now have source-of-truth in this folder. Going forward:
 
-`pain-points-research`, `security-probe`, and `competitive-research` exist in claude.ai but have no source-of-truth markdown here. Next time you edit any of them in the cloud UI, paste the new content into a same-named file in this directory so we don't lose history when the cloud config rotates.
+- The cloud config at claude.ai/code/routines is what's actually running. The repo is the place it should match.
+- Drift detection is manual: when you edit a Routine in the cloud, paste the new content back into the corresponding `.md` here in the same session.
+- If you find a discrepancy when reading a routine you haven't touched in a while (e.g. a copy-paste leak from a sibling routine, like the dispatcher tail that crept into pain-points-research before its capture), the repo wins — paste the repo version into the cloud to clean it.
