@@ -1,10 +1,10 @@
 'use client';
 
 import { Sparkles, User } from 'lucide-react';
-import type { ChatMessage } from '@/hooks/use-chat';
+import type { HenryMessage } from '@/hooks/use-henry';
 import { cn } from '@/lib/utils';
 
-export function ChatBubble({ message }: { message: ChatMessage }) {
+export function ChatBubble({ message }: { message: HenryMessage }) {
   const isUser = message.role === 'user';
 
   return (

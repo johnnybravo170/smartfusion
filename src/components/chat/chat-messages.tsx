@@ -2,7 +2,7 @@
 
 import { Sparkles } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import type { ChatMessage } from '@/hooks/use-chat';
+import type { HenryMessage } from '@/hooks/use-henry';
 import { ChatBubble } from './chat-bubble';
 import { ChatToolIndicator } from './chat-tool-indicator';
 
@@ -10,7 +10,7 @@ export function ChatMessages({
   messages,
   activeTool,
 }: {
-  messages: ChatMessage[];
+  messages: HenryMessage[];
   activeTool: string | null;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
