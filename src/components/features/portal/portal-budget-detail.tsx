@@ -126,7 +126,7 @@ function ProjectRollup({ summary }: { summary: PortalBudgetSummary }) {
         <>
           {/* Paid bar — same scale as spent so the visual gap reads correctly. */}
           <div className="mt-4 flex items-center justify-between gap-3">
-            <span className="text-sm font-semibold">Paid by you</span>
+            <span className="text-sm font-semibold">What you’ve paid</span>
             <span className="text-sm font-semibold tabular-nums">{formatCents(paid)}</span>
           </div>
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
