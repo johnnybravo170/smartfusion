@@ -77,6 +77,19 @@ const FLEET = [
     tags: ['ai', 'help-docs', 'doc-writer'],
     backfill_actor_name: 'help-doc-writer',
   },
+  {
+    slug: 'ideas-digest',
+    name: 'Ideas Digest (daily new-ideas roll-up)',
+    description:
+      'Daily 16:00 UTC. Sweeps ops.ideas for entries created without email_sent_at, emails Jonathan one digest, marks each idea emailed. Safety net for any agent path that writes ideas without its own per-routine email digest.',
+    agent_type: 'cron',
+    schedule: '0 16 * * *',
+    external_link: 'https://vercel.com/johnnybravo170s-projects',
+    owner: 'jonathan',
+    expected_max_gap_minutes: 60 * 30, // 30h
+    tags: ['ai-ops', 'ideas', 'digest'],
+    backfill_actor_name: 'ideas-digest',
+  },
 
   // ─── Claude Code Routines ──────────────────────────────────────────
   {
