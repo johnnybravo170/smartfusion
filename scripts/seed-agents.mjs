@@ -106,44 +106,85 @@ const FLEET = [
     backfill_actor_name: null,
   },
   {
-    slug: 'dispatcher',
+    slug: 'weekly-dispatcher',
     name: 'Weekly Dispatcher',
     description:
-      'Sun/Mon morning. Produces a narrative summary of the past 7 days across worklog/kanban/incidents/competitors/docs/git. Pins to the worklog as weekly_digest.',
+      'Mondays 6 AM. Narrative summary of the past 7 days across worklog/kanban/incidents/competitors/docs/git. Pins to the worklog as weekly_digest.',
     agent_type: 'routine',
-    schedule: '0 14 * * 1', // approximate
+    schedule: 'Mon 6:00 AM',
     external_link: 'https://claude.ai/code/routines',
     owner: 'jonathan',
-    expected_max_gap_minutes: 60 * 24 * 8,
-    tags: ['ai', 'narrative', 'routine'],
+    expected_max_gap_minutes: 60 * 24 * 8, // 8 days
+    tags: ['ai', 'narrative', 'routine', 'remote'],
     backfill_actor_name: 'dispatcher',
   },
   {
     slug: 'ai-tools-scout',
     name: 'AI Tools Scout',
     description:
-      'Daily. Scans for new AI/agent tooling releases; writes ideas + knowledge entries when something matters.',
+      'Daily 7 AM. Scans for new AI/agent tooling releases; writes ideas + knowledge entries when something matters.',
     agent_type: 'routine',
-    schedule: 'daily',
+    schedule: 'Daily 7:00 AM',
     external_link: 'https://claude.ai/code/routines',
     owner: 'jonathan',
     expected_max_gap_minutes: 60 * 30,
-    tags: ['ai', 'scout', 'routine'],
+    tags: ['ai', 'scout', 'routine', 'remote'],
     backfill_actor_name: 'ai-tools-scout',
   },
   {
     slug: 'business-scout',
     name: 'Business Scout',
     description:
-      'Daily. Tracks competitor activity, market signals, contractor-SaaS news; writes ideas + competitor notes.',
+      'Daily 6 AM. Synthesis agent: connects HeyHenry internal signals + market context into 2–3 strategic moves. Writes ideas + email digest.',
     agent_type: 'routine',
-    schedule: 'daily',
+    schedule: 'Daily 6:00 AM',
     external_link: 'https://claude.ai/code/routines',
     owner: 'jonathan',
     expected_max_gap_minutes: 60 * 30,
-    tags: ['scout', 'business', 'routine'],
+    tags: ['scout', 'business', 'routine', 'remote'],
     backfill_actor_name: 'business-scout',
   },
+  {
+    slug: 'pain-points-research',
+    name: 'Pain Points Research',
+    description:
+      'Daily 7 AM. Scrapes contractor-community sources for recurring pain points; lands social_drafts + ideas.',
+    agent_type: 'routine',
+    schedule: 'Daily 7:00 AM',
+    external_link: 'https://claude.ai/code/routines',
+    owner: 'jonathan',
+    expected_max_gap_minutes: 60 * 30,
+    tags: ['research', 'social', 'routine', 'remote'],
+    backfill_actor_name: 'pain-points-research',
+  },
+  {
+    slug: 'security-probe',
+    name: 'Security Probe',
+    description:
+      'Daily 4 AM. Reviews recent code changes + dependency updates for security issues; opens incidents on findings.',
+    agent_type: 'routine',
+    schedule: 'Daily 4:00 AM',
+    external_link: 'https://claude.ai/code/routines',
+    owner: 'jonathan',
+    expected_max_gap_minutes: 60 * 30,
+    tags: ['security', 'routine', 'remote'],
+    backfill_actor_name: 'security-probe',
+  },
+  {
+    slug: 'competitive-research',
+    name: 'Competitive Research',
+    description:
+      'Daily 6 AM. Refreshes the ops.competitors corpus — pricing, feature shifts, market positioning changes.',
+    agent_type: 'routine',
+    schedule: 'Daily 6:00 AM',
+    external_link: 'https://claude.ai/code/routines',
+    owner: 'jonathan',
+    expected_max_gap_minutes: 60 * 30,
+    tags: ['research', 'competitors', 'routine', 'remote'],
+    backfill_actor_name: 'competitive-research',
+  },
+  // Local routines (Friday memory synthesis, feature-matrix-refresh)
+  // belong to HenryOS, not HeyHenry — out of scope for this registry.
 ];
 
 async function upsertAgents() {

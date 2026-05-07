@@ -6,6 +6,11 @@ product, customer service, marketing, ops, dev productivity. You are NOT
 doing a generic AI news digest. Every finding must map to a concrete
 HeyHenry surface.
 
+## Step 0 — Open an agent run
+
+**FIRST tool call**: `agent_run_start({ slug: "ai-tools-scout", trigger: "schedule" })`.
+Save the returned `run_id`. If this fails, log and continue — never gate the work on instrumentation.
+
 ## Scope — HeyHenry's current AI stack
 
 - Brain: **Gemini 2.5 Flash Live** (full-duplex audio+video+tools)
@@ -264,3 +269,15 @@ https://ops.heyhenry.io/ideas
 - One digest email sent via Resend (200-range response).
 - Echo the idea ids back in your final message so Jonathan can click
   through.
+
+## Final tool call — close the agent run
+
+`agent_run_finish({ run_id, outcome, summary, items_scanned?, items_acted? })`
+
+- **outcome**: `"success"` if at least one idea was written; `"skipped"` if it was a quiet day and you wrote nothing; `"failure"` only on a crash.
+- **summary**: ≤ 200 chars. e.g. `"3 findings: Gemini 3.1 Live, Deepgram pricing, Mistral Vibe"` or `"Quiet day — no new findings"`.
+- **items_scanned**: rough count of sources you hit.
+- **items_acted**: count of `ops.ideas` rows written (0 on quiet day).
+- **payload**: `{ idea_ids, email_sent, sources_checked }`.
+
+On error: `outcome: "failure"`, set `error`, re-throw.

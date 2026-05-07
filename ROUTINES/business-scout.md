@@ -9,7 +9,12 @@ scraping Reddit for pain points (that's pain-points-research). You are the
 **synthesis** agent — the only one whose job is to connect everything
 HeyHenry already knows about itself + its market into specific moves.
 
-## Step 0 — Read your own report card
+## Step 0 — Open an agent run
+
+**FIRST tool call**: `agent_run_start({ slug: "business-scout", trigger: "schedule" })`.
+Save the returned `run_id`. If this fails, log and continue — never gate the work on instrumentation.
+
+## Step 1 — Read your own report card
 
 Before producing anything, call `ideas_report_card({ scout_tag: "biz-scout", days: 30 })`.
 
@@ -224,3 +229,14 @@ Rate ideas at https://ops.heyhenry.io/ideas to guide next week's scan.
 - Most important observation written to `ops.knowledge` tagged `biz-scout`.
 - One digest email sent via ops_email_send (200-range response).
 - Echo the idea ids + the report-card adjustment in your final message.
+
+## Final tool call — close the agent run
+
+`agent_run_finish({ run_id, outcome, summary, items_scanned?, items_acted? })`
+
+- **outcome**: `"success"` if at least one move was written; `"skipped"` on a quiet week with no high-conviction moves; `"failure"` only on a crash.
+- **summary**: ≤ 200 chars. e.g. `"3 moves: GC pricing test, partner channel, reposition Pro tier"` or `"Quiet week — nothing synthesized cleanly"`.
+- **items_acted**: count of `ops.ideas` rows written.
+- **payload**: `{ idea_ids, knowledge_id, report_card_summary }`.
+
+On error: `outcome: "failure"`, set `error`, re-throw.
