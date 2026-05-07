@@ -28,6 +28,7 @@ import {
 import type { DiffChange, ProjectScopeDiff } from '@/lib/db/queries/project-scope-diff';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
+import { createChangeOrderFromUnsentDiffAction } from '@/server/actions/change-orders';
 import { revertChangeAction } from '@/server/actions/project-scope-diff';
 
 export function ScopeDiffReviewClient({
@@ -54,6 +55,22 @@ export function ScopeDiffReviewClient({
   useEffect(() => {
     setDiff(initialDiff);
   }, [initialDiff]);
+
+  const [creating, startCreate] = useTransition();
+  function createCo() {
+    startCreate(async () => {
+      const res = await createChangeOrderFromUnsentDiffAction(projectId);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      // Land on the CO detail page — the diff is rendered there, plus
+      // Send for Approval / Edit. Modal closes on navigation.
+      if (res.id) {
+        router.push(`/projects/${projectId}/change-orders/${res.id}`);
+      }
+    });
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? null : close())}>
@@ -106,20 +123,25 @@ export function ScopeDiffReviewClient({
 
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
           <p className="text-xs text-muted-foreground">
-            Ready to send these to the customer? Open the Changes tab to create a Change Order.
+            Turn the changes above into a draft change order — you'll review and send on the next
+            screen.
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={close}>
+            <Button variant="outline" size="sm" onClick={close} disabled={creating}>
               Close
             </Button>
-            <Button
-              size="sm"
-              onClick={() => {
-                router.push(`/projects/${projectId}/change-orders/new`);
-              }}
-            >
-              Create Change Order
-              <ArrowRight className="size-3.5" />
+            <Button size="sm" onClick={createCo} disabled={creating || diff.changes.length === 0}>
+              {creating ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Creating…
+                </>
+              ) : (
+                <>
+                  Create Change Order
+                  <ArrowRight className="size-3.5" />
+                </>
+              )}
             </Button>
           </div>
         </DialogFooter>
