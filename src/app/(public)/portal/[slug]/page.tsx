@@ -55,7 +55,7 @@ export default async function PortalPage({
 }) {
   const { slug } = await params;
   const resolvedSearchParams = await searchParams;
-  const tab: 'project' | 'messages' | 'ideas' | 'selections' | 'photos' =
+  const tab: 'project' | 'budget' | 'messages' | 'ideas' | 'selections' | 'photos' =
     resolvedSearchParams.tab === 'messages'
       ? 'messages'
       : resolvedSearchParams.tab === 'ideas'
@@ -64,7 +64,9 @@ export default async function PortalPage({
           ? 'selections'
           : resolvedSearchParams.tab === 'photos'
             ? 'photos'
-            : 'project';
+            : resolvedSearchParams.tab === 'budget'
+              ? 'budget'
+              : 'project';
   const admin = createAdminClient();
 
   // Load project + tenant + customer. We DON'T filter by portal_enabled
@@ -597,7 +599,7 @@ export default async function PortalPage({
         {customerName ? <p className="mt-1 text-sm text-muted-foreground">{customerName}</p> : null}
       </header>
 
-      {/* Tab nav — Project / Photos / Selections / Ideas / Messages. */}
+      {/* Tab nav — Project / Budget / Photos / Selections / Ideas / Messages. */}
       <div className="mb-6 flex gap-1 border-b">
         <Link
           href={`/portal/${slug}`}
@@ -609,6 +611,17 @@ export default async function PortalPage({
           }`}
         >
           Project
+        </Link>
+        <Link
+          href={`/portal/${slug}?tab=budget`}
+          prefetch={false}
+          className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            tab === 'budget'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground'
+          }`}
+        >
+          Budget
         </Link>
         <Link
           href={`/portal/${slug}?tab=photos`}
@@ -688,16 +701,11 @@ export default async function PortalPage({
             No photos yet. Your contractor will add them as work progresses.
           </p>
         )
-      ) : (
+      ) : tab === 'budget' ? (
         <>
-          {/* Decision queue — pinned to the top because urgent ask. */}
-          <DecisionPanel decisions={portalDecisions} defaultCustomerName={customerName} />
-
-          {/* Financials — three-number summary + optional per-bucket
-              breakdown. Sits high on the page (right after any urgent
-              decisions) so the customer sees the project's money state
-              without scrolling. The per-bucket breakdown shows only
-              when the operator has opted in via portal_show_budget. */}
+          {/* Three-number summary always shows. The per-bucket breakdown
+              below shows only when the operator has opted in via
+              portal_show_budget. */}
           <div className="mb-8 grid grid-cols-3 gap-3">
             <div className="rounded-lg border p-3 text-center">
               <p className="text-xs text-muted-foreground">Original Estimate</p>
@@ -720,10 +728,6 @@ export default async function PortalPage({
             </div>
           </div>
 
-          {/* Contract total always shows under the Financials grid — it
-              includes management fee + customer-facing tax so the customer
-              doesn't develop a false sense of cost from the cost-basis
-              numbers above. */}
           {portalBudgetSummary.customer_contract_total_cents > totalBudget ? (
             <p className="-mt-6 mb-8 text-center text-xs text-muted-foreground">
               Your contract total:{' '}
@@ -735,6 +739,11 @@ export default async function PortalPage({
           ) : null}
 
           {portalShowBudget ? <PortalBudgetDetail summary={portalBudgetSummary} /> : null}
+        </>
+      ) : (
+        <>
+          {/* Decision queue — pinned to the top because urgent ask. */}
+          <DecisionPanel decisions={portalDecisions} defaultCustomerName={customerName} />
 
           {/* Phase rail — homeowner-facing milestone tracker. Read-only here;
           operator advances/regresses from the project detail Portal tab. */}
