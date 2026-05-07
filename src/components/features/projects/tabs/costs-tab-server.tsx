@@ -68,6 +68,64 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
     }
   }
 
+  // Sign bill attachments (receipts bucket — same as expenses).
+  const billAttachmentUrls = new Map<string, string>();
+  const billPaths = bills
+    .map((b) => ({ id: b.id, path: b.attachment_storage_path }))
+    .filter((r): r is { id: string; path: string } => !!r.path);
+  if (billPaths.length > 0) {
+    const { data } = await supabase.storage.from('receipts').createSignedUrls(
+      billPaths.map((r) => r.path),
+      3600,
+    );
+    if (data) {
+      for (let i = 0; i < data.length; i++) {
+        const entry = data[i];
+        if (entry?.signedUrl && !entry.error) {
+          billAttachmentUrls.set(billPaths[i].id, entry.signedUrl);
+        }
+      }
+    }
+  }
+  const billItems = bills.map((b) => ({
+    ...b,
+    attachment_signed_url: billAttachmentUrls.get(b.id) ?? b.receipt_url ?? null,
+    attachment_mime_hint: (b.attachment_storage_path?.toLowerCase().endsWith('.pdf')
+      ? 'pdf'
+      : b.attachment_storage_path || b.receipt_url
+        ? 'image'
+        : null) as 'image' | 'pdf' | null,
+  }));
+
+  // Sign sub-quote attachments (sub-quotes bucket).
+  const quoteAttachmentUrls = new Map<string, string>();
+  const quotePaths = subQuotes
+    .map((q) => ({ id: q.id, path: q.attachment_storage_path }))
+    .filter((r): r is { id: string; path: string } => !!r.path);
+  if (quotePaths.length > 0) {
+    const { data } = await supabase.storage.from('sub-quotes').createSignedUrls(
+      quotePaths.map((r) => r.path),
+      3600,
+    );
+    if (data) {
+      for (let i = 0; i < data.length; i++) {
+        const entry = data[i];
+        if (entry?.signedUrl && !entry.error) {
+          quoteAttachmentUrls.set(quotePaths[i].id, entry.signedUrl);
+        }
+      }
+    }
+  }
+  const subQuoteItems = subQuotes.map((q) => ({
+    ...q,
+    attachment_signed_url: quoteAttachmentUrls.get(q.id) ?? null,
+    attachment_mime_hint: (q.attachment_storage_path?.toLowerCase().endsWith('.pdf')
+      ? 'pdf'
+      : q.attachment_storage_path
+        ? 'image'
+        : null) as 'image' | 'pdf' | null,
+  }));
+
   const expenseItems = expenses.map((e) => {
     const wp = e.worker_profile_id ? crewWorkers.find((w) => w.id === e.worker_profile_id) : null;
     // Prefer worker display name (if a worker logged it), else the operator's
@@ -98,8 +156,8 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
     <CostsTab
       projectId={projectId}
       purchaseOrders={purchaseOrders}
-      bills={bills}
-      subQuotes={subQuotes}
+      bills={billItems}
+      subQuotes={subQuoteItems}
       expenses={expenseItems}
       categories={projectCategories.map((b) => ({
         id: b.id,

@@ -14,8 +14,15 @@
 import { CheckCircle2, ChevronDown, ChevronRight, FileStack, Pencil, XCircle } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { ReceiptPreviewButton } from '@/components/features/expenses/receipt-preview-button';
 import { Button } from '@/components/ui/button';
 import type { SubQuoteRow } from '@/lib/db/queries/project-sub-quotes';
+
+export type SubQuoteItem = SubQuoteRow & {
+  attachment_signed_url: string | null;
+  attachment_mime_hint: 'image' | 'pdf' | null;
+};
+
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 import {
@@ -50,7 +57,7 @@ export function SubQuotesSection({
   categories,
 }: {
   projectId: string;
-  subQuotes: SubQuoteRow[];
+  subQuotes: SubQuoteItem[];
   categories: Category[];
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -141,7 +148,7 @@ function SubQuoteRowView({
   projectId,
   categories,
 }: {
-  quote: SubQuoteRow;
+  quote: SubQuoteItem;
   projectId: string;
   categories: Category[];
 }) {
@@ -189,41 +196,50 @@ function SubQuoteRowView({
 
   return (
     <div className="rounded-md border">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-muted/40"
-      >
-        {expanded ? (
-          <ChevronDown className="size-4 flex-shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="size-4 flex-shrink-0 text-muted-foreground" />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{quote.vendor_name}</span>
-            <span
-              className={cn(
-                'rounded-full px-2 py-0.5 text-[11px] font-medium',
-                STATUS_CLASS[quote.status],
-              )}
-            >
-              {STATUS_LABEL[quote.status]}
-            </span>
+      <div className="flex w-full items-center gap-3 px-3 py-3 hover:bg-muted/40">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          {expanded ? (
+            <ChevronDown className="size-4 flex-shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="size-4 flex-shrink-0 text-muted-foreground" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">{quote.vendor_name}</span>
+              <span
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-[11px] font-medium',
+                  STATUS_CLASS[quote.status],
+                )}
+              >
+                {STATUS_LABEL[quote.status]}
+              </span>
+            </div>
+            {quote.scope_description ? (
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {quote.scope_description}
+              </p>
+            ) : null}
           </div>
-          {quote.scope_description ? (
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {quote.scope_description}
-            </p>
-          ) : null}
-        </div>
-        <div className="text-right">
-          <p className="font-semibold tabular-nums">{formatCurrency(quote.total_cents)}</p>
-          {quote.quote_date ? (
-            <p className="text-[11px] text-muted-foreground">{quote.quote_date}</p>
-          ) : null}
-        </div>
-      </button>
+          <div className="text-right">
+            <p className="font-semibold tabular-nums">{formatCurrency(quote.total_cents)}</p>
+            {quote.quote_date ? (
+              <p className="text-[11px] text-muted-foreground">{quote.quote_date}</p>
+            ) : null}
+          </div>
+        </button>
+        {quote.attachment_signed_url ? (
+          <ReceiptPreviewButton
+            url={quote.attachment_signed_url}
+            mimeHint={quote.attachment_mime_hint}
+            vendor={quote.vendor_name}
+          />
+        ) : null}
+      </div>
 
       {expanded && editing ? (
         <div className="border-t px-3 py-3">

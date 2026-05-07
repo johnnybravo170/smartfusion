@@ -468,3 +468,24 @@ Files this pattern was applied to:
 - `src/lib/idea-board/url-preview.ts` — server-side URL preview fetcher (Pinterest oEmbed + og:image scrape) with SSRF guards + per-slug rate limit
 
 When you change one of these surfaces, evaluate every sibling instance in this family and surface to the user before silently propagating.
+
+---
+
+## 21. Receipt / attachment thumbnail preview in tables
+
+Any table row that has an uploaded receipt, bill PDF, or quote attachment should use the **shared `ReceiptPreviewButton`** instead of a plain "View" link or a decorative paperclip icon. Hover gives an instant thumbnail (image only — PDFs go straight to the click-to-open modal); click opens a full-size dialog with an "Open in new tab" escape hatch.
+
+To make a row usable, the server component must sign URLs in batch (one `createSignedUrls` call per bucket) and pass `attachment_signed_url` + `attachment_mime_hint: 'image' | 'pdf' | null` on each row. Mime hint is derived from the storage path extension — `.pdf` → `'pdf'`, anything else with a path → `'image'`. Legacy URL-only rows (no storage path) pass through with the same shape so the button still renders, just without the hover preview.
+
+The companion convention: the row's **primary identifier** (vendor name, expense vendor, etc.) is itself a button that opens the edit dialog — the explicit "Edit" button stays for discoverability but is no longer the only path.
+
+Files this pattern was applied to:
+
+- `src/components/features/expenses/receipt-preview-button.tsx` — the shared component (paperclip → hover thumbnail → modal; PDFs render in iframe).
+- `src/components/features/expenses/expenses-table.tsx` — overhead expenses list (signing in `listOverheadExpenses`).
+- `src/components/features/projects/expenses-section.tsx` — project Costs > Expenses subtab.
+- `src/components/features/projects/costs-tab.tsx` — project Costs > Bills subtab (Bills table; legacy `receipt_url` falls through as image).
+- `src/components/features/projects/sub-quotes-section.tsx` — project Costs > Vendor quotes subtab (preview button placed outside the row's expand `<button>` so it doesn't toggle expand).
+- `src/components/features/projects/tabs/costs-tab-server.tsx` — server-side URL signing for expenses (`receipts` bucket), bill attachments (`receipts` bucket), and quote attachments (`sub-quotes` bucket).
+
+When you add a new table that surfaces uploaded files, reuse `ReceiptPreviewButton` and sign URLs in batch — don't introduce a new "View" link or rely on `<a target="_blank">`. POs are intentionally excluded (they have no attachment field; they're system-created, not uploaded).

@@ -3,11 +3,17 @@
 import { Paperclip } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
+import { ReceiptPreviewButton } from '@/components/features/expenses/receipt-preview-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { ProjectBillRow } from '@/lib/db/queries/project-bills';
-import type { SubQuoteRow } from '@/lib/db/queries/project-sub-quotes';
 import type { PurchaseOrderRow, PurchaseOrderStatus } from '@/lib/db/queries/purchase-orders';
+
+export type BillItem = ProjectBillRow & {
+  attachment_signed_url: string | null;
+  attachment_mime_hint: 'image' | 'pdf' | null;
+};
+
 import { formatCurrency, formatCurrencyCompact } from '@/lib/pricing/calculator';
 import {
   createPurchaseOrderAction,
@@ -18,7 +24,7 @@ import {
 import { CostsByCategoryView } from './costs-by-category-view';
 import { type CostsSubtabKey, CostsSubtabs } from './costs-subtabs';
 import { type ExpenseItem, ExpensesSection } from './expenses-section';
-import { SubQuotesSection } from './sub-quotes-section';
+import { type SubQuoteItem, SubQuotesSection } from './sub-quotes-section';
 
 function displayToCents(val: string) {
   return Math.round(parseFloat(val || '0') * 100);
@@ -560,8 +566,8 @@ export function CostsTab({
 }: {
   projectId: string;
   purchaseOrders: PurchaseOrderRow[];
-  bills: ProjectBillRow[];
-  subQuotes: SubQuoteRow[];
+  bills: BillItem[];
+  subQuotes: SubQuoteItem[];
   expenses: ExpenseItem[];
   categories: Array<{
     id: string;
@@ -572,7 +578,7 @@ export function CostsTab({
 }) {
   const [showPOForm, setShowPOForm] = useState(false);
   const [showBillForm, setShowBillForm] = useState(false);
-  const [editingBill, setEditingBill] = useState<ProjectBillRow | null>(null);
+  const [editingBill, setEditingBill] = useState<BillItem | null>(null);
   const [, startTransition] = useTransition();
 
   function advancePOStatus(po: PurchaseOrderRow) {
@@ -897,10 +903,23 @@ export function CostsTab({
                     <tr key={bill.id} className="border-b last:border-0">
                       <td className="px-3 py-2 font-medium">
                         <div className="flex items-center gap-1.5">
-                          {bill.attachment_storage_path && (
-                            <Paperclip className="size-3 shrink-0 text-muted-foreground" />
+                          {bill.attachment_signed_url && (
+                            <ReceiptPreviewButton
+                              url={bill.attachment_signed_url}
+                              mimeHint={bill.attachment_mime_hint}
+                              vendor={bill.vendor}
+                            />
                           )}
-                          {bill.vendor}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingBill(bill);
+                              setShowBillForm(false);
+                            }}
+                            className="text-left text-primary hover:underline"
+                          >
+                            {bill.vendor}
+                          </button>
                         </div>
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">{bill.bill_date}</td>
