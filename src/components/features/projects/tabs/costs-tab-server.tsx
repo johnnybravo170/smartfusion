@@ -86,6 +86,11 @@ export default async function CostsTabServer({ projectId }: { projectId: string 
       worker_profile_id: e.worker_profile_id ?? null,
       worker_name: posterName,
       receipt_url: expenseReceiptUrls.get(e.id) ?? null,
+      receipt_mime_hint: (e.receipt_storage_path?.toLowerCase().endsWith('.pdf')
+        ? 'pdf'
+        : e.receipt_storage_path || e.receipt_url
+          ? 'image'
+          : null) as 'image' | 'pdf' | null,
     };
   });
 
