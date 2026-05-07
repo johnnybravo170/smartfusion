@@ -2,13 +2,31 @@
 
 Source of truth for the prompts running as Claude Code Routines at `claude.ai/code/routines`. Each markdown file here is paste-ready for the Routine "Instructions" field.
 
-| File | Slug | Cadence | Connector | What it does |
-|---|---|---|---|---|
-| `doc-writer.md` | `doc-writer` | Daily | HeyHenry Ops | Engineer-audience module summaries from recent commits → `ops.knowledge_docs` |
-| `dispatcher.md` | `dispatcher` | Weekly (Mon AM) | HeyHenry Ops | Narrative weekly digest → worklog + knowledge |
-| `ai-tools-scout.md` | `ai-tools-scout` | Daily | HeyHenry Ops | AI/ML tooling scan → `ops.ideas` + email digest |
-| `business-scout.md` | `business-scout` | Weekly | HeyHenry Ops | Strategic moves synthesis → `ops.ideas` + email |
-| `helpdesk-triage.md` | `helpdesk-triage` | On-demand | HeyHenry Ops + repo | Codebase-grounded diagnosis on `triage:claude` kanban cards |
+## Fleet (10 routines)
+
+The actual list at claude.ai/code/routines as of 2026-05-06. Five have prompts in this repo; five are listed without prompts (TODO: paste them in next time you edit them in the cloud).
+
+### Remote (run in Anthropic cloud)
+
+| File | Slug | Cadence | What it does |
+|---|---|---|---|
+| `doc-writer.md` | `doc-writer` | Daily 5 AM | Engineer-audience module summaries from recent commits → `ops.knowledge_docs` + `ops.docs` |
+| `weekly-dispatcher.md` | `weekly-dispatcher` | Mon 6 AM | Narrative weekly digest → worklog + knowledge |
+| `ai-tools-scout.md` | `ai-tools-scout` | Daily 7 AM | AI/ML tooling scan → `ops.ideas` + email digest |
+| `business-scout.md` | `business-scout` | Daily 6 AM | Strategic moves synthesis → `ops.ideas` + email |
+| `helpdesk-triage.md` | `helpdesk-triage` | Daily 9 AM | Codebase-grounded diagnosis on `triage:claude` kanban cards |
+| _(no file)_ | `pain-points-research` | Daily 7 AM | Scrapes contractor-community sources → `social_drafts` + `ideas` |
+| _(no file)_ | `security-probe` | Daily 4 AM | Reviews recent changes for security issues → opens incidents |
+| _(no file)_ | `competitive-research` | Daily 6 AM | Refreshes `ops.competitors` corpus |
+
+### Local (run on Jonathan's machine via Claude Code CLI)
+
+| File | Slug | Cadence | What it does |
+|---|---|---|---|
+| _(no file)_ | `friday-memory-synthesis` | Fri 5 PM | Compresses week into a memory note that persists across CC sessions |
+| _(no file)_ | `feature-matrix-refresh` | Daily 6 AM | Re-derives the public feature matrix (HeyHenry vs competitors) |
+
+All connect to the **HeyHenry Ops MCP** at `https://ops.heyhenry.io/api/mcp` (except possibly the Local ones, which may run unscoped on the local repo).
 
 ## When you change a prompt
 
@@ -36,3 +54,7 @@ If `agent_run_start` fails, log it but continue — instrumentation must never g
 - **Managed Agent** when: synchronous in-request, unpredictable bursty volume.
 
 In-repo crons live under `ops/src/app/api/ops/<name>/run/route.ts` and use `ops/src/lib/agents/{recordAgentRun, finishAgentRun, withAgentRun}` instead of the MCP tools.
+
+## TODO — capture missing prompts
+
+`pain-points-research`, `security-probe`, `competitive-research`, `friday-memory-synthesis`, and `feature-matrix-refresh` exist in claude.ai but have no source-of-truth markdown here. Next time you edit any of them in the cloud UI, paste the new content into a same-named file in this directory so we don't lose history when the cloud config rotates.
