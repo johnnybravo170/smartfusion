@@ -14,16 +14,22 @@ const PLAN_ORDER: Plan[] = ['starter', 'growth', 'pro', 'scale'];
 type Props = {
   initialPlan: Plan | null;
   initialCycle: BillingCycle;
+  initialPromo: string | null;
+  skipTrial: boolean;
 };
 
-export function PlanPicker({ initialPlan, initialCycle }: Props) {
+export function PlanPicker({ initialPlan, initialCycle, initialPromo, skipTrial }: Props) {
   const [cycle, setCycle] = useState<BillingCycle>(initialCycle);
   const [selectedPlan, setSelectedPlan] = useState<Plan>(initialPlan ?? 'growth');
   const [pending, startTransition] = useTransition();
 
   function handleContinue() {
     startTransition(async () => {
-      const res = await startCheckoutAction({ plan: selectedPlan, billing: cycle });
+      const res = await startCheckoutAction({
+        plan: selectedPlan,
+        billing: cycle,
+        promo: initialPromo,
+      });
       if (res && 'error' in res) {
         toast.error(res.error);
       }
@@ -36,8 +42,20 @@ export function PlanPicker({ initialPlan, initialCycle }: Props) {
       <div className="space-y-2 text-center">
         <h1 className="text-3xl font-semibold">Pick your plan</h1>
         <p className="text-muted-foreground">
-          14-day free trial. Card required. Change or cancel anytime.
+          {skipTrial
+            ? 'Card charged today. Change or cancel anytime.'
+            : '14-day free trial. Card required. Change or cancel anytime.'}
         </p>
+        {initialPromo ? (
+          <p className="text-sm font-medium text-emerald-600">
+            Promo code <span className="font-mono">{initialPromo}</span> will be applied at
+            checkout.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Have a promo code? You can enter it at checkout.
+          </p>
+        )}
       </div>
 
       <div className="flex justify-center">
@@ -81,7 +99,9 @@ export function PlanPicker({ initialPlan, initialCycle }: Props) {
         <Button size="lg" onClick={handleContinue} disabled={pending} className="min-w-64">
           {pending
             ? 'Redirecting…'
-            : `Continue with ${PLAN_CATALOG[selectedPlan].name} — start 14-day trial`}
+            : skipTrial
+              ? `Continue with ${PLAN_CATALOG[selectedPlan].name} — pay today`
+              : `Continue with ${PLAN_CATALOG[selectedPlan].name} — start 14-day trial`}
         </Button>
       </div>
     </div>

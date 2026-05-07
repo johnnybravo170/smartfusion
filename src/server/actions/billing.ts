@@ -39,9 +39,39 @@ async function originFromHeaders(): Promise<string> {
   return `${proto}://${host}`;
 }
 
+export type PromoEffects = { promotionCodeId: string | null; skipTrial: boolean };
+
+/**
+ * Resolves a human-readable promo code (e.g. `FOUNDER`) to its Stripe
+ * `promotion_code` id and any side-effects encoded in metadata.
+ *
+ * `skip_trial: 'true'` on the promo code's metadata bypasses the 14-day
+ * trial — used for founder/handshake deals where the customer is already
+ * committed and we want immediate billing. Set in the seed script.
+ *
+ * Returns null id if the code doesn't exist, isn't active, or otherwise
+ * can't be applied — we don't surface the error; checkout falls through
+ * to full-price with Stripe's built-in promo field.
+ */
+export async function resolvePromoEffects(code: string): Promise<PromoEffects> {
+  try {
+    const stripe = await getPlatformStripe();
+    const list = await stripe.promotionCodes.list({ code, active: true, limit: 1 });
+    const promo = list.data[0];
+    if (!promo) return { promotionCodeId: null, skipTrial: false };
+    return {
+      promotionCodeId: promo.id,
+      skipTrial: promo.metadata?.skip_trial === 'true',
+    };
+  } catch {
+    return { promotionCodeId: null, skipTrial: false };
+  }
+}
+
 export async function startCheckoutAction(input: {
   plan: string;
   billing: string;
+  promo?: string | null;
 }): Promise<{ error: string } | never> {
   if (!isPlan(input.plan)) return { error: 'Invalid plan.' };
   if (!isBillingCycle(input.billing)) return { error: 'Invalid billing cycle.' };
@@ -71,6 +101,10 @@ export async function startCheckoutAction(input: {
       .eq('id', tenant.id);
   }
 
+  const promo = input.promo
+    ? await resolvePromoEffects(input.promo)
+    : { promotionCodeId: null, skipTrial: false };
+
   const origin = await originFromHeaders();
   const { url } = await createSubscriptionCheckoutSession({
     customerId,
@@ -79,6 +113,8 @@ export async function startCheckoutAction(input: {
     cycle: input.billing as BillingCycle,
     successUrl: `${origin}/onboarding/plan/success?session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: `${origin}/onboarding/plan?canceled=1`,
+    promotionCode: promo.promotionCodeId,
+    skipTrial: promo.skipTrial,
   });
 
   redirect(url);

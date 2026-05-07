@@ -157,19 +157,28 @@ async function ensureFounderPromotionCode(couponId) {
   // dahlia API (2026-03-25) renamed top-level `coupon` to a `promotion`
   // object. The `code` filter on list still works; on create we now pass
   // `promotion: { type: 'coupon', coupon }`.
+  //
+  // `skip_trial: 'true'` in metadata is read by the app at checkout time
+  // — codes flagged this way bypass the 14-day trial and bill immediately.
+  const promoMetadata = { heyhenry_program: 'founding_member', skip_trial: 'true' };
   const existing = await stripe.promotionCodes.list({ code: 'FOUNDER', active: true, limit: 10 });
   const found = existing.data.find((p) => {
     const cid = typeof p.promotion?.coupon === 'string' ? p.promotion.coupon : p.promotion?.coupon?.id;
     return cid === couponId;
   });
   if (found) {
-    console.log(`  promo   FOUNDER → ${found.id} (existing)`);
+    if (found.metadata?.skip_trial !== 'true') {
+      await stripe.promotionCodes.update(found.id, { metadata: promoMetadata });
+      console.log(`  promo   FOUNDER → ${found.id} (existing — patched skip_trial metadata)`);
+    } else {
+      console.log(`  promo   FOUNDER → ${found.id} (existing)`);
+    }
     return found;
   }
   const promo = await stripe.promotionCodes.create({
     promotion: { type: 'coupon', coupon: couponId },
     code: 'FOUNDER',
-    metadata: { heyhenry_program: 'founding_member' },
+    metadata: promoMetadata,
   });
   console.log(`  promo   FOUNDER → ${promo.id} (created)`);
   return promo;

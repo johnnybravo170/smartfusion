@@ -55,3 +55,7 @@ supabase/.temp
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Local-only output from setup scripts (contains secrets — never commit)
+*.local
+!.env.local.example

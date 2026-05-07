@@ -53,6 +53,12 @@ export async function ensureStripeCustomer(input: {
 /**
  * Creates a Stripe Checkout Session for a subscription. Returns the
  * hosted URL the user is redirected to.
+ *
+ * If `promotionCode` is supplied we pre-apply it as a discount on the
+ * session. Otherwise we let Stripe show its built-in promo-code field
+ * (`allow_promotion_codes`) so the user can type a code at checkout.
+ * The two are mutually exclusive in Stripe — pre-applying disables the
+ * input field.
  */
 export async function createSubscriptionCheckoutSession(input: {
   customerId: string;
@@ -61,23 +67,43 @@ export async function createSubscriptionCheckoutSession(input: {
   cycle: BillingCycle;
   successUrl: string;
   cancelUrl: string;
+  promotionCode?: string | null;
+  skipTrial?: boolean;
 }): Promise<{ url: string; sessionId: string }> {
   const stripe = await getStripe();
   const priceId = getPriceId(input.plan, input.cycle);
 
-  const session = await stripe.checkout.sessions.create({
+  const params: Stripe.Checkout.SessionCreateParams = {
     mode: 'subscription',
     customer: input.customerId,
     line_items: [{ price: priceId, quantity: 1 }],
     payment_method_collection: 'always',
+    // Stripe Tax: computes GST/HST/PST/QST per the customer's billing
+    // address. Requires the registration to be active in the Stripe
+    // dashboard (Tax → Registrations).
+    automatic_tax: { enabled: true },
+    // Persist the address Stripe collects at checkout back onto the
+    // Customer so renewals can compute tax without re-prompting.
+    customer_update: { address: 'auto', name: 'auto' },
+    // Lets B2B customers enter their own GST/HST number — it appears on
+    // their invoice so they can claim input tax credits.
+    tax_id_collection: { enabled: true },
     subscription_data: {
-      trial_period_days: 14,
+      ...(input.skipTrial ? {} : { trial_period_days: 14 }),
       metadata: { tenant_id: input.tenantId, plan: input.plan, billing_cycle: input.cycle },
     },
     metadata: { tenant_id: input.tenantId, plan: input.plan, billing_cycle: input.cycle },
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
-  });
+  };
+
+  if (input.promotionCode) {
+    params.discounts = [{ promotion_code: input.promotionCode }];
+  } else {
+    params.allow_promotion_codes = true;
+  }
+
+  const session = await stripe.checkout.sessions.create(params);
 
   if (!session.url) throw new Error('Stripe Checkout returned no URL');
   return { url: session.url, sessionId: session.id };
