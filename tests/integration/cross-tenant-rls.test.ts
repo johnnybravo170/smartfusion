@@ -132,6 +132,32 @@ const RLS_TABLE_CASES: RlsCase[] = [
     }),
   },
   {
+    table: 'project_schedule_tasks',
+    seed: async ({ admin, tenant, stamp }) => {
+      const { data, error } = await admin
+        .from('project_schedule_tasks')
+        .insert({
+          tenant_id: tenant.tenantId,
+          project_id: tenant.projectId,
+          name: `task-${stamp}`,
+          planned_start_date: '2026-01-01',
+          planned_duration_days: 3,
+        })
+        .select('id')
+        .single();
+      if (error || !data) throw new Error(error?.message ?? 'project_schedule_tasks seed failed');
+      return data.id as string;
+    },
+    updatePayload: { notes: 'cross-tenant tamper' },
+    insertAcrossTenants: ({ tenant, stamp }) => ({
+      tenant_id: tenant.tenantId,
+      project_id: tenant.projectId,
+      name: `task-inject-${stamp}`,
+      planned_start_date: '2026-01-01',
+      planned_duration_days: 3,
+    }),
+  },
+  {
     table: 'import_batches',
     seed: async ({ admin, tenant, stamp }) => {
       const { data, error } = await admin
