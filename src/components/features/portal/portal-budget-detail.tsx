@@ -37,36 +37,41 @@ export function PortalBudgetDetail({ summary }: { summary: PortalBudgetSummary }
   return (
     <div className="mb-8">
       <h2 className="mb-3 text-sm font-semibold">Where the budget stands</h2>
-      <div className="space-y-2">
-        {summary.categories.map((cat) => {
-          const p = pct(cat.spent_cents, cat.total_cents);
-          const over = cat.spent_cents > cat.total_cents;
-          return (
-            <div key={cat.id} className="rounded-lg border p-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium">{cat.name}</span>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {formatCents(cat.spent_cents)} of {formatCents(cat.total_cents)}
-                </span>
-              </div>
-              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                <div
-                  className={`h-2 rounded-full transition-all ${
-                    over ? 'bg-amber-500' : 'bg-emerald-500'
-                  }`}
-                  style={{ width: `${Math.min(100, p)}%` }}
-                />
-              </div>
-              <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>{p}% used</span>
-                {over ? <span className="font-medium text-amber-700">Over budget</span> : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
 
+      {/* Project-level rollup first — gives the customer the headline
+          number before they scan the per-bucket details. */}
       <ProjectRollup summary={summary} />
+
+      {summary.categories.length > 0 ? (
+        <div className="mt-3 space-y-2">
+          {summary.categories.map((cat) => {
+            const p = pct(cat.spent_cents, cat.total_cents);
+            const over = cat.spent_cents > cat.total_cents;
+            return (
+              <div key={cat.id} className="rounded-lg border p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium">{cat.name}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {formatCents(cat.spent_cents)} of {formatCents(cat.total_cents)}
+                  </span>
+                </div>
+                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className={`h-2 rounded-full transition-all ${
+                      over ? 'bg-amber-500' : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${Math.min(100, p)}%` }}
+                  />
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span>{p}% used</span>
+                  {over ? <span className="font-medium text-amber-700">Over budget</span> : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -92,7 +97,7 @@ function ProjectRollup({ summary }: { summary: PortalBudgetSummary }) {
 
   return (
     <div
-      className={`mt-3 rounded-lg border p-3 ${
+      className={`rounded-lg border p-3 ${
         spentOver ? 'border-amber-300 bg-amber-50' : 'bg-muted/30'
       }`}
     >
