@@ -4,7 +4,16 @@ Source of truth for the prompts running as Claude Code Routines at `claude.ai/co
 
 ## Fleet — HeyHenry routines (9)
 
-8 Remote (Anthropic cloud sandbox) + 1 Local (runs on Jonathan's Mac). Other Local routines visible in claude.ai/code/routines (`Friday memory synthesis`, `Heyhenry feature matrix refresh`) belong to **HenryOS**, not HeyHenry, and are out of scope for this registry.
+All 9 are Remote (Anthropic cloud sandbox). Other Local routines visible in claude.ai/code/routines (`Friday memory synthesis`, `Heyhenry feature matrix refresh`) belong to **HenryOS**, not HeyHenry, and are out of scope for this registry.
+
+## Boundary: business-scout vs marketing-strategist
+
+Both routines write to `ops.ideas`. Hard separation by category:
+
+- **business-scout** owns: `revenue`, `retention`, `market-expansion`, `pricing`, `positioning`, `partnership`, `ops-efficiency`. Strategic moves with hard testability gates and ≥ 3 ops-surface citation requirement. Tagged `biz-scout`.
+- **marketing-strategist** owns: `content`, `launch`, `acquisition`. Tactical marketing brainstorms framed around named contractor archetypes (Will, JVD, John). Tagged `marketing-scout`.
+
+Each routine's prompt explicitly hands off out-of-scope candidates to the sibling. If you find an idea drifting across the boundary, fix the prompt that wrote it, not the agent that received it.
 
 | File | Slug | Runtime | Cadence | What it does |
 |---|---|---|---|---|
@@ -16,7 +25,7 @@ Source of truth for the prompts running as Claude Code Routines at `claude.ai/co
 | `security-probe.md` | `security-probe` | Remote | Daily 4 AM | Reviews production surfaces for security regressions → opens incidents |
 | `competitive-research.md` | `competitive-research` | Remote | Daily 6 AM | Refreshes `ops.competitors` corpus with structured findings |
 | `pain-points-research.md` | `pain-points-research` | Remote | Daily 7 AM | Mines contractor-community pain points → `ops.social_drafts` |
-| `marketing-strategist.md` | `marketing-strategist` | **Local** | TBD | HeyHenry marketing brainstorm → `ops.ideas` (`marketing-scout` tag) + email digest |
+| `marketing-strategist.md` | `marketing-strategist` | Remote | TBD | Tactical marketing (content / launch / acquisition only — strategic moves go to business-scout) → `ops.ideas` (`marketing-scout` tag) + email digest |
 
 All connect to the **HeyHenry Ops MCP** at `https://ops.heyhenry.io/api/mcp`. The Local one previously sent email via AppleScript / Mail.app; that path was unreliable. Updated to use `ops_email_send` like the Remote scouts.
 
