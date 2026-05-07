@@ -89,7 +89,6 @@ function ProjectRollup({ summary }: { summary: PortalBudgetSummary }) {
   const spentPct = pct(spent, total);
   const paidPct = pct(paid, total);
   const spentOver = spent > total;
-  const outOfPocket = spent - paid;
 
   return (
     <div
@@ -132,18 +131,6 @@ function ProjectRollup({ summary }: { summary: PortalBudgetSummary }) {
             />
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">{paidPct}% of budget</div>
-
-          {outOfPocket > 0 ? (
-            <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
-              Your contractor has spent{' '}
-              <strong className="text-foreground">{formatCents(spent)}</strong>
-              {' on the job and collected '}
-              <strong className="text-foreground">{formatCents(paid)}</strong>
-              {' from you so far. They’re currently '}
-              <strong className="text-foreground">{formatCents(outOfPocket)}</strong>
-              {' out of pocket.'}
-            </p>
-          ) : null}
         </>
       ) : null}
     </div>
