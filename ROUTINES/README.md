@@ -2,11 +2,9 @@
 
 Source of truth for the prompts running as Claude Code Routines at `claude.ai/code/routines`. Each markdown file here is paste-ready for the Routine "Instructions" field.
 
-## Fleet (10 routines)
+## Fleet — HeyHenry Remote routines (8)
 
-The actual list at claude.ai/code/routines as of 2026-05-06. Five have prompts in this repo; five are listed without prompts (TODO: paste them in next time you edit them in the cloud).
-
-### Remote (run in Anthropic cloud)
+The HeyHenry-scoped routines running at claude.ai/code/routines, all Remote (Anthropic cloud sandbox). Three Local routines visible in the same UI (`Friday memory synthesis`, `Heyhenry feature matrix refresh`, etc.) belong to **HenryOS**, not HeyHenry, and are out of scope for this registry.
 
 | File | Slug | Cadence | What it does |
 |---|---|---|---|
@@ -19,14 +17,7 @@ The actual list at claude.ai/code/routines as of 2026-05-06. Five have prompts i
 | _(no file)_ | `security-probe` | Daily 4 AM | Reviews recent changes for security issues → opens incidents |
 | _(no file)_ | `competitive-research` | Daily 6 AM | Refreshes `ops.competitors` corpus |
 
-### Local (run on Jonathan's machine via Claude Code CLI)
-
-| File | Slug | Cadence | What it does |
-|---|---|---|---|
-| _(no file)_ | `friday-memory-synthesis` | Fri 5 PM | Compresses week into a memory note that persists across CC sessions |
-| _(no file)_ | `feature-matrix-refresh` | Daily 6 AM | Re-derives the public feature matrix (HeyHenry vs competitors) |
-
-All connect to the **HeyHenry Ops MCP** at `https://ops.heyhenry.io/api/mcp` (except possibly the Local ones, which may run unscoped on the local repo).
+All connect to the **HeyHenry Ops MCP** at `https://ops.heyhenry.io/api/mcp`.
 
 ## When you change a prompt
 
@@ -57,4 +48,4 @@ In-repo crons live under `ops/src/app/api/ops/<name>/run/route.ts` and use `ops/
 
 ## TODO — capture missing prompts
 
-`pain-points-research`, `security-probe`, `competitive-research`, `friday-memory-synthesis`, and `feature-matrix-refresh` exist in claude.ai but have no source-of-truth markdown here. Next time you edit any of them in the cloud UI, paste the new content into a same-named file in this directory so we don't lose history when the cloud config rotates.
+`pain-points-research`, `security-probe`, and `competitive-research` exist in claude.ai but have no source-of-truth markdown here. Next time you edit any of them in the cloud UI, paste the new content into a same-named file in this directory so we don't lose history when the cloud config rotates.

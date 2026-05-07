@@ -183,32 +183,8 @@ const FLEET = [
     tags: ['research', 'competitors', 'routine', 'remote'],
     backfill_actor_name: 'competitive-research',
   },
-  {
-    slug: 'friday-memory-synthesis',
-    name: 'Friday Memory Synthesis',
-    description:
-      "Fridays 5 PM. Local routine — runs on Jonathan's machine. Compresses the week into a memory note that persists across Claude Code sessions.",
-    agent_type: 'routine',
-    schedule: 'Fri 5:00 PM',
-    external_link: 'https://claude.ai/code/routines',
-    owner: 'jonathan',
-    expected_max_gap_minutes: 60 * 24 * 8,
-    tags: ['memory', 'routine', 'local'],
-    backfill_actor_name: 'friday-memory-synthesis',
-  },
-  {
-    slug: 'feature-matrix-refresh',
-    name: 'HeyHenry Feature Matrix Refresh',
-    description:
-      "Daily 6 AM. Local routine — runs on Jonathan's machine. Re-derives the public feature matrix (HeyHenry vs competitors) from the ops corpus.",
-    agent_type: 'routine',
-    schedule: 'Daily 6:00 AM',
-    external_link: 'https://claude.ai/code/routines',
-    owner: 'jonathan',
-    expected_max_gap_minutes: 60 * 30,
-    tags: ['marketing', 'matrix', 'routine', 'local'],
-    backfill_actor_name: 'feature-matrix-refresh',
-  },
+  // Local routines (Friday memory synthesis, feature-matrix-refresh)
+  // belong to HenryOS, not HeyHenry — out of scope for this registry.
 ];
 
 async function upsertAgents() {
