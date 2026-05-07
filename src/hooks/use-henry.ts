@@ -185,6 +185,8 @@ type ServerEvent =
   | { type: 'response.output_audio.done' }
   | { type: 'response.output_audio_transcript.delta'; delta?: string }
   | { type: 'response.output_audio_transcript.done' }
+  | { type: 'response.output_text.delta'; delta?: string }
+  | { type: 'response.output_text.done' }
   | {
       type: 'response.function_call_arguments.done';
       call_id?: string;
@@ -454,6 +456,33 @@ export function useHenry(): UseHenryReturn {
           }
           return;
 
+        // Text-only responses (typed input → text override) stream via
+        // output_text.* instead of output_audio_transcript.*.
+        case 'response.output_text.delta': {
+          const delta = 'delta' in evt ? evt.delta : undefined;
+          if (!delta) return;
+          setMessages((prev) => {
+            let id = currentAssistantIdRef.current;
+            if (!id) {
+              id = generateId();
+              currentAssistantIdRef.current = id;
+              return [...prev, { id, role: 'assistant', content: delta, isStreaming: true }];
+            }
+            return prev.map((m) => (m.id === id ? { ...m, content: m.content + delta } : m));
+          });
+          return;
+        }
+
+        case 'response.output_text.done':
+          if (currentAssistantIdRef.current) {
+            const id = currentAssistantIdRef.current;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === id ? { ...m, isStreaming: false } : m)),
+            );
+            currentAssistantIdRef.current = null;
+          }
+          return;
+
         case 'response.function_call_arguments.done': {
           const callId = 'call_id' in evt ? evt.call_id : undefined;
           const name = 'name' in evt ? evt.name : undefined;
@@ -653,29 +682,37 @@ export function useHenry(): UseHenryReturn {
     outputAudioCtxRef.current = out;
     playbackCursorRef.current = 0;
 
-    // Wait for the WS handshake to actually finish before returning. Without
-    // this, callers race the connection and any sendEvent() before readyState
-    // hits OPEN gets dropped silently — the first text message after a fresh
-    // panel open would vanish, requiring a second send to elicit a reply.
+    // Wait for the OpenAI Realtime server to send `session.created` (or
+    // `session.updated`) before returning. WS readyState hitting OPEN isn't
+    // enough — events sent in the gap between `onopen` and `session.created`
+    // get dropped server-side, which is why the first text message after a
+    // fresh panel open would vanish until the user retried.
     await new Promise<void>((resolve, reject) => {
       const cleanup = () => {
-        ws.removeEventListener('open', onOpen);
+        ws.removeEventListener('message', onMessage);
         ws.removeEventListener('error', onErr);
         ws.removeEventListener('close', onClose);
       };
-      const onOpen = () => {
-        cleanup();
-        resolve();
+      const onMessage = (msg: MessageEvent) => {
+        try {
+          const evt = JSON.parse(msg.data as string) as { type?: string };
+          if (evt.type === 'session.created' || evt.type === 'session.updated') {
+            cleanup();
+            resolve();
+          }
+        } catch {
+          // handleServerEvent (ws.onmessage) owns parse-error logging.
+        }
       };
       const onErr = () => {
         cleanup();
-        reject(new Error('Realtime WS failed to open'));
+        reject(new Error('Realtime WS errored before session.created'));
       };
       const onClose = () => {
         cleanup();
-        reject(new Error('Realtime WS closed before open'));
+        reject(new Error('Realtime WS closed before session.created'));
       };
-      ws.addEventListener('open', onOpen, { once: true });
+      ws.addEventListener('message', onMessage);
       ws.addEventListener('error', onErr, { once: true });
       ws.addEventListener('close', onClose, { once: true });
     });
@@ -749,7 +786,13 @@ export function useHenry(): UseHenryReturn {
           content: [{ type: 'input_text', text: trimmed }],
         },
       });
-      sendEvent({ type: 'response.create' });
+      // Typed input → text-only response. The session default is audio
+      // (set at mint time for voice mode); voice turns triggered by server
+      // VAD still get audio, but typed messages shouldn't talk back.
+      sendEvent({
+        type: 'response.create',
+        response: { output_modalities: ['text'] },
+      });
     },
     [connect, sendEvent],
   );
