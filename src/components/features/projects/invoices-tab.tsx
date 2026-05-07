@@ -1,8 +1,11 @@
 'use client';
 
+import { CheckCircle } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { RecordPaymentDialog } from '@/components/features/invoices/record-payment-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { withFrom } from '@/lib/nav/from-link';
@@ -370,7 +373,16 @@ export function InvoicesTab({
                       className={`border-b last:border-0 ${inv.status === 'void' ? 'opacity-50' : ''}`}
                     >
                       <td className="px-3 py-2 font-medium">
-                        {inv.customer_note || `Draw ${inv.id.slice(0, 8)}`}
+                        <Link
+                          href={withFrom(
+                            `/invoices/${inv.id}`,
+                            `/projects/${projectId}?tab=invoices`,
+                            'Customer Billing',
+                          )}
+                          className="hover:text-primary hover:underline"
+                        >
+                          {inv.customer_note || `Draw ${inv.id.slice(0, 8)}`}
+                        </Link>
                       </td>
                       <td className="px-3 py-2 capitalize text-muted-foreground">{inv.status}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
@@ -383,21 +395,35 @@ export function InvoicesTab({
                         {pctOfContract !== null ? `${pctOfContract}%` : '—'}
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          onClick={() =>
-                            router.push(
-                              withFrom(
-                                `/invoices/${inv.id}`,
-                                `/projects/${projectId}?tab=invoices`,
-                                'Customer Billing',
-                              ),
-                            )
-                          }
-                        >
-                          View
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          {inv.status === 'sent' ? (
+                            <RecordPaymentDialog
+                              invoiceId={inv.id}
+                              invoiceTotalCents={total}
+                              trigger={
+                                <Button size="xs" variant="outline">
+                                  <CheckCircle className="size-3.5" />
+                                  Mark paid
+                                </Button>
+                              }
+                            />
+                          ) : null}
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() =>
+                              router.push(
+                                withFrom(
+                                  `/invoices/${inv.id}`,
+                                  `/projects/${projectId}?tab=invoices`,
+                                  'Customer Billing',
+                                ),
+                              )
+                            }
+                          >
+                            View
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -426,44 +452,68 @@ export function InvoicesTab({
                 </tr>
               </thead>
               <tbody>
-                {otherInvoices.map((inv) => (
-                  <tr
-                    key={inv.id}
-                    className={`border-b last:border-0 ${inv.status === 'void' ? 'opacity-50' : ''}`}
-                  >
-                    <td className="px-3 py-2 font-medium">
-                      {inv.customer_note ||
-                        (inv.doc_type === 'final'
-                          ? 'Final invoice'
-                          : `Invoice ${inv.id.slice(0, 8)}`)}
-                    </td>
-                    <td className="px-3 py-2 capitalize text-muted-foreground">{inv.status}</td>
-                    <td className="px-3 py-2 text-right">{formatCurrency(inv.amount_cents)}</td>
-                    <td className="px-3 py-2 text-right text-muted-foreground">
-                      {formatCurrency(inv.tax_cents)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-medium">
-                      {formatCurrency(customerTotalCents(inv))}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        onClick={() =>
-                          router.push(
-                            withFrom(
-                              `/invoices/${inv.id}`,
-                              `/projects/${projectId}?tab=invoices`,
-                              'Customer Billing',
-                            ),
-                          )
-                        }
-                      >
-                        View
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {otherInvoices.map((inv) => {
+                  const total = customerTotalCents(inv);
+                  return (
+                    <tr
+                      key={inv.id}
+                      className={`border-b last:border-0 ${inv.status === 'void' ? 'opacity-50' : ''}`}
+                    >
+                      <td className="px-3 py-2 font-medium">
+                        <Link
+                          href={withFrom(
+                            `/invoices/${inv.id}`,
+                            `/projects/${projectId}?tab=invoices`,
+                            'Customer Billing',
+                          )}
+                          className="hover:text-primary hover:underline"
+                        >
+                          {inv.customer_note ||
+                            (inv.doc_type === 'final'
+                              ? 'Final invoice'
+                              : `Invoice ${inv.id.slice(0, 8)}`)}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2 capitalize text-muted-foreground">{inv.status}</td>
+                      <td className="px-3 py-2 text-right">{formatCurrency(inv.amount_cents)}</td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">
+                        {formatCurrency(inv.tax_cents)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-medium">{formatCurrency(total)}</td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {inv.status === 'sent' ? (
+                            <RecordPaymentDialog
+                              invoiceId={inv.id}
+                              invoiceTotalCents={total}
+                              trigger={
+                                <Button size="xs" variant="outline">
+                                  <CheckCircle className="size-3.5" />
+                                  Mark paid
+                                </Button>
+                              }
+                            />
+                          ) : null}
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() =>
+                              router.push(
+                                withFrom(
+                                  `/invoices/${inv.id}`,
+                                  `/projects/${projectId}?tab=invoices`,
+                                  'Customer Billing',
+                                ),
+                              )
+                            }
+                          >
+                            View
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
