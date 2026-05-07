@@ -1,0 +1,169 @@
+'use client';
+
+/**
+ * Empty-state bootstrap panel for the Schedule tab.
+ *
+ * Three big-button choice — Apply template / Bootstrap from budget /
+ * Start blank — per the Gantt v0 spec. The "Apply template" button
+ * opens a sub-modal listing the seeded project_type_templates so the
+ * GC picks which one (Kitchen Reno / Bath Reno / Basement Finish /
+ * Addition).
+ *
+ * Calls bootstrapProjectScheduleAction; on success the page revalidates
+ * server-side and the operator sees the populated Gantt.
+ */
+
+import { useRouter } from 'next/navigation';
+import { useState, useTransition } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  type BootstrapSource,
+  bootstrapProjectScheduleAction,
+} from '@/server/actions/project-schedule';
+
+export type ProjectTypeTemplateOption = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  tradeCount: number;
+};
+
+export function ScheduleBootstrapPanel({
+  projectId,
+  templates,
+}: {
+  projectId: string;
+  templates: ProjectTypeTemplateOption[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = (source: BootstrapSource) => {
+    setError(null);
+    startTransition(async () => {
+      const res = await bootstrapProjectScheduleAction(projectId, source);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setPickerOpen(false);
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className="rounded-lg border bg-card p-8">
+      <h2 className="text-lg font-semibold">No schedule yet</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Pick a starting point. You can drag and edit anything afterwards — this just gets you a
+        rough draft to share with the customer.
+      </p>
+
+      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          disabled={pending}
+          className="flex h-32 flex-col items-start justify-between rounded-md border bg-background p-4 text-left transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
+        >
+          <span className="text-sm font-semibold">Apply template</span>
+          <span className="text-xs text-muted-foreground">
+            Pick a project type — Kitchen Reno, Bath Reno, etc.
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => run({ kind: 'budget' })}
+          disabled={pending}
+          className="flex h-32 flex-col items-start justify-between rounded-md border bg-background p-4 text-left transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
+        >
+          <span className="text-sm font-semibold">Bootstrap from budget</span>
+          <span className="text-xs text-muted-foreground">
+            Use the trades already in your budget categories.
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => run({ kind: 'blank' })}
+          disabled={pending}
+          className="flex h-32 flex-col items-start justify-between rounded-md border bg-background p-4 text-left transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
+        >
+          <span className="text-sm font-semibold">Start blank</span>
+          <span className="text-xs text-muted-foreground">
+            Add tasks one at a time. (Coming in v1.)
+          </span>
+        </button>
+      </div>
+
+      {error ? (
+        <p className="mt-4 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+
+      {pickerOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          {/* Backdrop click-to-close uses a button overlay so a11y rules
+              don't fight us; the actual dialog content sits above it. */}
+          <button
+            type="button"
+            aria-label="Close template picker"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setPickerOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="template-picker-title"
+            className="relative w-full max-w-2xl rounded-lg border bg-background p-6 shadow-lg"
+          >
+            <h3 id="template-picker-title" className="text-base font-semibold">
+              Pick a project type
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              We&rsquo;ll lay out a rough schedule from this template — you can adjust anything
+              after.
+            </p>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {templates.map((tpl) => (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  onClick={() => run({ kind: 'template', projectTypeTemplateSlug: tpl.slug })}
+                  disabled={pending}
+                  className="flex flex-col items-start rounded-md border bg-card p-3 text-left transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
+                >
+                  <span className="text-sm font-semibold">{tpl.name}</span>
+                  {tpl.description ? (
+                    <span className="mt-1 text-xs text-muted-foreground">{tpl.description}</span>
+                  ) : null}
+                  <span className="mt-2 text-[11px] text-muted-foreground">
+                    {tpl.tradeCount} {tpl.tradeCount === 1 ? 'trade' : 'trades'}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPickerOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
