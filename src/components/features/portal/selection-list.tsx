@@ -118,11 +118,16 @@ function SelectionRow({
   return (
     <li className="flex items-start gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
             {selectionCategoryLabels[selection.category as SelectionCategory] ?? selection.category}
           </span>
           {headline ? <span className="text-sm font-medium">{headline}</span> : null}
+          {selection.created_by === 'customer' ? (
+            <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800">
+              Added by customer
+            </span>
+          ) : null}
         </div>
         <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
           {detail ? <span>{detail}</span> : null}

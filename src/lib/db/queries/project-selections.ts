@@ -34,10 +34,14 @@ export type ProjectSelection = {
   /** Actual cost incurred, integer cents. Null = not yet known. */
   actual_cost_cents: number | null;
   display_order: number;
+  /** Who authored this row — operator (install spec) or customer (self-recorded). */
+  created_by: 'operator' | 'customer';
+  /** Single inline customer-uploaded image (path in photos bucket). */
+  image_storage_path: string | null;
 };
 
 const COLUMNS =
-  'id, project_id, room, category, brand, name, code, finish, supplier, sku, warranty_url, notes, photo_refs, allowance_cents, actual_cost_cents, display_order';
+  'id, project_id, room, category, brand, name, code, finish, supplier, sku, warranty_url, notes, photo_refs, allowance_cents, actual_cost_cents, display_order, created_by, image_storage_path';
 
 export const listSelectionsForProject = cache(
   async (projectId: string): Promise<ProjectSelection[]> => {

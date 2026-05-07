@@ -94,8 +94,8 @@ export function PortalIdeaBoard({
           Idea board
         </h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Drop images, paste Pinterest or vendor links, or jot a note. Just for you and your
-          contractor — no notifications fire when you add something. Add as much as you want.
+          A place to share things you like and the inspiration shaping your project — drop images,
+          paste Pinterest or vendor links, or jot a note. Add as much as you want.
         </p>
       </div>
 
