@@ -24,9 +24,10 @@
 import { ChevronDown, ChevronRight, Plus, RotateCcw, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Money } from '@/components/ui/money';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { BudgetCategorySummary } from '@/lib/db/queries/projects';
 import { formatCurrency } from '@/lib/pricing/calculator';
@@ -620,6 +621,12 @@ export function ChangeOrderDiffForm({
         </div>
       </div>
 
+      {/* Per-section table — mirrors the Budget tab's column structure */}
+      {/* (chevron / label / qty / unit price / total / action) so values */}
+      {/* land in the same x-position whether you're looking at the budget */}
+      {/* or editing a CO. Sticky thead per section; thead handoff is */}
+      {/* automatic as the operator scrolls past one section into the */}
+      {/* next. */}
       {Array.from(categoriesBySection.entries()).map(([section, categories]) => {
         const sectionEnvTotal = categories.reduce((s, c) => s + c.estimate_cents, 0);
         return (
@@ -635,401 +642,521 @@ export function ChangeOrderDiffForm({
                 </span>
               </div>
             </div>
-            <div className="space-y-4">
-              {categories.map((category) => {
-                const lines = linesByCategory.get(category.id) ?? [];
-                const addedHere = added.filter((a) => a.budget_category_id === category.id);
-                const hasAnyLineEdit =
-                  lines.some((l) => removedIds.has(l.id) || editsById[l.id] !== undefined) ||
-                  addedHere.length > 0;
-                const envRaw = envelopeEdits[category.id];
-                const newEnvCents =
-                  envRaw !== undefined && envRaw !== '' ? Math.round(Number(envRaw) * 100) : null;
-                const envDelta =
-                  !hasAnyLineEdit && newEnvCents !== null && !Number.isNaN(newEnvCents)
-                    ? newEnvCents - category.estimate_cents
-                    : 0;
-                const hasAnyEdit = hasAnyLineEdit || envDelta !== 0;
-                const hasNote = (notesByCategory[category.id]?.trim() ?? '').length > 0;
-                // Aggressive collapse: only auto-expand categories that
-                // are actually part of this CO — added/modified/removed
-                // lines, envelope edit, or a category note. Untouched
-                // categories stay collapsed (even if they have existing
-                // lines) so the operator focuses on what's changing.
-                // Operator can always expand via the chevron to add scope.
-                const isExpanded =
-                  forceOpenCategories.has(category.id) ||
-                  addedHere.length > 0 ||
-                  hasAnyEdit ||
-                  hasNote;
-                function toggleOpen() {
-                  setForceOpenCategories((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(category.id)) next.delete(category.id);
-                    else next.add(category.id);
-                    return next;
-                  });
-                }
-                return (
-                  <div key={category.id} className="rounded-md border">
-                    <div className="grid grid-cols-12 items-center gap-2 border-b bg-muted/30 px-3 py-2">
-                      <button
-                        type="button"
-                        onClick={toggleOpen}
-                        className="col-span-7 min-w-0 flex items-start gap-1.5 text-left"
-                        aria-expanded={isExpanded}
-                        aria-label={isExpanded ? 'Collapse category' : 'Expand category'}
-                      >
-                        <span className="mt-0.5 text-muted-foreground">
-                          {isExpanded ? (
-                            <ChevronDown className="size-4" />
-                          ) : (
-                            <ChevronRight className="size-4" />
-                          )}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium">{category.name}</span>
-                          {category.description ? (
-                            <span className="mt-0.5 block text-xs text-muted-foreground">
-                              {category.description}
-                            </span>
-                          ) : null}
-                        </span>
-                      </button>
-                      <div className="col-span-5 flex items-center justify-end gap-2">
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          Budget
-                        </span>
-                        <span className="text-xs text-muted-foreground">$</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          defaultValue={(category.estimate_cents / 100).toFixed(2)}
-                          disabled={hasAnyLineEdit}
-                          onChange={(e) =>
-                            setEnvelopeEdits((prev) => ({
-                              ...prev,
-                              [category.id]: e.target.value,
-                            }))
-                          }
-                          title={
-                            hasAnyLineEdit
-                              ? 'Editing line items already; budget is implied by line totals'
-                              : 'Adjust the budget for this category'
-                          }
-                          className="h-7 w-24 rounded-md border bg-background px-2 text-right text-sm tabular-nums disabled:opacity-50"
-                        />
-                        {envDelta !== 0 ? (
-                          <span
-                            className={cn(
-                              'text-xs font-medium tabular-nums',
-                              envDelta < 0 ? 'text-emerald-700' : 'text-amber-700',
-                            )}
-                          >
-                            {envDelta >= 0 ? '+' : ''}
-                            {formatCurrency(envDelta)}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                    {isExpanded ? (
-                      <div
-                        className={cn(
-                          'border-b px-3 py-2',
-                          hasAnyEdit ? 'bg-amber-50/30' : 'bg-background',
-                        )}
-                      >
-                        <input
-                          type="text"
-                          value={notesByCategory[category.id] ?? ''}
-                          onChange={(e) =>
-                            setNotesByCategory((prev) => ({
-                              ...prev,
-                              [category.id]: e.target.value,
-                            }))
-                          }
-                          placeholder="Note for this category (optional — shown to the customer)"
-                          className="h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
-                        />
-                      </div>
-                    ) : null}
-                    {isExpanded && lines.length === 0 && addedHere.length === 0 ? (
-                      <p className="px-3 py-2 text-xs text-muted-foreground">No lines yet.</p>
-                    ) : null}
-                    {isExpanded ? (
-                      <>
-                        {/* Existing + added line items + Add line footer
-                            stay grouped so they hide together when the
-                            category is collapsed. */}
-                        {lines.map((line) => {
-                          const isRemoved = removedIds.has(line.id);
-                          const edit = editsById[line.id];
-                          const isModified = edit !== undefined;
-                          const newQty =
-                            edit?.qty !== undefined ? Number(edit.qty) : Number(line.qty);
-                          const newUnitPriceCents =
-                            edit?.unit_price_dollars !== undefined
-                              ? Math.round(Number(edit.unit_price_dollars) * 100)
-                              : line.unit_price_cents;
-                          const newLinePrice = Math.round(newQty * newUnitPriceCents);
-                          const delta = isRemoved
-                            ? -line.line_price_cents
-                            : isModified
-                              ? newLinePrice - line.line_price_cents
-                              : 0;
-                          return (
-                            <div
-                              key={line.id}
-                              className={cn(
-                                'border-b px-3 py-2 text-sm last:border-0',
-                                isRemoved && 'bg-red-50/60 opacity-70',
-                                !isRemoved && isModified && 'bg-amber-50/70',
-                              )}
+            <div className="overflow-x-clip [overflow-y:visible] rounded-md border">
+              <table className="w-full min-w-[640px] table-fixed text-sm">
+                <colgroup>
+                  <col className="w-10" />
+                  <col />
+                  <col className="w-20" />
+                  <col className="w-28" />
+                  <col className="w-32" />
+                  <col className="w-12" />
+                </colgroup>
+                <thead className="[&>tr>th]:bg-muted">
+                  <tr className="border-b">
+                    <th className="px-1 py-1.5" />
+                    <th className="px-2 py-1.5 text-left text-xs uppercase tracking-wide font-medium text-muted-foreground">
+                      Category / line
+                    </th>
+                    <th className="px-3 py-1.5 text-right text-xs uppercase tracking-wide font-medium text-muted-foreground">
+                      Qty
+                    </th>
+                    <th className="px-3 py-1.5 text-right text-xs uppercase tracking-wide font-medium text-muted-foreground">
+                      Unit price
+                    </th>
+                    <th className="px-3 py-1.5 text-right text-xs uppercase tracking-wide font-medium text-muted-foreground">
+                      Total
+                    </th>
+                    <th className="px-1 py-1.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {categories.map((category) => {
+                    const lines = linesByCategory.get(category.id) ?? [];
+                    const addedHere = added.filter((a) => a.budget_category_id === category.id);
+                    const hasAnyLineEdit =
+                      lines.some((l) => removedIds.has(l.id) || editsById[l.id] !== undefined) ||
+                      addedHere.length > 0;
+                    const envRaw = envelopeEdits[category.id];
+                    const newEnvCents =
+                      envRaw !== undefined && envRaw !== ''
+                        ? Math.round(Number(envRaw) * 100)
+                        : null;
+                    const envDelta =
+                      !hasAnyLineEdit && newEnvCents !== null && !Number.isNaN(newEnvCents)
+                        ? newEnvCents - category.estimate_cents
+                        : 0;
+                    const hasAnyEdit = hasAnyLineEdit || envDelta !== 0;
+                    const hasNote = (notesByCategory[category.id]?.trim() ?? '').length > 0;
+                    const isExpanded =
+                      forceOpenCategories.has(category.id) ||
+                      addedHere.length > 0 ||
+                      hasAnyEdit ||
+                      hasNote;
+                    function toggleOpen() {
+                      setForceOpenCategories((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(category.id)) next.delete(category.id);
+                        else next.add(category.id);
+                        return next;
+                      });
+                    }
+                    return (
+                      <Fragment key={category.id}>
+                        {/* Category header row */}
+                        <tr className="border-b bg-muted/40">
+                          <td className="px-1 py-1.5 align-top">
+                            <button
+                              type="button"
+                              onClick={toggleOpen}
+                              aria-label={isExpanded ? 'Collapse category' : 'Expand category'}
+                              className="text-muted-foreground hover:text-foreground"
                             >
-                              <div
-                                className={cn(
-                                  'grid grid-cols-12 items-center gap-2',
-                                  isRemoved && 'line-through',
-                                )}
-                              >
-                                <div className="col-span-4 flex min-w-0 items-center gap-2">
-                                  {isRemoved ? (
-                                    <span className="shrink-0 rounded-full bg-rose-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-rose-900">
-                                      Removed
-                                    </span>
-                                  ) : isModified ? (
-                                    <span className="shrink-0 rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900">
-                                      Edited
-                                    </span>
-                                  ) : null}
-                                  <span className="truncate">{line.label}</span>
-                                </div>
-                                <div className="col-span-2">
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    disabled={isRemoved}
-                                    defaultValue={String(line.qty)}
-                                    onChange={(e) => setEdit(line.id, { qty: e.target.value })}
-                                    className="h-8 text-right text-sm"
-                                    placeholder={`${line.qty}`}
-                                  />
-                                </div>
-                                <div className="col-span-2">
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    disabled={isRemoved}
-                                    defaultValue={(line.unit_price_cents / 100).toFixed(2)}
-                                    onChange={(e) =>
-                                      setEdit(line.id, { unit_price_dollars: e.target.value })
-                                    }
-                                    className="h-8 text-right text-sm"
-                                  />
-                                </div>
-                                <div className="col-span-3 whitespace-nowrap text-right tabular-nums">
-                                  {delta !== 0 ? (
-                                    <span
-                                      className={cn(
-                                        'font-medium',
-                                        delta < 0 ? 'text-emerald-700' : 'text-amber-700',
-                                      )}
-                                    >
-                                      {delta >= 0 ? '+' : ''}
-                                      {formatCurrency(delta)}
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground">
-                                      {formatCurrency(line.line_price_cents)}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="col-span-1 text-right">
-                                  {isRemoved ? (
+                              {isExpanded ? (
+                                <ChevronDown className="size-4" />
+                              ) : (
+                                <ChevronRight className="size-4" />
+                              )}
+                            </button>
+                          </td>
+                          <td className="px-2 py-1.5 align-top" colSpan={3}>
+                            <button
+                              type="button"
+                              onClick={toggleOpen}
+                              className="block w-full text-left"
+                            >
+                              <span className="text-sm font-medium">{category.name}</span>
+                              {category.description ? (
+                                <span className="mt-0.5 block text-[11px] text-muted-foreground/80 line-clamp-2">
+                                  {category.description}
+                                </span>
+                              ) : null}
+                            </button>
+                          </td>
+                          <td className="px-3 py-1.5 text-right align-top">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="text-xs text-muted-foreground/60">$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={
+                                  envelopeEdits[category.id] ??
+                                  (category.estimate_cents / 100).toFixed(2)
+                                }
+                                disabled={hasAnyLineEdit}
+                                onChange={(e) =>
+                                  setEnvelopeEdits((prev) => ({
+                                    ...prev,
+                                    [category.id]: e.target.value,
+                                  }))
+                                }
+                                title={
+                                  hasAnyLineEdit
+                                    ? 'Editing line items already; budget is implied by line totals'
+                                    : 'Adjust the budget for this category'
+                                }
+                                className="h-7 w-24 rounded-md border bg-background px-2 text-right text-sm tabular-nums disabled:opacity-50"
+                              />
+                            </div>
+                            {envDelta !== 0 ? (
+                              <div className="mt-0.5 text-right">
+                                <Money cents={envDelta} signed className="text-xs font-medium" />
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="px-1 py-1.5 align-top" />
+                        </tr>
+
+                        {/* Note row (when expanded) */}
+                        {isExpanded ? (
+                          <tr className="border-b bg-muted/10">
+                            <td />
+                            <td colSpan={5} className="px-2 py-1.5">
+                              <input
+                                type="text"
+                                value={notesByCategory[category.id] ?? ''}
+                                onChange={(e) =>
+                                  setNotesByCategory((prev) => ({
+                                    ...prev,
+                                    [category.id]: e.target.value,
+                                  }))
+                                }
+                                placeholder="Note for this category (optional — shown to the customer)"
+                                className="h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                              />
+                            </td>
+                          </tr>
+                        ) : null}
+
+                        {/* Existing lines */}
+                        {isExpanded
+                          ? lines.map((line) => {
+                              const isRemoved = removedIds.has(line.id);
+                              const edit = editsById[line.id];
+                              const isModified = edit !== undefined;
+                              const newQty =
+                                edit?.qty !== undefined ? Number(edit.qty) : Number(line.qty);
+                              const newUnitPriceCents =
+                                edit?.unit_price_dollars !== undefined
+                                  ? Math.round(Number(edit.unit_price_dollars) * 100)
+                                  : line.unit_price_cents;
+                              const newLinePrice = Math.round(newQty * newUnitPriceCents);
+                              const delta = isRemoved
+                                ? -line.line_price_cents
+                                : isModified
+                                  ? newLinePrice - line.line_price_cents
+                                  : 0;
+
+                              // Compact view: line is unmodified context.
+                              // Click qty / price values to enter edit mode.
+                              if (!isRemoved && !isModified) {
+                                return (
+                                  <tr key={line.id} className="border-b last:border-0">
+                                    <td />
+                                    <td className="px-2 py-1.5 align-top">
+                                      <div className="font-medium">{line.label}</div>
+                                      {line.notes ? (
+                                        <div className="text-[11px] text-muted-foreground/70 line-clamp-2">
+                                          {line.notes}
+                                        </div>
+                                      ) : null}
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right align-top text-muted-foreground">
+                                      <button
+                                        type="button"
+                                        onClick={() => setEdit(line.id, {})}
+                                        title="Click to edit qty"
+                                        className="hover:text-foreground hover:underline tabular-nums"
+                                      >
+                                        {Number(line.qty)} {line.unit}
+                                      </button>
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right align-top text-muted-foreground">
+                                      <button
+                                        type="button"
+                                        onClick={() => setEdit(line.id, {})}
+                                        title="Click to edit price"
+                                        className="hover:text-foreground hover:underline"
+                                      >
+                                        <Money cents={line.unit_price_cents} />
+                                      </button>
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right align-top">
+                                      <Money cents={line.line_price_cents} emphasis />
+                                    </td>
+                                    <td className="px-1 py-1.5 text-right align-top">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleRemove(line.id)}
+                                        aria-label="Remove line"
+                                        title="Remove line"
+                                        className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-foreground"
+                                      >
+                                        <X className="size-3.5" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              // Removed line: strikethrough, restore button.
+                              if (isRemoved) {
+                                return (
+                                  <tr
+                                    key={line.id}
+                                    className="border-b bg-rose-50/60 last:border-0"
+                                  >
+                                    <td />
+                                    <td className="px-2 py-1.5 align-top">
+                                      <div className="flex items-center gap-2">
+                                        <span className="shrink-0 rounded-full bg-rose-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-rose-900">
+                                          Removed
+                                        </span>
+                                        <span className="font-medium line-through">
+                                          {line.label}
+                                        </span>
+                                      </div>
+                                      <input
+                                        type="text"
+                                        value={editsById[line.id]?.notes ?? ''}
+                                        onChange={(e) =>
+                                          setEdit(line.id, { notes: e.target.value })
+                                        }
+                                        placeholder="Note (optional — why this line is being removed)"
+                                        className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                                      />
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right align-top text-muted-foreground line-through tabular-nums">
+                                      {Number(line.qty)} {line.unit}
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right align-top text-muted-foreground line-through">
+                                      <Money cents={line.unit_price_cents} />
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right align-top">
+                                      <Money cents={delta} signed emphasis />
+                                    </td>
+                                    <td className="px-1 py-1.5 text-right align-top">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleRemove(line.id)}
+                                        aria-label="Restore"
+                                        title="Restore"
+                                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                      >
+                                        <RotateCcw className="size-3.5" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              // Modified line: inputs visible, "was" subtext.
+                              return (
+                                <tr key={line.id} className="border-b bg-amber-50/70 last:border-0">
+                                  <td />
+                                  <td className="px-2 py-1.5 align-top">
+                                    <div className="flex items-center gap-2">
+                                      <span className="shrink-0 rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900">
+                                        Edited
+                                      </span>
+                                      <span className="font-medium">{line.label}</span>
+                                    </div>
+                                    <div className="mt-0.5 text-[11px] text-muted-foreground/80 tabular-nums">
+                                      was {Number(line.qty)} {line.unit} @{' '}
+                                      <Money cents={line.unit_price_cents} /> ={' '}
+                                      <Money cents={line.line_price_cents} />
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={editsById[line.id]?.notes ?? ''}
+                                      onChange={(e) => setEdit(line.id, { notes: e.target.value })}
+                                      placeholder="Note (optional — explains this change)"
+                                      className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-1.5 align-top">
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      value={edit?.qty !== undefined ? edit.qty : String(line.qty)}
+                                      onChange={(e) => setEdit(line.id, { qty: e.target.value })}
+                                      className="h-7 text-right text-sm"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-1.5 align-top">
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      value={
+                                        edit?.unit_price_dollars !== undefined
+                                          ? edit.unit_price_dollars
+                                          : (line.unit_price_cents / 100).toFixed(2)
+                                      }
+                                      onChange={(e) =>
+                                        setEdit(line.id, { unit_price_dollars: e.target.value })
+                                      }
+                                      className="h-7 text-right text-sm"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-1.5 text-right align-top">
+                                    {delta !== 0 ? (
+                                      <Money cents={delta} signed emphasis />
+                                    ) : (
+                                      <Money
+                                        cents={line.line_price_cents}
+                                        className="text-muted-foreground"
+                                      />
+                                    )}
+                                  </td>
+                                  <td className="px-1 py-1.5 text-right align-top">
                                     <button
                                       type="button"
-                                      onClick={() => toggleRemove(line.id)}
-                                      aria-label="Restore"
-                                      title="Restore"
-                                      className="rounded p-1 hover:bg-muted"
-                                    >
-                                      <RotateCcw className="size-3.5" />
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (isModified) clearEdit(line.id);
-                                        else toggleRemove(line.id);
-                                      }}
-                                      aria-label={isModified ? 'Discard edit' : 'Remove line'}
-                                      title={isModified ? 'Discard edit' : 'Remove line'}
-                                      className="rounded p-1 hover:bg-muted"
+                                      onClick={() => clearEdit(line.id)}
+                                      aria-label="Discard edit"
+                                      title="Discard edit"
+                                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                                     >
                                       <X className="size-3.5" />
                                     </button>
-                                  )}
-                                </div>
-                              </div>
-                              {isModified || isRemoved ? (
-                                <input
-                                  type="text"
-                                  value={editsById[line.id]?.notes ?? ''}
-                                  onChange={(e) => setEdit(line.id, { notes: e.target.value })}
-                                  placeholder="Line note (optional — explains this specific change)"
-                                  className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs no-underline focus:outline-none focus:ring-2 focus:ring-primary"
-                                />
-                              ) : null}
-                            </div>
-                          );
-                        })}
-                        {addedHere.map((a) => {
-                          const qty = Number(a.qty);
-                          const unitPriceCents = Math.round(Number(a.unit_price_dollars) * 100);
-                          const linePrice =
-                            Number.isFinite(qty) && Number.isFinite(unitPriceCents)
-                              ? Math.round(qty * unitPriceCents)
-                              : 0;
-                          return (
-                            <div
-                              key={a.tempId}
-                              className="border-b bg-emerald-50/40 px-3 py-2 text-sm last:border-0"
-                            >
-                              <div className="grid grid-cols-12 items-center gap-2">
-                                <div className="col-span-4 flex min-w-0 items-center gap-2">
-                                  <span className="shrink-0 rounded-full bg-emerald-200/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-900">
-                                    New
-                                  </span>
-                                  <Input
-                                    type="text"
-                                    value={a.label}
-                                    onChange={(e) => setAdded_(a.tempId, { label: e.target.value })}
-                                    placeholder="Description"
-                                    className="h-8 text-sm"
-                                  />
-                                </div>
-                                <div className="col-span-2">
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    value={a.qty}
-                                    onChange={(e) => setAdded_(a.tempId, { qty: e.target.value })}
-                                    className="h-8 text-right text-sm"
-                                    placeholder="Qty"
-                                  />
-                                </div>
-                                <div className="col-span-2">
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    value={a.unit_price_dollars}
-                                    onChange={(e) =>
-                                      setAdded_(a.tempId, { unit_price_dollars: e.target.value })
-                                    }
-                                    className="h-8 text-right text-sm"
-                                    placeholder="$"
-                                  />
-                                </div>
-                                <div className="col-span-3 whitespace-nowrap text-right font-medium tabular-nums text-emerald-700">
-                                  +{formatCurrency(linePrice)}
-                                </div>
-                                <div className="col-span-1 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => removeAdded(a.tempId)}
-                                    aria-label="Cancel add"
-                                    title="Cancel add"
-                                    className="rounded p-1 hover:bg-muted"
-                                  >
-                                    <X className="size-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                              <input
-                                type="text"
-                                value={a.notes}
-                                onChange={(e) => setAdded_(a.tempId, { notes: e.target.value })}
-                                placeholder="Line note (optional — explains this specific addition)"
-                                className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
-                              />
-                            </div>
-                          );
-                        })}
-                        <div className="border-t bg-muted/10 px-3 py-2">
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          : null}
+
+                        {/* Added lines */}
+                        {isExpanded
+                          ? addedHere.map((a) => {
+                              const qty = Number(a.qty);
+                              const unitPriceCents = Math.round(Number(a.unit_price_dollars) * 100);
+                              const linePrice =
+                                Number.isFinite(qty) && Number.isFinite(unitPriceCents)
+                                  ? Math.round(qty * unitPriceCents)
+                                  : 0;
+                              return (
+                                <tr
+                                  key={a.tempId}
+                                  className="border-b bg-emerald-50/50 last:border-0"
+                                >
+                                  <td />
+                                  <td className="px-2 py-1.5 align-top">
+                                    <div className="flex items-center gap-2">
+                                      <span className="shrink-0 rounded-full bg-emerald-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-900">
+                                        New
+                                      </span>
+                                      <Input
+                                        type="text"
+                                        value={a.label}
+                                        onChange={(e) =>
+                                          setAdded_(a.tempId, { label: e.target.value })
+                                        }
+                                        placeholder="Description"
+                                        className="h-7 flex-1 text-sm"
+                                      />
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={a.notes}
+                                      onChange={(e) =>
+                                        setAdded_(a.tempId, { notes: e.target.value })
+                                      }
+                                      placeholder="Note (optional — explains this addition)"
+                                      className="mt-1.5 h-7 w-full rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-1.5 align-top">
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      value={a.qty}
+                                      onChange={(e) => setAdded_(a.tempId, { qty: e.target.value })}
+                                      className="h-7 text-right text-sm"
+                                      placeholder="Qty"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-1.5 align-top">
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      value={a.unit_price_dollars}
+                                      onChange={(e) =>
+                                        setAdded_(a.tempId, {
+                                          unit_price_dollars: e.target.value,
+                                        })
+                                      }
+                                      className="h-7 text-right text-sm"
+                                      placeholder="$"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-1.5 text-right align-top">
+                                    <Money cents={linePrice} signed emphasis />
+                                  </td>
+                                  <td className="px-1 py-1.5 text-right align-top">
+                                    <button
+                                      type="button"
+                                      onClick={() => removeAdded(a.tempId)}
+                                      aria-label="Cancel add"
+                                      title="Cancel add"
+                                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                    >
+                                      <X className="size-3.5" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          : null}
+
+                        {/* Add line footer (when expanded) */}
+                        {isExpanded ? (
+                          <tr className="border-b last:border-0">
+                            <td />
+                            <td colSpan={5} className="px-2 py-1.5">
+                              <Button
+                                type="button"
+                                size="xs"
+                                variant="outline"
+                                onClick={() => addLine(category.id)}
+                              >
+                                <Plus className="size-3" />
+                                Add line to {category.name}
+                              </Button>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
+
+                  {/* New-category row at end of section */}
+                  {creatingCategory === section ? (
+                    <tr className="border-b last:border-0">
+                      <td />
+                      <td colSpan={5} className="px-2 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            New category in {section}
+                          </span>
+                          <Input
+                            value={newCategoryName}
+                            autoFocus
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                commitNewCategory(section);
+                              } else if (e.key === 'Escape') {
+                                setCreatingCategory(null);
+                                setNewCategoryName('');
+                              }
+                            }}
+                            placeholder="e.g. Basement waterproofing"
+                            className="h-7 flex-1 text-sm"
+                            disabled={creatingPending}
+                          />
                           <Button
                             type="button"
                             size="xs"
-                            variant="outline"
-                            onClick={() => addLine(category.id)}
+                            onClick={() => commitNewCategory(section)}
+                            disabled={creatingPending || !newCategoryName.trim()}
                           >
-                            <Plus className="size-3" />
-                            Add line to {category.name}
+                            Add
+                          </Button>
+                          <Button
+                            type="button"
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => {
+                              setCreatingCategory(null);
+                              setNewCategoryName('');
+                            }}
+                            disabled={creatingPending}
+                          >
+                            Cancel
                           </Button>
                         </div>
-                      </>
-                    ) : null}
-                  </div>
-                );
-              })}
-
-              {creatingCategory === section ? (
-                <div className="rounded-md border border-dashed p-3">
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    New category in {section}
-                  </p>
-                  <div className="flex gap-2">
-                    <Input
-                      value={newCategoryName}
-                      autoFocus
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          commitNewCategory(section);
-                        } else if (e.key === 'Escape') {
-                          setCreatingCategory(null);
-                          setNewCategoryName('');
-                        }
-                      }}
-                      placeholder="e.g. Basement waterproofing"
-                      className="h-8 flex-1 text-sm"
-                      disabled={creatingPending}
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => commitNewCategory(section)}
-                      disabled={creatingPending || !newCategoryName.trim()}
-                    >
-                      Add
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setCreatingCategory(null);
-                        setNewCategoryName('');
-                      }}
-                      disabled={creatingPending}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreatingCategory(section);
-                    setNewCategoryName('');
-                  }}
-                  className="self-start rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  <Plus className="mr-1 inline size-3" />
-                  New category in {section}
-                </button>
-              )}
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr className="last:border-0">
+                      <td />
+                      <td colSpan={5} className="px-2 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreatingCategory(section);
+                            setNewCategoryName('');
+                          }}
+                          className="inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                        >
+                          <Plus className="size-3" />
+                          New category in {section}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         );

@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Money } from '@/components/ui/money';
 import { Textarea } from '@/components/ui/textarea';
 import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-orders';
 import type { CostLineActualsSummary } from '@/lib/db/queries/cost-line-actuals';
@@ -63,45 +64,6 @@ import {
 } from '@/server/actions/project-budget-categories';
 import { deleteCostLineAction } from '@/server/actions/project-cost-control';
 import { CostLineForm } from './cost-line-form';
-
-/**
- * Renders an amount with:
- *   - currency symbol muted (it's redundant in a $-only column);
- *   - cents rendered smaller + dimmer, like a superscript;
- *   - whole-dollar amounts padded with an invisible `.00` of the same
- *     width so the integer's right edge aligns across the column —
- *     no more "$4,190" and "$2,574.50" drifting in the same column.
- */
-function Money({
-  cents,
-  className,
-  emphasis,
-}: {
-  cents: number;
-  className?: string;
-  emphasis?: boolean;
-}) {
-  const text = formatCurrencyCompact(cents);
-  // Pull symbol, integer, fraction out separately so we can style and
-  // align them independently.
-  const m = text.match(/^([^\d-]+)?(-?[\d,]+)(\.\d+)?$/);
-  const symbol = m?.[1] ?? '';
-  const integer = m?.[2] ?? text;
-  const fraction = m?.[3] ?? null;
-  return (
-    <span className={cn('whitespace-nowrap tabular-nums', emphasis && 'font-medium', className)}>
-      <span className="text-muted-foreground/60">{symbol}</span>
-      {integer}
-      {fraction ? (
-        <span className="text-[0.7em] text-muted-foreground/70">{fraction}</span>
-      ) : (
-        <span aria-hidden className="invisible text-[0.7em]">
-          .00
-        </span>
-      )}
-    </span>
-  );
-}
 
 type BudgetCategoriesTableProps = {
   lines: BudgetLine[];
