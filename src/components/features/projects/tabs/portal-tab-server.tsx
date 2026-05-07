@@ -8,6 +8,7 @@ import { PortalUpdateForm } from '@/components/features/portal/portal-update-for
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { listDecisionsForProject } from '@/lib/db/queries/project-decisions';
 import { listPhasesForProject } from '@/lib/db/queries/project-phases';
+import { ensurePortalSlug } from '@/lib/portal/slug';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function PortalTabServer({ projectId }: { projectId: string }) {
@@ -40,7 +41,11 @@ export default async function PortalTabServer({ projectId }: { projectId: string
   ]);
 
   const portalEnabled = (portalData?.portal_enabled as boolean) ?? false;
-  const portalSlug = (portalData?.portal_slug as string | null) ?? null;
+  // Eagerly ensure a slug exists so the operator can preview the portal
+  // before flipping the toggle on for the customer. Idempotent — only
+  // does a write when slug is currently null.
+  const existingSlug = (portalData?.portal_slug as string | null) ?? null;
+  const portalSlug = existingSlug ?? (await ensurePortalSlug(supabase, projectId));
   const portalShowBudget = (portalData?.portal_show_budget as boolean | null | undefined) ?? null;
   const tenantShowBudget = Boolean(tenantSettings?.portal_show_budget);
 
