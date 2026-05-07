@@ -709,6 +709,35 @@ export default async function PortalPage({
             </div>
           </div>
 
+          {/* Financials — three-number summary + optional per-bucket
+              breakdown. Sits high on the page (right after the status
+              bar) so the customer sees the project's money state without
+              scrolling. The per-bucket breakdown shows only when the
+              operator has opted in via portal_show_budget. */}
+          <div className="mb-8 grid grid-cols-3 gap-3">
+            <div className="rounded-lg border p-3 text-center">
+              <p className="text-xs text-muted-foreground">Original Estimate</p>
+              <p className="text-sm font-semibold tabular-nums">
+                {cadFormat.format(originalEstimate / 100)}
+              </p>
+            </div>
+            <div className="rounded-lg border p-3 text-center">
+              <p className="text-xs text-muted-foreground">Change Orders</p>
+              <p className="text-sm font-semibold tabular-nums">
+                {approvedCOTotal >= 0 ? '+' : ''}
+                {cadFormat.format(approvedCOTotal / 100)}
+              </p>
+            </div>
+            <div className="rounded-lg border p-3 text-center">
+              <p className="text-xs text-muted-foreground">Current Total</p>
+              <p className="text-sm font-semibold tabular-nums">
+                {cadFormat.format(totalBudget / 100)}
+              </p>
+            </div>
+          </div>
+
+          {portalBudgetSummary ? <PortalBudgetDetail summary={portalBudgetSummary} /> : null}
+
           {/* Pending Approvals */}
           {(pendingCOs ?? []).length > 0 ? (
             <div className="mb-8">
@@ -734,32 +763,6 @@ export default async function PortalPage({
               </div>
             </div>
           ) : null}
-
-          {/* Financials summary */}
-          <div className="mb-8 grid grid-cols-3 gap-3">
-            <div className="rounded-lg border p-3 text-center">
-              <p className="text-xs text-muted-foreground">Original Estimate</p>
-              <p className="text-sm font-semibold tabular-nums">
-                {cadFormat.format(originalEstimate / 100)}
-              </p>
-            </div>
-            <div className="rounded-lg border p-3 text-center">
-              <p className="text-xs text-muted-foreground">Change Orders</p>
-              <p className="text-sm font-semibold tabular-nums">
-                {approvedCOTotal >= 0 ? '+' : ''}
-                {cadFormat.format(approvedCOTotal / 100)}
-              </p>
-            </div>
-            <div className="rounded-lg border p-3 text-center">
-              <p className="text-xs text-muted-foreground">Current Total</p>
-              <p className="text-sm font-semibold tabular-nums">
-                {cadFormat.format(totalBudget / 100)}
-              </p>
-            </div>
-          </div>
-
-          {/* Per-bucket "spent so far" breakdown — gated by operator opt-in. */}
-          {portalBudgetSummary ? <PortalBudgetDetail summary={portalBudgetSummary} /> : null}
 
           {/* Photo gallery — operator-tagged photos grouped by category.
           Behind-the-wall section is collapsed by default. */}
