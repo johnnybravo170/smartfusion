@@ -495,6 +495,29 @@ export function ChangeOrderDiffForm({
     <div className="space-y-6">
       {error ? <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
 
+      {/* Sticky total-impact header. Sits above the form metadata so it's the */}
+      {/* first thing the operator sees and stays anchored as they scroll the */}
+      {/* line items below. Solid background + high z-index so nothing peeks */}
+      {/* through. */}
+      <div className="sticky top-0 z-30 flex items-baseline justify-between gap-4 rounded-lg border bg-background p-4 shadow-sm">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Cost Impact</p>
+          <p
+            className={cn(
+              'text-2xl font-semibold tabular-nums',
+              totalDelta < 0 && 'text-emerald-700',
+              totalDelta > 0 && 'text-foreground',
+            )}
+          >
+            {totalDelta >= 0 ? '+' : ''}
+            {formatCurrency(totalDelta)}
+          </p>
+        </div>
+        <p className="hidden max-w-xs text-right text-xs text-muted-foreground sm:block">
+          Edit qty or price on any line. Strikethrough to remove. "+ Add line" to add new scope.
+        </p>
+      </div>
+
       <div className="space-y-4 rounded-lg border p-4">
         <div>
           <label className="mb-1 block text-sm font-medium" htmlFor="cd-title">
@@ -593,25 +616,6 @@ export function ChangeOrderDiffForm({
         </div>
       </div>
 
-      <div className="sticky top-0 z-10 flex items-baseline justify-between gap-4 rounded-lg border bg-background/95 p-4 backdrop-blur">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Cost Impact</p>
-          <p
-            className={cn(
-              'text-2xl font-semibold tabular-nums',
-              totalDelta < 0 && 'text-emerald-700',
-              totalDelta > 0 && 'text-foreground',
-            )}
-          >
-            {totalDelta >= 0 ? '+' : ''}
-            {formatCurrency(totalDelta)}
-          </p>
-        </div>
-        <p className="max-w-xs text-right text-xs text-muted-foreground">
-          Edit qty or price on any line. Strikethrough to remove. "+ Add line" to add new scope.
-        </p>
-      </div>
-
       {Array.from(categoriesBySection.entries()).map(([section, categories]) => {
         const sectionEnvTotal = categories.reduce((s, c) => s + c.estimate_cents, 0);
         return (
@@ -643,12 +647,14 @@ export function ChangeOrderDiffForm({
                     : 0;
                 const hasAnyEdit = hasAnyLineEdit || envDelta !== 0;
                 const hasNote = (notesByCategory[category.id]?.trim() ?? '').length > 0;
-                // Auto-expand any category with content/edits/note. Empty
-                // untouched categories stay collapsed unless the operator
-                // toggles them open via the chevron.
+                // Aggressive collapse: only auto-expand categories that
+                // are actually part of this CO — added/modified/removed
+                // lines, envelope edit, or a category note. Untouched
+                // categories stay collapsed (even if they have existing
+                // lines) so the operator focuses on what's changing.
+                // Operator can always expand via the chevron to add scope.
                 const isExpanded =
                   forceOpenCategories.has(category.id) ||
-                  lines.length > 0 ||
                   addedHere.length > 0 ||
                   hasAnyEdit ||
                   hasNote;
@@ -772,8 +778,8 @@ export function ChangeOrderDiffForm({
                               key={line.id}
                               className={cn(
                                 'border-b px-3 py-2 text-sm last:border-0',
-                                isRemoved && 'bg-red-50/40 opacity-60',
-                                !isRemoved && isModified && 'bg-amber-50/40',
+                                isRemoved && 'bg-red-50/60 opacity-70',
+                                !isRemoved && isModified && 'bg-amber-50/70',
                               )}
                             >
                               <div
@@ -782,7 +788,18 @@ export function ChangeOrderDiffForm({
                                   isRemoved && 'line-through',
                                 )}
                               >
-                                <div className="col-span-5">{line.label}</div>
+                                <div className="col-span-4 flex min-w-0 items-center gap-2">
+                                  {isRemoved ? (
+                                    <span className="shrink-0 rounded-full bg-rose-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-rose-900">
+                                      Removed
+                                    </span>
+                                  ) : isModified ? (
+                                    <span className="shrink-0 rounded-full bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900">
+                                      Edited
+                                    </span>
+                                  ) : null}
+                                  <span className="truncate">{line.label}</span>
+                                </div>
                                 <div className="col-span-2">
                                   <Input
                                     type="number"
@@ -806,7 +823,7 @@ export function ChangeOrderDiffForm({
                                     className="h-8 text-right text-sm"
                                   />
                                 </div>
-                                <div className="col-span-2 text-right tabular-nums">
+                                <div className="col-span-3 whitespace-nowrap text-right tabular-nums">
                                   {delta !== 0 ? (
                                     <span
                                       className={cn(
@@ -875,8 +892,8 @@ export function ChangeOrderDiffForm({
                               className="border-b bg-emerald-50/40 px-3 py-2 text-sm last:border-0"
                             >
                               <div className="grid grid-cols-12 items-center gap-2">
-                                <div className="col-span-5 flex items-center gap-2">
-                                  <span className="rounded-full bg-emerald-200/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-900">
+                                <div className="col-span-4 flex min-w-0 items-center gap-2">
+                                  <span className="shrink-0 rounded-full bg-emerald-200/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-900">
                                     New
                                   </span>
                                   <Input
@@ -909,7 +926,7 @@ export function ChangeOrderDiffForm({
                                     placeholder="$"
                                   />
                                 </div>
-                                <div className="col-span-2 text-right font-medium tabular-nums text-emerald-700">
+                                <div className="col-span-3 whitespace-nowrap text-right font-medium tabular-nums text-emerald-700">
                                   +{formatCurrency(linePrice)}
                                 </div>
                                 <div className="col-span-1 text-right">
