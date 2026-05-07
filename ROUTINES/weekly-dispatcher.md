@@ -63,6 +63,13 @@ Call `worklog_add` with:
 - Competitors refreshed / new competitor entries.
 - New docs published.
 
+## Agent health (last 7 days)
+Pull from the agents-dashboard surface — call `agents_list({ limit: 100 })` and the underlying agent_runs (via `ops_graph_lookup` if you need detail). Surface:
+- Any agent with `latest_outcome = "failure"` in the last 7 days — list slug + the error summary, link `/agents/<slug>`.
+- Any agent with `computed_status = "stale"` — silent agents are bad agents. Link.
+- Any active agent that ran every day but produced `items_acted = 0` for every run all week — agent is alive but useless this week. List with `→ check the prompt`.
+- If everything is green: `"All agents green."` Don't pad — green is a valid summary.
+
 ## Narrative thread
 - 1–3 paragraphs connecting the dots. This is the part future-you will actually re-read.
 

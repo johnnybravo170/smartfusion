@@ -23,26 +23,37 @@ Save the returned `run_id`. If this fails, log and continue — never gate the w
 Anything that would improve, replace, augment, or extend these
 components — or unlock a new capability — is in scope.
 
-## Scan axes (last 24–72 hours)
+## Scan axes (last 24–48 hours)
+
+You scan **product-AI-stack improvements** only. Anything that would
+improve, replace, augment, or extend the brain / vision / voice / agent
+loops Henry runs on. The four axes:
 
 1. **Voice / multimodal models** — Gemini Live updates, GPT Realtime,
    Claude voice, ElevenLabs Conversational AI, Cartesia Sonic,
    Deepgram Voice Agents.
-2. **On-device / edge AI** — anything that would improve latency or
-   privacy for the native Expo app.
-3. **Agentic frameworks** — new MCP servers, tool-use patterns, agent
-   orchestration useful for the 17-tool Henry loop.
-4. **Computer vision / photo AI** — quote-from-photo improvements
+2. **Computer vision / photo AI** — quote-from-photo improvements
    (SAM2, Depth Anything, Florence-2, etc.) for the deck-quoting use
    case.
-5. **Customer service AI** — autoresponder orchestration, support
-   ticket triage, voice IVR for contractors.
-6. **Marketing AI** — ad creative generation, landing page
-   optimization, email personalization at HeyHenry's scale.
-7. **Dev productivity** — Claude Code / Cursor / Windsurf features,
-   codegen workflows for Expo/RN, Supabase tooling.
-8. **Ops / finance / bookkeeping AI** — relevant since HeyHenry's
-   endgame is running contractor businesses.
+3. **Agentic frameworks** — new MCP servers, tool-use patterns, agent
+   orchestration useful for the 17-tool Henry loop. On-device / edge
+   AI improvements that would help the native Expo app belong here too.
+4. **Dev productivity** — Claude Code / Cursor / Windsurf features,
+   codegen workflows for Expo/RN, Supabase tooling. Affects how fast
+   Jonathan can ship.
+
+**Out of scope here** (route to other agents):
+- Marketing AI (ad creative, landing page tools) → covered by
+  business-scout when it's strategically material.
+- Customer service AI / autoresponder tooling → same — business-scout's
+  synthesis territory.
+- Ops / finance / bookkeeping AI → same.
+- General "AI news" (model benchmark releases without product
+  implication, AGI takes, regulatory chatter) → not in scope at all.
+
+Window is 24–48 hours, not 72 — the routine fires daily. A wider
+window means the same finding shows up 2–3 days running before dedup
+kicks in.
 
 ## Quality filter
 

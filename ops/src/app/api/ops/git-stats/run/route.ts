@@ -13,9 +13,11 @@ import { createServiceClient } from '@/lib/supabase';
  * gets finalized after the UTC rollover.
  *
  * Repo is parameterized via GITHUB_REPO (e.g. "johnnybravo170/heyhenry").
- * GITHUB_TOKEN is optional — unauthenticated GitHub allows 60 req/hr which
- * is plenty for this, but a token raises the cap and also grants access to
- * private repos.
+ *
+ * GITHUB_TOKEN is REQUIRED. The route does ~5 page-list calls + ~100
+ * per-commit detail fetches on a busy day (~105 requests). Unauthenticated
+ * GitHub caps at 60 req/hr, so heavy days silently fail mid-fetch and only
+ * land partial data. With a token the cap is 5000 req/hr — comfortable.
  */
 
 export const maxDuration = 60;
@@ -34,13 +36,14 @@ function dayKey(iso: string): string {
   return new Date(iso).toISOString().slice(0, 10);
 }
 
-async function gh<T>(url: string, token: string | null): Promise<T> {
-  const headers: Record<string, string> = {
-    accept: 'application/vnd.github+json',
-    'x-github-api-version': '2022-11-28',
-  };
-  if (token) headers.authorization = `Bearer ${token}`;
-  const res = await fetch(url, { headers });
+async function gh<T>(url: string, token: string): Promise<T> {
+  const res = await fetch(url, {
+    headers: {
+      accept: 'application/vnd.github+json',
+      'x-github-api-version': '2022-11-28',
+      authorization: `Bearer ${token}`,
+    },
+  });
   if (!res.ok) {
     throw new Error(`GitHub ${res.status}: ${await res.text().catch(() => '')}`);
   }
@@ -76,7 +79,12 @@ export async function GET(req: NextRequest) {
 
 async function runGitStats() {
   const repo = process.env.GITHUB_REPO ?? 'johnnybravo170/heyhenry';
-  const token = process.env.GITHUB_TOKEN ?? null;
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    throw new Error(
+      'GITHUB_TOKEN is required — unauthenticated GitHub caps at 60 req/hr and the route needs ~100 requests per run',
+    );
+  }
 
   // Window: yesterday 00:00Z through now.
   const now = new Date();

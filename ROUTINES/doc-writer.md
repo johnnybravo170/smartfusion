@@ -23,9 +23,21 @@ If `docs_list` returns nothing (first run), set `last = $(git log --since="30 da
 
 Run `git log <last>..HEAD --name-only --format=fuller` to see every commit and the files it touched since you last ran. If nothing changed, call `worklog_add` with title `"doc-writer: no new commits since <sha>"` and stop. Skip to Step 4 with `outcome: "skipped"`.
 
-### 3. Per affected module, refresh the doc
+### 3. Discover modules dynamically (don't use a hardcoded list)
 
-For each top-level module that has files changed in the window (e.g. `src/server`, `ops/src`, `scripts`, `tests`, `src/components/features/X`):
+**Don't** assume the module list is `[src/server, ops/src, scripts, tests]`. The repo grows. New top-level dirs appear (most recently `ROUTINES/`); when you only check the hardcoded list, new dirs go undocumented.
+
+Build the candidate-module list this run by:
+
+1. `ls` the repo root — every top-level directory that's not `node_modules`, `.git`, `.next`, `.claude`, `dist`, or `build` is a candidate module (e.g. `src`, `ops`, `scripts`, `tests`, `supabase`, `ROUTINES`, `public`, `mcp`, etc.).
+2. Inside `src/`, also enumerate one level deeper (`src/server`, `src/components/features/<X>`, `src/lib/<X>`, etc.). These are sub-modules with enough surface area to warrant their own doc.
+3. From `git log <last>..HEAD --name-only`, intersect changed files with the candidate-module list. Modules with at least one changed file in the window get refreshed.
+
+Skip a module **only** if it's pure config (e.g. `.github`, `public`) AND has no logic worth narrating. Err on the side of writing a doc — the search corpus benefits from coverage even of "thin" modules.
+
+### 4. Per affected module, refresh the doc
+
+For each module in the refresh set:
 
 - Read the touched files + a few neighbors to understand the **current state** of the module.
 - Write a markdown doc with sections:
@@ -39,15 +51,19 @@ For each top-level module that has files changed in the window (e.g. `src/server
 
 If a knowledge doc with title prefix `"Module: <name>"` already exists, **update** it via `knowledge_update` rather than appending. The Knowledge surface is meant to be a living reference, not append-only.
 
-### 4. Final tool call — close the agent run
+### 5. New-module first run
+
+If a candidate-module is brand-new (no existing knowledge_doc with the matching title prefix) AND the window's commits are the module's first commits ever, write a fresh doc with a noted `"New module — first appeared at <sha>"` line in the orientation paragraph. This makes the genesis searchable later.
+
+### 6. Final tool call — close the agent run
 
 `agent_run_finish({ run_id, outcome, summary, items_scanned?, items_acted?, payload? })`
 
 - **outcome**: `"success"` if you wrote at least one knowledge_doc; `"skipped"` if no commits in window; `"failure"` only on a crash.
-- **summary**: ≤ 200 chars. e.g. `"Updated 4 modules across <last_sha>..HEAD (12 commits)"` or `"No new commits since <sha>"`.
+- **summary**: ≤ 200 chars. e.g. `"Updated 4 modules across <last_sha>..HEAD (12 commits, 1 new module: ROUTINES)"` or `"No new commits since <sha>"`.
 - **items_scanned**: number of commits in the window.
 - **items_acted**: number of knowledge_docs written or updated.
-- **payload**: `{ commit_range, modules_updated: [...], knowledge_doc_ids: [...] }`.
+- **payload**: `{ commit_range, modules_updated: [...], modules_new: [...], knowledge_doc_ids: [...] }`.
 
 ## Safety rules
 
