@@ -212,7 +212,14 @@ export async function togglePortalAction(input: {
   return { ok: true };
 }
 
-export async function sendPortalInviteAction(projectId: string): Promise<PortalActionResult> {
+export async function sendPortalInviteAction(input: {
+  projectId: string;
+  /** Per-send recipient list. When omitted, defaults to primary +
+   *  additional_emails on the customer record. Empty array = error. */
+  recipientEmails?: string[];
+  /** Optional operator note prepended above the CTA in the email. */
+  note?: string | null;
+}): Promise<PortalActionResult> {
   const tenant = await getCurrentTenant();
   if (!tenant) {
     return { ok: false, error: 'Not signed in or missing tenant.' };
@@ -222,8 +229,10 @@ export async function sendPortalInviteAction(projectId: string): Promise<PortalA
 
   const { data: project } = await supabase
     .from('projects')
-    .select('id, name, portal_slug, portal_enabled, customers:customer_id (name, email)')
-    .eq('id', projectId)
+    .select(
+      'id, name, portal_slug, portal_enabled, customers:customer_id (name, email, additional_emails)',
+    )
+    .eq('id', input.projectId)
     .single();
 
   if (!project) {
@@ -236,11 +245,26 @@ export async function sendPortalInviteAction(projectId: string): Promise<PortalA
   }
 
   const customerRaw = projectData.customers as Record<string, unknown> | null;
-  const customerEmail = customerRaw?.email as string | null;
+  const customerEmail = (customerRaw?.email as string | null) ?? null;
+  const customerAdditionalEmails = (customerRaw?.additional_emails as string[] | null) ?? [];
   const customerName = (customerRaw?.name as string) ?? 'Homeowner';
 
-  if (!customerEmail) {
-    return { ok: false, error: 'Customer has no email address.' };
+  // Resolve the recipient list. Caller-provided wins; otherwise default
+  // to primary + additional_emails (stripped, lowercased, deduped) — same
+  // pattern as estimate-send.
+  const defaultRecipients = [customerEmail, ...customerAdditionalEmails]
+    .filter((e): e is string => Boolean(e?.trim()))
+    .map((e) => e.trim().toLowerCase());
+  const dedupedDefault = Array.from(new Set(defaultRecipients));
+  const recipientEmails = (input.recipientEmails ?? dedupedDefault)
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (recipientEmails.length === 0) {
+    return {
+      ok: false,
+      error: 'No recipient — pick at least one email or add one to the customer.',
+    };
   }
 
   const portalUrl = `https://app.heyhenry.io/portal/${projectData.portal_slug}`;
@@ -251,17 +275,22 @@ export async function sendPortalInviteAction(projectId: string): Promise<PortalA
     projectName: projectData.name as string,
     customerName,
     portalUrl,
+    note: input.note ?? null,
   });
 
   const result = await sendEmail({
     tenantId: tenant.id,
-    to: customerEmail,
+    to: recipientEmails,
     subject: `Your project portal — ${projectData.name}`,
     html,
     caslCategory: 'transactional',
     relatedType: 'job',
     relatedId: String(projectData.id ?? ''),
-    caslEvidence: { kind: 'portal_invite', projectId: projectData.id },
+    caslEvidence: {
+      kind: 'portal_invite',
+      projectId: projectData.id,
+      recipients: recipientEmails,
+    },
   });
 
   if (!result.ok) {
@@ -273,11 +302,11 @@ export async function sendPortalInviteAction(projectId: string): Promise<PortalA
     tenant_id: tenant.id,
     entry_type: 'system',
     title: 'Portal invite sent',
-    body: `Portal invite sent to ${customerName} (${customerEmail}) for "${projectData.name}".`,
+    body: `Portal invite sent to ${customerName} (${recipientEmails.join(', ')}) for "${projectData.name}".`,
     related_type: 'project',
-    related_id: projectId,
+    related_id: input.projectId,
   });
 
-  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${input.projectId}`);
   return { ok: true };
 }
