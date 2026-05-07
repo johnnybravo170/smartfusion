@@ -13,13 +13,13 @@ import {
   type PortalGalleryPhoto,
   PortalPhotoGallery,
 } from '@/components/features/portal/portal-photo-gallery';
-import { PortalSelections } from '@/components/features/portal/portal-selections';
+import { PortalSelectionsPanel } from '@/components/features/portal/portal-selections-panel';
 import { TradeContactsList } from '@/components/features/portal/trade-contacts-list';
 import { PublicViewLogger } from '@/components/features/public/public-view-logger';
 import { getPortalBudgetSummary, shouldShowPortalBudget } from '@/lib/db/queries/portal-budget';
 import type { ProjectSubContact } from '@/lib/db/queries/project-documents';
 import type { ProjectPhase } from '@/lib/db/queries/project-phases';
-import { groupSelectionsByRoom, type ProjectSelection } from '@/lib/db/queries/project-selections';
+import type { ProjectSelection } from '@/lib/db/queries/project-selections';
 import { signIdeaBoardImageUrls } from '@/lib/storage/idea-board';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { isPortalPhotoTag, type PortalPhotoTag } from '@/lib/validators/portal-photo';
@@ -53,12 +53,14 @@ export default async function PortalPage({
 }) {
   const { slug } = await params;
   const resolvedSearchParams = await searchParams;
-  const tab: 'project' | 'messages' | 'ideas' =
+  const tab: 'project' | 'messages' | 'ideas' | 'selections' =
     resolvedSearchParams.tab === 'messages'
       ? 'messages'
       : resolvedSearchParams.tab === 'ideas'
         ? 'ideas'
-        : 'project';
+        : resolvedSearchParams.tab === 'selections'
+          ? 'selections'
+          : 'project';
   const admin = createAdminClient();
 
   // Load project + tenant + customer
@@ -353,11 +355,12 @@ export default async function PortalPage({
     })
     .filter((d): d is PortalDocument => d !== null);
 
-  // Slice 4 — per-room material selections. Read-only on the portal.
+  // Slice 4 — per-room material selections. Both operator (install spec)
+  // and customer (self-recorded) rows live here; the panel renders both.
   const { data: selectionRows } = await admin
     .from('project_selections')
     .select(
-      'id, project_id, room, category, brand, name, code, finish, supplier, sku, warranty_url, notes, photo_refs, display_order',
+      'id, project_id, room, category, brand, name, code, finish, supplier, sku, warranty_url, notes, photo_refs, allowance_cents, actual_cost_cents, display_order, created_by, image_storage_path',
     )
     .eq('project_id', projectId)
     .order('room', { ascending: true })
@@ -368,12 +371,14 @@ export default async function PortalPage({
     ...row,
     photo_refs: Array.isArray(row.photo_refs) ? row.photo_refs : [],
   }));
-  const selectionGroups = groupSelectionsByRoom(selections);
+  // (Render-side grouping happens inside PortalSelectionsPanel.)
 
-  // Sign storage paths referenced by selection photo_refs.
+  // Sign storage paths referenced by selection photo_refs AND any
+  // customer-uploaded inline image_storage_path.
   const selectionPhotoPaths = new Set<string>();
   for (const sel of selections) {
     for (const r of sel.photo_refs) if (r.storage_path) selectionPhotoPaths.add(r.storage_path);
+    if (sel.image_storage_path) selectionPhotoPaths.add(sel.image_storage_path);
   }
   const selectionPhotoUrls = new Map<string, string>();
   if (selectionPhotoPaths.size > 0) {
@@ -384,6 +389,15 @@ export default async function PortalPage({
       if (row.path && row.signedUrl) selectionPhotoUrls.set(row.path, row.signedUrl);
     }
   }
+  // Project the inline image URL onto each selection for the customer panel.
+  const selectionsForPanel = selections.map((sel) => ({
+    ...sel,
+    image_url: sel.image_storage_path
+      ? (selectionPhotoUrls.get(sel.image_storage_path) ?? null)
+      : sel.photo_refs[0]?.storage_path
+        ? (selectionPhotoUrls.get(sel.photo_refs[0].storage_path) ?? null)
+        : null,
+  }));
 
   // Slice 2 — homeowner photo gallery from operator-tagged photos. Pulls
   // from the photos table where the operator has set portal_tags AND
@@ -549,9 +563,7 @@ export default async function PortalPage({
         {customerName ? <p className="mt-1 text-sm text-muted-foreground">{customerName}</p> : null}
       </header>
 
-      {/* Tab nav — Project / Messages / Ideas. Messages and Ideas are
-          described in PROJECT_MESSAGING_PLAN.md and CUSTOMER_IDEA_BOARD_PLAN.md
-          respectively. */}
+      {/* Tab nav — Project / Selections / Ideas / Messages. */}
       <div className="mb-6 flex gap-1 border-b">
         <Link
           href={`/portal/${slug}`}
@@ -563,6 +575,28 @@ export default async function PortalPage({
           }`}
         >
           Project
+        </Link>
+        <Link
+          href={`/portal/${slug}?tab=selections`}
+          prefetch={false}
+          className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            tab === 'selections'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground'
+          }`}
+        >
+          Selections
+        </Link>
+        <Link
+          href={`/portal/${slug}?tab=ideas`}
+          prefetch={false}
+          className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            tab === 'ideas'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground'
+          }`}
+        >
+          Ideas
         </Link>
         <Link
           href={`/portal/${slug}?tab=messages`}
@@ -580,17 +614,6 @@ export default async function PortalPage({
             </span>
           ) : null}
         </Link>
-        <Link
-          href={`/portal/${slug}?tab=ideas`}
-          prefetch={false}
-          className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-            tab === 'ideas'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground'
-          }`}
-        >
-          Ideas
-        </Link>
       </div>
 
       {tab === 'messages' ? (
@@ -604,6 +627,12 @@ export default async function PortalPage({
         <PortalIdeaBoard
           portalSlug={slug}
           initialItems={initialIdeaItems}
+          roomSuggestions={roomSuggestions}
+        />
+      ) : tab === 'selections' ? (
+        <PortalSelectionsPanel
+          portalSlug={slug}
+          initialSelections={selectionsForPanel}
           roomSuggestions={roomSuggestions}
         />
       ) : (
@@ -713,13 +742,9 @@ export default async function PortalPage({
             </div>
           ) : null}
 
-          {/* Selections — per-room material record. Foreshadows the Home
-          Record handoff package by showing the data live. */}
-          {selectionGroups.length > 0 ? (
-            <div className="mb-8">
-              <PortalSelections groups={selectionGroups} signedUrls={selectionPhotoUrls} />
-            </div>
-          ) : null}
+          {/* Selections moved to its own tab (`?tab=selections`) where the
+          customer can both browse the operator-authored install spec and
+          add their own picks. */}
 
           {/* Documents & warranties — permanent files. */}
           {portalDocuments.length > 0 ? (

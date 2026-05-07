@@ -50,8 +50,8 @@ export function CustomerIdeasSection({
             Customer ideas
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Inspiration the customer has dropped on their portal idea board. Promote any one into a
-            project selection.
+            Things the customer is liking and the inspiration shaping their project. Promote any one
+            into a project selection when it&rsquo;s decided.
           </p>
         </div>
         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-800">
