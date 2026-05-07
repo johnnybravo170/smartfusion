@@ -46,8 +46,10 @@ test.describe
 
       // Categories with no edits collapse by default (PR #84 — only
       // auto-expand categories that are part of this CO). Expand the
-      // Cabinets category so the existing line input mounts.
-      await page.locator('button[aria-label="Expand category"]', { hasText: 'Cabinets' }).click();
+      // Cabinets category so the existing line input mounts. The
+      // category-name cell is itself a button that toggles open
+      // (PR #87's table layout — sibling to the chevron button).
+      await page.getByRole('button', { name: /^Cabinets/ }).click();
 
       // Existing Cabinets line: qty=1, unit_price=$13,000. Bump to
       // $14,500 — a +$1,500 modification. defaultValue renders as the
