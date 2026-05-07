@@ -1,16 +1,25 @@
 'use client';
 
 import { useState } from 'react';
-import { sendPortalInviteAction, togglePortalAction } from '@/server/actions/portal-updates';
+import { PortalShareDialog } from '@/components/features/portal/portal-share-dialog';
+import { togglePortalAction } from '@/server/actions/portal-updates';
 
 export function PortalToggle({
   projectId,
   portalEnabled,
   portalSlug,
+  customerName,
+  projectName,
+  customerEmail,
+  customerAdditionalEmails,
 }: {
   projectId: string;
   portalEnabled: boolean;
   portalSlug: string | null;
+  customerName: string;
+  projectName: string;
+  customerEmail: string | null;
+  customerAdditionalEmails: string[];
 }) {
   const [enabled, setEnabled] = useState(portalEnabled);
   const [slug, _setSlug] = useState(portalSlug);
@@ -41,18 +50,6 @@ export function PortalToggle({
     await navigator.clipboard.writeText(portalUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }
-
-  async function handleSendInvite() {
-    setLoading(true);
-    setMessage(null);
-    const result = await sendPortalInviteAction(projectId);
-    if (result.ok) {
-      setMessage('Portal invite sent!');
-    } else {
-      setMessage(result.error);
-    }
-    setLoading(false);
   }
 
   return (
@@ -111,14 +108,13 @@ export function PortalToggle({
             </p>
           ) : null}
           {enabled ? (
-            <button
-              type="button"
-              onClick={handleSendInvite}
-              disabled={loading}
-              className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted/50 disabled:opacity-50"
-            >
-              Share with Customer
-            </button>
+            <PortalShareDialog
+              projectId={projectId}
+              primaryEmail={customerEmail}
+              additionalEmails={customerAdditionalEmails}
+              customerName={customerName}
+              projectName={projectName}
+            />
           ) : null}
         </div>
       ) : null}

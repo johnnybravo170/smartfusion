@@ -30,7 +30,9 @@ export default async function PortalTabServer({ projectId }: { projectId: string
       .limit(50),
     supabase
       .from('projects')
-      .select('portal_slug, portal_enabled, portal_show_budget')
+      .select(
+        'name, portal_slug, portal_enabled, portal_show_budget, customers:customer_id (name, email, additional_emails)',
+      )
       .eq('id', projectId)
       .single(),
     listPhasesForProject(projectId),
@@ -49,9 +51,31 @@ export default async function PortalTabServer({ projectId }: { projectId: string
   const portalShowBudget = (portalData?.portal_show_budget as boolean | null | undefined) ?? null;
   const tenantShowBudget = Boolean(tenantSettings?.portal_show_budget);
 
+  // Project name + customer email fields for the share dialog. The
+  // PostgREST embed returns customers as either an array or an object
+  // depending on the FK shape, so unwrap.
+  const projectName = (portalData?.name as string | undefined) ?? 'this project';
+  const customerRaw = portalData?.customers as
+    | { name?: string; email?: string; additional_emails?: string[] }
+    | { name?: string; email?: string; additional_emails?: string[] }[]
+    | null
+    | undefined;
+  const customer = Array.isArray(customerRaw) ? (customerRaw[0] ?? null) : (customerRaw ?? null);
+  const customerName = customer?.name ?? 'the customer';
+  const customerEmail = customer?.email ?? null;
+  const customerAdditionalEmails = customer?.additional_emails ?? [];
+
   return (
     <div className="space-y-6">
-      <PortalToggle projectId={projectId} portalEnabled={portalEnabled} portalSlug={portalSlug} />
+      <PortalToggle
+        projectId={projectId}
+        portalEnabled={portalEnabled}
+        portalSlug={portalSlug}
+        projectName={projectName}
+        customerName={customerName}
+        customerEmail={customerEmail}
+        customerAdditionalEmails={customerAdditionalEmails}
+      />
 
       {portalEnabled ? (
         <div className="rounded-lg border bg-card p-4">
