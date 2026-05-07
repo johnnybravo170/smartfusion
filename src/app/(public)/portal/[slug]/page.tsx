@@ -252,16 +252,16 @@ export default async function PortalPage({
 
   const totalBudget = originalEstimate + approvedCOTotal;
 
-  // Per-bucket budget breakdown for the customer (gated by tenant +
-  // per-project toggles, defaults off). Operator opts in via Settings →
-  // Profile or per-project on the Portal tab.
+  // Per-bucket budget breakdown gating. The summary is ALWAYS computed
+  // (cheap query bundle) so we can show the customer's contract total
+  // — including management fee + GST — under the Financials grid for
+  // every customer. The toggle only gates the per-bucket detail
+  // (operator-private spend).
   const portalShowBudget = shouldShowPortalBudget(
     p.portal_show_budget as boolean | null | undefined,
     tenant?.portal_show_budget as boolean | null | undefined,
   );
-  const portalBudgetSummary = portalShowBudget
-    ? await getPortalBudgetSummary(admin, projectId)
-    : null;
+  const portalBudgetSummary = await getPortalBudgetSummary(admin, projectId);
 
   // Slice 3 — pending homeowner decisions for the queue panel.
   const { data: decisionRows } = await admin
@@ -694,7 +694,21 @@ export default async function PortalPage({
             </div>
           </div>
 
-          {portalBudgetSummary ? <PortalBudgetDetail summary={portalBudgetSummary} /> : null}
+          {/* Contract total always shows under the Financials grid — it
+              includes management fee + customer-facing tax so the customer
+              doesn't develop a false sense of cost from the cost-basis
+              numbers above. */}
+          {portalBudgetSummary.customer_contract_total_cents > totalBudget ? (
+            <p className="-mt-6 mb-8 text-center text-xs text-muted-foreground">
+              Your contract total:{' '}
+              <span className="font-medium text-foreground">
+                {cadFormat.format(portalBudgetSummary.customer_contract_total_cents / 100)}
+              </span>{' '}
+              (incl. management fee + {portalBudgetSummary.tax_label})
+            </p>
+          ) : null}
+
+          {portalShowBudget ? <PortalBudgetDetail summary={portalBudgetSummary} /> : null}
 
           {/* Phase rail — homeowner-facing milestone tracker. Read-only here;
           operator advances/regresses from the project detail Portal tab. */}
