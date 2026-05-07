@@ -619,20 +619,23 @@ async function generateImage(prompt) {
   }
 }
 
+// portalTags drives whether the photo shows in the public /portal/<slug>
+// gallery (filter: client_visible=true AND portal_tags <> '{}'). Vocabulary:
+// before | progress | behind_wall | issue | completion | marketing.
 const photoSpecs = [
-  { slug: 'before-garage-ceiling', tag: 'before', daysAgo: 56, caption: 'Before — existing garage ceiling, structural prep area',
+  { slug: 'before-garage-ceiling', tag: 'before', portalTags: ['before'], daysAgo: 56, caption: 'Before — existing garage ceiling, structural prep area',
     prompt: 'A realistic photograph of a suburban Canadian garage interior before renovation, looking up at the ceiling, exposed drywall and joists, single bare bulb fixture, garage door visible at the back, no people, contractor documentation style.' },
-  { slug: 'framing-walls', tag: 'progress', daysAgo: 44, caption: 'New 2nd-storey framing — walls and joists in',
+  { slug: 'framing-walls', tag: 'progress', portalTags: ['progress', 'behind_wall'], daysAgo: 44, caption: 'New 2nd-storey framing — walls and joists in',
     prompt: 'A realistic photograph of new wood stud framing for a residential second storey addition over a garage, freshly framed exterior walls with sheathing, ceiling joists overhead, visible Tyvek wrap on the outside, blue chalk lines, work lights on a floor, contractor documentation style, no people.' },
-  { slug: 'roof-tie-in', tag: 'progress', daysAgo: 39, caption: 'Roof tie-in — new shingles section',
+  { slug: 'roof-tie-in', tag: 'progress', portalTags: ['progress'], daysAgo: 39, caption: 'Roof tie-in — new shingles section',
     prompt: 'A realistic outdoor photograph of a residential home with a new second storey addition, roof tie-in in progress, fresh asphalt shingles being installed on the new section blending with the existing roofline, ladder visible, overcast Pacific Northwest day, contractor documentation style, no people.' },
-  { slug: 'plumbing-rough', tag: 'progress', daysAgo: 33, caption: 'Plumbing rough — ensuite layout',
+  { slug: 'plumbing-rough', tag: 'progress', portalTags: ['behind_wall'], daysAgo: 33, caption: 'Plumbing rough — ensuite layout',
     prompt: 'A realistic photograph of a residential bathroom in plumbing rough-in stage, exposed wood stud walls with new copper PEX water lines and PVC drain pipes routed through, capped fixtures for vanity tub and toilet, plywood subfloor, contractor documentation style, no people.' },
-  { slug: 'drywall-prime', tag: 'progress', daysAgo: 22, caption: 'Drywall complete — primed and ready for paint',
+  { slug: 'drywall-prime', tag: 'progress', portalTags: ['progress'], daysAgo: 22, caption: 'Drywall complete — primed and ready for paint',
     prompt: 'A realistic photograph of a residential master bedroom with drywall fully installed, taped, mudded, and primed white throughout, smooth walls and ceilings, bare plywood subfloor, large window opening with light streaming in, contractor documentation style, no people.' },
-  { slug: 'ensuite-tile', tag: 'progress', daysAgo: 15, caption: 'Ensuite tile + freestanding tub set',
+  { slug: 'ensuite-tile', tag: 'progress', portalTags: ['progress', 'marketing'], daysAgo: 15, caption: 'Ensuite tile + freestanding tub set',
     prompt: 'A realistic photograph of a nearly finished residential ensuite bathroom with marble-look porcelain large format tile on the floor and shower walls, freestanding white soaker tub installed against a tiled feature wall niche, no fixtures yet, drop cloths on the floor, contractor documentation style, no people.' },
-  { slug: 'closet-trim', tag: 'progress', daysAgo: 6, caption: 'Walk-in closet trim install',
+  { slug: 'closet-trim', tag: 'progress', portalTags: ['progress'], daysAgo: 6, caption: 'Walk-in closet trim install',
     prompt: 'A realistic photograph of a residential walk-in closet under construction, white painted walls, baseboards and door casings being installed, open studs visible where the closet system will mount, hardwood floor partially installed, contractor documentation style, no people.' },
 ];
 
@@ -653,11 +656,11 @@ for (const p of photoSpecs) {
     INSERT INTO public.photos
       (tenant_id, project_id, customer_id, storage_path, tag, caption,
        taken_at, uploaded_at, uploader_user_id, source, mime, bytes,
-       width, height, caption_source)
+       width, height, caption_source, portal_tags, client_visible)
     VALUES (${TENANT_ID}, ${projectId}, ${customer.id},
             ${path}, ${p.tag}, ${p.caption},
             ${takenAt}, ${takenAt}, ${owner.user_id}, 'web', 'image/jpeg', ${buf.length},
-            1280, 960, 'user')
+            1280, 960, 'user', ${p.portalTags ?? []}, true)
   `;
   photoCount++;
   console.log(`  photo: ${p.slug}`);
