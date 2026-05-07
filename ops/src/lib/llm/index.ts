@@ -55,12 +55,17 @@ export const DEFAULT_BOARD_MODELS: Record<BoardCallKind, BoardModelChoice> = {
   context_summary: { provider: 'anthropic', model: 'claude-haiku-4-5' },
 };
 
-// Kimi preset. Pinned to k2.5 — newer than k2-thinking (which Moonshot
-// released back in Nov 2025), cheaper ($0.44/$2 vs $0.60/$2.50 per M
-// tokens), 262K context, and non-thinking is actually the better fit
-// for our JSON-shaped chair turns and structured advisor positions
-// (thinking models are slower and noisier on JSON-mode tasks).
-export const KIMI_MODEL = 'moonshotai/kimi-k2.5';
+// Kimi preset. Pinned to k2.6 (Apr 2026). Bumped from k2.5 in May 2026
+// when Moonshot announced the kimi-k2 series (k2-thinking, k2-0905,
+// k2-turbo, k2-thinking-turbo, k2-0711) was being discontinued
+// 2026-05-25. k2.5 wasn't explicitly on the kill list but the "k2
+// series" headline language was ambiguous — k2.6 is newer (262K ctx)
+// and now-canonical at $0.74/$3.49 per M tokens.
+//
+// We pin an explicit version rather than `kimi-latest` so version
+// jumps are deliberate (we want to know when our preset's behavior
+// shifts under us). Re-evaluate when k2.7 / k3 ships.
+export const KIMI_MODEL = 'moonshotai/kimi-k2.6';
 export const KIMI_PRESET: Partial<Record<BoardCallKind, BoardModelChoice>> = {
   advisor_opening: { provider: 'openrouter', model: KIMI_MODEL },
   advisor_exchange: { provider: 'openrouter', model: KIMI_MODEL },

@@ -112,7 +112,7 @@ export function registerBoardTools(server: McpServer) {
 
   server.tool(
     'board_session_create',
-    'Convene a new board session on a topic. Pass a topic (the strategic question, can be long), a list of advisor UUIDs (must include the chair), and an optional model override (e.g. provider="openrouter", model="moonshotai/kimi-k2-thinking"). Use board_advisors_list first to get IDs. Does NOT auto-run; call board_session_run after.',
+    'Convene a new board session on a topic. Pass a topic (the strategic question, can be long), a list of advisor UUIDs (must include the chair), and an optional model override (e.g. provider="openrouter", model="moonshotai/kimi-k2.6"). Use board_advisors_list first to get IDs. Does NOT auto-run; call board_session_run after.',
     {
       title: z.string().trim().min(1).max(200).describe('Short title'),
       topic: z
@@ -134,7 +134,7 @@ export function registerBoardTools(server: McpServer) {
         .max(200)
         .optional()
         .nullable()
-        .describe('Override default model (e.g. moonshotai/kimi-k2-thinking)'),
+        .describe('Override default model (e.g. moonshotai/kimi-k2.6)'),
       budget_cents: z
         .number()
         .int()

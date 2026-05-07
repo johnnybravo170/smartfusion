@@ -143,7 +143,7 @@ export function NewSessionForm({
 
   function presetKimi(): void {
     setProviderOverride('openrouter');
-    setModelOverride('moonshotai/kimi-k2.5');
+    setModelOverride('moonshotai/kimi-k2.6');
   }
 
   function presetSonnet(): void {
@@ -367,7 +367,7 @@ export function NewSessionForm({
           <input
             value={modelOverride}
             onChange={(e) => setModelOverride(e.target.value)}
-            placeholder="claude-sonnet-4-6 / moonshotai/kimi-k2.5 / moonshotai/kimi-latest"
+            placeholder="claude-sonnet-4-6 / moonshotai/kimi-k2.6"
             className="rounded-md border border-[var(--border)] bg-transparent px-3 py-2 text-sm"
           />
         </div>

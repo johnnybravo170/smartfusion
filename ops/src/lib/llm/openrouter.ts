@@ -1,6 +1,6 @@
 /**
  * OpenRouter provider. One API for many models. We use it for:
- *   - Kimi (moonshotai/kimi-k2-thinking, etc.) — fun + cheap A/B comparisons
+ *   - Kimi (moonshotai/kimi-k2.6, etc.) — fun + cheap A/B comparisons
  *   - DeepSeek, Llama, etc. for future experiments
  *
  * Model IDs are passed through verbatim (req.model). Pricing is fetched
