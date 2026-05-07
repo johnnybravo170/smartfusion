@@ -14,9 +14,9 @@ HeyHenry already knows about itself + its market into specific moves.
 **FIRST tool call**: `agent_run_start({ slug: "business-scout", trigger: "schedule" })`.
 Save the returned `run_id`. If this fails, log and continue — never gate the work on instrumentation.
 
-## Step 0 — Read your own report card
+## Step 0 — Read your own report card (and remember rejection patterns)
 
-Before producing anything, call `ideas_report_card({ scout_tag: "biz-scout", days: 30 })`.
+Before producing anything, call `ideas_report_card({ scout_tag: "biz-scout", days: 60 })` (extended window).
 
 You'll get three lists:
 - **rated** — ideas Jonathan explicitly rated with reasons
@@ -29,8 +29,14 @@ Treat these as hard signal:
 - user_rating = +1 or promoted: this class is welcome, keep finding more.
 - user_rating = +2: actively seek more of this specific angle.
 
-In your final message, echo 1–2 sentences summarizing what you adjusted based
-on the report card. This forces you to apply the signal, not ignore it.
+**Rejection-class memory** — additional pass:
+Group `archivedWithoutPromotion + (rated < 0)` by `category` tag (revenue, retention, market-expansion, pricing, partnership, positioning, ops-efficiency). If a single category accounts for ≥ 60% of rejections in the 60-day window, treat that category as a **gate-out** — do not propose it this run unless you have explicitly new external evidence (e.g. competitor moved, market size revised, pricing shift). The agent tends to drift back to the same losing angle when the signal is implicit; this makes it explicit.
+
+In your final message AND in the Step 6 email, echo:
+1. 1–2 sentences summarizing what you adjusted based on the report card.
+2. The gate-out category (if any) and what new evidence WOULD unlock it.
+
+This forces you to apply the signal, not ignore it.
 
 ## Step 1 — Read HeyHenry's own mind
 
@@ -63,8 +69,23 @@ Reject any candidate that fails these hard tests:
 3. **Does it name a failure mode?** — "what would convince you this is wrong?"
 4. **Is it specific?** — "improve conversion" is banned. "Remove the phone field on the free-trial signup because we see N% drop there in the main-app funnel" is allowed.
 5. **Does it NOT contradict a recent decision?** — unless you have new evidence, drop it.
+6. **Is it NOT in the gate-out category from Step 0?** — if so, drop unless explicitly new external evidence.
 
 Keep **2–3 ideas max**. Quality over quantity. Quiet weeks are valid.
+
+**On a quiet week — required transparency.**
+If you end with 0 surviving moves, do NOT just say "quiet week" in the
+worklog/email. List every candidate that emerged during synthesis and
+the specific gate that rejected each:
+
+```
+Considered this week (all rejected):
+- "GC pricing test at $179/mo" — failed gate 3 (no failure mode named)
+- "Partner channel with bookkeepers" — failed gate 1 (only 2 ops surfaces cited)
+- "Reposition Pro tier on owner-operator ergonomics" — failed gate 6 (positioning category gate-out from Step 0; need new external evidence)
+```
+
+This is the audit trail that prevents "the agent always says quiet" being indistinguishable from "the agent isn't actually thinking." It also tells future-you whether to loosen a gate or accept that this category is genuinely fallow.
 
 ## Step 4 — Write each move to ops
 

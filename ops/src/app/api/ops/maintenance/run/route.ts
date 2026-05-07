@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { type NextRequest, NextResponse } from 'next/server';
+import { finishAgentRun, recordAgentRun } from '@/lib/agents';
 import { env } from '@/lib/env';
 import { createServiceClient } from '@/lib/supabase';
 
@@ -45,7 +46,10 @@ export async function GET(req: NextRequest) {
   const service = createServiceClient();
 
   // Record the run up-front so failures still leave a trace. We finalize
-  // duration + counts at the end.
+  // duration + counts at the end. ops.maintenance_runs predates the
+  // ops.agents/agent_runs registry; we mirror into both so the dashboard
+  // sees this agent live, while keeping maintenance-specific columns
+  // (duration_ms, structured tasks) where existing readers expect them.
   const { data: runRow, error: runErr } = await service
     .schema('ops')
     .from('maintenance_runs')
@@ -56,6 +60,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: runErr?.message ?? 'run insert failed' }, { status: 500 });
   }
   const runId = runRow.id as string;
+
+  // Mirror into ops.agent_runs for the agents dashboard. Best-effort —
+  // a failure here shouldn't gate the maintenance work itself.
+  const agentRun = await recordAgentRun({
+    slug: 'maintenance-weekly',
+    trigger: fromVercelCron ? 'schedule' : 'manual',
+  }).catch((e) => {
+    console.warn('[maintenance] agent_run open failed:', e);
+    return null;
+  });
 
   const tasks: Record<string, unknown> = {};
 
@@ -204,6 +218,33 @@ ${JSON.stringify(context).slice(0, 40000)}`;
       tasks,
     })
     .eq('id', runId);
+
+  // Finalize the agent_run mirror.
+  if (agentRun) {
+    const archive = (tasks.archive_stale_worklog ?? {}) as {
+      archived_count?: number;
+      error?: string | null;
+    };
+    const digest = (tasks.weekly_digest ?? {}) as {
+      worklog_id?: string;
+      error?: string | null;
+    };
+    const taskErrors = [archive.error, digest.error].filter(Boolean);
+    const archived = archive.archived_count ?? 0;
+    const summary =
+      taskErrors.length > 0
+        ? `Errored on ${taskErrors.length} task(s): ${taskErrors.join('; ').slice(0, 200)}`
+        : `Archived ${archived} stale worklog entries; weekly digest ${digest.worklog_id ? 'pinned' : 'skipped'}`;
+    await finishAgentRun(agentRun.id, {
+      outcome: taskErrors.length > 0 ? 'failure' : 'success',
+      items_acted: archived + (digest.worklog_id ? 1 : 0),
+      summary,
+      payload: { maintenance_run_id: runId, tasks },
+      error: taskErrors.length > 0 ? taskErrors.join('; ') : undefined,
+    }).catch((e) => {
+      console.warn('[maintenance] agent_run close failed:', e);
+    });
+  }
 
   return NextResponse.json({ ok: true, run_id: runId, tasks });
 }
