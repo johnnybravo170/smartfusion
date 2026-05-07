@@ -15,6 +15,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
+import { ScheduleTaskEditor } from '@/components/features/projects/schedule-task-editor';
 import { Button } from '@/components/ui/button';
 import {
   type BootstrapSource,
@@ -39,6 +40,7 @@ export function ScheduleBootstrapPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [blankCreatorOpen, setBlankCreatorOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const run = (source: BootstrapSource) => {
@@ -89,16 +91,28 @@ export function ScheduleBootstrapPanel({
 
         <button
           type="button"
-          onClick={() => run({ kind: 'blank' })}
+          onClick={() => setBlankCreatorOpen(true)}
           disabled={pending}
           className="flex h-32 flex-col items-start justify-between rounded-md border bg-background p-4 text-left transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
         >
           <span className="text-sm font-semibold">Start blank</span>
           <span className="text-xs text-muted-foreground">
-            Add tasks one at a time. (Coming in v1.)
+            Add tasks one at a time. Opens the new-task editor below.
           </span>
         </button>
       </div>
+
+      {blankCreatorOpen ? (
+        <ScheduleTaskEditor
+          mode={{
+            kind: 'create',
+            projectId,
+            defaultStartDate: new Date().toISOString().slice(0, 10),
+          }}
+          open={true}
+          onClose={() => setBlankCreatorOpen(false)}
+        />
+      ) : null}
 
       {error ? (
         <p className="mt-4 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
