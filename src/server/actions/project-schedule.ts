@@ -194,6 +194,148 @@ export async function clearProjectScheduleAction(
   return { ok: true, tasksCleared: (data ?? []).length };
 }
 
+// ---------------------------------------------------------------------------
+// v1: edit / delete / create individual tasks
+// ---------------------------------------------------------------------------
+
+export type TaskMutationResult = { ok: true; taskId: string } | { ok: false; error: string };
+
+export type ScheduleTaskPatch = {
+  name?: string;
+  planned_start_date?: string;
+  planned_duration_days?: number;
+  status?: 'planned' | 'scheduled' | 'in_progress' | 'done';
+  confidence?: 'rough' | 'firm';
+  client_visible?: boolean;
+  notes?: string | null;
+};
+
+/**
+ * Update a single task. RLS gates the row to the operator's tenant; a
+ * wrong-tenant taskId silently no-ops (data null, no error). Caller
+ * builds the patch object — only fields present are written.
+ */
+export async function updateScheduleTaskAction(
+  taskId: string,
+  patch: ScheduleTaskPatch,
+): Promise<TaskMutationResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('project_schedule_tasks')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', taskId)
+    .is('deleted_at', null)
+    .select('id, project_id, projects(portal_slug)')
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: 'Task not found.' };
+
+  const projectId = (data as Record<string, unknown>).project_id as string;
+  const portalSlug =
+    (pickOne((data as Record<string, unknown>).projects)?.portal_slug as
+      | string
+      | null
+      | undefined) ?? null;
+  revalidatePath(`/projects/${projectId}`);
+  if (portalSlug) revalidatePath(`/portal/${portalSlug}`);
+  return { ok: true, taskId };
+}
+
+/**
+ * Soft-delete a single task. The row stays in the table for audit and
+ * customer-portal history queries; the active-list reads filter it out.
+ */
+export async function deleteScheduleTaskAction(taskId: string): Promise<TaskMutationResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('project_schedule_tasks')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', taskId)
+    .is('deleted_at', null)
+    .select('id, project_id, projects(portal_slug)')
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: 'Task not found.' };
+
+  const projectId = (data as Record<string, unknown>).project_id as string;
+  const portalSlug =
+    (pickOne((data as Record<string, unknown>).projects)?.portal_slug as
+      | string
+      | null
+      | undefined) ?? null;
+  revalidatePath(`/projects/${projectId}`);
+  if (portalSlug) revalidatePath(`/portal/${portalSlug}`);
+  return { ok: true, taskId };
+}
+
+export type CreateScheduleTaskInput = {
+  name: string;
+  planned_start_date: string;
+  planned_duration_days: number;
+  client_visible?: boolean;
+  notes?: string | null;
+};
+
+/**
+ * Create a new custom task on a project. Always lands at the end of
+ * display_order (operator can reorder later). trade_template_id is
+ * always null — these are GC-authored, not template-derived.
+ */
+export async function createScheduleTaskAction(
+  projectId: string,
+  input: CreateScheduleTaskInput,
+): Promise<TaskMutationResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  const supabase = await createClient();
+
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id, portal_slug')
+    .eq('id', projectId)
+    .single();
+  if (!project) return { ok: false, error: 'Project not found.' };
+
+  // Land at end of display_order (sparse +1).
+  const { data: maxRow } = await supabase
+    .from('project_schedule_tasks')
+    .select('display_order')
+    .eq('project_id', projectId)
+    .is('deleted_at', null)
+    .order('display_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextOrder = ((maxRow as { display_order?: number } | null)?.display_order ?? -1) + 1;
+
+  const { data, error } = await supabase
+    .from('project_schedule_tasks')
+    .insert({
+      tenant_id: tenant.id,
+      project_id: projectId,
+      name: input.name,
+      planned_start_date: input.planned_start_date,
+      planned_duration_days: input.planned_duration_days,
+      status: 'planned',
+      confidence: 'rough',
+      client_visible: input.client_visible ?? true,
+      display_order: nextOrder,
+      notes: input.notes ?? null,
+    })
+    .select('id')
+    .single();
+  if (error || !data) return { ok: false, error: error?.message ?? 'Insert failed.' };
+
+  revalidatePath(`/projects/${projectId}`);
+  if (project.portal_slug) revalidatePath(`/portal/${project.portal_slug}`);
+  return { ok: true, taskId: (data as Record<string, unknown>).id as string };
+}
+
 /**
  * Resolve the trade list for a non-blank bootstrap source. Pure-ish
  * (just hits the DB twice in the worst case) — extracted so the call

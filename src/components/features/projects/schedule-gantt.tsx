@@ -1,13 +1,16 @@
+'use client';
+
 /**
- * Read-only Gantt rendering for the operator's Schedule tab.
+ * Gantt rendering for the operator's Schedule tab.
  *
  * Autoscale: the grid uses `repeat(totalDays, 1fr)` so the entire
  * project (earliest start → latest end) fits the available width
  * without horizontal scroll. A monthly header row labels months by
  * spanning whichever columns fall inside that month.
  *
- * v0 is read-only. v1 (kanban 6f110321) wraps each bar in a drag
- * handler that updates planned_start_date.
+ * Click-to-edit lands in v1 — when `onTaskClick` is supplied, each
+ * row is wrapped in a button that fires the callback. Drag-to-
+ * reschedule lands in a follow-up PR.
  */
 
 import type { ProjectScheduleTask } from '@/lib/db/queries/project-schedule';
@@ -58,7 +61,13 @@ function monthHeaderSegments(
   return segments;
 }
 
-export function ScheduleGantt({ tasks }: { tasks: ProjectScheduleTask[] }) {
+export function ScheduleGantt({
+  tasks,
+  onTaskClick,
+}: {
+  tasks: ProjectScheduleTask[];
+  onTaskClick?: (task: ProjectScheduleTask) => void;
+}) {
   if (tasks.length === 0) return null;
 
   // Earliest start + latest end across all tasks. Latest end = start +
@@ -108,9 +117,18 @@ export function ScheduleGantt({ tasks }: { tasks: ProjectScheduleTask[] }) {
             : isFirm
               ? 'bg-primary'
               : 'border-2 border-dashed border-primary/60 bg-primary/10';
+          const interactive = Boolean(onTaskClick);
+          const NameCell = interactive ? 'button' : 'div';
+          const BarCell = interactive ? 'button' : 'div';
           return (
             <div key={task.id} className="contents">
-              <div className="flex items-center truncate py-1.5 text-sm">
+              <NameCell
+                {...(interactive ? { type: 'button' as const } : {})}
+                onClick={interactive ? () => onTaskClick?.(task) : undefined}
+                className={`flex items-center truncate py-1.5 text-left text-sm ${
+                  interactive ? 'cursor-pointer hover:bg-muted/50' : ''
+                }`}
+              >
                 <span className={isDone ? 'text-muted-foreground line-through' : ''}>
                   {task.name}
                 </span>
@@ -122,20 +140,24 @@ export function ScheduleGantt({ tasks }: { tasks: ProjectScheduleTask[] }) {
                     (internal)
                   </span>
                 )}
-              </div>
-              <div
-                className="grid items-center py-1.5"
+              </NameCell>
+              <BarCell
+                {...(interactive ? { type: 'button' as const } : {})}
+                onClick={interactive ? () => onTaskClick?.(task) : undefined}
+                className={`grid items-center py-1.5 ${interactive ? 'cursor-pointer' : ''}`}
                 style={{ gridTemplateColumns: `repeat(${totalDays}, 1fr)` }}
               >
                 <div
-                  className={`h-5 rounded-sm ${barClasses}`}
+                  className={`h-5 rounded-sm transition-opacity ${barClasses} ${
+                    interactive ? 'hover:opacity-80' : ''
+                  }`}
                   style={{
                     gridColumnStart: colStart,
                     gridColumnEnd: `span ${colSpan}`,
                   }}
                   title={`${task.name} — ${task.planned_duration_days}d (${task.confidence})`}
                 />
-              </div>
+              </BarCell>
             </div>
           );
         })}

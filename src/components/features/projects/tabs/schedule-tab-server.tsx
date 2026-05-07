@@ -10,8 +10,7 @@
  */
 
 import { ScheduleBootstrapPanel } from '@/components/features/projects/schedule-bootstrap-panel';
-import { ScheduleClearButton } from '@/components/features/projects/schedule-clear-button';
-import { ScheduleGantt } from '@/components/features/projects/schedule-gantt';
+import { ScheduleInteractive } from '@/components/features/projects/schedule-interactive';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { listScheduleTasksForProject } from '@/lib/db/queries/project-schedule';
 import { createClient } from '@/lib/supabase/server';
@@ -58,16 +57,5 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
     return <ScheduleBootstrapPanel projectId={projectId} templates={templates} />;
   }
 
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} ·{' '}
-          <span className="text-foreground">read-only</span> in v0; drag &amp; edit lands in v1.
-        </p>
-        <ScheduleClearButton projectId={projectId} />
-      </div>
-      <ScheduleGantt tasks={tasks} />
-    </div>
-  );
+  return <ScheduleInteractive projectId={projectId} tasks={tasks} />;
 }
