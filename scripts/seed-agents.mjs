@@ -183,7 +183,22 @@ const FLEET = [
     tags: ['research', 'competitors', 'routine', 'remote'],
     backfill_actor_name: 'competitive-research',
   },
-  // Local routines (Friday memory synthesis, feature-matrix-refresh)
+  {
+    slug: 'marketing-strategist',
+    name: 'HeyHenry Marketing Strategist',
+    description:
+      "Local routine on Jonathan's Mac. Brainstorms 3-5 HeyHenry marketing ideas (positioning, acquisition, content, launch, partnership, pricing) → ops.ideas with `marketing-scout` tag + email digest. Replaced AppleScript send with ops_email_send.",
+    agent_type: 'routine',
+    schedule: 'TBD (Local)',
+    external_link: 'https://claude.ai/code/routines',
+    owner: 'jonathan',
+    expected_max_gap_minutes: 60 * 30,
+    tags: ['marketing', 'brainstorm', 'routine', 'local'],
+    // No worklog actor_name — backfill via the 'scheduled brainstorm'
+    // body marker in ops.ideas (handled below as a one-off if needed).
+    backfill_actor_name: null,
+  },
+  // Other Local routines (Friday memory synthesis, feature-matrix-refresh)
   // belong to HenryOS, not HeyHenry — out of scope for this registry.
 ];
 

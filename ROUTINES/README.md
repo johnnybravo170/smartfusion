@@ -2,22 +2,23 @@
 
 Source of truth for the prompts running as Claude Code Routines at `claude.ai/code/routines`. Each markdown file here is paste-ready for the Routine "Instructions" field.
 
-## Fleet — HeyHenry Remote routines (8)
+## Fleet — HeyHenry routines (9)
 
-The HeyHenry-scoped routines running at claude.ai/code/routines, all Remote (Anthropic cloud sandbox). Three Local routines visible in the same UI (`Friday memory synthesis`, `Heyhenry feature matrix refresh`, etc.) belong to **HenryOS**, not HeyHenry, and are out of scope for this registry.
+8 Remote (Anthropic cloud sandbox) + 1 Local (runs on Jonathan's Mac). Other Local routines visible in claude.ai/code/routines (`Friday memory synthesis`, `Heyhenry feature matrix refresh`) belong to **HenryOS**, not HeyHenry, and are out of scope for this registry.
 
-| File | Slug | Cadence | What it does |
-|---|---|---|---|
-| `doc-writer.md` | `doc-writer` | Daily 5 AM | Engineer-audience module summaries from recent commits → `ops.knowledge_docs` + `ops.docs` |
-| `weekly-dispatcher.md` | `weekly-dispatcher` | Mon 6 AM | Narrative weekly digest → worklog + knowledge |
-| `ai-tools-scout.md` | `ai-tools-scout` | Daily 7 AM | AI/ML tooling scan → `ops.ideas` + email digest |
-| `business-scout.md` | `business-scout` | Daily 6 AM | Strategic moves synthesis → `ops.ideas` + email |
-| `helpdesk-triage.md` | `helpdesk-triage` | Daily 9 AM | Codebase-grounded diagnosis on `triage:claude` kanban cards |
-| `security-probe.md` | `security-probe` | Daily 4 AM | Reviews production surfaces for security regressions → opens incidents |
-| `competitive-research.md` | `competitive-research` | Daily 6 AM | Refreshes `ops.competitors` corpus with structured findings |
-| `pain-points-research.md` | `pain-points-research` | Daily 7 AM | Mines contractor-community pain points → `ops.social_drafts` |
+| File | Slug | Runtime | Cadence | What it does |
+|---|---|---|---|---|
+| `doc-writer.md` | `doc-writer` | Remote | Daily 5 AM | Engineer-audience module summaries from recent commits → `ops.knowledge_docs` + `ops.docs` |
+| `weekly-dispatcher.md` | `weekly-dispatcher` | Remote | Mon 6 AM | Narrative weekly digest → worklog + knowledge |
+| `ai-tools-scout.md` | `ai-tools-scout` | Remote | Daily 7 AM | AI/ML tooling scan → `ops.ideas` + email digest |
+| `business-scout.md` | `business-scout` | Remote | Daily 6 AM | Strategic moves synthesis → `ops.ideas` + email |
+| `helpdesk-triage.md` | `helpdesk-triage` | Remote | Daily 9 AM | Codebase-grounded diagnosis on `triage:claude` kanban cards |
+| `security-probe.md` | `security-probe` | Remote | Daily 4 AM | Reviews production surfaces for security regressions → opens incidents |
+| `competitive-research.md` | `competitive-research` | Remote | Daily 6 AM | Refreshes `ops.competitors` corpus with structured findings |
+| `pain-points-research.md` | `pain-points-research` | Remote | Daily 7 AM | Mines contractor-community pain points → `ops.social_drafts` |
+| `marketing-strategist.md` | `marketing-strategist` | **Local** | TBD | HeyHenry marketing brainstorm → `ops.ideas` (`marketing-scout` tag) + email digest |
 
-All connect to the **HeyHenry Ops MCP** at `https://ops.heyhenry.io/api/mcp`.
+All connect to the **HeyHenry Ops MCP** at `https://ops.heyhenry.io/api/mcp`. The Local one previously sent email via AppleScript / Mail.app; that path was unreliable. Updated to use `ops_email_send` like the Remote scouts.
 
 ## When you change a prompt
 
