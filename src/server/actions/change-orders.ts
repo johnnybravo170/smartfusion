@@ -97,6 +97,47 @@ export async function applyV2ChangeOrderDiff(
 
     try {
       if (d.action === 'add') {
+        // Diff-seeded adds carry an `original_line_id` pointing to the
+        // working-state line that's already present (the operator added it
+        // directly, then formalized it as a CO via the unsent-changes flow).
+        // In that case UPDATE in place — the line already exists, and any
+        // tweaks the operator made after seeding need to land on it. If the
+        // line was deleted between CO creation and approval, fall through
+        // to the normal insert path.
+        if (d.original_line_id) {
+          const { data: existing } = await admin
+            .from('project_cost_lines')
+            .select('id')
+            .eq('id', d.original_line_id)
+            .maybeSingle();
+          if (existing) {
+            const { error } = await admin
+              .from('project_cost_lines')
+              .update({
+                budget_category_id: d.budget_category_id,
+                category: d.category ?? 'material',
+                label: d.label ?? '(unlabeled)',
+                qty: d.qty ?? 1,
+                unit: d.unit ?? 'item',
+                unit_cost_cents: d.unit_cost_cents ?? 0,
+                unit_price_cents: d.unit_price_cents ?? 0,
+                line_cost_cents: d.line_cost_cents ?? 0,
+                line_price_cents: d.line_price_cents ?? 0,
+                notes: d.notes,
+                updated_at: now,
+              })
+              .eq('id', d.original_line_id);
+            if (error) {
+              warnings.push({
+                code: 'state_diverged',
+                message: `Could not reconcile carried-over line "${d.label}": ${error.message}`,
+                affected_id: d.original_line_id,
+              });
+            }
+            continue;
+          }
+        }
+
         // Insert new cost line. Only known-required fields; others use DB defaults.
         const { error } = await admin.from('project_cost_lines').insert({
           project_id: projectId,
@@ -351,6 +392,198 @@ export async function createChangeOrderV2Action(input: {
   }
 
   revalidatePath(`/projects/${input.project_id}`);
+  return { ok: true, id: co.id };
+}
+
+/**
+ * Build a draft v2 change order directly from the unsent-changes diff —
+ * the shortcut path from the "Unsent changes" review modal. Reads the
+ * latest snapshot + the working state, materializes a CO whose
+ * change_order_lines mirror the diff, and returns the new CO id so the
+ * caller can navigate straight to the detail page.
+ *
+ * For 'add' diff entries we record `original_line_id` as the working
+ * state's line id. The apply path treats that as a reconcile-in-place
+ * (UPDATE the existing row) instead of an INSERT — otherwise approving
+ * the CO would duplicate the line that's already in working state.
+ */
+export async function createChangeOrderFromUnsentDiffAction(
+  projectId: string,
+): Promise<ChangeOrderActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const { getUnsentDiff } = await import('@/lib/db/queries/project-scope-diff');
+  const diff = await getUnsentDiff(projectId);
+  if (!diff.has_baseline) {
+    return { ok: false, error: 'This project has no signed baseline yet.' };
+  }
+  if (diff.changes.length === 0) {
+    return { ok: false, error: 'No unsent changes to convert into a change order.' };
+  }
+
+  const versionLabel = `v${diff.baseline_version ?? 1}`;
+  const title = `Changes since ${versionLabel}`;
+  const description =
+    `Carried over from edits made after ${versionLabel} was approved. ` +
+    `Review and edit before sending to your customer.`;
+
+  const lineRows: Array<{
+    action: 'add' | 'modify' | 'remove' | 'modify_envelope';
+    original_line_id: string | null;
+    budget_category_id: string | null;
+    category: string | null;
+    label: string | null;
+    qty: number | null;
+    unit: string | null;
+    unit_cost_cents: number | null;
+    unit_price_cents: number | null;
+    line_cost_cents: number | null;
+    line_price_cents: number | null;
+    notes: string | null;
+    before_snapshot: Record<string, unknown> | null;
+  }> = [];
+  const affected = new Set<string>();
+
+  for (const change of diff.changes) {
+    switch (change.kind) {
+      case 'line_added': {
+        // 'add' carries the working-state line id so apply reconciles in
+        // place rather than inserting a duplicate.
+        const l = change.line;
+        if (l.budget_category_id) affected.add(l.budget_category_id);
+        lineRows.push({
+          action: 'add',
+          original_line_id: l.id,
+          budget_category_id: l.budget_category_id,
+          category: l.category,
+          label: l.label,
+          qty: l.qty,
+          unit: l.unit,
+          unit_cost_cents: l.unit_cost_cents,
+          unit_price_cents: l.unit_price_cents,
+          line_cost_cents: l.line_cost_cents,
+          line_price_cents: l.line_price_cents,
+          notes: null,
+          before_snapshot: null,
+        });
+        break;
+      }
+      case 'line_modified': {
+        const after = change.after;
+        const before = change.before;
+        if (after.budget_category_id) affected.add(after.budget_category_id);
+        lineRows.push({
+          action: 'modify',
+          original_line_id: after.id,
+          budget_category_id: after.budget_category_id,
+          category: after.category,
+          label: after.label,
+          qty: after.qty,
+          unit: after.unit,
+          unit_cost_cents: after.unit_cost_cents,
+          unit_price_cents: after.unit_price_cents,
+          line_cost_cents: after.line_cost_cents,
+          line_price_cents: after.line_price_cents,
+          notes: null,
+          before_snapshot: before as unknown as Record<string, unknown>,
+        });
+        break;
+      }
+      case 'line_removed': {
+        const l = change.line;
+        if (l.budget_category_id) affected.add(l.budget_category_id);
+        lineRows.push({
+          action: 'remove',
+          original_line_id: l.id,
+          budget_category_id: l.budget_category_id,
+          category: l.category,
+          label: l.label,
+          qty: l.qty,
+          unit: l.unit,
+          unit_cost_cents: l.unit_cost_cents,
+          unit_price_cents: l.unit_price_cents,
+          line_cost_cents: l.line_cost_cents,
+          line_price_cents: l.line_price_cents,
+          notes: null,
+          before_snapshot: l as unknown as Record<string, unknown>,
+        });
+        break;
+      }
+      case 'category_envelope_changed': {
+        affected.add(change.after.id);
+        lineRows.push({
+          action: 'modify_envelope',
+          original_line_id: null,
+          budget_category_id: change.after.id,
+          category: null,
+          label: change.after.name,
+          qty: null,
+          unit: null,
+          unit_cost_cents: null,
+          unit_price_cents: null,
+          line_cost_cents: null,
+          line_price_cents: change.after.estimate_cents,
+          notes: null,
+          before_snapshot: {
+            kind: 'envelope',
+            estimate_cents: change.before.estimate_cents,
+          },
+        });
+        break;
+      }
+      case 'category_added':
+        // No line entry needed — the category itself already exists in
+        // working state. Lines added under it are surfaced as 'line_added'.
+        break;
+    }
+  }
+
+  if (lineRows.length === 0) {
+    return {
+      ok: false,
+      error: 'These changes are tracked but cannot be converted into a change order automatically.',
+    };
+  }
+
+  const supabase = await createClient();
+  const approvalCode = generateApprovalCode();
+
+  const { data: co, error: coErr } = await supabase
+    .from('change_orders')
+    .insert({
+      project_id: projectId,
+      tenant_id: tenant.id,
+      title,
+      description,
+      reason: null,
+      cost_impact_cents: diff.total_delta_cents,
+      timeline_impact_days: 0,
+      affected_budget_categories: Array.from(affected),
+      category_notes: [],
+      flow_version: 2,
+      management_fee_override_rate: null,
+      management_fee_override_reason: null,
+      status: 'draft',
+      approval_code: approvalCode,
+      created_by: tenant.member.id,
+    })
+    .select('id')
+    .single();
+
+  if (coErr || !co) {
+    return { ok: false, error: coErr?.message ?? 'Failed to create change order.' };
+  }
+
+  const { error: linesErr } = await supabase
+    .from('change_order_lines')
+    .insert(lineRows.map((r) => ({ ...r, change_order_id: co.id, tenant_id: tenant.id })));
+  if (linesErr) {
+    await supabase.from('change_orders').delete().eq('id', co.id);
+    return { ok: false, error: `Failed to save diff: ${linesErr.message}` };
+  }
+
+  revalidatePath(`/projects/${projectId}`);
   return { ok: true, id: co.id };
 }
 
