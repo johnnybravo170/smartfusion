@@ -618,7 +618,6 @@ export function useHenry(): UseHenryReturn {
         void (async () => {
           try {
             await connectRef.current?.();
-            await new Promise((r) => setTimeout(r, 50));
             await startMicCaptureRef.current?.();
             // Allow another auto-reconnect after the link has been stable
             // for 30s — prevents tight loops if the next drop is immediate.
@@ -653,6 +652,33 @@ export function useHenry(): UseHenryReturn {
     out.resume().catch((e) => console.warn('[Henry] outputAudioCtx.resume failed:', e));
     outputAudioCtxRef.current = out;
     playbackCursorRef.current = 0;
+
+    // Wait for the WS handshake to actually finish before returning. Without
+    // this, callers race the connection and any sendEvent() before readyState
+    // hits OPEN gets dropped silently — the first text message after a fresh
+    // panel open would vanish, requiring a second send to elicit a reply.
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        ws.removeEventListener('open', onOpen);
+        ws.removeEventListener('error', onErr);
+        ws.removeEventListener('close', onClose);
+      };
+      const onOpen = () => {
+        cleanup();
+        resolve();
+      };
+      const onErr = () => {
+        cleanup();
+        reject(new Error('Realtime WS failed to open'));
+      };
+      const onClose = () => {
+        cleanup();
+        reject(new Error('Realtime WS closed before open'));
+      };
+      ws.addEventListener('open', onOpen, { once: true });
+      ws.addEventListener('error', onErr, { once: true });
+      ws.addEventListener('close', onClose, { once: true });
+    });
   }, [handleServerEvent, stopMicCapture]);
 
   const disconnect = useCallback(() => {
@@ -690,8 +716,6 @@ export function useHenry(): UseHenryReturn {
     setVoiceEnabled(true);
     try {
       await connect();
-      // Wait a tick for the WS to be ready before streaming mic audio.
-      await new Promise((r) => setTimeout(r, 50));
       await startMicCapture();
     } catch (e) {
       console.error('[Henry] toggleVoice failed:', e);
@@ -711,7 +735,6 @@ export function useHenry(): UseHenryReturn {
       if (!wsRef.current) {
         try {
           await connect();
-          await new Promise((r) => setTimeout(r, 50));
         } catch {
           setIsLoading(false);
           return;
