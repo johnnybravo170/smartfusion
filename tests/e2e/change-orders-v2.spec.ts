@@ -44,8 +44,10 @@ test.describe
       await page.getByLabel('Title').fill('Add pot lights');
       await page.getByLabel('Description').fill('Install 6 LED pot lights in kitchen.');
 
-      // Seeded categories auto-expand because they have existing
-      // lines, so the line inputs are already visible.
+      // Categories with no edits collapse by default (PR #84 — only
+      // auto-expand categories that are part of this CO). Expand the
+      // Cabinets category so the existing line input mounts.
+      await page.locator('button[aria-label="Expand category"]', { hasText: 'Cabinets' }).click();
 
       // Existing Cabinets line: qty=1, unit_price=$13,000. Bump to
       // $14,500 — a +$1,500 modification. defaultValue renders as the
