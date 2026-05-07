@@ -435,7 +435,20 @@ When adding new channels (Phase 2 email, Phase 3 SMS), the table shape and notif
 
 ---
 
-## 19. Customer-driven scratchpad (write-mostly-from-customer surfaces)
+## 19. Record-payment dialog (mark invoice paid)
+
+The "mark invoice paid" multi-field collection — payment method, reference, optional notes, optional receipt photo(s) with OCR auto-fill, amount-mismatch warning — lives in **one** shared component and is rendered both from the invoice detail page action bar and inline on the invoice list row. Don't duplicate this UI for new entry points (e.g. dashboard, portal); always reuse the shared dialog so OCR + warning + reset behavior stays consistent.
+
+- `src/components/features/invoices/record-payment-dialog.tsx` — shared dialog. Caller passes a `trigger` ReactNode (the button); the dialog owns method/reference/notes/staged-receipt/OCR state, uploads receipts via `uploadInvoiceReceiptAction`, then calls `markInvoicePaidAction`. Resets on close.
+- `src/components/features/invoices/invoice-actions.tsx` — detail-page caller. Trigger is "Record payment" outline button.
+- `src/components/features/invoices/invoice-table.tsx` — list-page caller, only rendered for `status === 'sent'`. Trigger is "Mark paid" outline button.
+- `src/components/features/projects/invoices-tab.tsx` — project Customer Billing tab caller (Draws + Other invoices tables). Inline button next to View, only for `status === 'sent'`.
+
+When the dialog's contract changes (new field, OCR behavior tweak, label rename), check both callers' triggers + that the underlying `markInvoicePaidAction` / `invoiceMarkPaidSchema` accept any new fields.
+
+---
+
+## 20. Customer-driven scratchpad (write-mostly-from-customer surfaces)
 
 A surface where the **customer authors content into a project** without operator curation, and the operator's only cue is a passive in-app badge — never an external notification. The first instance is the customer idea board (CUSTOMER_IDEA_BOARD_PLAN.md). Future surfaces of this shape (e.g. a customer-side punch-list of post-handoff issues) should follow the same conventions.
 
