@@ -142,6 +142,60 @@ export function registerIdeaTools(server: McpServer, ctx: McpToolCtx) {
   );
 
   server.tool(
+    'ideas_snooze',
+    [
+      'Defer an idea for re-evaluation at a future date.',
+      '',
+      'Sets `remind_at` and resets `review_status` to `pending`. The /api/ops/ideas-review/run cron picks the idea up at/after `remind_at`, asks Sonnet whether the idea is actionable in current business context, and either emails Jonathan or re-snoozes.',
+      '',
+      'Use this when an idea is interesting but blocked on timing, capital, or external dependencies. Example: "snooze the BC equipment-dealer co-marketing idea until 2026-08-01 — too pre-launch right now, revisit when the app is live."',
+    ].join('\n'),
+    {
+      id: z.string().uuid(),
+      remind_at: z
+        .string()
+        .datetime({ message: 'remind_at must be ISO 8601 UTC, e.g. 2026-08-01T15:00:00Z' }),
+    },
+    withAudit(ctx, 'ideas_snooze', 'write:ideas', async ({ id, remind_at }) => {
+      const service = createServiceClient();
+      const remindDate = new Date(remind_at);
+      if (Number.isNaN(remindDate.getTime())) {
+        return jsonResult({ ok: false, error: 'invalid remind_at' });
+      }
+      if (remindDate.getTime() <= Date.now()) {
+        return jsonResult({
+          ok: false,
+          error: 'remind_at must be in the future — past dates would re-fire on the next cron run',
+        });
+      }
+      const { data, error } = await service
+        .schema('ops')
+        .from('ideas')
+        .update({
+          remind_at: remindDate.toISOString(),
+          review_status: 'pending',
+          // Don't reset email_sent_at — even snoozed ideas should still have
+          // appeared in their original daily digest. The review path is
+          // additive, not a replacement for the digest.
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .is('archived_at', null)
+        .select('id, title, remind_at')
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) return jsonResult({ ok: false, error: 'not found or already archived' });
+      return jsonResult({
+        ok: true,
+        id: data.id,
+        title: data.title,
+        remind_at: data.remind_at,
+        url: `https://ops.heyhenry.io/ideas/${data.id}`,
+      });
+    }),
+  );
+
+  server.tool(
     'ideas_report_card',
     "Combined feedback view for a scout-style agent. Returns the agent's recently rated ideas (explicit -2/-1/+1/+2), promoted ideas (implicit +2), and archived-without-promotion ideas (implicit -1) in the window. Call this BEFORE producing new findings so you can adjust based on past signal.",
     {

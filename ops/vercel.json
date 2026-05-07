@@ -15,6 +15,10 @@
     {
       "path": "/api/ops/help-doc-writer/run",
       "schedule": "30 13 * * *"
+    },
+    {
+      "path": "/api/ops/ideas-digest/run",
+      "schedule": "0 16 * * *"
     }
   ]
 }
