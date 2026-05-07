@@ -7,6 +7,7 @@
  * `tools/list`.
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { registerAgentTools } from './agents';
 import { registerCompetitorTools } from './competitors';
 import type { McpToolCtx } from './context';
 import { registerDecisionTools } from './decisions';
@@ -46,6 +47,9 @@ export function registerScopedTools(server: McpServer, ctx: McpToolCtx) {
   }
   if (any(ctx.scopes, 'read:help_docs', 'write:help_docs', 'admin:help_docs')) {
     registerHelpDocsTools(server, ctx);
+  }
+  if (any(ctx.scopes, 'read:agents', 'write:agents:run', 'admin:agents')) {
+    registerAgentTools(server, ctx);
   }
   if (any(ctx.scopes, 'read:worklog', 'write:worklog')) {
     registerWorklogTools(server, ctx);

@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { type NextRequest, NextResponse } from 'next/server';
+import { finishAgentRun, recordAgentRun } from '@/lib/agents';
 import { createServiceClient } from '@/lib/supabase';
 import {
   type ActorCtx,
@@ -58,6 +59,56 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const run = await recordAgentRun({
+    slug: 'feedback-triage',
+    trigger: fromVercelCron ? 'schedule' : 'manual',
+  }).catch(() => null);
+
+  try {
+    const result = await runTriageFeedback();
+    if (run) {
+      const { triaged, incidents_surfaced, actions } = result;
+      const promoted = actions.filter((a) => a.applied === 'promoted').length;
+      const archivedCount = actions.filter((a) => a.applied === 'archived').length;
+      const dedupedCount = actions.filter((a) => a.applied === 'deduped').length;
+      const failed = actions.filter(
+        (a) => a.applied === 'failed' || a.applied === 'skipped',
+      ).length;
+      const acted = promoted + archivedCount + dedupedCount + incidents_surfaced;
+      await finishAgentRun(run.id, {
+        outcome: failed > 0 ? 'failure' : acted === 0 ? 'skipped' : 'success',
+        items_scanned: triaged,
+        items_acted: acted,
+        summary: `${promoted} promoted, ${archivedCount} archived, ${dedupedCount} deduped, ${incidents_surfaced} incidents${failed ? `, ${failed} failed` : ''}`,
+        payload: result,
+      }).catch(() => undefined);
+    }
+    return NextResponse.json(result);
+  } catch (e) {
+    if (run) {
+      await finishAgentRun(run.id, {
+        outcome: 'failure',
+        error: e instanceof Error ? e.message : String(e),
+      }).catch(() => undefined);
+    }
+    throw e;
+  }
+}
+
+type TriageResult = {
+  ok: true;
+  triaged: number;
+  actions: Array<{ id: string; verdict: Verdict | null; applied: string; error?: string }>;
+  incidents_surfaced: number;
+  incident_actions: Array<{
+    incident_id: string;
+    applied: string;
+    card_id?: string;
+    error?: string;
+  }>;
+};
+
+async function runTriageFeedback(): Promise<TriageResult> {
   const inbox = await listCards({
     boardSlug: 'dev',
     column: 'backlog',
@@ -84,7 +135,7 @@ export async function GET(req: NextRequest) {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY not set' }, { status: 500 });
+      throw new Error('GEMINI_API_KEY not set');
     }
     const ai = new GoogleGenAI({ apiKey });
 
@@ -117,13 +168,13 @@ export async function GET(req: NextRequest) {
       });
   }
 
-  return NextResponse.json({
+  return {
     ok: true,
     triaged: inbox.length,
     actions,
     incidents_surfaced: incidentsSpawned,
     incident_actions: incidentActions,
-  });
+  };
 }
 
 async function processInbox(
