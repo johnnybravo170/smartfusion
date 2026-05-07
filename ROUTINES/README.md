@@ -29,14 +29,16 @@ The repo and the cloud config can drift if step 2 is forgotten — that's the tr
 
 ## Required boilerplate
 
-Every routine prompt opens + closes an `ops.agent_runs` row so it surfaces on the agents dashboard:
+Every routine prompt opens + closes an `ops.agent_runs` row so it surfaces on the agents dashboard. **Use unnumbered headings for these sections** — `Pre-flight` and `Final tool call` — so they never collide with the routine's own step numbering:
 
-- **Step 0** (top of prompt): call `agent_run_start({ slug, trigger })`. Save `run_id`.
-- **Final step**: call `agent_run_finish({ run_id, outcome, summary, items_scanned?, items_acted?, payload? })`.
+- `## Pre-flight — open an agent run` (first content section): call `agent_run_start({ slug, trigger })`. Save `run_id`.
+- `## Final tool call — close the agent run` (last content section, before any `Constraints` block): call `agent_run_finish({ run_id, outcome, summary, items_scanned?, items_acted?, payload? })`.
 
 `outcome` enums: `"success"` | `"skipped"` (ran but had nothing to do) | `"failure"` (crashed).
 
 If `agent_run_start` fails, log it but continue — instrumentation must never gate the actual work.
+
+**Why unnumbered**: a routine that already has its own `Step 0` (e.g. ai-tools-scout's "Read your own report card") will end up with two `Step 0`s if the instrumentation is also numbered. Unnumbered sidesteps the collision.
 
 ## Rules of thumb for picking Routine vs Vercel cron
 

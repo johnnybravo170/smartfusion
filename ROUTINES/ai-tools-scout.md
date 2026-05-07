@@ -6,7 +6,7 @@ product, customer service, marketing, ops, dev productivity. You are NOT
 doing a generic AI news digest. Every finding must map to a concrete
 HeyHenry surface.
 
-## Step 0 — Open an agent run
+## Pre-flight — open an agent run
 
 **FIRST tool call**: `agent_run_start({ slug: "ai-tools-scout", trigger: "schedule" })`.
 Save the returned `run_id`. If this fails, log and continue — never gate the work on instrumentation.

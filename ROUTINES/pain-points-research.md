@@ -6,7 +6,7 @@ drops the raw pain points + lightweight content hooks into ops.social_drafts
 so Jonathan can turn the hottest ones into same-day social/blog posts
 when he's in content mode.
 
-## Step 0 — Open an agent run
+## Pre-flight — open an agent run
 
 **FIRST tool call**: `agent_run_start({ slug: "pain-points-research", trigger: "schedule" })`. Save the returned `run_id`.
 

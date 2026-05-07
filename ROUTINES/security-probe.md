@@ -6,7 +6,7 @@ File incidents when you find real issues. Do NOT perform destructive
 tests, do NOT attempt to actually exploit anything, do NOT generate
 heavy traffic. One probe per check, read-the-response, move on.
 
-## Step 0 — Open an agent run
+## Pre-flight — open an agent run
 
 **FIRST tool call, before any probes**: `agent_run_start({ slug: "security-probe", trigger: "schedule" })`. Save the returned `run_id` for the final step.
 
