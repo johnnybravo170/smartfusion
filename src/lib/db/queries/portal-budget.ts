@@ -18,6 +18,7 @@
  *   as the operator Budget tab to avoid drift between the two surfaces.
  */
 
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import type { createAdminClient } from '@/lib/supabase/admin';
 
 export type PortalBudgetCategory = {
@@ -42,6 +43,16 @@ export type PortalBudgetSummary = {
   draws_paid_cents: number;
   /** Whether any draw has been issued. Drives whether the payments block renders. */
   has_draws: boolean;
+  /**
+   * What the customer is actually on the hook for: project_total_cents
+   * grossed up by the project's management_fee_rate and the customer-
+   * facing tax rate (GST/HST only — PST is operator-internal). Shown in
+   * small print so the customer doesn't get a false sense of cost from
+   * the cost-basis numbers.
+   */
+  customer_contract_total_cents: number;
+  /** Tax label like "GST" or "HST" or "GST + HST" for the contract-total footnote. */
+  tax_label: string;
 };
 
 export async function getPortalBudgetSummary(
@@ -56,6 +67,7 @@ export async function getPortalBudgetSummary(
     { data: costLineData },
     { data: cos },
     drawsResult,
+    { data: project },
   ] = await Promise.all([
     admin
       .from('project_budget_categories')
@@ -88,6 +100,11 @@ export async function getPortalBudgetSummary(
       .eq('doc_type', 'draw')
       .is('deleted_at', null)
       .in('status', ['sent', 'paid']),
+    admin
+      .from('projects')
+      .select('tenant_id, management_fee_rate, customers:customer_id (tax_exempt)')
+      .eq('id', projectId)
+      .maybeSingle(),
   ]);
 
   const sumByCategory = (
@@ -187,13 +204,46 @@ export async function getPortalBudgetSummary(
   }
   const hasDraws = (drawsResult.data ?? []).length > 0;
 
+  // Customer contract total = budget × (1 + mgmt_rate) × (1 + tax_rate).
+  // Cost-basis budget numbers above don't include the management fee or
+  // customer-facing tax — without showing the gross-up, the homeowner
+  // can develop a false sense of how much the job costs them.
+  const projectTotal = projectTotalFromBuckets + coUncategorizedCents;
+  const tenantId = (project?.tenant_id as string | null | undefined) ?? null;
+  const mgmtRate = Number((project?.management_fee_rate as number | null | undefined) ?? 0) || 0;
+  const customerRaw = project?.customers as
+    | { tax_exempt?: boolean | null }
+    | { tax_exempt?: boolean | null }[]
+    | null
+    | undefined;
+  const customer = Array.isArray(customerRaw) ? (customerRaw[0] ?? null) : (customerRaw ?? null);
+  const taxExempt = Boolean(customer?.tax_exempt);
+
+  let taxRate = 0;
+  let taxLabel = '';
+  if (tenantId && !taxExempt) {
+    try {
+      const ctx = await canadianTax.getCustomerFacingContext(tenantId);
+      taxRate = ctx.totalRate;
+      taxLabel = ctx.summaryLabel;
+    } catch (_e) {
+      // Tax lookup failure shouldn't break the portal — fall back to no
+      // gross-up. The customer just sees the cost-basis number.
+    }
+  }
+
+  const beforeTax = Math.round(projectTotal * (1 + mgmtRate));
+  const customerContractTotal = Math.round(beforeTax * (1 + taxRate));
+
   return {
     categories: visibleCategories,
-    project_total_cents: projectTotalFromBuckets + coUncategorizedCents,
+    project_total_cents: projectTotal,
     project_spent_cents: projectSpent,
     draws_invoiced_cents: drawsInvoiced,
     draws_paid_cents: drawsPaid,
     has_draws: hasDraws,
+    customer_contract_total_cents: customerContractTotal,
+    tax_label: taxLabel || 'tax',
   };
 }
 
