@@ -1,3 +1,4 @@
+import { waitUntil } from '@vercel/functions';
 import { type NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, logAuditSuccess } from '@/lib/api-auth';
 import { getSession } from '@/server/ops-services/board';
@@ -9,7 +10,15 @@ import { runDiscussion } from '@/server/ops-services/board-discussion';
  *
  * Failure during run lands as session.status='failed' with error_message
  * populated. The API key is recorded as the actor.
+ *
+ * Fire-and-forget reliability: bare `void runDiscussion(...)` lets Vercel
+ * kill the function as soon as the response is sent. `waitUntil(...)` is
+ * the platform contract that says "keep me alive while this promise is
+ * pending." Combined with maxDuration=800 (Pro tier max), board sessions
+ * up to ~13 minutes wall-clock can complete reliably.
  */
+export const maxDuration = 800;
+
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await authenticateRequest(req, { requiredScope: 'write:board:run' });
   if (!auth.ok) return auth.response;
@@ -26,13 +35,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     );
   }
 
-  // Fire-and-forget. Awaiting would tie up the request for minutes; the
-  // Vercel function timeout would chop it. We `void` the promise on
-  // purpose; failures are persisted to the session row.
-  void runDiscussion(id).catch((err) => {
-    // Already persisted by the engine, but log for Vercel.
-    console.error(`[board.run] ${id} failed:`, err);
-  });
+  // waitUntil keeps the Vercel function alive until runDiscussion settles
+  // (success or failure). Without this, Vercel may kill the function as
+  // soon as the response is sent, leaving the session stuck in 'running'
+  // with no error_message. The .catch is for log surfacing only — the
+  // engine persists failures to the session row itself.
+  waitUntil(
+    runDiscussion(id).catch((err) => {
+      console.error(`[board.run] ${id} failed:`, err);
+    }),
+  );
 
   await logAuditSuccess(
     auth.key.id,

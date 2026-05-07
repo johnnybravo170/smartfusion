@@ -134,6 +134,28 @@ export async function createSession(
   input: CreateSessionInput,
   actor: { admin_user_id?: string | null; key_id?: string | null },
 ): Promise<BoardSession> {
+  // Validate that the panel includes a chair advisor and at least 2
+  // non-chair voices. Doing this server-side is the source of truth —
+  // the UI form may be stale and the MCP path doesn't enforce it.
+  // Catching the bad input here avoids a session that starts running
+  // and dies in the engine's first throw (which Vercel may or may not
+  // get to persist depending on function-kill timing).
+  const advisors = await svc()
+    .schema('ops')
+    .from('advisors')
+    .select('id, role_kind')
+    .in('id', input.advisor_ids);
+  if (advisors.error) throw new Error(`createSession (advisor lookup): ${advisors.error.message}`);
+  const found = (advisors.data ?? []) as Array<{ id: string; role_kind: string }>;
+  const hasChair = found.some((a) => a.role_kind === 'chair');
+  const nonChairCount = found.filter((a) => a.role_kind !== 'chair').length;
+  if (!hasChair) {
+    throw new Error('panel must include the Chair (a chair-role advisor)');
+  }
+  if (nonChairCount < 2) {
+    throw new Error(`panel must include at least 2 non-chair advisors (got ${nonChairCount})`);
+  }
+
   const row = {
     title: input.title,
     topic: input.topic,

@@ -1,5 +1,6 @@
 'use server';
 
+import { waitUntil } from '@vercel/functions';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
@@ -57,9 +58,15 @@ export async function runBoardSessionAction(session_id: string): Promise<ActionR
   if (s.status !== 'pending')
     return { ok: false, error: `session is ${s.status}; must be pending` };
 
-  void runDiscussion(session_id).catch((err) => {
-    console.error(`[board.run] ${session_id} failed:`, err);
-  });
+  // waitUntil keeps Vercel from killing the function after we return.
+  // Without it, runDiscussion gets a few hundred ms before the platform
+  // reaps the process, which is why earlier sessions sometimes died
+  // before persisting any error.
+  waitUntil(
+    runDiscussion(session_id).catch((err) => {
+      console.error(`[board.run] ${session_id} failed:`, err);
+    }),
+  );
   revalidatePath(`/board/sessions/${session_id}`);
   revalidatePath('/board');
   return { ok: true };
