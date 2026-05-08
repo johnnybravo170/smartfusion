@@ -19,6 +19,7 @@
  */
 
 import { revalidatePath } from 'next/cache';
+import { generateAiBootstrap } from '@/lib/ai/schedule-bootstrap';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
 
@@ -49,15 +50,17 @@ const UNMAPPED_TASK_DURATION_DAYS = 3;
 /** Mid-timeline default for unmapped tasks so mapped trades sort first. */
 const UNMAPPED_SEQUENCE_POSITION = 50;
 
+type LaidOutTask = {
+  trade: ResolvedTrade;
+  planned_start_date: string;
+  display_order: number;
+};
+
 /**
- * Lay out a sequenced list of tasks starting from `startDate`. Each task
- * starts where the previous one ended — no gaps, no overlap. Pure date
- * math, extracted so the v1 reschedule logic can reuse it.
+ * Serial layout — each task starts where the previous one ended.
+ * Used as the static fallback when AI bootstrap isn't engaged or fails.
  */
-function layoutTasks(
-  trades: ResolvedTrade[],
-  startDate: Date,
-): Array<{ trade: ResolvedTrade; planned_start_date: string; display_order: number }> {
+function layoutTasksSerial(trades: ResolvedTrade[], startDate: Date): LaidOutTask[] {
   let cursor = 0;
   return trades.map((trade, idx) => {
     const taskDate = new Date(startDate);
@@ -66,6 +69,38 @@ function layoutTasks(
     return {
       trade,
       planned_start_date: taskDate.toISOString().slice(0, 10),
+      display_order: idx,
+    };
+  });
+}
+
+/**
+ * Parallel-aware layout — each task uses the AI-provided offset from
+ * project start, and AI-provided duration overrides the trade default.
+ * Multiple tasks may share an offset (true parallel tracks).
+ */
+function layoutTasksFromOffsets(
+  trades: ResolvedTrade[],
+  startDate: Date,
+  offsetMap: Map<string, { offset: number; duration: number }>,
+): LaidOutTask[] {
+  const enriched = trades.map((trade) => {
+    const ai = trade.budget_category_id ? offsetMap.get(trade.budget_category_id) : undefined;
+    const duration = ai?.duration ?? trade.duration_days;
+    const offset = ai?.offset ?? 0;
+    return { trade: { ...trade, duration_days: duration }, offset };
+  });
+  // Sort by offset; trade's canonical sequence_position breaks ties so
+  // parallel-track rows render in a sensible top-to-bottom order.
+  enriched.sort(
+    (a, b) => a.offset - b.offset || a.trade.sequence_position - b.trade.sequence_position,
+  );
+  return enriched.map(({ trade, offset }, idx) => {
+    const start = new Date(startDate);
+    start.setUTCDate(start.getUTCDate() + offset);
+    return {
+      trade,
+      planned_start_date: start.toISOString().slice(0, 10),
       display_order: idx,
     };
   });
@@ -82,7 +117,7 @@ export async function bootstrapProjectScheduleAction(
   // RLS gates project visibility — a wrong-tenant lookup returns null.
   const { data: project, error: projErr } = await supabase
     .from('projects')
-    .select('id, start_date, portal_slug')
+    .select('id, name, description, start_date, portal_slug')
     .eq('id', projectId)
     .single();
   if (projErr || !project) return { ok: false, error: 'Project not found.' };
@@ -135,7 +170,62 @@ export async function bootstrapProjectScheduleAction(
     (project.start_date as string | null) ?? new Date().toISOString().slice(0, 10);
   const startDate = new Date(`${startDateStr}T00:00:00Z`);
 
-  const laidOut = layoutTasks(trades, startDate);
+  // Hybrid AI bootstrap: when source=budget AND any category didn't map
+  // to a canonical trade, the static sequence_position table puts those
+  // unmapped categories mid-timeline in arbitrary order. Engage AI to do
+  // a smarter ordering with realistic durations and parallel tracks.
+  // Static path stays in charge for fully-mapped budgets and for
+  // template / blank sources.
+  let aiOffsets: Map<string, { offset: number; duration: number }> | null = null;
+  if (source.kind === 'budget' && trades.some((t) => t.trade_template_id === null)) {
+    // Pull estimate_cents + display_order for the AI prompt — gives the
+    // model scope context (a $20k Plumbing line is a bigger task than
+    // a $1k one).
+    const { data: catMeta } = await supabase
+      .from('project_budget_categories')
+      .select('id, estimate_cents, display_order')
+      .eq('project_id', projectId);
+    const metaById = new Map<string, { estimate_cents: number; display_order: number }>();
+    for (const row of catMeta ?? []) {
+      const r = row as Record<string, unknown>;
+      metaById.set(r.id as string, {
+        estimate_cents: (r.estimate_cents as number | null) ?? 0,
+        display_order: (r.display_order as number | null) ?? 0,
+      });
+    }
+    const aiInputCategories = trades
+      .filter((t): t is ResolvedTrade & { budget_category_id: string } =>
+        Boolean(t.budget_category_id),
+      )
+      .map((t) => {
+        const meta = metaById.get(t.budget_category_id);
+        return {
+          id: t.budget_category_id,
+          name: t.name,
+          estimateCents: meta?.estimate_cents ?? 0,
+          displayOrder: meta?.display_order ?? 0,
+          tradeName: t.trade_template_id ? t.name : null,
+        };
+      });
+    const ai = await generateAiBootstrap({
+      projectName: (project.name as string) ?? 'Project',
+      projectDescription: (project.description as string | null) ?? null,
+      categories: aiInputCategories,
+    });
+    if (ai) {
+      aiOffsets = new Map();
+      for (const t of ai) {
+        aiOffsets.set(t.budget_category_id, {
+          offset: t.start_offset_days,
+          duration: t.duration_days,
+        });
+      }
+    }
+  }
+
+  const laidOut = aiOffsets
+    ? layoutTasksFromOffsets(trades, startDate, aiOffsets)
+    : layoutTasksSerial(trades, startDate);
 
   const inserts = laidOut.map(({ trade, planned_start_date, display_order }) => ({
     tenant_id: tenant.id,

@@ -94,6 +94,16 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     fallback_chain: ['anthropic', 'gemini'],
   },
 
+  // One-shot Gantt bootstrap from budget categories. Sonnet because we
+  // want it to think about residential reno sequencing and be willing to
+  // place tasks in parallel (rough-ins, etc.). Gemini fallback so an
+  // Anthropic outage doesn't break "Bootstrap from budget"; static path
+  // fallback in the action covers a total AI failure.
+  schedule_bootstrap: {
+    primary: { provider: 'anthropic' },
+    fallback_chain: ['anthropic', 'gemini'],
+  },
+
   pulse_progress_draft: {
     primary: { provider: 'anthropic' },
     fallback_chain: ['anthropic', 'gemini'],
