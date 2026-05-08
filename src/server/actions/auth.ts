@@ -16,6 +16,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { newTenantMemberDefaults } from '@/lib/auth/helpers';
 import { updateReferralOnSignup } from '@/lib/db/queries/referrals';
+import { sendWelcomeEmail } from '@/lib/email/welcome';
 import { generateReferralCode } from '@/lib/referral/code-generator';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -77,6 +78,7 @@ export async function signupAction(input: {
   }
 
   const userId = created.user.id;
+  let createdTenantId: string | null = null;
 
   // 2 + 3. Create tenant + tenant_member. Roll back the auth user on failure.
   const { referralCode } = input;
@@ -100,6 +102,7 @@ export async function signupAction(input: {
     if (tenantErr || !tenant) {
       throw new Error(tenantErr?.message ?? 'Could not create tenant.');
     }
+    createdTenantId = tenant.id;
 
     const { error: memberErr } = await admin.from('tenant_members').insert({
       tenant_id: tenant.id,
@@ -169,6 +172,14 @@ export async function signupAction(input: {
   const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
   if (signInErr) {
     return { error: `Account created but sign-in failed: ${signInErr.message}` };
+  }
+
+  // 5. Welcome email signed by Jonathan — fills the silence after signup.
+  // Idempotent on tenants.welcome_email_sent_at; non-fatal on send failure.
+  if (createdTenantId) {
+    await sendWelcomeEmail(createdTenantId).catch((err) => {
+      console.warn('Welcome email send failed:', err);
+    });
   }
 
   // If the customer arrived from a paid-plan CTA on the marketing site,
