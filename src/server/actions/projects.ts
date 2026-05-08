@@ -177,6 +177,28 @@ export async function renameProjectAction(input: {
   return { ok: true, id: input.id };
 }
 
+/**
+ * Patch just the start_date — used by the Schedule tab editor (which
+ * anchors the Gantt timeline to this date) and by Henry's update_project
+ * tool. `null` clears the value. Single-field action so neither caller
+ * has to reconstruct the full project record.
+ */
+export async function updateProjectStartDateAction(input: {
+  id: string;
+  start_date: string | null;
+}): Promise<ProjectActionResult> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('projects')
+    .update({ start_date: input.start_date, updated_at: new Date().toISOString() })
+    .eq('id', input.id)
+    .is('deleted_at', null);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath('/projects');
+  revalidatePath(`/projects/${input.id}`);
+  return { ok: true, id: input.id };
+}
+
 export async function updateProjectManagementFeeAction(input: {
   id: string;
   rate: number;

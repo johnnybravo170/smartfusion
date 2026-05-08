@@ -9,6 +9,7 @@
  * creation land in v1 (kanban 6f110321).
  */
 
+import { ProjectStartDateEditor } from '@/components/features/projects/project-start-date-editor';
 import { ScheduleBootstrapPanel } from '@/components/features/projects/schedule-bootstrap-panel';
 import { ScheduleInteractive } from '@/components/features/projects/schedule-interactive';
 import { getCurrentTenant } from '@/lib/auth/helpers';
@@ -49,14 +50,19 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
     // Pending customer-notify state for the Undo affordance. Only the
     // scheduled_at matters when sent_at and cancelled_at are both null
     // — any other combination = no Undo available.
+    // Project metadata — start_date for the editor + timeline anchor;
+    // schedule_notify_* for the Undo affordance.
     supabase
       .from('projects')
-      .select('schedule_notify_scheduled_at, schedule_notify_sent_at, schedule_notify_cancelled_at')
+      .select(
+        'start_date, schedule_notify_scheduled_at, schedule_notify_sent_at, schedule_notify_cancelled_at',
+      )
       .eq('id', projectId)
       .maybeSingle(),
   ]);
 
   const pn = projectMeta as Record<string, unknown> | null;
+  const startDate = (pn?.start_date as string | null) ?? null;
   const pendingNotifyAt =
     pn &&
     pn.schedule_notify_scheduled_at &&
@@ -102,16 +108,24 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
   });
 
   if (tasks.length === 0) {
-    return <ScheduleBootstrapPanel projectId={projectId} templates={templates} />;
+    return (
+      <div className="space-y-3">
+        <ProjectStartDateEditor projectId={projectId} startDate={startDate} />
+        <ScheduleBootstrapPanel projectId={projectId} templates={templates} />
+      </div>
+    );
   }
 
   return (
-    <ScheduleInteractive
-      projectId={projectId}
-      tasks={tasks}
-      phases={phases}
-      tradeTypicalPhase={Object.fromEntries(tradeTypicalPhaseById)}
-      pendingNotifyAt={pendingNotifyAt}
-    />
+    <div className="space-y-3">
+      <ProjectStartDateEditor projectId={projectId} startDate={startDate} />
+      <ScheduleInteractive
+        projectId={projectId}
+        tasks={tasks}
+        phases={phases}
+        tradeTypicalPhase={Object.fromEntries(tradeTypicalPhaseById)}
+        pendingNotifyAt={pendingNotifyAt}
+      />
+    </div>
   );
 }

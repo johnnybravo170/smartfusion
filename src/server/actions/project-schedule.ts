@@ -372,6 +372,54 @@ async function maybeScheduleScheduleNotify(
 }
 
 /**
+ * Window during which a fresh date/duration edit is treated as part of
+ * the same "schedule edit session" — only one breadcrumb row written
+ * per window per project, no matter how many bars the operator drags.
+ */
+const BREADCRUMB_DEDUP_MINUTES = 5;
+
+/**
+ * Append a single "Schedule updated" row to project_portal_updates so
+ * the customer's portal Updates feed has a record of when the schedule
+ * shifted. Independent of the SMS/email notify toggle — the feed entry
+ * always lands so the customer can scroll back later. Debounced via
+ * the same in-app dedup window so a flurry of drags doesn't spam the
+ * feed with N identical rows.
+ *
+ * Uses type='system' (the catch-all) since project_portal_updates.type
+ * is constrained to progress/photo/milestone/message/system.
+ */
+async function maybeAppendScheduleBreadcrumb(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  projectId: string,
+  taskClientVisible: boolean,
+): Promise<void> {
+  if (!taskClientVisible) return;
+
+  const cutoff = new Date(Date.now() - BREADCRUMB_DEDUP_MINUTES * 60_000).toISOString();
+  const { data: recent } = await supabase
+    .from('project_portal_updates')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('type', 'system')
+    .ilike('title', 'Schedule updated%')
+    .gte('created_at', cutoff)
+    .limit(1)
+    .maybeSingle();
+  if (recent) return;
+
+  await supabase.from('project_portal_updates').insert({
+    project_id: projectId,
+    tenant_id: tenantId,
+    type: 'system',
+    title: 'Schedule updated',
+    body: 'Your contractor refined the schedule. Check the Schedule tab for the latest dates.',
+    is_visible: true,
+  });
+}
+
+/**
  * Update a single task. RLS gates the row to the operator's tenant; a
  * wrong-tenant taskId silently no-ops (data null, no error). Caller
  * builds the patch object — only fields present are written.
@@ -410,6 +458,9 @@ export async function updateScheduleTaskAction(
   // confidence, and notes don't fire a customer ping.
   if (patch.planned_start_date !== undefined || patch.planned_duration_days !== undefined) {
     await maybeScheduleScheduleNotify(supabase, tenant.id, projectId, taskClientVisible);
+    // Also drop a breadcrumb in the customer's Updates feed so the
+    // history is visible even when the SMS/email notify toggle is off.
+    await maybeAppendScheduleBreadcrumb(supabase, tenant.id, projectId, taskClientVisible);
   }
 
   revalidatePath(`/projects/${projectId}`);

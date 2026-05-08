@@ -171,6 +171,90 @@ export const projectTools: AiTool[] = [
   },
   {
     definition: {
+      name: 'update_project',
+      description:
+        'Patch fields on an existing project. Useful when the operator says things like "the Glenwood project is starting March 4" or "push the kitchen reno end date back two weeks" — you\'d update start_date / target_end_date here. Only fields you supply are written; omitted fields stay as-is. Lifecycle stage transitions go through transition_project_stage instead.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Project UUID' },
+          name: { type: 'string', description: 'New name' },
+          description: { type: 'string', description: 'New description' },
+          start_date: {
+            type: 'string',
+            description:
+              'New start date (YYYY-MM-DD). Anchors the Gantt timeline. Use empty string to clear.',
+          },
+          target_end_date: {
+            type: 'string',
+            description: 'New target end date (YYYY-MM-DD). Use empty string to clear.',
+          },
+        },
+        required: ['id'],
+      },
+    },
+    handler: async (input) => {
+      try {
+        const id = input.id as string;
+        const startDateRaw = input.start_date as string | undefined;
+        const endDateRaw = input.target_end_date as string | undefined;
+        const name = input.name as string | undefined;
+        const description = input.description as string | undefined;
+
+        // start_date is the most common single-field update (anchoring
+        // the Gantt). Use the dedicated action for it; everything else
+        // requires the full-record updateProjectAction so we fetch +
+        // merge.
+        let didSomething = false;
+        const messages: string[] = [];
+
+        if (startDateRaw !== undefined) {
+          const { updateProjectStartDateAction } = await import('@/server/actions/projects');
+          const res = await updateProjectStartDateAction({
+            id,
+            start_date: startDateRaw === '' ? null : startDateRaw,
+          });
+          if (!res.ok) return `Failed to update start_date: ${res.error}`;
+          didSomething = true;
+          messages.push(
+            startDateRaw === '' ? 'Start date cleared.' : `Start date set to ${startDateRaw}.`,
+          );
+        }
+
+        if (name !== undefined || description !== undefined || endDateRaw !== undefined) {
+          const project = await getProject(id);
+          if (!project) return 'Project not found.';
+          const { updateProjectAction } = await import('@/server/actions/projects');
+          const res = await updateProjectAction({
+            id,
+            customer_id: project.customer?.id ?? '',
+            name: name ?? project.name,
+            description: description ?? project.description ?? '',
+            start_date: project.start_date ?? '',
+            target_end_date:
+              endDateRaw !== undefined ? endDateRaw : (project.target_end_date ?? ''),
+            management_fee_rate: project.management_fee_rate,
+          });
+          if (!res.ok) return `Failed to update project: ${res.error}`;
+          didSomething = true;
+          if (name !== undefined) messages.push(`Renamed to "${name}".`);
+          if (description !== undefined) messages.push('Description updated.');
+          if (endDateRaw !== undefined) {
+            messages.push(
+              endDateRaw === '' ? 'Target end date cleared.' : `Target end set to ${endDateRaw}.`,
+            );
+          }
+        }
+
+        if (!didSomething) return 'Nothing to update — supply at least one field.';
+        return messages.join(' ');
+      } catch (e) {
+        return `Failed to update project: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
+  {
+    definition: {
       name: 'transition_project_stage',
       description:
         'Move a project to a new lifecycle stage. Common transitions: planning → awaiting_approval (happens via send_estimate) → active → complete.',
