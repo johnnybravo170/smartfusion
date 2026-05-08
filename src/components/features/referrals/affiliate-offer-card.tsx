@@ -31,12 +31,12 @@ export function AffiliateOfferCard({ tier }: { tier: AffiliateTier }) {
         <div>
           <CardTitle className="text-lg">Earn $300 for every contractor you refer</CardTitle>
           <CardDescription>
-            Refer a contractor who becomes a paying customer and earn $300, paid after their first
-            30 days.
+            Refer a contractor who becomes a paying customer and earn $300 once they&apos;ve been
+            active for 90 days.
           </CardDescription>
         </div>
       </CardHeader>
-      <CardContent className="text-sm text-muted-foreground">
+      <CardContent className="space-y-3 text-sm text-muted-foreground">
         <ul className="space-y-1.5">
           <li className="flex items-start gap-2">
             <span className="mt-0.5 text-emerald-700">&#10003;</span>
@@ -44,13 +44,18 @@ export function AffiliateOfferCard({ tier }: { tier: AffiliateTier }) {
           </li>
           <li className="flex items-start gap-2">
             <span className="mt-0.5 text-emerald-700">&#10003;</span>
-            <span>Paid out 30 days after the customer&apos;s first paid month.</span>
+            <span>Paid out once the referred business has been paid and current for 90 days.</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="mt-0.5 text-emerald-700">&#10003;</span>
             <span>No cap. Refer as many contractors as you like.</span>
           </li>
         </ul>
+        <p className="text-xs leading-relaxed">
+          Fine print: the referred business must be operationally distinct from yours (different
+          owner, address, and payment method). Refunds or chargebacks within the 90-day window claw
+          back the bounty.
+        </p>
       </CardContent>
     </Card>
   );
