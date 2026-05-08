@@ -37,6 +37,7 @@ function SignupForm() {
   const referralCode = params.get('ref') ?? undefined;
   const planParam = params.get('plan');
   const billingParam = params.get('billing');
+  const promoParam = params.get('promo')?.trim() || undefined;
   const selectedPlan = isPlan(planParam) ? planParam : null;
   const selectedBilling = isBillingCycle(billingParam) ? billingParam : null;
 
@@ -64,6 +65,7 @@ function SignupForm() {
         referralCode,
         plan: selectedPlan ?? undefined,
         billing: selectedBilling ?? undefined,
+        promo: promoParam,
       });
       if (result && 'error' in result) {
         setError(result.error);
