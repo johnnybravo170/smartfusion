@@ -514,3 +514,26 @@ Files that follow this pattern:
 The tenant tax rate comes from `canadianTax.getCustomerFacingContext(tenantId).totalRate`. Server pages that render either form must fetch and pass it as a prop; today that's the dashboard layout (`src/app/(dashboard)/layout.tsx` → `Header → QuickLogExpenseButton`) and the worker expense page (`src/app/(worker)/w/expenses/new/page.tsx`).
 
 When you add another expense-creation surface, fetch the tax rate server-side, reuse the chip + helper, and gate visibility on the same two conditions (cost-plus project OR overhead, AND `tenantTaxRate > 0`).
+
+---
+
+## 23. Dates: always render in the tenant's timezone
+
+The runtime tz on Vercel is UTC. Bare `Date.toLocaleDateString(...)` / `toLocaleTimeString(...)` / `new Intl.DateTimeFormat(...)` without an explicit `timeZone:` formats in UTC, which silently shifts dates for any user not in UTC — typically late-evening Pacific users see tomorrow's date on yesterday's job.
+
+Every Date display has to honor the contractor's tenant tz. Three primitives:
+
+- **`formatDate(iso, { timezone })`** — from `src/lib/date/format.ts`. The canonical helper. Use it in any non-AI server code where you have an ISO string + a tenant tz on hand.
+- **`useTenantTimezone()`** — from `src/lib/auth/tenant-context.tsx`. Client-side hook that reads from the `TenantProvider` wrapper in the dashboard, worker, and public-portal layouts.
+- **`new Intl.DateTimeFormat('en-CA', { timeZone, ... }).format(d)`** — for one-off formats (different style options than the helpers offer). Always pass `timeZone:`.
+
+Lint guardrail at `tests/unit/timezone-no-bare-tolocale.test.ts` blocks bare `toLocaleDateString` / `toLocaleTimeString` / `new Intl.DateTimeFormat(...)` calls in CI. The file's allowlist documents the deliberate runtime-tz round-trip exceptions (calendar grids that pair `parseIso` with bare formatting symmetrically — Date constructed *and* formatted in the same tz, used as opaque date keys).
+
+Adjacent gotchas the lint rule does **not** catch:
+
+- **`Date.prototype.toLocaleString(...)`** on a Date — the rule only catches `Date|Time` variants because numeric `.toLocaleString()` is heavy. Don't call `Date.toLocaleString` without `timeZone:`.
+- **`Date.getHours()` / `getDate()` / `getDay()` / `getMonth()` / `getFullYear()`** — all return runtime-tz values. Code that buckets a Date into morning/afternoon/evening, or computes "today's day of week", must extract the field via `Intl.DateTimeFormat` with a tenant tz.
+
+For AI tool handlers, the `setToolTimezone(tenant.timezone)` hook in `src/app/api/henry/tool/route.ts` already fans out to dashboard, invoice, and the shared `lib/ai/format.ts` formatters. New AI tool formatters that go through `setToolTimezone` are tz-correct by default.
+
+For Home Records, the snapshot freezes `timezone` at generation time (`HomeRecordSnapshotV1.timezone`). The PDF / ZIP / public web view all prefer the snapshot's frozen tz — the document is a permanent artifact, so dates render in the tz the work was actually done in even if the contractor relocates the business later.
