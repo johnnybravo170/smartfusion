@@ -44,12 +44,6 @@ const ALLOWED_FILES = new Set<string>([
   // explicitly — already correct usage.
   'src/app/(admin)/admin/ar/sequences/[id]/page.tsx',
 
-  // Home Record PDF + ZIP generators. The frozen snapshot doesn't carry tz;
-  // these helpers run server-side and would need tz threaded through every
-  // formatDate call. Larger refactor — tracked as follow-up.
-  'src/lib/pdf/home-record-pdf.ts',
-  'src/lib/zip/home-record-zip.ts',
-
   // Social-post API route — single use, low-impact (weekday label for AI
   // post generation). Tracked as follow-up.
   'src/app/api/social-post/route.ts',
