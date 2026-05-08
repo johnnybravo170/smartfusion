@@ -10,6 +10,7 @@ import { Eye, EyeOff, FileText, Loader2, Trash2 } from 'lucide-react';
 import { useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { ProjectDocumentWithUrl } from '@/lib/db/queries/project-documents';
 import { cn } from '@/lib/utils';
 import {
@@ -82,6 +83,7 @@ export function DocumentList({
 }
 
 function DocumentRow({ doc, projectId }: { doc: ProjectDocumentWithUrl; projectId: string }) {
+  const tz = useTenantTimezone();
   const [pending, startTransition] = useTransition();
 
   function onToggleVisibility() {
@@ -121,13 +123,17 @@ function DocumentRow({ doc, projectId }: { doc: ProjectDocumentWithUrl; projectI
           {humanBytes(doc.bytes) ? <span>{humanBytes(doc.bytes)}</span> : null}
           <span>
             Added{' '}
-            {new Date(doc.created_at).toLocaleDateString('en-CA', {
+            {new Intl.DateTimeFormat('en-CA', {
+              timeZone: tz,
               month: 'short',
               day: 'numeric',
-            })}
+            }).format(new Date(doc.created_at))}
           </span>
           {doc.expires_at ? (
-            <span>Expires {new Date(doc.expires_at).toLocaleDateString('en-CA')}</span>
+            <span>
+              Expires{' '}
+              {new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(doc.expires_at))}
+            </span>
           ) : null}
           {!doc.client_visible ? <span className="font-medium">Hidden from homeowner</span> : null}
         </div>

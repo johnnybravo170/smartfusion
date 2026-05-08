@@ -4,11 +4,13 @@ import type { TenantDetailData } from '@/lib/db/queries/admin';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-CA', {
+  // Platform-admin surface — staff in Vancouver. No per-tenant tz applies.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Vancouver',
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  });
+  }).format(new Date(iso));
 }
 
 function formatRelative(iso: string): string {

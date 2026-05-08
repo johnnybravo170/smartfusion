@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { assignWorkerAction, removeAssignmentAction } from '@/server/actions/project-assignments';
 
 export type CrewWorker = {
@@ -47,6 +48,7 @@ type Props = {
 };
 
 export function CrewTab({ projectId, workers, assignments }: Props) {
+  const tz = useTenantTimezone();
   const [pending, startTransition] = useTransition();
   const [workerId, setWorkerId] = useState<string>(workers[0]?.profile_id ?? '');
   const [payRate, setPayRate] = useState<string>('');
@@ -172,6 +174,7 @@ export function CrewTab({ projectId, workers, assignments }: Props) {
           onRemove={handleRemove}
           showDate={false}
           emptyLabel="No ongoing assignments."
+          tz={tz}
         />
       </section>
 
@@ -183,6 +186,7 @@ export function CrewTab({ projectId, workers, assignments }: Props) {
           onRemove={handleRemove}
           showDate={true}
           emptyLabel="No scheduled days."
+          tz={tz}
         />
       </section>
     </div>
@@ -195,12 +199,14 @@ function AssignmentTable({
   onRemove,
   showDate,
   emptyLabel,
+  tz,
 }: {
   assignments: CrewAssignment[];
   workerById: Map<string, CrewWorker>;
   onRemove: (id: string) => void;
   showDate: boolean;
   emptyLabel: string;
+  tz: string;
 }) {
   if (assignments.length === 0) {
     return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
@@ -233,11 +239,12 @@ function AssignmentTable({
               {showDate ? (
                 <TableCell className="text-sm">
                   {a.scheduled_date
-                    ? new Date(`${a.scheduled_date}T00:00`).toLocaleDateString('en-CA', {
+                    ? new Intl.DateTimeFormat('en-CA', {
+                        timeZone: tz,
                         weekday: 'short',
                         month: 'short',
                         day: 'numeric',
-                      })
+                      }).format(new Date(`${a.scheduled_date}T00:00`))
                     : '—'}
                 </TableCell>
               ) : null}

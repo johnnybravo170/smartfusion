@@ -30,7 +30,13 @@ function humanBytes(n: number | null): string {
   return `${(n / k / k).toFixed(1)} MB`;
 }
 
-export function PortalDocuments({ documents }: { documents: PortalDocument[] }) {
+export function PortalDocuments({
+  documents,
+  timezone,
+}: {
+  documents: PortalDocument[];
+  timezone: string;
+}) {
   if (documents.length === 0) return null;
 
   const buckets = new Map<DocumentType, PortalDocument[]>();
@@ -78,7 +84,12 @@ export function PortalDocuments({ documents }: { documents: PortalDocument[] }) 
                     <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                       {humanBytes(d.bytes) ? <span>{humanBytes(d.bytes)}</span> : null}
                       {d.expires_at ? (
-                        <span>Expires {new Date(d.expires_at).toLocaleDateString('en-CA')}</span>
+                        <span>
+                          Expires{' '}
+                          {new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(
+                            new Date(d.expires_at),
+                          )}
+                        </span>
                       ) : null}
                     </div>
                   </div>

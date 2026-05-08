@@ -11,6 +11,7 @@
 
 import { DecisionPanel, type PortalDecision } from '@/components/features/portal/decision-panel';
 import { PublicViewLogger } from '@/components/features/public/public-view-logger';
+import { formatDate } from '@/lib/date/format';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const metadata = {
@@ -27,7 +28,7 @@ export default async function DecidePage({ params }: { params: Promise<{ code: s
       `id, approval_code, label, description, due_date, status, photo_refs, options, decided_value,
        decided_by_customer, decided_at,
        projects:project_id (name, customers:customer_id (name)),
-       tenants:tenant_id (name)`,
+       tenants:tenant_id (name, timezone)`,
     )
     .eq('approval_code', code)
     .single();
@@ -46,6 +47,7 @@ export default async function DecidePage({ params }: { params: Promise<{ code: s
   const tenant = d.tenants as Record<string, unknown> | null;
   const customer = project?.customers as Record<string, unknown> | null;
   const businessName = (tenant?.name as string) ?? 'Your Contractor';
+  const tenantTz = (tenant?.timezone as string | null) ?? undefined;
   const projectName = (project?.name as string) ?? 'Project';
   const customerName = (customer?.name as string) ?? '';
   const status = d.status as string;
@@ -62,12 +64,7 @@ export default async function DecidePage({ params }: { params: Promise<{ code: s
         </h1>
         <p className="mt-2 text-muted-foreground">
           {who} {value} this on{' '}
-          {new Date(d.decided_at as string).toLocaleDateString('en-CA', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-          })}
-          .
+          {formatDate(d.decided_at as string, { timezone: tenantTz, style: 'long' })}.
         </p>
       </div>
     );

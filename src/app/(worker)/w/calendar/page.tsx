@@ -20,14 +20,14 @@ function parseMonthParam(raw: string | undefined): { year: number; month: number
   return { year: now.getFullYear(), month: now.getMonth() };
 }
 
-function toISO(d: Date): string {
-  return d.toLocaleDateString('en-CA');
+function toISO(d: Date, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
 }
 
-function monthRange(year: number, month: number): { start: string; end: string } {
+function monthRange(year: number, month: number, tz: string): { start: string; end: string } {
   const start = new Date(year, month, 1);
   const end = new Date(year, month + 1, 0);
-  return { start: toISO(start), end: toISO(end) };
+  return { start: toISO(start, tz), end: toISO(end, tz) };
 }
 
 export default async function WorkerCalendarPage({
@@ -39,8 +39,9 @@ export default async function WorkerCalendarPage({
   const { tenant } = await requireWorker();
   const profile = await getOrCreateWorkerProfile(tenant.id, tenant.member.id);
 
+  const tz = tenant.timezone;
   const { year, month } = parseMonthParam(sp.month);
-  const { start, end } = monthRange(year, month);
+  const { start, end } = monthRange(year, month, tz);
   const selectedDate = sp.date ?? '';
 
   const admin = createAdminClient();
@@ -101,15 +102,19 @@ export default async function WorkerCalendarPage({
   const cells: Array<{ iso: string | null; day: number | null }> = [];
   for (let i = 0; i < leading; i++) cells.push({ iso: null, day: null });
   for (let d = 1; d <= daysInMonth; d++) {
-    const iso = toISO(new Date(year, month, d));
+    const iso = toISO(new Date(year, month, d), tz);
     cells.push({ iso, day: d });
   }
   while (cells.length % 7 !== 0) cells.push({ iso: null, day: null });
 
-  const today = toISO(new Date());
+  const today = toISO(new Date(), tz);
   const prevMonth = new Date(year, month - 1, 1);
   const nextMonth = new Date(year, month + 1, 1);
-  const monthLabel = first.toLocaleDateString('en-CA', { month: 'long', year: 'numeric' });
+  const monthLabel = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    month: 'long',
+    year: 'numeric',
+  }).format(first);
 
   const selScheduled = selectedDate ? (scheduledByDate.get(selectedDate) ?? []) : [];
   const selTime = selectedDate ? (timeByDate.get(selectedDate) ?? []) : [];
@@ -212,11 +217,12 @@ export default async function WorkerCalendarPage({
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              {new Date(`${selectedDate}T00:00`).toLocaleDateString('en-CA', {
+              {new Intl.DateTimeFormat('en-CA', {
+                timeZone: tz,
                 weekday: 'long',
                 month: 'long',
                 day: 'numeric',
-              })}
+              }).format(new Date(`${selectedDate}T00:00`))}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">

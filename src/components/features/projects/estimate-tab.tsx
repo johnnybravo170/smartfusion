@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Fragment, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-orders';
 import type { CostLineRow } from '@/lib/db/queries/cost-lines';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
@@ -73,6 +74,7 @@ export function EstimateTab({
     cost_impact_cents: number;
   }[];
 }) {
+  const tz = useTenantTimezone();
   const [manualDialog, setManualDialog] = useState<{
     open: boolean;
     mode: 'approve' | 'decline';
@@ -209,17 +211,19 @@ export function EstimateTab({
             <span className="text-xs text-muted-foreground">
               Sent{' '}
               {approval.sent_at
-                ? new Date(approval.sent_at).toLocaleDateString('en-CA', {
+                ? new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
                     month: 'short',
                     day: 'numeric',
-                  })
+                  }).format(new Date(approval.sent_at))
                 : ''}{' '}
               · {approval.view_count} view{approval.view_count === 1 ? '' : 's'}
               {approval.last_viewed_at
-                ? ` · last ${new Date(approval.last_viewed_at).toLocaleDateString('en-CA', {
+                ? ` · last ${new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
                     month: 'short',
                     day: 'numeric',
-                  })}`
+                  }).format(new Date(approval.last_viewed_at))}`
                 : ' · not opened yet'}
             </span>
           ) : null}
@@ -227,10 +231,11 @@ export function EstimateTab({
             <span className="text-xs text-muted-foreground">
               by {approval.approved_by_name}
               {approval.approved_at
-                ? ` on ${new Date(approval.approved_at).toLocaleDateString('en-CA', {
+                ? ` on ${new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
                     month: 'short',
                     day: 'numeric',
-                  })}`
+                  }).format(new Date(approval.approved_at))}`
                 : ''}
             </span>
           ) : null}
@@ -405,10 +410,11 @@ export function EstimateTab({
                   {c.title}
                 </Link>
                 <span className="shrink-0 text-xs text-muted-foreground">
-                  {new Date(c.applied_at).toLocaleDateString('en-CA', {
+                  {new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
                     month: 'short',
                     day: 'numeric',
-                  })}
+                  }).format(new Date(c.applied_at))}
                 </span>
                 <span
                   className={`shrink-0 text-sm font-medium tabular-nums ${c.cost_impact_cents < 0 ? 'text-emerald-700' : ''}`}

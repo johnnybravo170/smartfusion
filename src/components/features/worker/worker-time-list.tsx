@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { WorkerTimeEntry } from '@/lib/db/queries/worker-time';
 import { deleteWorkerTimeAction } from '@/server/actions/worker-time';
 
@@ -23,25 +24,31 @@ function weekStart(iso: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function formatWeek(iso: string): string {
+function formatWeek(iso: string, tz: string): string {
   const start = new Date(`${iso}T00:00`);
   const end = new Date(start);
   end.setDate(end.getDate() + 6);
   const sameMonth = start.getMonth() === end.getMonth();
-  const s = start.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
-  const e = end.toLocaleDateString('en-CA', {
+  const s = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    month: 'short',
+    day: 'numeric',
+  }).format(start);
+  const e = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
     month: sameMonth ? undefined : 'short',
     day: 'numeric',
-  });
+  }).format(end);
   return `${s} – ${e}`;
 }
 
-function formatDay(iso: string): string {
-  return new Date(`${iso}T00:00`).toLocaleDateString('en-CA', {
+function formatDay(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
     weekday: 'short',
     month: 'short',
     day: 'numeric',
-  });
+  }).format(new Date(`${iso}T00:00`));
 }
 
 function isWithinGrace(createdAt: string): boolean {
@@ -49,6 +56,7 @@ function isWithinGrace(createdAt: string): boolean {
 }
 
 export function WorkerTimeList({ entries, canEditOld }: Props) {
+  const tz = useTenantTimezone();
   const [pending, startTransition] = useTransition();
 
   if (entries.length === 0) {
@@ -99,7 +107,7 @@ export function WorkerTimeList({ entries, canEditOld }: Props) {
         return (
           <section key={weekKey} className="space-y-2">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">{formatWeek(weekKey)}</h2>
+              <h2 className="text-sm font-semibold">{formatWeek(weekKey, tz)}</h2>
               <span className="text-xs text-muted-foreground">{weekTotal.toFixed(2)}h</span>
             </div>
             <div className="space-y-3">
@@ -108,7 +116,7 @@ export function WorkerTimeList({ entries, canEditOld }: Props) {
                 return (
                   <div key={dayKey} className="rounded-lg border">
                     <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-2">
-                      <span className="text-sm font-medium">{formatDay(dayKey)}</span>
+                      <span className="text-sm font-medium">{formatDay(dayKey, tz)}</span>
                       <span className="text-xs font-medium text-muted-foreground">
                         {dayTotal.toFixed(2)}h
                       </span>

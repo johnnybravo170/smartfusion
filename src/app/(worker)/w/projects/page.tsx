@@ -39,11 +39,12 @@ export default async function WorkerProjectsPage() {
                   {p.next_scheduled_date ? (
                     <p className="text-xs text-muted-foreground">
                       Next day:{' '}
-                      {new Date(`${p.next_scheduled_date}T00:00`).toLocaleDateString('en-CA', {
+                      {new Intl.DateTimeFormat('en-CA', {
+                        timeZone: tenant.timezone,
                         weekday: 'short',
                         month: 'short',
                         day: 'numeric',
-                      })}
+                      }).format(new Date(`${p.next_scheduled_date}T00:00`))}
                     </p>
                   ) : null}
                 </CardContent>

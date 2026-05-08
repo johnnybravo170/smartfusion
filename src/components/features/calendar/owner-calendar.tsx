@@ -33,6 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type {
   CalendarAssignment,
   CalendarProject,
@@ -86,8 +87,13 @@ function projectColor(projectId: string): string {
   return PROJECT_COLORS[Math.abs(hash) % PROJECT_COLORS.length];
 }
 
-function isoDate(d: Date): string {
-  return d.toLocaleDateString('en-CA');
+function isoDate(d: Date, tz?: string): string {
+  // For parseIso-derived dates (constructed via new Date(y,m-1,d) in runtime
+  // tz) we want the runtime-tz round-trip; for "now" Date instances, we want
+  // the tenant's local date. Passing `tz` triggers the tenant-aware path.
+  return tz
+    ? new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d)
+    : new Intl.DateTimeFormat('en-CA').format(d);
 }
 
 function parseIso(s: string): Date {
@@ -100,8 +106,8 @@ function isWeekend(iso: string): boolean {
   return day === 0 || day === 6;
 }
 
-function isToday(iso: string): boolean {
-  return iso === isoDate(new Date());
+function isToday(iso: string, tz: string): boolean {
+  return iso === isoDate(new Date(), tz);
 }
 
 type DialogState =
@@ -129,6 +135,7 @@ export function OwnerCalendar({
   unavailability: CalendarUnavailability[];
   timeSummaryByKey?: Record<string, CalendarTimeSummary>;
 }) {
+  const tz = useTenantTimezone();
   const router = useRouter();
   const sp = useSearchParams();
   const [skipWeekends, setSkipWeekends] = useState(true);
@@ -354,6 +361,7 @@ export function OwnerCalendar({
             onOpenAssign={(date) => openAssign(date, date, null)}
             onSelectChip={(a) => setActiveChip(a.id)}
             activeChipId={activeChip}
+            tz={tz}
           />
         ) : (
           <TwoWeekGrid
@@ -368,6 +376,7 @@ export function OwnerCalendar({
             onExtend={handleExtend}
             onSelectChip={(a) => setActiveChip(a.id)}
             activeChipId={activeChip}
+            tz={tz}
           />
         )}
       </div>
@@ -384,6 +393,7 @@ export function OwnerCalendar({
           workerById={workerById}
           onOpenAssign={(date) => openAssign(date, date, null)}
           onRemove={handleRemove}
+          tz={tz}
         />
       </div>
 
@@ -458,6 +468,7 @@ function MonthGrid({
   onOpenAssign,
   onSelectChip,
   activeChipId,
+  tz,
 }: {
   windowStart: string;
   windowEnd: string;
@@ -468,6 +479,7 @@ function MonthGrid({
   onOpenAssign: (date: string) => void;
   onSelectChip: (assignment: CalendarAssignment) => void;
   activeChipId: string | null;
+  tz: string;
 }) {
   const days: string[] = [];
   const start = parseIso(windowStart);
@@ -505,7 +517,7 @@ function MonthGrid({
               <div
                 className={cn(
                   'mb-1 flex h-6 w-6 items-center justify-center rounded text-xs font-medium',
-                  isToday(iso) && 'bg-primary text-primary-foreground',
+                  isToday(iso, tz) && 'bg-primary text-primary-foreground',
                   !inMonth && 'text-muted-foreground/60',
                 )}
               >
@@ -651,6 +663,7 @@ function TwoWeekGrid({
   onExtend,
   onSelectChip,
   activeChipId,
+  tz,
 }: {
   windowStart: string;
   byDate: Map<string, CalendarAssignment[]>;
@@ -666,6 +679,7 @@ function TwoWeekGrid({
   }) => void;
   onSelectChip: (assignment: CalendarAssignment) => void;
   activeChipId: string | null;
+  tz: string;
 }) {
   const days: string[] = [];
   const start = parseIso(windowStart);
@@ -726,7 +740,7 @@ function TwoWeekGrid({
   // biome-ignore lint/correctness/useExhaustiveDependencies: only re-run when the visible window shifts
   useEffect(() => {
     if (!scrollerRef.current) return;
-    const todayIdx = days.findIndex(isToday);
+    const todayIdx = days.findIndex((iso) => isToday(iso, tz));
     if (todayIdx < 0) return;
     const cellWidth = scrollerRef.current.scrollWidth / (days.length + 200 / 70);
     scrollerRef.current.scrollLeft = Math.max(0, cellWidth * todayIdx - cellWidth * 2);
@@ -751,7 +765,7 @@ function TwoWeekGrid({
                 className={cn(
                   'border-r px-1 py-2 text-center text-xs font-medium last:border-r-0',
                   isWeekend(iso) ? 'bg-muted/30 text-muted-foreground' : '',
-                  isToday(iso) && 'bg-primary/10 text-primary',
+                  isToday(iso, tz) && 'bg-primary/10 text-primary',
                 )}
               >
                 <div>{DAY_NAMES[d.getDay()]}</div>
@@ -820,6 +834,7 @@ function TwoWeekGrid({
                     charge_rate_cents: null,
                   })
                 }
+                tz={tz}
               />
             );
           })
@@ -858,6 +873,7 @@ function ProjectRow({
   onChipDrop,
   onExtendStart,
   onSelectBar,
+  tz,
 }: {
   project: CalendarProject;
   days: string[];
@@ -875,6 +891,7 @@ function ProjectRow({
   onChipDrop: (toDate: string) => void;
   onExtendStart: (bar: Bar) => void;
   onSelectBar: (bar: Bar) => void;
+  tz: string;
 }) {
   const color = projectColor(project.id);
   const dragLo = drag && drag.projectId === project.id ? Math.min(drag.startIdx, drag.endIdx) : -1;
@@ -955,7 +972,7 @@ function ProjectRow({
               className={cn(
                 'cursor-pointer border-r transition hover:bg-muted/40 last:border-r-0',
                 isWeekend(iso) && 'bg-muted/10',
-                isToday(iso) && 'ring-1 ring-inset ring-primary/40',
+                isToday(iso, tz) && 'ring-1 ring-inset ring-primary/40',
                 inDrag && 'bg-primary/15 ring-1 ring-inset ring-primary/60',
                 inExtend && 'bg-emerald-100/50',
                 chipDrag && 'bg-primary/5',
@@ -1047,6 +1064,7 @@ function MobileDayList({
   workerById,
   onOpenAssign,
   onRemove,
+  tz,
 }: {
   view: View;
   windowStart: string;
@@ -1057,6 +1075,7 @@ function MobileDayList({
   workerById: Map<string, CalendarWorker>;
   onOpenAssign: (date: string) => void;
   onRemove: (assignmentId: string) => void;
+  tz: string;
 }) {
   const days: string[] = [];
   const start = parseIso(windowStart);
@@ -1078,7 +1097,7 @@ function MobileDayList({
             key={iso}
             className={cn(
               'rounded-lg border bg-background',
-              isToday(iso) && 'border-primary/40 bg-primary/5',
+              isToday(iso, tz) && 'border-primary/40 bg-primary/5',
               isWeekend(iso) && 'bg-muted/20',
             )}
           >
@@ -1088,12 +1107,12 @@ function MobileDayList({
               className="flex w-full items-center justify-between px-3 py-2 text-left"
             >
               <div className="text-sm font-medium">
-                {date.toLocaleDateString('en-CA', {
+                {new Intl.DateTimeFormat('en-CA', {
                   weekday: 'short',
                   month: 'short',
                   day: 'numeric',
-                })}
-                {isToday(iso) && (
+                }).format(date)}
+                {isToday(iso, tz) && (
                   <span className="ml-2 rounded-full bg-primary px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-primary-foreground">
                     Today
                   </span>
@@ -1193,12 +1212,12 @@ function ChipActionSheet({
           <DialogTitle>{workerName}</DialogTitle>
           <DialogDescription>
             {projectName} ·{' '}
-            {parseIso(date).toLocaleDateString('en-CA', {
+            {new Intl.DateTimeFormat('en-CA', {
               weekday: 'long',
               month: 'long',
               day: 'numeric',
               year: 'numeric',
-            })}
+            }).format(parseIso(date))}
           </DialogDescription>
         </DialogHeader>
 

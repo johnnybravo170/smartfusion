@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { JobWithCustomer } from '@/lib/db/queries/jobs';
 import { cn } from '@/lib/utils';
 
@@ -56,10 +57,14 @@ function getJobDate(job: JobWithCustomer): string | null {
   return formatDateKey(d);
 }
 
-function getJobTime(job: JobWithCustomer): string {
+function getJobTime(job: JobWithCustomer, tz: string): string {
   if (!job.scheduled_at) return '';
-  const d = new Date(job.scheduled_at);
-  return d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(job.scheduled_at));
 }
 
 function isSameDay(a: Date, b: Date): boolean {
@@ -70,10 +75,10 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-function JobPill({ job }: { job: JobWithCustomer }) {
+function JobPill({ job, tz }: { job: JobWithCustomer; tz: string }) {
   const color = STATUS_COLORS[job.status] ?? STATUS_COLORS.booked;
   const label = job.customer?.name ?? 'Job';
-  const time = getJobTime(job);
+  const time = getJobTime(job, tz);
 
   return (
     <Link
@@ -131,6 +136,7 @@ function getWeekStart(date: Date): Date {
 }
 
 export function JobCalendar({ jobs, initialYear, initialMonth }: Props) {
+  const tz = useTenantTimezone();
   const router = useRouter();
   const today = new Date();
 
@@ -218,7 +224,7 @@ export function JobCalendar({ jobs, initialYear, initialMonth }: Props) {
           <h2 className="min-w-[160px] text-center text-lg font-semibold">
             {view === 'month'
               ? `${MONTH_NAMES[month]} ${year}`
-              : `Week of ${weekStart.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+              : `Week of ${new Intl.DateTimeFormat('en-CA', { timeZone: tz, month: 'short', day: 'numeric', year: 'numeric' }).format(weekStart)}`}
           </h2>
           <Button
             variant="outline"
@@ -307,7 +313,7 @@ export function JobCalendar({ jobs, initialYear, initialMonth }: Props) {
                 </div>
                 <div className="flex flex-col gap-0.5">
                   {dayJobs.slice(0, view === 'week' ? 10 : 3).map((job) => (
-                    <JobPill key={job.id} job={job} />
+                    <JobPill key={job.id} job={job} tz={tz} />
                   ))}
                   {dayJobs.length > (view === 'week' ? 10 : 3) && (
                     <span className="px-1.5 text-xs text-muted-foreground">
@@ -343,11 +349,12 @@ export function JobCalendar({ jobs, initialYear, initialMonth }: Props) {
                   onClick={() => handleDayClick(date)}
                   className="mb-2 text-sm font-medium hover:underline"
                 >
-                  {date.toLocaleDateString('en-CA', {
+                  {new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
                     weekday: 'short',
                     month: 'short',
                     day: 'numeric',
-                  })}
+                  }).format(date)}
                   {isToday && (
                     <span className="ml-2 rounded-full bg-foreground px-2 py-0.5 text-xs text-background">
                       Today
@@ -359,7 +366,7 @@ export function JobCalendar({ jobs, initialYear, initialMonth }: Props) {
                 ) : (
                   <div className="flex flex-col gap-1">
                     {dayJobs.map((job) => (
-                      <JobPill key={job.id} job={job} />
+                      <JobPill key={job.id} job={job} tz={tz} />
                     ))}
                   </div>
                 )}

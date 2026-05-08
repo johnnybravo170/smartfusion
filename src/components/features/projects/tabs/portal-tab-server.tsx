@@ -125,12 +125,13 @@ export default async function PortalTabServer({ projectId }: { projectId: string
                       </span>
                       <span className="text-sm font-medium">{ud.title as string}</span>
                       <span className="ml-auto text-xs text-muted-foreground">
-                        {new Date(ud.created_at as string).toLocaleDateString('en-CA', {
+                        {new Intl.DateTimeFormat('en-CA', {
+                          timeZone: tenant?.timezone ?? 'America/Vancouver',
                           month: 'short',
                           day: 'numeric',
                           hour: 'numeric',
                           minute: '2-digit',
-                        })}
+                        }).format(new Date(ud.created_at as string))}
                       </span>
                     </div>
                     {ud.body ? (

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { PublicViewLogger } from '@/components/features/public/public-view-logger';
+import { formatDate } from '@/lib/date/format';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { QuoteApprovalForm } from './quote-approval-form';
@@ -47,7 +48,7 @@ export default async function PublicQuoteViewPage({ params }: { params: Promise<
   // Load tenant info.
   const { data: tenant } = await supabase
     .from('tenants')
-    .select('name, quote_validity_days, gst_number, wcb_number')
+    .select('name, quote_validity_days, gst_number, wcb_number, timezone')
     .eq('id', quote.tenant_id)
     .single();
 
@@ -72,20 +73,12 @@ export default async function PublicQuoteViewPage({ params }: { params: Promise<
   const wcbNumber = (tenant?.wcb_number as string | null) ?? null;
 
   // Calculate valid-until date from sent_at.
+  const tenantTz = (tenant?.timezone as string | null) ?? undefined;
   const sentDate = quote.sent_at ? new Date(quote.sent_at) : new Date(quote.created_at);
   const validUntil = new Date(sentDate);
   validUntil.setDate(validUntil.getDate() + validityDays);
-  const validUntilFormatted = validUntil.toLocaleDateString('en-CA', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-
-  const quoteDate = sentDate.toLocaleDateString('en-CA', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  const validUntilFormatted = formatDate(validUntil, { timezone: tenantTz, style: 'long' });
+  const quoteDate = formatDate(sentDate, { timezone: tenantTz, style: 'long' });
 
   const isExpired = validUntil < new Date() && quote.status === 'sent';
 

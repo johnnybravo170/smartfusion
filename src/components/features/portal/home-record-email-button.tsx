@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { emailHomeRecordAction } from '@/server/actions/home-records';
 
 type Props = {
@@ -44,6 +45,7 @@ export function HomeRecordEmailButton({
   emailedAt,
   emailedTo,
 }: Props) {
+  const tz = useTenantTimezone();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState(defaultEmail ?? '');
   const [pending, startTransition] = useTransition();
@@ -116,12 +118,13 @@ export function HomeRecordEmailButton({
           {alreadySent && emailedTo ? (
             <p className="text-xs text-muted-foreground">
               Last sent to {emailedTo} on{' '}
-              {new Date(emailedAt!).toLocaleString('en-CA', {
+              {new Intl.DateTimeFormat('en-CA', {
+                timeZone: tz,
                 month: 'short',
                 day: 'numeric',
                 hour: 'numeric',
                 minute: '2-digit',
-              })}
+              }).format(new Date(emailedAt!))}
               .
             </p>
           ) : null}

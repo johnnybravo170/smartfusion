@@ -24,7 +24,7 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
        estimate_status, estimate_approved_at, estimate_approved_by_name,
        estimate_declined_reason, terms_text, document_type,
        customers:customer_id (name, address_line1, tax_exempt),
-       tenants:tenant_id (name, logo_storage_path, gst_number, wcb_number)`,
+       tenants:tenant_id (name, logo_storage_path, gst_number, wcb_number, timezone)`,
     )
     .eq('estimate_approval_code', code)
     .maybeSingle();
@@ -136,6 +136,7 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
         gstRate={effectiveGstRate}
         taxLabel={taxExempt ? 'Tax exempt' : taxCtx.summaryLabel}
         quoteDate={(p.estimate_sent_at as string | null) ?? null}
+        timezone={(tenantRaw?.timezone as string | null) ?? null}
         lines={renderLines}
         status={status}
         approvedByName={p.estimate_approved_by_name as string | null}

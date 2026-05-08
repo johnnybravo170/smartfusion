@@ -41,6 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { splitTotalByRate } from '@/lib/expenses/tax-split';
 import { cn } from '@/lib/utils';
 import {
@@ -62,8 +63,8 @@ type CategoryOption = { id: string; label: string; isParentHeader: boolean };
 
 const RECEIPT_ACCEPT = 'image/*,application/pdf';
 
-function todayLocal(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
+function todayInTz(tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 }
 
 type Props = {
@@ -119,11 +120,12 @@ function ExpenseDialogBody({
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const tenantTz = useTenantTimezone();
   const [amount, setAmount] = useState('');
   const [vendor, setVendor] = useState('');
   const [vendorGstNumber, setVendorGstNumber] = useState('');
   const [description, setDescription] = useState('');
-  const [date, setDate] = useState(todayLocal());
+  const [date, setDate] = useState(() => todayInTz(tenantTz));
   const [duplicate, setDuplicate] = useState<DuplicateExpense | null>(null);
   const [pending, startSaving] = useTransition();
   // Pre-tax / tax breakdown drives the cost-plus markup base. Three sources

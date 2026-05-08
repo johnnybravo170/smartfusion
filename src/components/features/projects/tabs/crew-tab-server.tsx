@@ -3,26 +3,29 @@ import {
   type ScheduleCell,
 } from '@/components/features/projects/crew-schedule-grid';
 import { CrewTab } from '@/components/features/projects/crew-tab';
+import { getCurrentTenant } from '@/lib/auth/helpers';
 import { listAssignmentsForProject } from '@/lib/db/queries/project-assignments';
 import { getProject } from '@/lib/db/queries/projects';
 import { listWorkerProfiles } from '@/lib/db/queries/worker-profiles';
 import { listUnavailabilityForTenant, REASON_LABELS } from '@/lib/db/queries/worker-unavailability';
 
 export default async function CrewTabServer({ projectId }: { projectId: string }) {
-  const project = await getProject(projectId);
+  const [project, tenant] = await Promise.all([getProject(projectId), getCurrentTenant()]);
   if (!project) return null;
+  const tz = tenant?.timezone ?? 'America/Vancouver';
 
   const [crewAssignments, crewWorkers] = await Promise.all([
     listAssignmentsForProject(project.tenant_id, projectId),
     listWorkerProfiles(project.tenant_id),
   ]);
 
-  // 14-day window starting today.
-  const scheduleStart = new Date().toLocaleDateString('en-CA');
+  // 14-day window starting today (tenant-local).
+  const tzFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz });
+  const scheduleStart = tzFmt.format(new Date());
   const scheduleEnd = (() => {
     const d = new Date(`${scheduleStart}T00:00`);
     d.setDate(d.getDate() + 13);
-    return d.toLocaleDateString('en-CA');
+    return tzFmt.format(d);
   })();
 
   const scheduleWorkerIds = Array.from(new Set(crewAssignments.map((a) => a.worker_profile_id)));

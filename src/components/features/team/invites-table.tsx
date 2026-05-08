@@ -29,6 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { WorkerInviteRow } from '@/lib/db/queries/worker-invites';
 import { deleteInviteAction } from '@/server/actions/team';
 
@@ -88,6 +89,7 @@ type Props = {
 };
 
 export function InvitesTable({ invites }: Props) {
+  const tz = useTenantTimezone();
   if (invites.length === 0) {
     return <p className="text-sm text-muted-foreground">No invites yet.</p>;
   }
@@ -125,7 +127,9 @@ export function InvitesTable({ invites }: Props) {
                 <Badge variant={status.variant}>{status.label}</Badge>
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
-                {new Date(invite.created_at).toLocaleDateString()}
+                {new Intl.DateTimeFormat(undefined, { timeZone: tz }).format(
+                  new Date(invite.created_at),
+                )}
               </TableCell>
               <TableCell>{canDelete ? <DeleteButton inviteId={invite.id} /> : null}</TableCell>
             </TableRow>

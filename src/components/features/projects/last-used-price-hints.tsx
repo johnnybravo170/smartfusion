@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
 import { getPricingHintsAction, type PricingHint } from '@/server/actions/pricing-hints';
 
@@ -60,6 +61,7 @@ export function LastUsedPriceHints({
   catalog,
   onPick,
 }: Props) {
+  const tz = useTenantTimezone();
   const [hints, setHints] = useState<PricingHint[]>([]);
   const trimmed = label.trim();
 
@@ -126,9 +128,10 @@ export function LastUsedPriceHints({
               key={`${h.unit_price_cents}-${h.unit}-${h.last_used_at}`}
               type="button"
               onClick={() => onPick((h.unit_price_cents / 100).toFixed(2))}
-              title={`${h.source_label} · used ${h.use_count}× · last on ${new Date(
-                h.last_used_at,
-              ).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}`}
+              title={`${h.source_label} · used ${h.use_count}× · last on ${new Intl.DateTimeFormat(
+                'en-CA',
+                { timeZone: tz, month: 'short', day: 'numeric' },
+              ).format(new Date(h.last_used_at))}`}
               className="rounded-full border bg-background px-2 py-0.5 hover:bg-muted hover:text-foreground"
             >
               ${(h.unit_price_cents / 100).toFixed(2)}/{h.unit}

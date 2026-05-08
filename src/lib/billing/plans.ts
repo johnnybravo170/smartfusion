@@ -102,7 +102,7 @@ const ENV_BY_PLAN: Record<Plan, { monthly: string; yearly: string }> = {
  */
 export function getPriceId(plan: Plan, cycle: BillingCycle): string {
   const envName = ENV_BY_PLAN[plan][cycle];
-  const value = process.env[envName];
+  const value = process.env[envName]?.trim();
   if (!value) {
     throw new Error(`Missing Stripe price ID env var: ${envName}`);
   }
@@ -116,7 +116,7 @@ export function getPriceId(plan: Plan, cycle: BillingCycle): string {
 export function findPlanForPriceId(priceId: string): { plan: Plan; cycle: BillingCycle } | null {
   for (const plan of Object.keys(ENV_BY_PLAN) as Plan[]) {
     for (const cycle of BILLING_CYCLES) {
-      if (process.env[ENV_BY_PLAN[plan][cycle]] === priceId) {
+      if (process.env[ENV_BY_PLAN[plan][cycle]]?.trim() === priceId) {
         return { plan, cycle };
       }
     }

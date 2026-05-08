@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { TeamMemberRow } from '@/lib/db/queries/team';
 import { RemoveMemberButton } from './remove-member-button';
 import { WorkerSettingsRow } from './worker-settings-row';
@@ -30,6 +31,7 @@ type Props = {
 };
 
 export function TeamMembersTable({ members }: Props) {
+  const tz = useTenantTimezone();
   if (members.length === 0) {
     return <p className="text-sm text-muted-foreground">No team members found.</p>;
   }
@@ -62,7 +64,9 @@ export function TeamMembersTable({ members }: Props) {
                 </Badge>
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
-                {new Date(member.created_at).toLocaleDateString()}
+                {new Intl.DateTimeFormat(undefined, { timeZone: tz }).format(
+                  new Date(member.created_at),
+                )}
               </TableCell>
               <TableCell>
                 <RemoveMemberButton

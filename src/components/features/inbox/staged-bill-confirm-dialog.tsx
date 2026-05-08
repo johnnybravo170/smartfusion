@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { createClient } from '@/lib/supabase/client';
 import { confirmStagedBillAction } from '@/server/actions/inbound-email';
 
@@ -58,8 +59,8 @@ function centsToDollars(c: number | null | undefined): string {
   return (c / 100).toFixed(2);
 }
 
-function todayISO(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
+function todayISO(tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 }
 
 export function StagedBillConfirmDialog({
@@ -80,11 +81,12 @@ export function StagedBillConfirmDialog({
   defaultProjectId: string | null;
   onApplied: () => void;
 }) {
+  const tenantTz = useTenantTimezone();
   const [pending, startTransition] = useTransition();
   const [projectId, setProjectId] = useState(defaultProjectId ?? '');
   const [vendor, setVendor] = useState(extracted?.vendor ?? '');
   const [vendorGst, setVendorGst] = useState(extracted?.vendor_gst_number ?? '');
-  const [billDate, setBillDate] = useState(extracted?.bill_date ?? todayISO());
+  const [billDate, setBillDate] = useState(extracted?.bill_date ?? todayISO(tenantTz));
   const [amount, setAmount] = useState(centsToDollars(extracted?.amount_cents));
   const [gst, setGst] = useState('');
   const [description, setDescription] = useState(extracted?.description ?? '');

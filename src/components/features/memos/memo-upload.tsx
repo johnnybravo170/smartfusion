@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { resizeImage } from '@/lib/storage/resize-image';
 import {
   addMemoItemToCostLinesAction,
@@ -86,6 +87,7 @@ export type MemoUploadProps = {
 type StagedPhoto = { key: string; file: File; previewUrl: string };
 
 export function MemoUpload({ projectId, memos, categories }: MemoUploadProps) {
+  const tz = useTenantTimezone();
   const router = useRouter();
   const [isRecording, setIsRecording] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -362,13 +364,14 @@ export function MemoUpload({ projectId, memos, categories }: MemoUploadProps) {
             <div key={memo.id} className="rounded-lg border p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-muted-foreground">
-                  {new Date(memo.created_at).toLocaleDateString('en-CA', {
+                  {new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
                     month: 'short',
                     day: 'numeric',
                     year: 'numeric',
                     hour: 'numeric',
                     minute: '2-digit',
-                  })}
+                  }).format(new Date(memo.created_at))}
                 </span>
                 <div className="flex items-center gap-3">
                   <Button

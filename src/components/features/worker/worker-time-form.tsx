@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { ProjectWithCategories, WorkerTimeEntry } from '@/lib/db/queries/worker-time';
 import { logWorkerTimeAction, updateWorkerTimeAction } from '@/server/actions/worker-time';
 
@@ -37,13 +38,14 @@ type Props = {
 export function WorkerTimeForm({ projects, initial }: Props) {
   const router = useRouter();
   const params = useSearchParams();
+  const tz = useTenantTimezone();
   const isEdit = Boolean(initial);
   const initialProject =
     initial?.project_id ?? params.get('project') ?? projects[0]?.project_id ?? '';
   const initialDate =
     initial?.entry_date ??
     params.get('date') ??
-    new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
+    new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 
   const [pending, startTransition] = useTransition();
   const [projectId, setProjectId] = useState(initialProject);

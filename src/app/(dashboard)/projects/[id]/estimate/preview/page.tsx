@@ -30,7 +30,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
        estimate_declined_reason, terms_text, document_type,
        customer_id, tenant_id,
        customers:customer_id (name, email, additional_emails, address_line1, tax_exempt),
-       tenants:tenant_id (name, logo_storage_path, gst_number, wcb_number)`,
+       tenants:tenant_id (name, logo_storage_path, gst_number, wcb_number, timezone)`,
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -172,6 +172,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
           gstRate={gstRate}
           taxLabel={taxLabel}
           quoteDate={(p.estimate_sent_at as string | null) ?? null}
+          timezone={(tenantRaw?.timezone as string | null) ?? null}
           lines={costLines}
           status={status}
           approvedByName={p.estimate_approved_by_name as string | null}

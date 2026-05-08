@@ -164,12 +164,16 @@ export default async function AdminArSequenceDetailPage({
                   {sequence.recentSends.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell className="text-muted-foreground text-sm">
-                        {new Date(r.createdAt).toLocaleString('en-CA', {
+                        {new Intl.DateTimeFormat('en-CA', {
+                          // Platform-admin surface — system AR sequences have
+                          // no per-tenant tz. Render in HQ-local (Vancouver)
+                          // to avoid implicit-UTC drift on Vercel.
+                          timeZone: 'America/Vancouver',
                           month: 'short',
                           day: 'numeric',
                           hour: 'numeric',
                           minute: '2-digit',
-                        })}
+                        }).format(new Date(r.createdAt))}
                       </TableCell>
                       <TableCell className="text-sm">{r.toAddress}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">

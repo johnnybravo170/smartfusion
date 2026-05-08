@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { CategoryPickerOption } from '@/lib/db/queries/expense-categories';
 import type { OverheadExpenseRow } from '@/lib/db/queries/overhead-expenses';
 import type { PaymentSourceLite } from '@/lib/db/queries/payment-sources';
@@ -59,6 +60,7 @@ export function ExpensesTable({
   editHrefForOverhead,
 }: Props) {
   const router = useRouter();
+  const tz = useTenantTimezone();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [recatOpen, setRecatOpen] = useState(false);
   const [targetCategory, setTargetCategory] = useState('');
@@ -201,11 +203,12 @@ export function ExpensesTable({
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                     <Link href={editHref} className="hover:underline">
-                      {new Date(e.expense_date).toLocaleDateString('en-CA', {
+                      {new Intl.DateTimeFormat('en-CA', {
+                        timeZone: tz,
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric',
-                      })}
+                      }).format(new Date(e.expense_date))}
                     </Link>
                   </td>
                   <td className="px-4 py-3">

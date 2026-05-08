@@ -414,7 +414,7 @@ export async function cancelSubscriptionAction(): Promise<CancelResult> {
         firstName,
         refundAmountFormatted: formatCents(stripeRefundId ? refundCents : 0, currency),
         cardLast4: extractCardLast4(invoice),
-        accessEndsAtFormatted: formatAccessEnd(periodEndMs),
+        accessEndsAtFormatted: formatAccessEnd(periodEndMs, tenant.timezone),
         isTrial: false,
       }),
       tenantId: tenant.id,
@@ -450,13 +450,14 @@ function formatCents(cents: number, currency: string): string {
   }
 }
 
-function formatAccessEnd(ms: number): string {
-  return new Date(ms).toLocaleDateString('en-CA', {
+function formatAccessEnd(ms: number, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
+  }).format(new Date(ms));
 }
 
 function inferFirstName(email: string | null | undefined, fallback: string): string {

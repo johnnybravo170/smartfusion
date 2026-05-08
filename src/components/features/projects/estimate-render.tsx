@@ -51,6 +51,8 @@ export type EstimateRenderProps = {
   taxLabel?: string;
   /** Optional quote date to show in the header. ISO string. */
   quoteDate?: string | null;
+  /** IANA timezone for the contractor (e.g. 'America/Vancouver'). */
+  timezone?: string | null;
   lines: EstimateRenderLine[];
   status: 'draft' | 'pending_approval' | 'approved' | 'declined';
   approvedByName?: string | null;
@@ -67,11 +69,14 @@ export type EstimateRenderProps = {
   documentType?: 'estimate' | 'quote';
 };
 
-function formatDate(iso: string | null | undefined): string | null {
+function formatDate(iso: string | null | undefined, tz: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString('en-CA', { month: 'long', day: 'numeric', year: 'numeric' });
+  return new Intl.DateTimeFormat('en-CA', {
+    dateStyle: 'long',
+    timeZone: tz ?? 'America/Vancouver',
+  }).format(d);
 }
 
 /**
@@ -255,6 +260,7 @@ export function EstimateRender({
   gstRate,
   taxLabel,
   quoteDate,
+  timezone,
   lines,
   status,
   approvedByName,
@@ -272,7 +278,8 @@ export function EstimateRender({
   const gst = Math.round(beforeTax * gstRate);
   const total = beforeTax + gst;
 
-  const dateLabel = formatDate(quoteDate) ?? formatDate(new Date().toISOString());
+  const dateLabel =
+    formatDate(quoteDate, timezone) ?? formatDate(new Date().toISOString(), timezone);
 
   return (
     <>
@@ -321,7 +328,7 @@ export function EstimateRender({
 
       {status === 'approved' && approvedByName && approvedAt ? (
         <div className="mb-6 rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Approved by {approvedByName} on {formatDate(approvedAt)}.
+          Approved by {approvedByName} on {formatDate(approvedAt, timezone)}.
         </div>
       ) : null}
       {status === 'declined' ? (

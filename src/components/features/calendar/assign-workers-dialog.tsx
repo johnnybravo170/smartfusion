@@ -43,7 +43,10 @@ function parseIso(s: string): Date {
 }
 
 function isoDate(d: Date): string {
-  return d.toLocaleDateString('en-CA');
+  // Symmetric with parseIso (both use runtime tz). The owner calendar
+  // surfaces all use this contract. Tenant-local "today" check happens
+  // upstream via isToday(iso, tz) in owner-calendar.tsx.
+  return new Intl.DateTimeFormat('en-CA').format(d);
 }
 
 function rangeDates(start: string, end: string, skipWeekends: boolean): string[] {

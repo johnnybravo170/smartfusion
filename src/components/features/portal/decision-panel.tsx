@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { cn } from '@/lib/utils';
 import { askDecisionByCodeAction, decideByCodeAction } from '@/server/actions/project-decisions';
 
@@ -72,6 +73,7 @@ function DecisionCard({
   decision: PortalDecision;
   defaultCustomerName: string;
 }) {
+  const tenantTz = useTenantTimezone();
   const [mode, setMode] = useState<'idle' | 'asking' | 'answered'>('idle');
   const [name, setName] = useState(defaultCustomerName);
   const [question, setQuestion] = useState('');
@@ -184,7 +186,10 @@ function DecisionCard({
       ) : null}
       {decision.due_date ? (
         <p className="mt-1 text-xs text-muted-foreground">
-          Due {new Date(decision.due_date).toLocaleDateString('en-CA')}
+          Due{' '}
+          {new Intl.DateTimeFormat('en-CA', { timeZone: tenantTz }).format(
+            new Date(decision.due_date),
+          )}
         </p>
       ) : null}
 

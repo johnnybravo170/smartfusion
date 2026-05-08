@@ -1,3 +1,4 @@
+import { setFormatTimezone } from '../format';
 import type { AiTool, ToolDefinition } from '../types';
 import { catalogTools } from './catalog';
 import { changeOrderTools } from './change-orders';
@@ -60,6 +61,7 @@ export function getToolDefinitions(vertical?: string): ToolDefinition[] {
 export function setToolTimezone(timezone: string) {
   setDashboardTimezone(timezone);
   setInvoiceTimezone(timezone);
+  setFormatTimezone(timezone);
 }
 
 /**

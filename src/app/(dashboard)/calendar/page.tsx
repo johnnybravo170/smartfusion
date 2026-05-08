@@ -10,7 +10,11 @@ export const metadata = {
 };
 
 function isoDate(d: Date): string {
-  return d.toLocaleDateString('en-CA');
+  // Internal day-math helper — produces YYYY-MM-DD in the runtime tz.
+  // Used symmetrically with `new Date(y, m-1, d)` constructions below.
+  // Tenant-local "today" rendering happens inside OwnerCalendar via
+  // useTenantTimezone(); this helper is just for window/range calc.
+  return new Intl.DateTimeFormat('en-CA').format(d);
 }
 
 function startOfMonth(d: Date): Date {

@@ -8,10 +8,12 @@ export function ChangeOrderList({
   changeOrders,
   projectId,
   jobId,
+  timezone,
 }: {
   changeOrders: ChangeOrderRow[];
   projectId?: string;
   jobId?: string;
+  timezone: string;
 }) {
   const basePath = projectId ? `/projects/${projectId}` : `/jobs/${jobId}`;
   const newHref = `${basePath}/change-orders/new`;
@@ -67,10 +69,11 @@ export function ChangeOrderList({
                     : `${co.timeline_impact_days > 0 ? '+' : ''}${co.timeline_impact_days}d`}
                 </td>
                 <td className="px-3 py-2 text-muted-foreground">
-                  {new Date(co.created_at).toLocaleDateString('en-CA', {
+                  {new Intl.DateTimeFormat('en-CA', {
+                    timeZone: timezone,
                     month: 'short',
                     day: 'numeric',
-                  })}
+                  }).format(new Date(co.created_at))}
                 </td>
               </tr>
             );

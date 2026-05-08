@@ -82,11 +82,12 @@ export default async function WorkerProjectDetailPage({
             {myUpcoming.map((a) => (
               <p key={a.id}>
                 {a.scheduled_date
-                  ? new Date(`${a.scheduled_date}T00:00`).toLocaleDateString('en-CA', {
+                  ? new Intl.DateTimeFormat('en-CA', {
+                      timeZone: tenant.timezone,
                       weekday: 'long',
                       month: 'short',
                       day: 'numeric',
-                    })
+                    }).format(new Date(`${a.scheduled_date}T00:00`))
                   : ''}
                 {a.notes ? <span className="ml-2 text-muted-foreground">{a.notes}</span> : null}
               </p>

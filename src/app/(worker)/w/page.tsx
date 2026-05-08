@@ -21,12 +21,14 @@ export default async function WorkerTodayPage({
   const profile = await getOrCreateWorkerProfile(tenant.id, tenant.member.id);
   const params = (await searchParams) ?? {};
 
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
-  const todayLabel = new Date(`${today}T00:00`).toLocaleDateString('en-CA', {
+  const tz = tenant.timezone;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+  const todayLabel = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
     weekday: 'long',
     month: 'long',
     day: 'numeric',
-  });
+  }).format(new Date(`${today}T00:00`));
 
   const profileIncomplete =
     !profile.display_name ||

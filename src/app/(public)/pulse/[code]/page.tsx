@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { formatDate } from '@/lib/date/format';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function generateMetadata({ params }: { params: Promise<{ code: string }> }) {
@@ -20,7 +21,7 @@ type PulsePayload = {
   waiting_on_you?: { title: string; action_url?: string; deadline?: string }[];
 };
 
-function relativeTime(iso: string): string {
+function relativeTime(iso: string, tz: string | undefined): string {
   const ms = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(ms / 60000);
   if (mins < 1) return 'just now';
@@ -30,11 +31,7 @@ function relativeTime(iso: string): string {
   const days = Math.floor(hrs / 24);
   if (days === 1) return 'yesterday';
   if (days < 30) return `${days} days ago`;
-  return new Date(iso).toLocaleDateString('en-CA', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  return formatDate(iso, { timezone: tz, style: 'long' });
 }
 
 export default async function PulsePage({ params }: { params: Promise<{ code: string }> }) {
@@ -43,7 +40,7 @@ export default async function PulsePage({ params }: { params: Promise<{ code: st
 
   const { data: row } = await admin
     .from('pulse_updates')
-    .select('id, title, body_md, payload, sent_at, tenants:tenant_id (name)')
+    .select('id, title, body_md, payload, sent_at, tenants:tenant_id (name, timezone)')
     .eq('public_code', code)
     .not('sent_at', 'is', null)
     .maybeSingle();
@@ -51,11 +48,12 @@ export default async function PulsePage({ params }: { params: Promise<{ code: st
   if (!row) notFound();
 
   const tenantRaw = (row as Record<string, unknown>).tenants as
-    | { name?: string }
-    | { name?: string }[]
+    | { name?: string; timezone?: string | null }
+    | { name?: string; timezone?: string | null }[]
     | null;
   const tenant = Array.isArray(tenantRaw) ? tenantRaw[0] : tenantRaw;
   const businessName = tenant?.name ?? 'Your Contractor';
+  const tenantTz = tenant?.timezone ?? undefined;
   const payload = ((row as Record<string, unknown>).payload as PulsePayload) ?? {};
   const waiting = payload.waiting_on_you ?? [];
   const sentAt = (row as Record<string, unknown>).sent_at as string;
@@ -90,7 +88,7 @@ export default async function PulsePage({ params }: { params: Promise<{ code: st
       </article>
 
       <p className="mt-4 text-center text-xs text-muted-foreground">
-        Last updated: {relativeTime(sentAt)}
+        Last updated: {relativeTime(sentAt, tenantTz)}
       </p>
     </div>
   );

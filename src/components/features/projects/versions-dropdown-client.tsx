@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { ProjectScopeSnapshot } from '@/lib/db/queries/project-scope-snapshots';
 import type { ProjectVersionListItem } from '@/lib/db/queries/project-versions';
 import { formatCurrency } from '@/lib/pricing/calculator';
@@ -37,6 +38,7 @@ export function VersionsDropdownClient({
   projectId: string;
   versions: ProjectVersionListItem[];
 }) {
+  const tz = useTenantTimezone();
   const [activeVersion, setActiveVersion] = useState<ProjectVersionListItem | null>(null);
   const [snapshot, setSnapshot] = useState<ProjectScopeSnapshot | null>(null);
   const [pending, startTransition] = useTransition();
@@ -104,11 +106,12 @@ export function VersionsDropdownClient({
                   </span>
                   <span className="text-[11px] text-muted-foreground">
                     Signed{' '}
-                    {new Date(v.signed_at).toLocaleDateString('en-CA', {
+                    {new Intl.DateTimeFormat('en-CA', {
+                      timeZone: tz,
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
-                    })}
+                    }).format(new Date(v.signed_at))}
                     {v.signed_by_name ? ` · ${v.signed_by_name}` : ''}
                     {v.snapshot_id ? '' : ' · legacy'}
                   </span>
@@ -135,11 +138,12 @@ export function VersionsDropdownClient({
               {activeVersion ? (
                 <>
                   Signed{' '}
-                  {new Date(activeVersion.signed_at).toLocaleDateString('en-CA', {
+                  {new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
                     month: 'long',
                     day: 'numeric',
                     year: 'numeric',
-                  })}
+                  }).format(new Date(activeVersion.signed_at))}
                   {activeVersion.signed_by_name ? ` by ${activeVersion.signed_by_name}` : ''}
                   {activeVersion.total_cents !== null
                     ? ` · ${formatCurrency(activeVersion.total_cents)}`
