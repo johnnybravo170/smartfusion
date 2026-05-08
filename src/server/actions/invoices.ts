@@ -1246,7 +1246,7 @@ export async function generateFinalInvoiceAction(input: {
 
   const { data: project, error: projErr } = await supabase
     .from('projects')
-    .select('id, customer_id, name, management_fee_rate')
+    .select('id, customer_id, name, management_fee_rate, is_cost_plus')
     .eq('id', input.projectId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -1255,12 +1255,14 @@ export async function generateFinalInvoiceAction(input: {
   if (!project.customer_id) return { ok: false, error: 'Project has no customer assigned.' };
 
   const mgmtRate = (project.management_fee_rate as number) ?? 0.12;
+  const isCostPlus = project.is_cost_plus !== false; // default-true semantics
 
-  // Contract-based balance comes first — most jobs are priced from a
-  // signed estimate, and "final invoice" should mean "bill the rest of
-  // what was contracted" minus draws already taken. Cost-plus jobs
-  // (no estimate, no priced lines) fall back to the legacy
-  // labour+expenses+mgmt path below.
+  // Path selection now reads `project.is_cost_plus` directly. Previously
+  // this branched on `variance.estimated_cents > 0` — i.e. "no priced
+  // estimate ⇒ cost-plus", which silently mis-billed any fixed-price
+  // job whose operator forgot to price the estimate. The flag makes
+  // operator intent explicit. Migration 0209 backfills existing rows
+  // to TRUE (matches Jonathan's all-cost-plus reality).
   const { getVarianceReport } = await import('@/lib/db/queries/cost-lines');
 
   const [variance, timeRes, expenseRes, priorInvoicesRes] = await Promise.all([
@@ -1291,11 +1293,22 @@ export async function generateFinalInvoiceAction(input: {
   const priorBilledCents = priorInvoices.reduce((s, i) => s + i.amount_cents, 0);
   const contractCents = variance.estimated_cents;
 
+  // Guard: a fixed-price project with no priced estimate has nothing to
+  // bill against. Refusing here is a friendlier failure than producing a
+  // $0 invoice or silently falling back to cost-plus.
+  if (!isCostPlus && contractCents <= 0) {
+    return {
+      ok: false,
+      error:
+        'This is a fixed-price project but the estimate has no priced cost lines yet. Price the estimate first, or switch the project to cost-plus billing.',
+    };
+  }
+
   const lineItems: InvoiceLineItem[] = [];
 
-  if (contractCents > 0) {
-    // Contracted job: itemize the cost lines + mgmt fee, then credit
-    // any prior draws. Per-line breakdown (rather than a single
+  if (!isCostPlus) {
+    // Fixed-price job: itemize the priced cost lines + mgmt fee, then
+    // credit any prior draws. Per-line breakdown (rather than a single
     // "Contract balance" rollup) lets the operator prune optional
     // lines the customer skipped, directly on the draft invoice.
     const { data: scopeLines } = await supabase
@@ -1341,11 +1354,11 @@ export async function generateFinalInvoiceAction(input: {
       });
     }
   } else {
-    // Cost-plus job (no priced estimate): bill tracked labour + expenses
-    // + mgmt fee, minus prior draws. Materials are billed at PRE-TAX cost
-    // (the contractor reclaims the GST as an ITC, so the gross receipt
-    // total isn't their cost basis). The bottom-of-invoice GST line then
-    // applies once on the full subtotal — preventing the GST-on-GST trap.
+    // Cost-plus job: bill tracked labour + expenses + mgmt fee, minus
+    // prior draws. Materials are billed at PRE-TAX cost (the contractor
+    // reclaims the GST as an ITC, so the gross receipt total isn't their
+    // cost basis). The bottom-of-invoice GST line then applies once on
+    // the full subtotal — preventing the GST-on-GST trap.
     // See `computeCostPlusBreakdown` for the math + Mike's worked example.
     const breakdown = computeCostPlusBreakdown({
       timeEntries,
@@ -1392,10 +1405,9 @@ export async function generateFinalInvoiceAction(input: {
   if (subtotalCents <= 0) {
     return {
       ok: false,
-      error:
-        contractCents > 0
-          ? 'Contract is fully billed — no balance left to invoice.'
-          : 'Balance owing is zero or negative — log time/expenses or add cost lines first.',
+      error: !isCostPlus
+        ? 'Contract is fully billed — no balance left to invoice.'
+        : 'Balance owing is zero or negative — log time/expenses or add cost lines first.',
     };
   }
 

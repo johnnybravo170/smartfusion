@@ -103,6 +103,9 @@ export async function getWorkerTimeEntry(
 export type ProjectWithCategories = {
   project_id: string;
   project_name: string;
+  /** Drives the auto-split tax chip on the worker expense form —
+   *  irrelevant for fixed-price jobs. */
+  is_cost_plus: boolean;
   categories: Array<{
     id: string;
     name: string;
@@ -126,7 +129,7 @@ export async function listWorkerProjectsWithBudgetCategories(
 
   const { data: projects } = await admin
     .from('projects')
-    .select('id, name')
+    .select('id, name, is_cost_plus')
     .in('id', projectIds)
     .is('deleted_at', null);
 
@@ -165,6 +168,7 @@ export async function listWorkerProjectsWithBudgetCategories(
     .map((p) => ({
       project_id: p.id as string,
       project_name: p.name as string,
+      is_cost_plus: (p.is_cost_plus as boolean | null) !== false, // default-true
       categories: categoriesByProject.get(p.id as string) ?? [],
     }))
     .sort((a, b) => a.project_name.localeCompare(b.project_name));

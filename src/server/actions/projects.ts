@@ -223,6 +223,53 @@ export async function updateProjectManagementFeeAction(input: {
 }
 
 /**
+ * Toggle the project's billing mode (cost-plus vs fixed-price). Drives
+ * `generateFinalInvoiceAction`'s path selection and the auto-split tax
+ * chip on expense forms. Writes a worklog entry — flipping this on a
+ * live job is a meaningful operator decision worth tracing.
+ */
+export async function updateProjectIsCostPlusAction(input: {
+  id: string;
+  isCostPlus: boolean;
+}): Promise<ProjectActionResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not authenticated.' };
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from('projects')
+    .select('name, is_cost_plus')
+    .eq('id', input.id)
+    .is('deleted_at', null)
+    .single();
+  if (!existing) return { ok: false, error: 'Project not found.' };
+
+  const oldVal = existing.is_cost_plus !== false;
+  if (oldVal === input.isCostPlus) return { ok: true, id: input.id };
+
+  const { error } = await supabase
+    .from('projects')
+    .update({ is_cost_plus: input.isCostPlus, updated_at: new Date().toISOString() })
+    .eq('id', input.id)
+    .is('deleted_at', null);
+
+  if (error) return { ok: false, error: error.message };
+
+  await supabase.from('worklog_entries').insert({
+    tenant_id: tenant.id,
+    entry_type: 'system',
+    title: 'Billing mode changed',
+    body: `Billing mode on "${existing.name}" changed from ${oldVal ? 'cost-plus' : 'fixed-price'} to ${input.isCostPlus ? 'cost-plus' : 'fixed-price'}.`,
+    related_type: 'project',
+    related_id: input.id,
+  });
+
+  revalidatePath('/projects');
+  revalidatePath(`/projects/${input.id}`);
+  return { ok: true, id: input.id };
+}
+
+/**
  * Move a project through its lifecycle. The only sanctioned way to change
  * `lifecycle_stage` outside of the estimate-approval flow. Writes a
  * worklog entry so there's a paper trail.
