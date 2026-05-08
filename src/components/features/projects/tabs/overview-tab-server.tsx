@@ -8,6 +8,7 @@
  */
 
 import { Suspense } from 'react';
+import { BillingModeEditor } from '@/components/features/projects/billing-mode-editor';
 import { VarianceTab } from '@/components/features/projects/budget-summary';
 import { ManagementFeeEditor } from '@/components/features/projects/management-fee-editor';
 import { ProjectTimeline } from '@/components/features/projects/project-timeline';
@@ -91,6 +92,10 @@ async function ProjectFactsSection({ projectId }: { projectId: string }) {
       <div className="rounded-lg border p-4">
         <p className="text-xs text-muted-foreground">Mgmt Fee</p>
         <ManagementFeeEditor projectId={project.id} rate={project.management_fee_rate} />
+      </div>
+      <div className="rounded-lg border p-4">
+        <p className="text-xs text-muted-foreground">Billing</p>
+        <BillingModeEditor projectId={project.id} isCostPlus={project.is_cost_plus} />
       </div>
       <div className="rounded-lg border p-4">
         <p className="text-xs text-muted-foreground">Categories</p>

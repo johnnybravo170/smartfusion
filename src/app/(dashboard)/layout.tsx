@@ -14,6 +14,7 @@ import { TenantProvider } from '@/lib/auth/tenant-context';
 import { listUserMemberships } from '@/lib/db/queries/memberships';
 import { getOperatorProfile } from '@/lib/db/queries/profile';
 import { HenryScreenProvider } from '@/lib/henry/screen-context';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { SentryUserContext } from '@/lib/sentry/sentry-user-context';
 import { createClient } from '@/lib/supabase/server';
 import { loadVerticalPack } from '@/lib/verticals/load-pack';
@@ -54,13 +55,17 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   const timezone = tenant?.timezone || 'America/Vancouver';
   const vertical = tenant?.vertical || 'pressure_washing';
-  const [operatorProfile, memberships, verticalPack, isAdmin] = await Promise.all([
+  const [operatorProfile, memberships, verticalPack, isAdmin, taxCtx] = await Promise.all([
     tenant && currentUser ? getOperatorProfile(tenant.id, currentUser.id) : Promise.resolve(null),
     currentUser ? listUserMemberships(currentUser.id) : Promise.resolve([]),
     loadVerticalPack(vertical),
     currentUser ? isPlatformAdmin(currentUser.id) : Promise.resolve(false),
+    // Tax rate drives the auto-split chip on the Log Expense quick-action.
+    // When no tenant context exists the chip is disabled (rate=0).
+    tenant ? canadianTax.getCustomerFacingContext(tenant.id) : Promise.resolve(null),
   ]);
   const ownerRateCents = operatorProfile?.defaultHourlyRateCents ?? null;
+  const tenantTaxRate = taxCtx?.totalRate ?? 0;
   const activeMembership = memberships.find((m) => m.isActive) ?? null;
   const accentColor = activeMembership?.accentColor ?? null;
 
@@ -84,6 +89,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             <Header
               navItems={verticalPack.navItems}
               ownerRateCents={ownerRateCents}
+              tenantTaxRate={tenantTaxRate}
               memberships={memberships}
               activeTenantId={tenant?.id ?? null}
               isAdmin={isAdmin}

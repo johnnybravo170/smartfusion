@@ -4,6 +4,10 @@ import { Loader2, Sparkles } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import {
+  ExpenseTaxSplitChip,
+  type TaxSplitMode,
+} from '@/components/features/expenses/expense-tax-split-chip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,12 +20,18 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import type { ProjectWithCategories } from '@/lib/db/queries/worker-time';
+import { splitTotalByRate } from '@/lib/expenses/tax-split';
 import { extractReceiptFieldsAction } from '@/server/actions/extract-receipt';
 import { logWorkerExpenseAction } from '@/server/actions/worker-expenses';
 
-type Props = { projects: ProjectWithCategories[] };
+type Props = {
+  projects: ProjectWithCategories[];
+  /** Tenant's effective GST/HST rate as a decimal (0.13 = 13% HST).
+   *  Drives the auto-split chip on cost-plus projects. */
+  tenantTaxRate: number;
+};
 
-export function WorkerExpenseForm({ projects }: Props) {
+export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
   const router = useRouter();
   const params = useSearchParams();
   const initialProject = params.get('project') ?? projects[0]?.project_id ?? '';
@@ -38,18 +48,24 @@ export function WorkerExpenseForm({ projects }: Props) {
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(today);
   const [receipt, setReceipt] = useState<File | null>(null);
-  // Pre-tax / tax breakdown extracted from the receipt. Carried silently
-  // through the form so the cost-plus markup base on the eventual client
-  // invoice is the contractor's real cost (pre-tax), not the GST-inclusive
-  // total. Cleared if the operator hand-edits the amount — the breakdown
-  // is no longer trustworthy in that case.
+  // Pre-tax / tax breakdown drives the cost-plus markup base on the
+  // client invoice. Three sources, tracked via splitMode:
+  //   ocr     — OCR pulled it from the receipt
+  //   auto    — derived from Total via the tenant tax rate (default)
+  //   manual  — operator hand-edited the breakdown; do NOT recompute
+  // Null pre-tax/tax = no breakdown shown (e.g. fixed-price project).
   const [preTaxCents, setPreTaxCents] = useState<number | null>(null);
   const [taxCents, setTaxCents] = useState<number | null>(null);
+  const [splitMode, setSplitMode] = useState<TaxSplitMode>('auto');
 
-  const categories = useMemo(
-    () => projects.find((p) => p.project_id === projectId)?.categories ?? [],
+  const selectedProject = useMemo(
+    () => projects.find((p) => p.project_id === projectId) ?? null,
     [projects, projectId],
   );
+  // Skip the chip when no tax rate is configured (legacy/no-tax tenant).
+  const showTaxSplit = tenantTaxRate > 0 && Boolean(selectedProject?.is_cost_plus);
+
+  const categories = useMemo(() => selectedProject?.categories ?? [], [selectedProject]);
   const costLines = useMemo(
     () => categories.find((b) => b.id === categoryId)?.cost_lines ?? [],
     [categories, categoryId],
@@ -85,10 +101,18 @@ export function WorkerExpenseForm({ projects }: Props) {
       let filled = 0;
       if (amountCents != null && !amount) {
         setAmount((amountCents / 100).toFixed(2));
-        // Capture the breakdown alongside the amount. preTax/tax are only
-        // valid against this OCR'd amount — if the user edits, we null them.
-        setPreTaxCents(preTaxAmountCents);
-        setTaxCents(taxAmountCents);
+        // Receipt breakdown wins over auto-split. If OCR didn't reconcile
+        // the breakdown (both null) we'll auto-split on next blur.
+        if (preTaxAmountCents !== null && taxAmountCents !== null) {
+          setPreTaxCents(preTaxAmountCents);
+          setTaxCents(taxAmountCents);
+          setSplitMode('ocr');
+        } else {
+          const split = splitTotalByRate(amountCents, tenantTaxRate);
+          setPreTaxCents(split.preTaxCents);
+          setTaxCents(split.taxCents);
+          setSplitMode('auto');
+        }
         filled++;
       }
       if (v && !vendor) {
@@ -196,6 +220,20 @@ export function WorkerExpenseForm({ projects }: Props) {
           onValueChange={(v) => {
             setProjectId(v);
             setCategoryId('');
+            // If the new project is cost-plus and we have an amount,
+            // (re-)engage auto-split. Manual edits are project-scoped —
+            // moving project means the operator's tax assumption is
+            // stale.
+            const next = projects.find((p) => p.project_id === v);
+            if (next?.is_cost_plus) {
+              const cents = Math.round(Number.parseFloat(amount) * 100);
+              if (Number.isFinite(cents) && cents > 0) {
+                const split = splitTotalByRate(cents, tenantTaxRate);
+                setPreTaxCents(split.preTaxCents);
+                setTaxCents(split.taxCents);
+                setSplitMode('auto');
+              }
+            }
           }}
         >
           <SelectTrigger id="project">
@@ -268,13 +306,55 @@ export function WorkerExpenseForm({ projects }: Props) {
           value={amount}
           onChange={(e) => {
             setAmount(e.target.value);
-            // Hand-edit invalidates the OCR'd breakdown.
-            setPreTaxCents(null);
-            setTaxCents(null);
+            // Total edit while in 'manual' is ambiguous — operator may
+            // have re-typed the total without wanting their custom split
+            // overwritten. Conservative call: drop manual values back to
+            // auto so the chip recomputes off the new total on blur.
+            if (splitMode !== 'auto') setSplitMode('auto');
+          }}
+          onBlur={(e) => {
+            if (!showTaxSplit || splitMode === 'manual') return;
+            const cents = Math.round(Number.parseFloat(e.target.value) * 100);
+            if (!Number.isFinite(cents) || cents <= 0) {
+              setPreTaxCents(null);
+              setTaxCents(null);
+              return;
+            }
+            // Don't clobber an OCR'd breakdown that already matches the
+            // current total — only recompute when the operator changed the
+            // total away from what OCR set.
+            if (splitMode === 'ocr' && preTaxCents !== null && taxCents !== null) {
+              if (preTaxCents + taxCents === cents) return;
+            }
+            const split = splitTotalByRate(cents, tenantTaxRate);
+            setPreTaxCents(split.preTaxCents);
+            setTaxCents(split.taxCents);
+            setSplitMode('auto');
           }}
           placeholder="0.00"
           required
         />
+        {showTaxSplit ? (
+          <ExpenseTaxSplitChip
+            preTaxCents={preTaxCents}
+            taxCents={taxCents}
+            mode={splitMode}
+            rate={tenantTaxRate}
+            onManualChange={({ preTaxCents: pt, taxCents: tx }) => {
+              setPreTaxCents(pt);
+              setTaxCents(tx);
+              setSplitMode('manual');
+            }}
+            onReset={() => {
+              const cents = Math.round(Number.parseFloat(amount) * 100);
+              if (!Number.isFinite(cents) || cents <= 0) return;
+              const split = splitTotalByRate(cents, tenantTaxRate);
+              setPreTaxCents(split.preTaxCents);
+              setTaxCents(split.taxCents);
+              setSplitMode('auto');
+            }}
+          />
+        ) : null}
       </div>
 
       <div className="space-y-1.5">

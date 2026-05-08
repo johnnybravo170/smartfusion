@@ -28,6 +28,13 @@ export type ProjectRow = {
   lifecycle_stage: LifecycleStage;
   resumed_from_stage: LifecycleStage | null;
   management_fee_rate: number;
+  /**
+   * TRUE: cost-plus billing (labour + expenses + mgmt fee, with markup
+   * applied to the contractor's pre-tax cost). FALSE: fixed-price (bill
+   * the priced estimate / contract balance). See migration 0209 and
+   * `generateFinalInvoiceAction` for path selection.
+   */
+  is_cost_plus: boolean;
   start_date: string | null;
   target_end_date: string | null;
   percent_complete: number;
@@ -83,7 +90,7 @@ export type ProjectListFilters = {
 export type LifecycleStageCounts = Record<LifecycleStage, number>;
 
 const PROJECT_COLUMNS =
-  'id, tenant_id, customer_id, name, description, lifecycle_stage, resumed_from_stage, management_fee_rate, start_date, target_end_date, percent_complete, estimate_status, estimate_approval_code, estimate_sent_at, estimate_approved_at, estimate_approved_by_name, estimate_declined_at, estimate_declined_reason, estimate_approval_method, estimate_approved_by_member_id, estimate_approval_proof_paths, estimate_approval_notes, terms_text, document_type, deleted_at, created_at, updated_at';
+  'id, tenant_id, customer_id, name, description, lifecycle_stage, resumed_from_stage, management_fee_rate, is_cost_plus, start_date, target_end_date, percent_complete, estimate_status, estimate_approval_code, estimate_sent_at, estimate_approved_at, estimate_approved_by_name, estimate_declined_at, estimate_declined_reason, estimate_approval_method, estimate_approved_by_member_id, estimate_approval_proof_paths, estimate_approval_notes, terms_text, document_type, deleted_at, created_at, updated_at';
 
 const PROJECT_WITH_CUSTOMER_SELECT = `${PROJECT_COLUMNS}, customers:customer_id (id, name, type)`;
 

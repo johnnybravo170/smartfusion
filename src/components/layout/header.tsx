@@ -11,6 +11,9 @@ import { WorkspaceSwitcher } from './workspace-switcher';
 type HeaderProps = {
   navItems: VerticalNavItem[];
   ownerRateCents?: number | null;
+  /** Tenant's effective GST/HST rate (decimal). 0 disables the
+   *  auto-split tax chip on the Log Expense dialog. */
+  tenantTaxRate: number;
   memberships: UserMembership[];
   activeTenantId: string | null;
   isAdmin?: boolean;
@@ -19,6 +22,7 @@ type HeaderProps = {
 export function Header({
   navItems,
   ownerRateCents,
+  tenantTaxRate,
   memberships,
   activeTenantId,
   isAdmin,
@@ -31,7 +35,7 @@ export function Header({
 
       <div className="flex items-center gap-2">
         <QuickLogTimeButton ownerRateCents={ownerRateCents ?? null} />
-        <QuickLogExpenseButton />
+        <QuickLogExpenseButton tenantTaxRate={tenantTaxRate} />
         {/*
          * Single "New Project" entry per the Universal Intake decision
          * (worklog 15839262, 2026-04-22) and the smart-selection MO —

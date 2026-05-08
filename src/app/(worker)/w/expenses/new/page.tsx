@@ -5,6 +5,7 @@ import { WorkerExpenseForm } from '@/components/features/worker/worker-expense-f
 import { requireWorker } from '@/lib/auth/helpers';
 import { getOrCreateWorkerProfile } from '@/lib/db/queries/worker-profiles';
 import { listWorkerProjectsWithBudgetCategories } from '@/lib/db/queries/worker-time';
+import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,10 @@ export default async function WorkerLogExpensePage() {
   const canLogExpenses = profile.can_log_expenses ?? tenantRow?.workers_can_log_expenses ?? true;
   if (!canLogExpenses) redirect('/w');
 
-  const projects = await listWorkerProjectsWithBudgetCategories(tenant.id, profile.id);
+  const [projects, taxCtx] = await Promise.all([
+    listWorkerProjectsWithBudgetCategories(tenant.id, profile.id),
+    canadianTax.getCustomerFacingContext(tenant.id),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -33,7 +37,7 @@ export default async function WorkerLogExpensePage() {
         <ArrowLeft className="size-3.5" /> Expenses
       </Link>
       <h1 className="text-2xl font-semibold">Log expense</h1>
-      <WorkerExpenseForm projects={projects} />
+      <WorkerExpenseForm projects={projects} tenantTaxRate={taxCtx.totalRate} />
     </div>
   );
 }

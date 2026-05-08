@@ -19,6 +19,10 @@ import {
   type DuplicateExpense,
   DuplicateExpenseDialog,
 } from '@/components/features/expenses/duplicate-expense-dialog';
+import {
+  ExpenseTaxSplitChip,
+  type TaxSplitMode,
+} from '@/components/features/expenses/expense-tax-split-chip';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -37,6 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { splitTotalByRate } from '@/lib/expenses/tax-split';
 import { cn } from '@/lib/utils';
 import {
   listExpenseCategoryOptionsAction,
@@ -47,7 +52,12 @@ import { extractReceiptFieldsAction } from '@/server/actions/extract-receipt';
 import { logOverheadExpenseAction } from '@/server/actions/overhead-expenses';
 
 type Mode = 'project' | 'overhead';
-type ProjectOption = { id: string; name: string; categories: Array<{ id: string; name: string }> };
+type ProjectOption = {
+  id: string;
+  name: string;
+  is_cost_plus: boolean;
+  categories: Array<{ id: string; name: string }>;
+};
 type CategoryOption = { id: string; label: string; isParentHeader: boolean };
 
 const RECEIPT_ACCEPT = 'image/*,application/pdf';
@@ -56,7 +66,13 @@ function todayLocal(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
 }
 
-export function QuickLogExpenseButton() {
+type Props = {
+  /** Tenant's effective GST/HST rate (decimal, e.g. 0.13). Drives the
+   *  auto-split chip on cost-plus projects + always on overhead. */
+  tenantTaxRate: number;
+};
+
+export function QuickLogExpenseButton({ tenantTaxRate }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -71,13 +87,21 @@ export function QuickLogExpenseButton() {
         <DialogHeader>
           <DialogTitle>Log expense</DialogTitle>
         </DialogHeader>
-        {open ? <ExpenseDialogBody onDone={() => setOpen(false)} /> : null}
+        {open ? (
+          <ExpenseDialogBody onDone={() => setOpen(false)} tenantTaxRate={tenantTaxRate} />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
 }
 
-function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
+function ExpenseDialogBody({
+  onDone,
+  tenantTaxRate,
+}: {
+  onDone: () => void;
+  tenantTaxRate: number;
+}) {
   const [mode, setMode] = useState<Mode>('project');
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
@@ -102,12 +126,42 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
   const [date, setDate] = useState(todayLocal());
   const [duplicate, setDuplicate] = useState<DuplicateExpense | null>(null);
   const [pending, startSaving] = useTransition();
-  // Pre-tax / tax breakdown captured from the receipt OCR. Used as the
-  // markup base on cost-plus client invoices so we don't mark up GST that
-  // the contractor reclaims as an ITC. Cleared if the operator hand-edits
-  // the amount.
+  // Pre-tax / tax breakdown drives the cost-plus markup base. Three sources
+  // tracked via splitMode: 'ocr' (from receipt), 'auto' (derived via tenant
+  // tax rate from the Total field on blur), 'manual' (operator overrode).
+  // For overhead, the breakdown is bookkeeping only — no markup — but the
+  // chip still shows so the operator can correct out-of-province receipts.
   const [preTaxCents, setPreTaxCents] = useState<number | null>(null);
   const [taxCents, setTaxCents] = useState<number | null>(null);
+  const [splitMode, setSplitMode] = useState<TaxSplitMode>('auto');
+
+  const selectedProject = projects.find((p) => p.id === projectId) ?? null;
+  // Project mode: only show the chip on cost-plus projects (where it
+  // matters for billing). Overhead mode: always show — it's GST data
+  // for bookkeeping regardless of any project-level flag. Skip when the
+  // tenant has no tax rate configured (legacy shape) — splitting at 0%
+  // is a no-op that just clutters the form.
+  const showTaxSplit =
+    tenantTaxRate > 0 &&
+    (mode === 'overhead' || (mode === 'project' && Boolean(selectedProject?.is_cost_plus)));
+
+  /** Recompute the breakdown from the current Total at the tenant rate.
+   *  Called when context changes (mode/project switch) and we want the
+   *  chip to reflect the current state without a Total blur. Skips if
+   *  in 'manual' mode (operator override is sticky). */
+  function refreshAutoSplit() {
+    if (splitMode === 'manual') return;
+    const cents = Math.round(Number.parseFloat(amount) * 100);
+    if (!Number.isFinite(cents) || cents <= 0) {
+      setPreTaxCents(null);
+      setTaxCents(null);
+      return;
+    }
+    const split = splitTotalByRate(cents, tenantTaxRate);
+    setPreTaxCents(split.preTaxCents);
+    setTaxCents(split.taxCents);
+    setSplitMode('auto');
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -149,9 +203,18 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
       const fields = res.fields;
       if (fields.amountCents != null && !amount.trim()) {
         setAmount((fields.amountCents / 100).toFixed(2));
-        // Breakdown is only valid against this OCR'd amount.
-        setPreTaxCents(fields.preTaxAmountCents);
-        setTaxCents(fields.taxAmountCents);
+        // OCR breakdown wins over auto-split when reconciled. If OCR
+        // couldn't reconcile, fall through to auto-split from the rate.
+        if (fields.preTaxAmountCents !== null && fields.taxAmountCents !== null) {
+          setPreTaxCents(fields.preTaxAmountCents);
+          setTaxCents(fields.taxAmountCents);
+          setSplitMode('ocr');
+        } else {
+          const split = splitTotalByRate(fields.amountCents, tenantTaxRate);
+          setPreTaxCents(split.preTaxCents);
+          setTaxCents(split.taxCents);
+          setSplitMode('auto');
+        }
       }
       if (fields.vendor && !vendor.trim()) setVendor(fields.vendor);
       if (fields.vendorGstNumber && !vendorGstNumber.trim()) {
@@ -303,10 +366,22 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
 
       {/* Mode toggle */}
       <div className="grid grid-cols-2 gap-2 rounded-lg border bg-muted/30 p-1">
-        <ModeButton active={mode === 'project'} onClick={() => setMode('project')}>
+        <ModeButton
+          active={mode === 'project'}
+          onClick={() => {
+            setMode('project');
+            refreshAutoSplit();
+          }}
+        >
           Project expense
         </ModeButton>
-        <ModeButton active={mode === 'overhead'} onClick={() => setMode('overhead')}>
+        <ModeButton
+          active={mode === 'overhead'}
+          onClick={() => {
+            setMode('overhead');
+            refreshAutoSplit();
+          }}
+        >
           Overhead
         </ModeButton>
       </div>
@@ -323,7 +398,13 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
             </Label>
             <Select
               value={projectId}
-              onValueChange={setProjectId}
+              onValueChange={(v) => {
+                setProjectId(v);
+                // Picking a cost-plus project (re-)engages auto-split;
+                // picking a fixed-price one hides the chip — refreshAuto-
+                // Split handles both via showTaxSplit gating downstream.
+                refreshAutoSplit();
+              }}
               disabled={busy || loadingLookups}
             >
               <SelectTrigger id="exp-project">
@@ -408,13 +489,51 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
             value={amount}
             onChange={(e) => {
               setAmount(e.target.value);
-              // Hand-edit invalidates the OCR'd breakdown.
-              setPreTaxCents(null);
-              setTaxCents(null);
+              // Total edit drops manual mode back to auto so the next
+              // blur recomputes against the new total.
+              if (splitMode !== 'auto') setSplitMode('auto');
+            }}
+            onBlur={(e) => {
+              if (!showTaxSplit || splitMode === 'manual') return;
+              const cents = Math.round(Number.parseFloat(e.target.value) * 100);
+              if (!Number.isFinite(cents) || cents <= 0) {
+                setPreTaxCents(null);
+                setTaxCents(null);
+                return;
+              }
+              if (splitMode === 'ocr' && preTaxCents !== null && taxCents !== null) {
+                if (preTaxCents + taxCents === cents) return;
+              }
+              const split = splitTotalByRate(cents, tenantTaxRate);
+              setPreTaxCents(split.preTaxCents);
+              setTaxCents(split.taxCents);
+              setSplitMode('auto');
             }}
             placeholder="0.00"
             disabled={busy}
           />
+          {showTaxSplit ? (
+            <ExpenseTaxSplitChip
+              preTaxCents={preTaxCents}
+              taxCents={taxCents}
+              mode={splitMode}
+              rate={tenantTaxRate}
+              disabled={busy}
+              onManualChange={({ preTaxCents: pt, taxCents: tx }) => {
+                setPreTaxCents(pt);
+                setTaxCents(tx);
+                setSplitMode('manual');
+              }}
+              onReset={() => {
+                const cents = Math.round(Number.parseFloat(amount) * 100);
+                if (!Number.isFinite(cents) || cents <= 0) return;
+                const split = splitTotalByRate(cents, tenantTaxRate);
+                setPreTaxCents(split.preTaxCents);
+                setTaxCents(split.taxCents);
+                setSplitMode('auto');
+              }}
+            />
+          ) : null}
         </div>
         <div>
           <Label

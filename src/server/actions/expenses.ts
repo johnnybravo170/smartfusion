@@ -59,6 +59,8 @@ export async function listProjectsWithCategoriesForExpenseAction(): Promise<
       projects: Array<{
         id: string;
         name: string;
+        /** Drives the auto-split tax chip in the Log Expense dialog. */
+        is_cost_plus: boolean;
         categories: Array<{ id: string; name: string }>;
       }>;
     }
@@ -67,7 +69,7 @@ export async function listProjectsWithCategoriesForExpenseAction(): Promise<
   const supabase = await createClient();
   const { data: projects, error: projErr } = await supabase
     .from('projects')
-    .select('id, name')
+    .select('id, name, is_cost_plus')
     .is('deleted_at', null)
     .in('lifecycle_stage', ['planning', 'awaiting_approval', 'active'])
     .order('created_at', { ascending: false })
@@ -96,6 +98,7 @@ export async function listProjectsWithCategoriesForExpenseAction(): Promise<
     projects: (projects ?? []).map((p) => ({
       id: p.id as string,
       name: p.name as string,
+      is_cost_plus: (p.is_cost_plus as boolean | null) !== false, // default-true
       categories: categoriesByProject.get(p.id as string) ?? [],
     })),
   };

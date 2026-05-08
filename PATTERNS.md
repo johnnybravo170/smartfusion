@@ -489,3 +489,28 @@ Files this pattern was applied to:
 - `src/components/features/projects/tabs/costs-tab-server.tsx` — server-side URL signing for expenses (`receipts` bucket), bill attachments (`receipts` bucket), and quote attachments (`sub-quotes` bucket).
 
 When you add a new table that surfaces uploaded files, reuse `ReceiptPreviewButton` and sign URLs in batch — don't introduce a new "View" link or rely on `<a target="_blank">`. POs are intentionally excluded (they have no attachment field; they're system-created, not uploaded).
+
+---
+
+## 22. Expense tax-split chip (auto-split on Total blur)
+
+Any expense form that needs a pre-tax / tax breakdown for the cost-plus markup base should use the shared **`ExpenseTaxSplitChip`** rather than rolling its own disclosure or extra inputs. The chip sits below the Total field, auto-splits via the tenant's effective GST/HST rate on blur, and lets the operator override per-expense for out-of-province / non-registered receipts.
+
+State machinery the parent owns:
+
+- `preTaxCents`, `taxCents` — number-or-null. Submit handler forwards both to the server.
+- `splitMode: 'auto' | 'ocr' | 'manual'` — drives chip labelling and the recompute decision.
+- A `showTaxSplit` boolean — the chip is hidden for fixed-price projects (`project.is_cost_plus === false`) and when the tenant has no tax rate (`tenantTaxRate <= 0`). Overhead expenses always show it (bookkeeping value even without markup).
+- On Total blur: recompute via `splitTotalByRate(totalCents, rate)` from `src/lib/expenses/tax-split.ts`. Skip when `splitMode === 'manual'`. If `mode === 'ocr'` and the breakdown still reconciles to the new total, leave it alone.
+- On project switch / mode switch: refresh from current Total (if any) so the chip reflects the new context.
+
+Files that follow this pattern:
+
+- `src/components/features/expenses/expense-tax-split-chip.tsx` — the shared chip component.
+- `src/lib/expenses/tax-split.ts` — `splitTotalByRate(totalCents, rate)` math + `tests/unit/tax-split.test.ts`.
+- `src/components/layout/quick-log-expense-button.tsx` — owner Log Expense dialog (project mode + overhead).
+- `src/components/features/worker/worker-expense-form.tsx` — worker expense form (project mode only; workers don't log overhead).
+
+The tenant tax rate comes from `canadianTax.getCustomerFacingContext(tenantId).totalRate`. Server pages that render either form must fetch and pass it as a prop; today that's the dashboard layout (`src/app/(dashboard)/layout.tsx` → `Header → QuickLogExpenseButton`) and the worker expense page (`src/app/(worker)/w/expenses/new/page.tsx`).
+
+When you add another expense-creation surface, fetch the tax rate server-side, reuse the chip + helper, and gate visibility on the same two conditions (cost-plus project OR overhead, AND `tenantTaxRate > 0`).
