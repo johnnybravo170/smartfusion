@@ -301,9 +301,57 @@ export type ScheduleTaskPatch = {
 };
 
 /**
+ * How long to wait before firing the customer schedule-update
+ * notification. Long enough to absorb a bulk-edit session — operator
+ * dragging five bars in 30 seconds emits one rollup, not five.
+ *
+ * Replace pattern: every edit resets schedule_notify_scheduled_at to
+ * (now + delay) AND clears sent_at / cancelled_at. The cron drainer
+ * picks up whatever's pending when its window opens.
+ */
+const SCHEDULE_NOTIFY_DELAY_MINUTES = 5;
+
+/**
+ * Schedule (or replace) the project-level customer notification when
+ * the tenant has the flag on AND the just-edited task is client-visible.
+ * Idempotent — silent no-op when conditions aren't met.
+ */
+async function maybeScheduleScheduleNotify(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  projectId: string,
+  taskClientVisible: boolean,
+): Promise<void> {
+  if (!taskClientVisible) return;
+
+  const { data: tenantRow } = await supabase
+    .from('tenants')
+    .select('notify_customer_on_schedule_change')
+    .eq('id', tenantId)
+    .maybeSingle();
+  if (!tenantRow?.notify_customer_on_schedule_change) return;
+
+  const scheduledAt = new Date(Date.now() + SCHEDULE_NOTIFY_DELAY_MINUTES * 60_000).toISOString();
+  await supabase
+    .from('projects')
+    .update({
+      schedule_notify_scheduled_at: scheduledAt,
+      schedule_notify_sent_at: null,
+      schedule_notify_cancelled_at: null,
+    })
+    .eq('id', projectId);
+}
+
+/**
  * Update a single task. RLS gates the row to the operator's tenant; a
  * wrong-tenant taskId silently no-ops (data null, no error). Caller
  * builds the patch object — only fields present are written.
+ *
+ * If the patch changed `planned_start_date` or `planned_duration_days`
+ * AND the task is client-visible AND the tenant has the customer-notify
+ * flag on, the project's `schedule_notify_*` columns are reset so the
+ * deferred-notify cron will fire after the debounce window. Re-edits
+ * within the window simply reset the timer.
  */
 export async function updateScheduleTaskAction(
   taskId: string,
@@ -318,17 +366,23 @@ export async function updateScheduleTaskAction(
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', taskId)
     .is('deleted_at', null)
-    .select('id, project_id, projects(portal_slug)')
+    .select('id, project_id, client_visible, projects(portal_slug)')
     .maybeSingle();
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: 'Task not found.' };
 
-  const projectId = (data as Record<string, unknown>).project_id as string;
-  const portalSlug =
-    (pickOne((data as Record<string, unknown>).projects)?.portal_slug as
-      | string
-      | null
-      | undefined) ?? null;
+  const row = data as Record<string, unknown>;
+  const projectId = row.project_id as string;
+  const taskClientVisible = Boolean(row.client_visible);
+  const portalSlug = (pickOne(row.projects)?.portal_slug as string | null | undefined) ?? null;
+
+  // Schedule the deferred customer notification when relevant. Date or
+  // duration moved → schedule shifted; visibility-only flips, status,
+  // confidence, and notes don't fire a customer ping.
+  if (patch.planned_start_date !== undefined || patch.planned_duration_days !== undefined) {
+    await maybeScheduleScheduleNotify(supabase, tenant.id, projectId, taskClientVisible);
+  }
+
   revalidatePath(`/projects/${projectId}`);
   if (portalSlug) revalidatePath(`/portal/${portalSlug}`);
   return { ok: true, taskId };

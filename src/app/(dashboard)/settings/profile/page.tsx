@@ -20,11 +20,16 @@ export default async function SettingsProfilePage() {
   const [business, operator, { data: tenantSettings }] = await Promise.all([
     getBusinessProfile(tenant.id),
     getOperatorProfile(tenant.id, user.id),
-    supabase.from('tenants').select('portal_show_budget').eq('id', tenant.id).maybeSingle(),
+    supabase
+      .from('tenants')
+      .select('portal_show_budget, notify_customer_on_schedule_change')
+      .eq('id', tenant.id)
+      .maybeSingle(),
   ]);
 
   if (!business) notFound();
   const portalShowBudget = Boolean(tenantSettings?.portal_show_budget);
+  const notifyOnScheduleChange = Boolean(tenantSettings?.notify_customer_on_schedule_change);
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -118,7 +123,10 @@ export default async function SettingsProfilePage() {
           </div>
         </CardHeader>
         <CardContent>
-          <TenantPortalSettingsForm initialShowBudget={portalShowBudget} />
+          <TenantPortalSettingsForm
+            initialShowBudget={portalShowBudget}
+            initialNotifyOnScheduleChange={notifyOnScheduleChange}
+          />
         </CardContent>
       </Card>
     </div>
