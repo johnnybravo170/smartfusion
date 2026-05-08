@@ -257,6 +257,35 @@ export async function bootstrapProjectScheduleAction(
  * "Clear schedule" action before re-bootstrapping, and as a recovery
  * lever if the bootstrap produced a wrong shape.
  */
+/**
+ * Cancel a pending customer schedule-update notification before the
+ * cron drainer fires it. Stamps `schedule_notify_cancelled_at` so the
+ * drainer's "claim atomically" guard treats this row as already-handled
+ * and skips it.
+ *
+ * Used by the operator's "Undo" affordance on the Schedule tab when
+ * the notify-on toggle is on. Idempotent — re-clicking does nothing.
+ */
+export async function cancelScheduleNotifyAction(
+  projectId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('projects')
+    .update({ schedule_notify_cancelled_at: new Date().toISOString() })
+    .eq('id', projectId)
+    .is('schedule_notify_sent_at', null)
+    .is('schedule_notify_cancelled_at', null)
+    .not('schedule_notify_scheduled_at', 'is', null);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true };
+}
+
 export async function clearProjectScheduleAction(
   projectId: string,
 ): Promise<{ ok: true; tasksCleared: number } | { ok: false; error: string }> {
