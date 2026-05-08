@@ -134,6 +134,10 @@ const overheadSchema = z.object({
     .number()
     .int()
     .refine((n) => n !== 0, 'Amount must not be zero.'),
+  // Optional OCR-derived pre-tax base. Overhead expenses don't get marked
+  // up onto a client invoice, but we persist it for consistency with the
+  // expenses schema and so future bookkeeping reports have it.
+  pre_tax_amount_cents: z.coerce.number().int().nonnegative().optional(),
   tax_cents: z.coerce.number().int().min(0).default(0),
   vendor: z.string().trim().max(200).optional().or(z.literal('')),
   vendor_gst_number: z.string().trim().max(40).optional().or(z.literal('')),
@@ -161,9 +165,11 @@ export async function logOverheadExpenseAction(formData: FormData): Promise<Over
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: 'Not authenticated.' };
 
+  const rawPreTax = formData.get('pre_tax_amount_cents');
   const parsed = overheadSchema.safeParse({
     category_id: formData.get('category_id'),
     amount_cents: formData.get('amount_cents'),
+    pre_tax_amount_cents: rawPreTax != null ? Number(rawPreTax) : undefined,
     tax_cents: formData.get('tax_cents') ?? 0,
     vendor: formData.get('vendor') ?? '',
     vendor_gst_number: formData.get('vendor_gst_number') ?? '',
@@ -264,6 +270,7 @@ export async function logOverheadExpenseAction(formData: FormData): Promise<Over
       job_id: null,
       category_id: parsed.data.category_id,
       amount_cents: parsed.data.amount_cents,
+      pre_tax_amount_cents: parsed.data.pre_tax_amount_cents ?? null,
       tax_cents: parsed.data.tax_cents,
       vendor: parsed.data.vendor?.trim() || null,
       vendor_gst_number: parsed.data.vendor_gst_number?.trim() || null,

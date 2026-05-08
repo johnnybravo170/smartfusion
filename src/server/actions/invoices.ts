@@ -14,6 +14,7 @@ import { revalidatePath } from 'next/cache';
 import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import type { InvoiceLineItem } from '@/lib/db/queries/invoices';
+import { computeCostPlusBreakdown } from '@/lib/invoices/cost-plus-markup';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { getPaymentProvider } from '@/lib/providers/factory';
 import { createClient } from '@/lib/supabase/server';
@@ -1268,7 +1269,10 @@ export async function generateFinalInvoiceAction(input: {
       .from('time_entries')
       .select('hours, hourly_rate_cents')
       .eq('project_id', input.projectId),
-    supabase.from('expenses').select('amount_cents').eq('project_id', input.projectId),
+    supabase
+      .from('expenses')
+      .select('amount_cents, pre_tax_amount_cents')
+      .eq('project_id', input.projectId),
     supabase
       .from('invoices')
       .select('amount_cents')
@@ -1278,7 +1282,10 @@ export async function generateFinalInvoiceAction(input: {
   ]);
 
   const timeEntries = (timeRes.data ?? []) as { hours: number; hourly_rate_cents: number | null }[];
-  const expenses = (expenseRes.data ?? []) as { amount_cents: number }[];
+  const expenses = (expenseRes.data ?? []) as {
+    amount_cents: number;
+    pre_tax_amount_cents: number | null;
+  }[];
   const priorInvoices = (priorInvoicesRes.data ?? []) as { amount_cents: number }[];
 
   const priorBilledCents = priorInvoices.reduce((s, i) => s + i.amount_cents, 0);
@@ -1335,44 +1342,48 @@ export async function generateFinalInvoiceAction(input: {
     }
   } else {
     // Cost-plus job (no priced estimate): bill tracked labour + expenses
-    // + mgmt fee, minus prior draws. Original behavior.
-    const labourCents = timeEntries.reduce((s, t) => {
-      const rate = t.hourly_rate_cents ?? 0;
-      return s + Math.round(Number(t.hours) * rate);
-    }, 0);
-    const expenseCents = expenses.reduce((s, e) => s + e.amount_cents, 0);
-    const mgmtFeeCents = Math.round((labourCents + expenseCents) * mgmtRate);
+    // + mgmt fee, minus prior draws. Materials are billed at PRE-TAX cost
+    // (the contractor reclaims the GST as an ITC, so the gross receipt
+    // total isn't their cost basis). The bottom-of-invoice GST line then
+    // applies once on the full subtotal — preventing the GST-on-GST trap.
+    // See `computeCostPlusBreakdown` for the math + Mike's worked example.
+    const breakdown = computeCostPlusBreakdown({
+      timeEntries,
+      expenses,
+      priorInvoices,
+      mgmtRate,
+    });
 
-    if (labourCents > 0) {
+    if (breakdown.labourCents > 0) {
       lineItems.push({
         description: 'Labour',
         quantity: 1,
-        unit_price_cents: labourCents,
-        total_cents: labourCents,
+        unit_price_cents: breakdown.labourCents,
+        total_cents: breakdown.labourCents,
       });
     }
-    if (expenseCents > 0) {
+    if (breakdown.materialsCents > 0) {
       lineItems.push({
         description: 'Materials & Expenses',
         quantity: 1,
-        unit_price_cents: expenseCents,
-        total_cents: expenseCents,
+        unit_price_cents: breakdown.materialsCents,
+        total_cents: breakdown.materialsCents,
       });
     }
-    if (mgmtFeeCents > 0) {
+    if (breakdown.mgmtFeeCents > 0) {
       lineItems.push({
         description: `Management Fee (${Math.round(mgmtRate * 100)}%)`,
         quantity: 1,
-        unit_price_cents: mgmtFeeCents,
-        total_cents: mgmtFeeCents,
+        unit_price_cents: breakdown.mgmtFeeCents,
+        total_cents: breakdown.mgmtFeeCents,
       });
     }
-    if (priorBilledCents > 0) {
+    if (breakdown.priorBilledCents > 0) {
       lineItems.push({
         description: 'Less: Prior Invoices',
         quantity: 1,
-        unit_price_cents: -priorBilledCents,
-        total_cents: -priorBilledCents,
+        unit_price_cents: -breakdown.priorBilledCents,
+        total_cents: -breakdown.priorBilledCents,
       });
     }
   }

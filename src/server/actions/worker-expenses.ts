@@ -15,6 +15,10 @@ const schema = z.object({
   budget_category_id: z.string().uuid().optional().or(z.literal('')),
   cost_line_id: z.string().uuid().optional().or(z.literal('')),
   amount_cents: z.coerce.number().int().positive(),
+  // OCR-derived breakdown. Both optional. When set, used as the markup
+  // base on cost-plus client invoices (ITC-aware).
+  pre_tax_amount_cents: z.coerce.number().int().nonnegative().optional(),
+  tax_cents: z.coerce.number().int().nonnegative().optional(),
   vendor: z.string().trim().max(200).optional().or(z.literal('')),
   vendor_gst_number: z.string().trim().max(40).optional().or(z.literal('')),
   description: z.string().trim().max(2000).optional().or(z.literal('')),
@@ -33,11 +37,16 @@ function extFromContentType(contentType: string): string {
 }
 
 export async function logWorkerExpenseAction(formData: FormData): Promise<WorkerExpenseResult> {
+  const rawPreTax = formData.get('pre_tax_amount_cents');
+  const rawTaxCents = formData.get('tax_cents');
   const input = {
     project_id: String(formData.get('project_id') ?? ''),
     budget_category_id: String(formData.get('budget_category_id') ?? ''),
     cost_line_id: String(formData.get('cost_line_id') ?? ''),
     amount_cents: Number(formData.get('amount_cents') ?? 0),
+    // Only forward the OCR breakdown if the form sent it. Absent ≠ 0.
+    pre_tax_amount_cents: rawPreTax != null ? Number(rawPreTax) : undefined,
+    tax_cents: rawTaxCents != null ? Number(rawTaxCents) : undefined,
     vendor: String(formData.get('vendor') ?? ''),
     vendor_gst_number: String(formData.get('vendor_gst_number') ?? ''),
     description: String(formData.get('description') ?? ''),
@@ -91,6 +100,8 @@ export async function logWorkerExpenseAction(formData: FormData): Promise<Worker
       budget_category_id: parsed.data.budget_category_id || null,
       cost_line_id: parsed.data.cost_line_id || null,
       amount_cents: parsed.data.amount_cents,
+      pre_tax_amount_cents: parsed.data.pre_tax_amount_cents ?? null,
+      ...(parsed.data.tax_cents !== undefined ? { tax_cents: parsed.data.tax_cents } : {}),
       vendor: parsed.data.vendor?.trim() || null,
       vendor_gst_number: parsed.data.vendor_gst_number?.trim() || null,
       description: parsed.data.description?.trim() || null,
