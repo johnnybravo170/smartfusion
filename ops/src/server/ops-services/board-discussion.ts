@@ -76,7 +76,7 @@ const NOVELTY_AUTO_CLOSE_THRESHOLD = 2; // 2 chair turns in a row with new_infor
 const ADVISOR_OPENING_MAX_TOKENS = 800;
 const ADVISOR_EXCHANGE_MAX_TOKENS = 500;
 const FINAL_POSITION_MAX_TOKENS = 1200;
-const CHAIR_TURN_MAX_TOKENS = 800;
+const CHAIR_TURN_MAX_TOKENS = 1500;
 const CHAIR_SYNTHESIS_MAX_TOKENS = 2000;
 
 // ── Public entrypoint ────────────────────────────────────────────────
@@ -433,6 +433,8 @@ async function chairPickAction(
       `- Always run at least ONE 'challenge' per crux. Devil's Advocate-style challengers exist for a reason.`,
       `- After 5 exchanges on one crux, resolve, deadlock, or drop it.`,
       `- 'close' only when all cruxes are closed (resolved/deadlock/dropped) or the session is over budget.`,
+      `- Keep 'prompt' and 'question' fields under ~40 words. You are SETTING UP the move, not delivering it. The challenger/exchanger writes the full argument in their own turn.`,
+      `- Keep 'reasoning' and 'resolution_summary' under ~80 words.`,
       `\nAdvisor track records (your prior decisions): use them as signal, not gospel. Past credit doesn't guarantee this answer is right.`,
       contextBlock,
     ].join('\n\n'),
