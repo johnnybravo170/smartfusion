@@ -22,7 +22,10 @@ import { ScheduleGantt } from '@/components/features/projects/schedule-gantt';
 import { ScheduleTaskEditor } from '@/components/features/projects/schedule-task-editor';
 import { Button } from '@/components/ui/button';
 import type { ProjectScheduleTask } from '@/lib/db/queries/project-schedule';
-import { updateScheduleTaskAction } from '@/server/actions/project-schedule';
+import {
+  cancelScheduleNotifyAction,
+  updateScheduleTaskAction,
+} from '@/server/actions/project-schedule';
 
 export type SchedulePhase = { id: string; name: string; display_order: number };
 
@@ -31,6 +34,7 @@ export function ScheduleInteractive({
   tasks,
   phases,
   tradeTypicalPhase,
+  pendingNotifyAt,
 }: {
   projectId: string;
   tasks: ProjectScheduleTask[];
@@ -39,6 +43,10 @@ export function ScheduleInteractive({
    *  the project uses custom phase names that don't match canonical
    *  color-map keys). Plain object so it serializes as RSC props. */
   tradeTypicalPhase: Record<string, string>;
+  /** ISO timestamp of the pending customer schedule-update notify, or
+   *  null when no notify is queued (default tenant flag off, OR notify
+   *  already sent/cancelled). Drives the Undo banner. */
+  pendingNotifyAt: string | null;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -162,6 +170,33 @@ export function ScheduleInteractive({
           <ScheduleClearButton projectId={projectId} />
         </div>
       </div>
+
+      {pendingNotifyAt ? (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <span>
+            <span className="font-medium">Customer email queued.</span> They&rsquo;ll be notified
+            shortly about the schedule changes.
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="bg-background"
+            onClick={() => {
+              startTransition(async () => {
+                const res = await cancelScheduleNotifyAction(projectId);
+                if (!res.ok) {
+                  alert(`Could not cancel: ${res.error}`);
+                  return;
+                }
+                router.refresh();
+              });
+            }}
+          >
+            Undo
+          </Button>
+        </div>
+      ) : null}
 
       <ScheduleGantt
         tasks={visibleTasks}

@@ -35,6 +35,7 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
     { data: joinRows },
     { data: phaseRows },
     { data: tradeRows },
+    { data: projectMeta },
   ] = await Promise.all([
     listScheduleTasksForProject(projectId),
     supabase.from('project_type_templates').select('id, slug, name, description'),
@@ -45,7 +46,24 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
       .eq('project_id', projectId)
       .order('display_order', { ascending: true }),
     supabase.from('trade_templates').select('id, typical_phase'),
+    // Pending customer-notify state for the Undo affordance. Only the
+    // scheduled_at matters when sent_at and cancelled_at are both null
+    // — any other combination = no Undo available.
+    supabase
+      .from('projects')
+      .select('schedule_notify_scheduled_at, schedule_notify_sent_at, schedule_notify_cancelled_at')
+      .eq('id', projectId)
+      .maybeSingle(),
   ]);
+
+  const pn = projectMeta as Record<string, unknown> | null;
+  const pendingNotifyAt =
+    pn &&
+    pn.schedule_notify_scheduled_at &&
+    !pn.schedule_notify_sent_at &&
+    !pn.schedule_notify_cancelled_at
+      ? (pn.schedule_notify_scheduled_at as string)
+      : null;
 
   const phases = (phaseRows ?? []).map((row) => {
     const r = row as Record<string, unknown>;
@@ -93,6 +111,7 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
       tasks={tasks}
       phases={phases}
       tradeTypicalPhase={Object.fromEntries(tradeTypicalPhaseById)}
+      pendingNotifyAt={pendingNotifyAt}
     />
   );
 }
