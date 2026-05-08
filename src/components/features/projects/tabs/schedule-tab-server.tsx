@@ -29,11 +29,41 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
   // syntax (`templates(id)`) was empty in early testing — likely a
   // PostgREST schema-cache lag on freshly-created tables. Two flat
   // queries are robust and basically free for these small lookups.
-  const [tasks, { data: templateRows }, { data: joinRows }] = await Promise.all([
+  const [
+    tasks,
+    { data: templateRows },
+    { data: joinRows },
+    { data: phaseRows },
+    { data: tradeRows },
+  ] = await Promise.all([
     listScheduleTasksForProject(projectId),
     supabase.from('project_type_templates').select('id, slug, name, description'),
     supabase.from('project_type_template_trades').select('project_type_template_id'),
+    supabase
+      .from('project_phases')
+      .select('id, name, display_order')
+      .eq('project_id', projectId)
+      .order('display_order', { ascending: true }),
+    supabase.from('trade_templates').select('id, typical_phase'),
   ]);
+
+  const phases = (phaseRows ?? []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      id: r.id as string,
+      name: r.name as string,
+      display_order: (r.display_order as number) ?? 0,
+    };
+  });
+
+  // Trade-template typical_phase fallback for tasks whose project uses
+  // custom phase names that don't resolve to the canonical color map.
+  const tradeTypicalPhaseById = new Map<string, string>();
+  for (const tr of tradeRows ?? []) {
+    const r = tr as Record<string, unknown>;
+    const tp = r.typical_phase as string | null;
+    if (tp) tradeTypicalPhaseById.set(r.id as string, tp);
+  }
 
   const tradeCountByTemplate = new Map<string, number>();
   for (const j of joinRows ?? []) {
@@ -57,5 +87,12 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
     return <ScheduleBootstrapPanel projectId={projectId} templates={templates} />;
   }
 
-  return <ScheduleInteractive projectId={projectId} tasks={tasks} />;
+  return (
+    <ScheduleInteractive
+      projectId={projectId}
+      tasks={tasks}
+      phases={phases}
+      tradeTypicalPhase={Object.fromEntries(tradeTypicalPhaseById)}
+    />
+  );
 }

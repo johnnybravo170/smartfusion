@@ -21,6 +21,7 @@
 
 import { useRef, useState } from 'react';
 import type { ProjectScheduleTask } from '@/lib/db/queries/project-schedule';
+import { phaseColorFor } from '@/lib/ui/gantt-phase-colors';
 
 const MONTH_FORMAT = new Intl.DateTimeFormat('en-CA', { month: 'short', year: 'numeric' });
 const DAY_FMT = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric' });
@@ -159,12 +160,21 @@ type DragState = {
   deltaDays: number;
 };
 
+export type GanttPhase = { id: string; name: string; display_order: number };
+
 export function ScheduleGantt({
   tasks,
+  phases,
+  tradeTypicalPhase,
   onTaskClick,
   onTaskUpdate,
 }: {
   tasks: ProjectScheduleTask[];
+  phases?: GanttPhase[];
+  /** trade_template_id → typical_phase string. Used as the bar-color
+   *  fallback when the project's actual phase name doesn't match the
+   *  canonical color-map keys. */
+  tradeTypicalPhase?: Record<string, string>;
   onTaskClick?: (task: ProjectScheduleTask) => void;
   onTaskUpdate?: (
     taskId: string,
@@ -259,8 +269,8 @@ export function ScheduleGantt({
   };
 
   // Compute optimistic position for the currently-dragging task.
-  const positionFor = (task: ProjectScheduleTask, taskIndex: number) => {
-    let colStart = diffDays(starts[taskIndex], earliest) + 1;
+  const positionFor = (task: ProjectScheduleTask, taskStart: Date) => {
+    let colStart = diffDays(taskStart, earliest) + 1;
     let colSpan = task.planned_duration_days;
     if (drag && drag.taskId === task.id && drag.deltaDays !== 0) {
       if (drag.kind === 'move') colStart += drag.deltaDays;
@@ -278,6 +288,44 @@ export function ScheduleGantt({
     }
     return { colStart, colSpan };
   };
+
+  // Group tasks by phase so the Gantt reads as Demo → Framing → … with
+  // sub-headers between groups. Tasks without a matching phase fall into
+  // an "Other" group at the bottom. Phases come from the project_phases
+  // seed (one row per project, deterministic order).
+  const phaseById = new Map<string, GanttPhase>();
+  for (const p of phases ?? []) phaseById.set(p.id, p);
+
+  type Group = {
+    phaseId: string | null;
+    phaseName: string | null;
+    sortKey: number;
+    tasks: ProjectScheduleTask[];
+  };
+  const groupsByKey = new Map<string, Group>();
+  for (const task of tasks) {
+    const ph = task.phase_id ? phaseById.get(task.phase_id) : null;
+    const key = ph?.id ?? '__none__';
+    let g = groupsByKey.get(key);
+    if (!g) {
+      g = {
+        phaseId: ph?.id ?? null,
+        phaseName: ph?.name ?? null,
+        sortKey: ph?.display_order ?? Number.POSITIVE_INFINITY,
+        tasks: [],
+      };
+      groupsByKey.set(key, g);
+    }
+    g.tasks.push(task);
+  }
+  const groups = Array.from(groupsByKey.values()).sort((a, b) => a.sortKey - b.sortKey);
+  for (const g of groups) {
+    g.tasks.sort((a, b) => a.display_order - b.display_order);
+  }
+  // Only show sub-headers when there's actually more than one group
+  // worth distinguishing — otherwise the operator gets a "Demo" header
+  // for a trivial single-phase project, which is more noise than signal.
+  const showGroupHeaders = groups.length > 1 || (groups[0]?.phaseId ?? null) !== null;
 
   return (
     <div className="rounded-lg border bg-card">
@@ -320,109 +368,131 @@ export function ScheduleGantt({
           />
         </div>
 
-        {tasks.map((task, i) => {
-          const { colStart, colSpan } = positionFor(task, i);
-          const isFirm = task.confidence === 'firm';
-          const isDone = task.status === 'done';
-          const isDragging = drag?.taskId === task.id;
-          const barClasses = isDone
-            ? 'bg-emerald-500'
-            : isFirm
-              ? 'bg-primary'
-              : 'border border-dashed border-primary bg-primary/10';
-          const NameCell = interactive ? 'button' : 'div';
-          const BarCell = interactive ? 'button' : 'div';
-          // Tooltip date/duration tracks the optimistic drag preview so
-          // the operator can see exactly where the bar will land before
-          // they release.
-          let displayStart = task.planned_start_date;
-          let displayDuration = task.planned_duration_days;
-          if (drag && drag.taskId === task.id && drag.deltaDays !== 0) {
-            if (drag.kind === 'move') {
-              displayStart = addDays(parseDate(task.planned_start_date), drag.deltaDays)
-                .toISOString()
-                .slice(0, 10);
-            } else {
-              displayDuration = Math.max(1, displayDuration + drag.deltaDays);
-            }
-          }
-          const dateRange = formatDateRange(displayStart, displayDuration);
-          const dayWord = displayDuration === 1 ? 'day' : 'days';
-          const tooltip = `${task.name} · ${dateRange} · ${displayDuration} ${dayWord} (${task.confidence})`;
-          // First row carries the gridRef so we can measure column width
-          // for drag-day calculations.
-          return (
-            <div key={task.id} className="contents">
-              <NameCell
-                {...(interactive ? { type: 'button' as const } : {})}
-                onClick={interactive ? () => onTaskClick?.(task) : undefined}
-                className={`flex min-h-8 items-center truncate py-1 text-left text-sm ${
-                  interactive ? 'cursor-pointer rounded hover:bg-muted/50' : ''
-                }`}
-              >
-                <span className={isDone ? 'text-muted-foreground line-through' : ''}>
-                  {task.name}
-                </span>
-                {task.client_visible ? null : (
-                  <span
-                    className="ml-1.5 text-[10px] text-muted-foreground"
-                    title="Hidden from customer"
-                  >
-                    (internal)
-                  </span>
-                )}
-              </NameCell>
-              <BarCell
-                {...(interactive ? { type: 'button' as const } : {})}
-                onClick={interactive ? () => onTaskClick?.(task) : undefined}
-                ref={i === 0 ? setGridRef : undefined}
-                className={`relative grid min-h-8 ${interactive ? 'cursor-pointer' : ''}`}
-                style={{ gridTemplateColumns: gridCols }}
-              >
-                <DayBacking meta={dayMeta} />
-                <button
-                  type="button"
-                  aria-label={`${tooltip}. Click to edit.`}
-                  onPointerDown={draggable ? (e) => handleDragStart(e, task, 'move') : undefined}
-                  onPointerMove={draggable && isDragging ? handleDragMove : undefined}
-                  onPointerUp={draggable && isDragging ? handleDragEnd : undefined}
-                  onPointerCancel={draggable && isDragging ? handleDragEnd : undefined}
-                  onClick={(e) => handleBarClick(e, task)}
-                  className={`group relative my-1 h-5 self-center rounded-md border-0 p-0 shadow-sm transition-opacity ${barClasses} ${
-                    draggable
-                      ? isDragging
-                        ? 'cursor-grabbing opacity-90'
-                        : 'cursor-grab hover:opacity-90'
-                      : interactive
-                        ? 'hover:opacity-90'
-                        : ''
-                  }`}
-                  style={{
-                    gridRow: 1,
-                    gridColumnStart: colStart,
-                    gridColumnEnd: `span ${colSpan}`,
-                    touchAction: 'none',
-                  }}
-                  title={tooltip}
-                >
-                  {draggable ? (
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      aria-label="Drag to resize task duration"
-                      onPointerDown={(e) => handleDragStart(e, task, 'resize')}
-                      onPointerMove={isDragging ? handleDragMove : undefined}
-                      onPointerUp={isDragging ? handleDragEnd : undefined}
-                      onPointerCancel={isDragging ? handleDragEnd : undefined}
-                      className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-ew-resize rounded-r-md border-0 bg-foreground/20 p-0 opacity-40 transition-all hover:w-2 hover:bg-foreground/30 hover:opacity-100 group-hover:opacity-70"
-                      style={{ touchAction: 'none' }}
-                    />
-                  ) : null}
-                </button>
-              </BarCell>
+        {(() => {
+          let firstRowAssigned = false;
+          return groups.map((group) => (
+            <div key={`group-${group.phaseId ?? 'none'}`} className="contents">
+              {showGroupHeaders ? (
+                <div className="col-span-2 mt-3 border-t pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+                  {group.phaseName ?? 'Other'}
+                </div>
+              ) : null}
+              {group.tasks.map((task) => {
+                const taskStart = parseDate(task.planned_start_date);
+                const { colStart, colSpan } = positionFor(task, taskStart);
+                const isFirm = task.confidence === 'firm';
+                const isDone = task.status === 'done';
+                const isDragging = drag?.taskId === task.id;
+                const projectPhaseName = task.phase_id ? phaseById.get(task.phase_id)?.name : null;
+                const tradeTypical = task.trade_template_id
+                  ? tradeTypicalPhase?.[task.trade_template_id]
+                  : null;
+                const phaseColors = phaseColorFor(projectPhaseName ?? tradeTypical ?? null);
+                const barClasses = isDone
+                  ? 'bg-emerald-500'
+                  : isFirm
+                    ? phaseColors.firm
+                    : phaseColors.rough;
+                const NameCell = interactive ? 'button' : 'div';
+                const BarCell = interactive ? 'button' : 'div';
+                const isFirstRow = !firstRowAssigned;
+                if (isFirstRow) firstRowAssigned = true;
+                // Tooltip date/duration tracks the optimistic drag preview so
+                // the operator can see exactly where the bar will land before
+                // they release.
+                let displayStart = task.planned_start_date;
+                let displayDuration = task.planned_duration_days;
+                if (drag && drag.taskId === task.id && drag.deltaDays !== 0) {
+                  if (drag.kind === 'move') {
+                    displayStart = addDays(parseDate(task.planned_start_date), drag.deltaDays)
+                      .toISOString()
+                      .slice(0, 10);
+                  } else {
+                    displayDuration = Math.max(1, displayDuration + drag.deltaDays);
+                  }
+                }
+                const dateRange = formatDateRange(displayStart, displayDuration);
+                const dayWord = displayDuration === 1 ? 'day' : 'days';
+                const tooltip = `${task.name} · ${dateRange} · ${displayDuration} ${dayWord} (${task.confidence})`;
+                // First row carries the gridRef so we can measure column width
+                // for drag-day calculations.
+                return (
+                  <div key={task.id} className="contents">
+                    <NameCell
+                      {...(interactive ? { type: 'button' as const } : {})}
+                      onClick={interactive ? () => onTaskClick?.(task) : undefined}
+                      className={`flex min-h-8 items-center truncate py-1 text-left text-sm ${
+                        interactive ? 'cursor-pointer rounded hover:bg-muted/50' : ''
+                      }`}
+                    >
+                      <span className={isDone ? 'text-muted-foreground line-through' : ''}>
+                        {task.name}
+                      </span>
+                      {task.client_visible ? null : (
+                        <span
+                          className="ml-1.5 text-[10px] text-muted-foreground"
+                          title="Hidden from customer"
+                        >
+                          (internal)
+                        </span>
+                      )}
+                    </NameCell>
+                    <BarCell
+                      {...(interactive ? { type: 'button' as const } : {})}
+                      onClick={interactive ? () => onTaskClick?.(task) : undefined}
+                      ref={isFirstRow ? setGridRef : undefined}
+                      className={`relative grid min-h-8 ${interactive ? 'cursor-pointer' : ''}`}
+                      style={{ gridTemplateColumns: gridCols }}
+                    >
+                      <DayBacking meta={dayMeta} />
+                      <button
+                        type="button"
+                        aria-label={`${tooltip}. Click to edit.`}
+                        onPointerDown={
+                          draggable ? (e) => handleDragStart(e, task, 'move') : undefined
+                        }
+                        onPointerMove={draggable && isDragging ? handleDragMove : undefined}
+                        onPointerUp={draggable && isDragging ? handleDragEnd : undefined}
+                        onPointerCancel={draggable && isDragging ? handleDragEnd : undefined}
+                        onClick={(e) => handleBarClick(e, task)}
+                        className={`group relative my-1 h-5 self-center rounded-md border-0 p-0 shadow-sm transition-opacity ${barClasses} ${
+                          draggable
+                            ? isDragging
+                              ? 'cursor-grabbing opacity-90'
+                              : 'cursor-grab hover:opacity-90'
+                            : interactive
+                              ? 'hover:opacity-90'
+                              : ''
+                        }`}
+                        style={{
+                          gridRow: 1,
+                          gridColumnStart: colStart,
+                          gridColumnEnd: `span ${colSpan}`,
+                          touchAction: 'none',
+                        }}
+                        title={tooltip}
+                      >
+                        {draggable ? (
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            aria-label="Drag to resize task duration"
+                            onPointerDown={(e) => handleDragStart(e, task, 'resize')}
+                            onPointerMove={isDragging ? handleDragMove : undefined}
+                            onPointerUp={isDragging ? handleDragEnd : undefined}
+                            onPointerCancel={isDragging ? handleDragEnd : undefined}
+                            className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-ew-resize rounded-r-md border-0 bg-foreground/20 p-0 opacity-40 transition-all hover:w-2 hover:bg-foreground/30 hover:opacity-100 group-hover:opacity-70"
+                            style={{ touchAction: 'none' }}
+                          />
+                        ) : null}
+                      </button>
+                    </BarCell>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          ));
+        })()}
       </div>
     </div>
   );

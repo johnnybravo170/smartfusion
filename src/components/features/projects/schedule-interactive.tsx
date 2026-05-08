@@ -24,12 +24,21 @@ import { Button } from '@/components/ui/button';
 import type { ProjectScheduleTask } from '@/lib/db/queries/project-schedule';
 import { updateScheduleTaskAction } from '@/server/actions/project-schedule';
 
+export type SchedulePhase = { id: string; name: string; display_order: number };
+
 export function ScheduleInteractive({
   projectId,
   tasks,
+  phases,
+  tradeTypicalPhase,
 }: {
   projectId: string;
   tasks: ProjectScheduleTask[];
+  phases: SchedulePhase[];
+  /** trade_template_id → trade.typical_phase (for color fallback when
+   *  the project uses custom phase names that don't match canonical
+   *  color-map keys). Plain object so it serializes as RSC props. */
+  tradeTypicalPhase: Record<string, string>;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -156,6 +165,8 @@ export function ScheduleInteractive({
 
       <ScheduleGantt
         tasks={visibleTasks}
+        phases={phases}
+        tradeTypicalPhase={tradeTypicalPhase}
         onTaskClick={setEditingTask}
         onTaskUpdate={handleTaskUpdate}
       />
