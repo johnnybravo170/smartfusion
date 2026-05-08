@@ -46,6 +46,7 @@ export const tenants = pgTable('tenants', {
   trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
   currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
   foundingMember: boolean('founding_member').default(false).notNull(),
+  affiliateTier: text('affiliate_tier').default('tier_3').notNull(),
   socials: jsonb('socials').default(sql`'{}'::jsonb`).notNull(),
   invoicePaymentInstructions: text('invoice_payment_instructions'),
   invoiceTerms: text('invoice_terms'),

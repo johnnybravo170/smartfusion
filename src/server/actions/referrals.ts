@@ -22,8 +22,11 @@ import {
   referralInviteSms,
   referralInviteSubject,
 } from '@/lib/email/templates/referral-invite';
+import { createClient } from '@/lib/supabase/server';
 import { sendSms } from '@/lib/twilio/client';
 import { referralEmailSchema, referralSMSSchema } from '@/lib/validators/referral';
+
+export type AffiliateTier = 'tier_1' | 'tier_2' | 'tier_3';
 
 const PUBLIC_DOMAIN = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.heyhenry.io';
 
@@ -48,6 +51,29 @@ export async function getReferralLinkAction(): Promise<
       url: `${PUBLIC_DOMAIN}/r/${refCode.code}`,
     },
   };
+}
+
+/**
+ * Get the current tenant's affiliate tier. Drives which commission program
+ * copy is rendered on the Refer page. Defaults to tier_3 (public program)
+ * if the column is missing or unreadable — never expose Tier 1 economics
+ * to a non-tier-1 account.
+ */
+export async function getAffiliateTierAction(): Promise<ReferralActionResult<AffiliateTier>> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('tenants')
+    .select('affiliate_tier')
+    .eq('id', tenant.id)
+    .maybeSingle();
+
+  const tier = (data?.affiliate_tier ?? 'tier_3') as AffiliateTier;
+  const safe: AffiliateTier =
+    tier === 'tier_1' || tier === 'tier_2' || tier === 'tier_3' ? tier : 'tier_3';
+  return { ok: true, data: safe };
 }
 
 /**
