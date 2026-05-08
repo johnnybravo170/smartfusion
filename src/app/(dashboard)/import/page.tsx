@@ -3,6 +3,7 @@ import {
   Briefcase,
   FileText,
   History,
+  ImageIcon,
   type LucideIcon,
   Receipt,
   Sparkles,
@@ -42,12 +43,14 @@ export default async function ImportHubPage() {
     { count: projectCount },
     { count: invoiceCount },
     { count: expenseCount },
+    { count: photoCount },
     { count: activeBatchCount },
   ] = await Promise.all([
     supabase.from('customers').select('id', { count: 'exact', head: true }).is('deleted_at', null),
     supabase.from('projects').select('id', { count: 'exact', head: true }).is('deleted_at', null),
     supabase.from('invoices').select('id', { count: 'exact', head: true }).is('deleted_at', null),
     supabase.from('expenses').select('id', { count: 'exact', head: true }),
+    supabase.from('photos').select('id', { count: 'exact', head: true }).is('deleted_at', null),
     supabase
       .from('import_batches')
       .select('id', { count: 'exact', head: true })
@@ -86,6 +89,14 @@ export default async function ImportHubPage() {
       blurb: 'Drop a stack of PDFs or photos. Henry reads each one and pre-files it by category.',
       examples: 'Scanned PDFs, phone photos — drop 50 at once',
       populated: (expenseCount ?? 0) > 0,
+    },
+    {
+      href: '/photos/import',
+      Icon: ImageIcon,
+      title: 'Project photos',
+      blurb: 'Drop a folder of historical project photos. Henry tags them in the background.',
+      examples: 'JPEG, PNG, HEIC, WebP — pick a project, drop the lot',
+      populated: (photoCount ?? 0) > 0,
     },
   ];
 

@@ -27,12 +27,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { rollbackCustomerImportAction } from '@/server/actions/onboarding-import';
 import { rollbackInvoiceImportAction } from '@/server/actions/onboarding-import-invoices';
+import { rollbackPhotoImportAction } from '@/server/actions/onboarding-import-photos';
 import { rollbackProjectImportAction } from '@/server/actions/onboarding-import-projects';
 import { rollbackReceiptImportAction } from '@/server/actions/onboarding-import-receipts';
 
 export type ImportBatchRow = {
   id: string;
-  kind: 'customers' | 'projects' | 'invoices' | 'expenses';
+  kind: 'customers' | 'projects' | 'invoices' | 'expenses' | 'photos' | 'time_entries';
   sourceFilename: string | null;
   /** customersCreated set when a non-customer batch created customers
    *  as a side-effect (project import, invoice import). projectsCreated
@@ -103,6 +104,12 @@ function EmptyState() {
             Receipts
           </Link>
         </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/photos/import">
+            <Sparkles className="size-3.5" />
+            Photos
+          </Link>
+        </Button>
       </div>
     </div>
   );
@@ -117,7 +124,8 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
     batch.kind === 'customers' ||
     batch.kind === 'projects' ||
     batch.kind === 'invoices' ||
-    batch.kind === 'expenses';
+    batch.kind === 'expenses' ||
+    batch.kind === 'photos';
   const rolledBack = !!batch.rolledBackAt;
   const created = batch.summary.created ?? 0;
   const merged = batch.summary.merged ?? 0;
@@ -176,6 +184,15 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
         }
         toast.success(
           `Rolled back. ${res.deleted} expense${res.deleted === 1 ? '' : 's'} removed.`,
+        );
+      } else if (batch.kind === 'photos') {
+        const res = await rollbackPhotoImportAction(batch.id);
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        toast.success(
+          `Rolled back. ${res.deletedPhotos} photo${res.deletedPhotos === 1 ? '' : 's'} removed.`,
         );
       }
       setOpen(false);
