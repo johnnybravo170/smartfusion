@@ -1,6 +1,8 @@
--- 0192_time_entries_import_batch.sql
+-- 0210_time_entries_import_batch.sql (renumbered from 0192; the
+-- original collided with 0192_phases_generic_seed.sql. Fully
+-- idempotent so this applies cleanly.)
 -- Phase F (last) of the onboarding-import wizard. Adds the same
--- provenance mechanism to time_entries that 0185–0191 added to the
+-- provenance mechanism to time_entries that 0185–0209 added to the
 -- other entity types.
 --
 -- Note on rollback semantics: time_entries has no `deleted_at` column

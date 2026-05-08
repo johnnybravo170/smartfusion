@@ -1,4 +1,7 @@
--- 0191_photos_import_batch.sql
+-- 0209_photos_import_batch.sql (renumbered from 0191; the original
+-- collided with 0191_invoice_doc_field_overrides.sql which had landed
+-- in parallel via a separate PR. Fully idempotent — every change uses
+-- IF NOT EXISTS — so this is safe to apply.)
 -- Phase E of the onboarding-import wizard. Bulk-attach a folder of
 -- historical project photos to a chosen project, with provenance + the
 -- standard rollback path.
