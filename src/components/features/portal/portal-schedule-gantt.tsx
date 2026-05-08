@@ -199,7 +199,9 @@ export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[]
               <div className="relative grid min-h-8" style={{ gridTemplateColumns: gridCols }}>
                 <DayBacking meta={dayMeta} />
                 <div
-                  className={`my-1 h-5 self-center rounded-md shadow-sm ${
+                  role="img"
+                  aria-label={`${task.name} · ${formatDateRange(task.planned_start_date, task.planned_duration_days)} · ${task.planned_duration_days} ${task.planned_duration_days === 1 ? 'day' : 'days'}`}
+                  className={`group relative my-1 h-5 self-center rounded-md shadow-sm ${
                     isDone
                       ? 'bg-emerald-500'
                       : task.warning
@@ -211,8 +213,16 @@ export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[]
                     gridColumnStart: colStart,
                     gridColumnEnd: `span ${colSpan}`,
                   }}
-                  title={`${task.name} · ${formatDateRange(task.planned_start_date, task.planned_duration_days)} · ${task.planned_duration_days} ${task.planned_duration_days === 1 ? 'day' : 'days'}`}
-                />
+                >
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none invisible absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-xs font-medium text-background opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+                  >
+                    {task.name} ·{' '}
+                    {formatDateRange(task.planned_start_date, task.planned_duration_days)} ·{' '}
+                    {task.planned_duration_days} {task.planned_duration_days === 1 ? 'day' : 'days'}
+                  </span>
+                </div>
               </div>
             </div>
           );

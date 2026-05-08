@@ -684,7 +684,7 @@ export default async function PortalPage({
   const hasPendingItems = (pendingCOs ?? []).length > 0;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto max-w-4xl px-4 py-8">
       {isOperatorPreview ? (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           <strong>Preview mode.</strong> The portal is currently disabled — your customer
