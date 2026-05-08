@@ -34,13 +34,14 @@ import {
 
 const cadFormat = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' });
 
-function formatDate(iso: string | null | undefined): string {
+function formatDate(iso: string | null | undefined, tz: string): string {
   if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-CA', {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
     month: 'long',
     day: 'numeric',
     year: 'numeric',
-  });
+  }).format(new Date(iso));
 }
 
 /**
@@ -70,6 +71,10 @@ export function generateHomeRecordPdf(
   embeddedPhotos: EmbeddablePhoto[],
   embeddedDocs: EmbeddableDoc[],
 ): Buffer {
+  // Snapshots written before 2026-05-08 don't carry a timezone; render in
+  // Vancouver as the documented fallback. New snapshots always set it.
+  const tz = snapshot.timezone ?? 'America/Vancouver';
+  const fmt = (iso: string | null | undefined) => formatDate(iso, tz);
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const photosByPath = new Map(embeddedPhotos.map((p) => [p.storage_path, p]));
   const docsByPath = new Map(embeddedDocs.map((d) => [d.storage_path, d]));
@@ -122,7 +127,7 @@ export function generateHomeRecordPdf(
   doc.setFontSize(9);
   doc.setTextColor(140);
   doc.text(
-    `Prepared by ${snapshot.contractor.name} • Generated ${formatDate(snapshot.generated_at)}`,
+    `Prepared by ${snapshot.contractor.name} • Generated ${fmt(snapshot.generated_at)}`,
     PAGE_WIDTH_MM / 2,
     MARGIN + 30,
     { align: 'center' },
@@ -142,10 +147,8 @@ export function generateHomeRecordPdf(
 
     if (snapshot.project.start_date || snapshot.project.target_end_date) {
       const range = [
-        snapshot.project.start_date ? `Started ${formatDate(snapshot.project.start_date)}` : null,
-        snapshot.project.target_end_date
-          ? `Target ${formatDate(snapshot.project.target_end_date)}`
-          : null,
+        snapshot.project.start_date ? `Started ${fmt(snapshot.project.start_date)}` : null,
+        snapshot.project.target_end_date ? `Target ${fmt(snapshot.project.target_end_date)}` : null,
       ]
         .filter(Boolean)
         .join(' • ');
@@ -173,10 +176,10 @@ export function generateHomeRecordPdf(
       body: snapshot.phases.map((p) => [
         p.name,
         p.status === 'complete'
-          ? `Completed ${formatDate(p.completed_at)}`
+          ? `Completed ${fmt(p.completed_at)}`
           : p.status === 'in_progress'
             ? p.started_at
-              ? `Started ${formatDate(p.started_at)}`
+              ? `Started ${fmt(p.started_at)}`
               : 'In progress'
             : 'Upcoming',
       ]),
@@ -302,7 +305,7 @@ export function generateHomeRecordPdf(
         d.label + (d.description ? `\n${d.description}` : ''),
         `${d.decided_value === 'approved' ? 'Approved' : 'Declined'}` +
           (d.decided_by_customer ? `\nby ${d.decided_by_customer}` : '') +
-          (d.decided_at ? `\non ${formatDate(d.decided_at)}` : ''),
+          (d.decided_at ? `\non ${fmt(d.decided_at)}` : ''),
       ]),
     });
     // biome-ignore lint/suspicious/noExplicitAny: jsPDF autoTable mutates instance
@@ -323,7 +326,7 @@ export function generateHomeRecordPdf(
       body: snapshot.change_orders.map((co) => [
         co.title + (co.description ? `\n${co.description}` : ''),
         cadFormat.format((co.cost_impact_cents ?? 0) / 100),
-        [co.approved_by_name, co.approved_at ? formatDate(co.approved_at) : null]
+        [co.approved_by_name, co.approved_at ? fmt(co.approved_at) : null]
           .filter(Boolean)
           .join('\n'),
         co.timeline_impact_days ? `+${co.timeline_impact_days}` : '',
@@ -357,7 +360,7 @@ export function generateHomeRecordPdf(
       for (const d of docs) {
         checkPage(5);
         const url = docsByPath.get(d.storage_path)?.url;
-        const line = `• ${d.title}${d.expires_at ? ` (expires ${formatDate(d.expires_at)})` : ''}`;
+        const line = `• ${d.title}${d.expires_at ? ` (expires ${fmt(d.expires_at)})` : ''}`;
         doc.text(line, MARGIN + 2, y);
         if (url) {
           // textWithLink renders text and overlays a clickable URL.

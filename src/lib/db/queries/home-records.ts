@@ -20,6 +20,17 @@ import type { SelectionCategory } from '@/lib/validators/project-selection';
 export type HomeRecordSnapshotV1 = {
   version: 1;
   generated_at: string;
+  /**
+   * IANA timezone the contractor's tenant was set to at generation time.
+   * The Home Record is a permanent artifact — dates are rendered in the
+   * tz that was active when the snapshot was frozen, so the document
+   * doesn't shift if the contractor later relocates the business.
+   *
+   * Optional for backwards compatibility with snapshots written before
+   * 2026-05-08; readers should fall back to 'America/Vancouver' when
+   * absent. New snapshots always set it.
+   */
+  timezone?: string;
   contractor: {
     name: string;
     /** Storage path in the photos bucket — re-signed at render time. */

@@ -63,20 +63,26 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
   const hasPdf = Boolean((record as Record<string, unknown>).pdf_path);
   const hasZip = Boolean((record as Record<string, unknown>).zip_path);
 
-  // Pull tenant tz so all rendered dates land in the contractor's local time
-  // rather than UTC. Side-query via project — snapshot is frozen, tz isn't.
-  const projectId = (record as Record<string, unknown>).project_id as string;
-  const { data: tenantRow } = await admin
-    .from('projects')
-    .select('tenants:tenant_id (timezone)')
-    .eq('id', projectId)
-    .single();
-  const tenantNode = (tenantRow as Record<string, unknown> | null)?.tenants as
-    | { timezone?: string | null }
-    | { timezone?: string | null }[]
-    | null;
-  const tenantObj = Array.isArray(tenantNode) ? tenantNode[0] : tenantNode;
-  const tenantTz = tenantObj?.timezone ?? undefined;
+  // Snapshots written 2026-05-08+ carry their tenant's tz at generation
+  // time. Older snapshots side-query the live tenant tz; if even that
+  // misses, fall back to Vancouver. Frozen-tz preferred — the Home Record
+  // is permanent, so dates should reflect when the contractor was
+  // actually doing the work, not where the business is now.
+  let tenantTz: string | undefined = snapshot.timezone;
+  if (!tenantTz) {
+    const projectId = (record as Record<string, unknown>).project_id as string;
+    const { data: tenantRow } = await admin
+      .from('projects')
+      .select('tenants:tenant_id (timezone)')
+      .eq('id', projectId)
+      .single();
+    const tenantNode = (tenantRow as Record<string, unknown> | null)?.tenants as
+      | { timezone?: string | null }
+      | { timezone?: string | null }[]
+      | null;
+    const tenantObj = Array.isArray(tenantNode) ? tenantNode[0] : tenantNode;
+    tenantTz = tenantObj?.timezone ?? undefined;
+  }
 
   // Re-sign all storage paths in one batch (separate buckets, so two
   // calls — photos + project-docs).

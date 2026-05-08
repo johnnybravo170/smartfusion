@@ -187,6 +187,7 @@ export async function generateHomeRecordAction(projectId: string): Promise<HomeR
   const snapshot: HomeRecordSnapshotV1 = {
     version: 1,
     generated_at: new Date().toISOString(),
+    timezone: tenant.timezone,
     contractor: {
       name: (t.name as string) ?? tenant.name ?? 'Contractor',
       logo_storage_path: (t.logo_storage_path as string | null) ?? null,

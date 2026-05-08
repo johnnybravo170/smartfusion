@@ -59,3 +59,4 @@ supabase/.temp
 # Local-only output from setup scripts (contains secrets — never commit)
 *.local
 !.env.local.example
+.claude/scheduled_tasks.lock

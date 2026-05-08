@@ -83,22 +83,27 @@ function safeFilename(name: string, fallback: string, ext = 'bin'): string {
   return cleaned;
 }
 
-function formatDate(iso: string | null | undefined): string {
+function formatDate(iso: string | null | undefined, tz: string): string {
   if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-CA', {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
     month: 'long',
     day: 'numeric',
     year: 'numeric',
-  });
+  }).format(new Date(iso));
 }
 
 export function buildHomeRecordReadme(snapshot: HomeRecordSnapshotV1): string {
+  // Snapshots written before 2026-05-08 don't carry a timezone; default to
+  // Vancouver. New snapshots always set it.
+  const tz = snapshot.timezone ?? 'America/Vancouver';
+  const fmt = (iso: string | null | undefined) => formatDate(iso, tz);
   const lines: string[] = [];
   lines.push(`HOME RECORD — ${snapshot.project.name}`);
   lines.push('='.repeat(Math.min(60, snapshot.project.name.length + 14)));
   lines.push('');
   lines.push(`Prepared by: ${snapshot.contractor.name}`);
-  lines.push(`Generated:   ${formatDate(snapshot.generated_at)}`);
+  lines.push(`Generated:   ${fmt(snapshot.generated_at)}`);
   if (snapshot.customer.name) {
     lines.push(`Homeowner:   ${snapshot.customer.name}`);
   }
@@ -115,10 +120,9 @@ export function buildHomeRecordReadme(snapshot: HomeRecordSnapshotV1): string {
   }
 
   if (snapshot.project.start_date || snapshot.project.target_end_date) {
-    if (snapshot.project.start_date)
-      lines.push(`Started: ${formatDate(snapshot.project.start_date)}`);
+    if (snapshot.project.start_date) lines.push(`Started: ${fmt(snapshot.project.start_date)}`);
     if (snapshot.project.target_end_date)
-      lines.push(`Target completion: ${formatDate(snapshot.project.target_end_date)}`);
+      lines.push(`Target completion: ${fmt(snapshot.project.target_end_date)}`);
     lines.push('');
   }
 
