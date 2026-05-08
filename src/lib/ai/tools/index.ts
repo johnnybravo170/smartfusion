@@ -9,6 +9,7 @@ import { invoiceTools, setInvoiceTimezone } from './invoices';
 import { jobTools } from './jobs';
 import { projectTools } from './projects';
 import { quoteTools } from './quotes';
+import { scheduleTaskTools } from './schedule-tasks';
 import { smsTools } from './sms';
 import { taskTools } from './tasks';
 import { timeExpenseTools } from './time-expenses';
@@ -31,7 +32,12 @@ const coreTools: AiTool[] = [
 ];
 
 /** Renovation-specific tools (projects, budget, time/expense, change orders). */
-const renovationTools: AiTool[] = [...projectTools, ...timeExpenseTools, ...changeOrderTools];
+const renovationTools: AiTool[] = [
+  ...projectTools,
+  ...scheduleTaskTools,
+  ...timeExpenseTools,
+  ...changeOrderTools,
+];
 
 /** All tools registered for the AI chat (count tracked in tests/unit/ai/tool-definitions.test.ts). */
 export const allTools: AiTool[] = [...coreTools, ...renovationTools];
