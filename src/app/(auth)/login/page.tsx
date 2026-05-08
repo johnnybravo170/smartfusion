@@ -68,7 +68,7 @@ function LoginForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Sign in</CardTitle>
+        <CardTitle className="text-2xl">Sign in to HeyHenry</CardTitle>
         <CardDescription>Welcome back.</CardDescription>
       </CardHeader>
       <form onSubmit={onSubmit}>
