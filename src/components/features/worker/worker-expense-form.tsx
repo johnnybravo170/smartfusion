@@ -38,6 +38,13 @@ export function WorkerExpenseForm({ projects }: Props) {
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(today);
   const [receipt, setReceipt] = useState<File | null>(null);
+  // Pre-tax / tax breakdown extracted from the receipt. Carried silently
+  // through the form so the cost-plus markup base on the eventual client
+  // invoice is the contractor's real cost (pre-tax), not the GST-inclusive
+  // total. Cleared if the operator hand-edits the amount — the breakdown
+  // is no longer trustworthy in that case.
+  const [preTaxCents, setPreTaxCents] = useState<number | null>(null);
+  const [taxCents, setTaxCents] = useState<number | null>(null);
 
   const categories = useMemo(
     () => projects.find((p) => p.project_id === projectId)?.categories ?? [],
@@ -68,6 +75,8 @@ export function WorkerExpenseForm({ projects }: Props) {
       // Only fill fields the user hasn't already typed into.
       const {
         amountCents,
+        preTaxAmountCents,
+        taxAmountCents,
         vendor: v,
         vendorGstNumber: bn,
         expenseDate,
@@ -76,6 +85,10 @@ export function WorkerExpenseForm({ projects }: Props) {
       let filled = 0;
       if (amountCents != null && !amount) {
         setAmount((amountCents / 100).toFixed(2));
+        // Capture the breakdown alongside the amount. preTax/tax are only
+        // valid against this OCR'd amount — if the user edits, we null them.
+        setPreTaxCents(preTaxAmountCents);
+        setTaxCents(taxAmountCents);
         filled++;
       }
       if (v && !vendor) {
@@ -120,6 +133,10 @@ export function WorkerExpenseForm({ projects }: Props) {
     if (categoryId) fd.append('budget_category_id', categoryId);
     if (costLineId) fd.append('cost_line_id', costLineId);
     fd.append('amount_cents', String(Math.round(amt * 100)));
+    // pre_tax_amount_cents goes to the new column; tax_cents is the
+    // pre-existing column the bookkeeping flows already use.
+    if (preTaxCents != null) fd.append('pre_tax_amount_cents', String(preTaxCents));
+    if (taxCents != null) fd.append('tax_cents', String(taxCents));
     fd.append('vendor', vendor);
     fd.append('vendor_gst_number', vendorGstNumber);
     fd.append('description', description);
@@ -249,7 +266,12 @@ export function WorkerExpenseForm({ projects }: Props) {
           step="0.01"
           min="0.01"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={(e) => {
+            setAmount(e.target.value);
+            // Hand-edit invalidates the OCR'd breakdown.
+            setPreTaxCents(null);
+            setTaxCents(null);
+          }}
           placeholder="0.00"
           required
         />

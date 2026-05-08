@@ -133,6 +133,7 @@ export function ReceiptImportWizard() {
           filename: res.filename || file.name,
           storagePath: '',
           amountCents: null,
+          preTaxAmountCents: null,
           taxCents: null,
           vendor: null,
           vendorGstNumber: null,
@@ -194,6 +195,7 @@ export function ReceiptImportWizard() {
         storagePath: r.storagePath,
         decision: r.decision,
         amountCents: r.amountCents,
+        preTaxAmountCents: r.preTaxAmountCents,
         taxCents: r.taxCents,
         vendor: r.vendor,
         vendorGstNumber: r.vendorGstNumber,
@@ -534,12 +536,33 @@ function PreviewStage({
                 </td>
                 <MoneyCell
                   cents={r.amountCents}
-                  onChange={(c) => updateRow(r.rowKey, (row) => ({ ...row, amountCents: c }))}
+                  onChange={(c) =>
+                    updateRow(r.rowKey, (row) => ({
+                      ...row,
+                      amountCents: c,
+                      // Operator-edited total invalidates the OCR'd pre-tax;
+                      // re-derive from tax if we still have it, else null
+                      // and let cost-plus markup fall back to amount_cents.
+                      preTaxAmountCents:
+                        c !== null && row.taxCents !== null && row.taxCents <= c
+                          ? c - row.taxCents
+                          : null,
+                    }))
+                  }
                   disabled={pending || !!r.parseError}
                 />
                 <MoneyCell
                   cents={r.taxCents}
-                  onChange={(c) => updateRow(r.rowKey, (row) => ({ ...row, taxCents: c }))}
+                  onChange={(c) =>
+                    updateRow(r.rowKey, (row) => ({
+                      ...row,
+                      taxCents: c,
+                      preTaxAmountCents:
+                        row.amountCents !== null && c !== null && c <= row.amountCents
+                          ? row.amountCents - c
+                          : null,
+                    }))
+                  }
                   disabled={pending || !!r.parseError}
                 />
                 <td className="px-3 py-2 align-top">

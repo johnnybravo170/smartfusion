@@ -62,6 +62,7 @@ function buildReceiptPrompt(categoryLines: string): string {
 
 Fields:
   "amount_cents": INTEGER cents — receipt grand total, tax INCLUDED. e.g. $18.40 → 1840.
+  "pre_tax_amount_cents": INTEGER cents — receipt SUBTOTAL before tax. e.g. $113.00 total with $13.00 HST → 10000. If no tax line is shown, return the same value as amount_cents. null only if you can't read it confidently.
   "tax_cents": INTEGER cents — the GST/HST portion if printed separately. null if not shown.
   "vendor": merchant name as shown.
   "vendor_gst_number": 9-digit (or 9+RT+4) Canadian GST/HST business number if printed. null if absent.
@@ -86,6 +87,7 @@ const RECEIPT_SCHEMA = {
   additionalProperties: false,
   properties: {
     amount_cents: { type: ['integer', 'null'] },
+    pre_tax_amount_cents: { type: ['integer', 'null'] },
     tax_cents: { type: ['integer', 'null'] },
     vendor: { type: ['string', 'null'] },
     vendor_gst_number: { type: ['string', 'null'] },
@@ -97,6 +99,7 @@ const RECEIPT_SCHEMA = {
   },
   required: [
     'amount_cents',
+    'pre_tax_amount_cents',
     'tax_cents',
     'vendor',
     'vendor_gst_number',
@@ -110,6 +113,7 @@ const RECEIPT_SCHEMA = {
 
 type RawReceipt = {
   amount_cents: unknown;
+  pre_tax_amount_cents?: unknown;
   tax_cents?: unknown;
   vendor: unknown;
   vendor_gst_number?: unknown;
@@ -126,6 +130,10 @@ export type ProposedReceiptExpense = {
   storagePath: string;
   /** OCR results, plus operator edits before commit. */
   amountCents: number | null;
+  /** Receipt subtotal before GST/HST/PST. Used as the markup base on
+   *  cost-plus client invoices. Null when OCR couldn't read the breakdown
+   *  or it doesn't reconcile to amount_cents within ~1¢. */
+  preTaxAmountCents: number | null;
   taxCents: number | null;
   vendor: string | null;
   vendorGstNumber: string | null;
@@ -332,6 +340,11 @@ export async function parseReceiptForImportAction(formData: FormData): Promise<P
       filename,
       storagePath,
       amountCents: pickInt(raw.amount_cents),
+      preTaxAmountCents: reconcilePreTax(
+        pickInt(raw.pre_tax_amount_cents),
+        pickInt(raw.tax_cents),
+        pickInt(raw.amount_cents),
+      ),
       taxCents: pickInt(raw.tax_cents),
       vendor: pickString(raw.vendor),
       vendorGstNumber: pickString(raw.vendor_gst_number),
@@ -374,6 +387,28 @@ function extractLast4(raw: string): string | null {
   const digits = raw.replace(/\D+/g, '');
   if (digits.length < 4) return null;
   return digits.slice(-4);
+}
+
+/**
+ * Sanity-check the OCR'd pre-tax / tax / total breakdown. Returns the
+ * pre-tax value only if pre_tax + tax = total within 1¢ rounding. If
+ * pre_tax is missing but tax + total are present and sensible, derive
+ * pre_tax = total - tax. Otherwise null — the cost-plus markup falls
+ * back to amount_cents.
+ */
+function reconcilePreTax(
+  preTax: number | null,
+  tax: number | null,
+  total: number | null,
+): number | null {
+  if (total === null) return null;
+  if (preTax !== null && tax !== null) {
+    return Math.abs(preTax + tax - total) <= 1 ? preTax : null;
+  }
+  if (preTax === null && tax !== null && tax >= 0 && tax <= total) {
+    return total - tax;
+  }
+  return null;
 }
 
 // ─── Dedup-against-existing query ──────────────────────────────────────────
@@ -452,6 +487,9 @@ export type CommitReceiptImportRow = {
   storagePath: string;
   decision: 'create' | 'merge' | 'skip';
   amountCents: number | null;
+  /** Pre-tax subtotal — markup base on cost-plus jobs. Null falls back
+   *  to amountCents. */
+  preTaxAmountCents: number | null;
   taxCents: number | null;
   vendor: string | null;
   vendorGstNumber: string | null;
@@ -539,6 +577,7 @@ export async function commitReceiptImportAction(input: {
       job_id: null,
       category_id: r.categoryId,
       amount_cents: r.amountCents ?? 0,
+      pre_tax_amount_cents: r.preTaxAmountCents,
       tax_cents: r.taxCents ?? 0,
       vendor: r.vendor,
       vendor_gst_number: r.vendorGstNumber,

@@ -102,6 +102,12 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
   const [date, setDate] = useState(todayLocal());
   const [duplicate, setDuplicate] = useState<DuplicateExpense | null>(null);
   const [pending, startSaving] = useTransition();
+  // Pre-tax / tax breakdown captured from the receipt OCR. Used as the
+  // markup base on cost-plus client invoices so we don't mark up GST that
+  // the contractor reclaims as an ITC. Cleared if the operator hand-edits
+  // the amount.
+  const [preTaxCents, setPreTaxCents] = useState<number | null>(null);
+  const [taxCents, setTaxCents] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +149,9 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
       const fields = res.fields;
       if (fields.amountCents != null && !amount.trim()) {
         setAmount((fields.amountCents / 100).toFixed(2));
+        // Breakdown is only valid against this OCR'd amount.
+        setPreTaxCents(fields.preTaxAmountCents);
+        setTaxCents(fields.taxAmountCents);
       }
       if (fields.vendor && !vendor.trim()) setVendor(fields.vendor);
       if (fields.vendorGstNumber && !vendorGstNumber.trim()) {
@@ -178,6 +187,10 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
     startSaving(async () => {
       const fd = new FormData();
       fd.append('amount_cents', String(amountCents));
+      // pre_tax_amount_cents goes to the new column; tax_cents is the
+      // pre-existing column the bookkeeping flows already use.
+      if (preTaxCents != null) fd.append('pre_tax_amount_cents', String(preTaxCents));
+      if (taxCents != null) fd.append('tax_cents', String(taxCents));
       fd.append('expense_date', date);
       if (vendor.trim()) fd.append('vendor', vendor.trim());
       if (vendorGstNumber.trim()) fd.append('vendor_gst_number', vendorGstNumber.trim());
@@ -393,7 +406,12 @@ function ExpenseDialogBody({ onDone }: { onDone: () => void }) {
             type="number"
             step="0.01"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => {
+              setAmount(e.target.value);
+              // Hand-edit invalidates the OCR'd breakdown.
+              setPreTaxCents(null);
+              setTaxCents(null);
+            }}
             placeholder="0.00"
             disabled={busy}
           />
