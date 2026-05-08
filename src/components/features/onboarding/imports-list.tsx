@@ -30,6 +30,7 @@ import { rollbackInvoiceImportAction } from '@/server/actions/onboarding-import-
 import { rollbackPhotoImportAction } from '@/server/actions/onboarding-import-photos';
 import { rollbackProjectImportAction } from '@/server/actions/onboarding-import-projects';
 import { rollbackReceiptImportAction } from '@/server/actions/onboarding-import-receipts';
+import { rollbackTimeEntryImportAction } from '@/server/actions/onboarding-import-time-entries';
 
 export type ImportBatchRow = {
   id: string;
@@ -110,6 +111,12 @@ function EmptyState() {
             Photos
           </Link>
         </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/time/import">
+            <Sparkles className="size-3.5" />
+            Time entries
+          </Link>
+        </Button>
       </div>
     </div>
   );
@@ -125,7 +132,8 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
     batch.kind === 'projects' ||
     batch.kind === 'invoices' ||
     batch.kind === 'expenses' ||
-    batch.kind === 'photos';
+    batch.kind === 'photos' ||
+    batch.kind === 'time_entries';
   const rolledBack = !!batch.rolledBackAt;
   const created = batch.summary.created ?? 0;
   const merged = batch.summary.merged ?? 0;
@@ -193,6 +201,15 @@ function BatchRow({ batch, timezone }: { batch: ImportBatchRow; timezone: string
         }
         toast.success(
           `Rolled back. ${res.deletedPhotos} photo${res.deletedPhotos === 1 ? '' : 's'} removed.`,
+        );
+      } else if (batch.kind === 'time_entries') {
+        const res = await rollbackTimeEntryImportAction(batch.id);
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        toast.success(
+          `Rolled back. ${res.deletedEntries} time ${res.deletedEntries === 1 ? 'entry' : 'entries'} removed.`,
         );
       }
       setOpen(false);

@@ -40,6 +40,7 @@ export const KNOWN_TASKS = [
   'onboarding_customer_classify', // Day-1 import wizard: file/paste → proposed customer rows
   'onboarding_project_classify', // Day-1 import wizard: file/paste → proposed project rows + customer references
   'onboarding_invoice_classify', // Day-1 import wizard: file/paste → proposed invoice rows + frozen tax math
+  'onboarding_time_entry_classify', // Day-1 import wizard: file/paste → proposed time entries
 ] as const;
 
 export type KnownTask = (typeof KNOWN_TASKS)[number];

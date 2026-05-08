@@ -202,6 +202,15 @@ export const ROUTING: Record<KnownTask, RouteConfig> = {
     primary: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
     fallback_chain: ['anthropic', 'openai'],
   },
+
+  // Phase F. Time entries are tabular and structured-feeling, but the
+  // model still has to disambiguate worker name vs project name vs
+  // notes vs hours format ("8h", "8:00", "0.125 of a day"). Same
+  // Sonnet 4.6 pin as the rest of the family.
+  onboarding_time_entry_classify: {
+    primary: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+    fallback_chain: ['anthropic', 'openai'],
+  },
 };
 
 export function lookupRoute(task: string, custom?: Record<string, RouteConfig>): RouteConfig {

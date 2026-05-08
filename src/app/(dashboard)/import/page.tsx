@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   Briefcase,
+  Clock,
   FileText,
   History,
   ImageIcon,
@@ -44,6 +45,7 @@ export default async function ImportHubPage() {
     { count: invoiceCount },
     { count: expenseCount },
     { count: photoCount },
+    { count: timeEntryCount },
     { count: activeBatchCount },
   ] = await Promise.all([
     supabase.from('customers').select('id', { count: 'exact', head: true }).is('deleted_at', null),
@@ -51,6 +53,7 @@ export default async function ImportHubPage() {
     supabase.from('invoices').select('id', { count: 'exact', head: true }).is('deleted_at', null),
     supabase.from('expenses').select('id', { count: 'exact', head: true }),
     supabase.from('photos').select('id', { count: 'exact', head: true }).is('deleted_at', null),
+    supabase.from('time_entries').select('id', { count: 'exact', head: true }),
     supabase
       .from('import_batches')
       .select('id', { count: 'exact', head: true })
@@ -97,6 +100,14 @@ export default async function ImportHubPage() {
       blurb: 'Drop a folder of historical project photos. Henry tags them in the background.',
       examples: 'JPEG, PNG, HEIC, WebP — pick a project, drop the lot',
       populated: (photoCount ?? 0) > 0,
+    },
+    {
+      href: '/time/import',
+      Icon: Clock,
+      title: 'Time entries',
+      blurb: 'Historical hours by worker / project / date. Henry matches workers to your team.',
+      examples: 'Payroll CSV, time-tracking export, Google Sheets',
+      populated: (timeEntryCount ?? 0) > 0,
     },
   ];
 
