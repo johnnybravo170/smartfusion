@@ -1,14 +1,12 @@
 'use server';
 
 /**
- * Onboarding verification server actions: email re-send, phone OTP send,
- * phone OTP verify. Email confirmation itself happens via the Supabase
- * link → /callback flow.
+ * Phone OTP send + verify server actions. Used for lazy phone verification
+ * the moment a customer first hits an SMS-sending feature (per the
+ * zero-friction-signup design — see docs/onboarding-audit-2026-05.md).
  */
 
-import { headers } from 'next/headers';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
-import { sendEmail } from '@/lib/email/send';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { normalizePhone, sendSms } from '@/lib/twilio/client';
 
@@ -17,51 +15,6 @@ const MAX_ATTEMPTS = 5;
 const RESEND_THROTTLE_MS = 60 * 1000; // 1 min between sends
 
 export type VerificationResult = { ok: true } | { ok: false; error: string };
-
-async function originFromHeaders(): Promise<string> {
-  const h = await headers();
-  const origin = h.get('origin');
-  if (origin) return origin;
-  const host = h.get('host') ?? 'localhost:3000';
-  const proto = h.get('x-forwarded-proto') ?? 'http';
-  return `${proto}://${host}`;
-}
-
-export async function resendEmailVerificationAction(): Promise<VerificationResult> {
-  const user = await getCurrentUser();
-  if (!user?.email) return { ok: false, error: 'Not signed in.' };
-  if (user.email_confirmed_at) return { ok: true };
-
-  const admin = createAdminClient();
-  const origin = await originFromHeaders();
-  // 'magiclink' confirms email on an existing unconfirmed user when clicked.
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: 'magiclink',
-    email: user.email,
-    options: { redirectTo: `${origin}/callback?next=/onboarding/verify` },
-  });
-  if (error || !data?.properties?.action_link) {
-    return { ok: false, error: error?.message ?? 'Could not generate link.' };
-  }
-
-  const link = data.properties.action_link;
-  const result = await sendEmail({
-    to: user.email,
-    subject: 'Confirm your HeyHenry email',
-    html: `
-      <p>Hi,</p>
-      <p>Confirm your email to finish setting up HeyHenry:</p>
-      <p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#0a0a0a;color:#fff;text-decoration:none;border-radius:6px;">Confirm email</a></p>
-      <p>Or open this link: <br/><a href="${link}">${link}</a></p>
-      <p>Link expires in 24 hours.</p>
-    `,
-    caslCategory: 'transactional',
-    relatedType: 'auth',
-    caslEvidence: { kind: 'email_verification', userId: user.id },
-  });
-  if (!result.ok) return { ok: false, error: result.error ?? 'Email send failed.' };
-  return { ok: true };
-}
 
 export async function sendPhoneVerificationAction(input: {
   phone: string;

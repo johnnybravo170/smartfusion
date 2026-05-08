@@ -36,22 +36,11 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   const [tenant, currentUser] = await Promise.all([getCurrentTenant(), getCurrentUser()]);
 
-  // Verification gate: email + phone must both be confirmed before the
-  // dashboard renders. Existing users were grandfathered in the migration
-  // (phone_verified_at backfilled to created_at), so only fresh signups
-  // hit this redirect.
-  if (currentUser && tenant) {
-    const emailConfirmed = !!currentUser.email_confirmed_at;
-    const phoneConfirmed = !!tenant.member.phone_verified_at;
-    if (!emailConfirmed || !phoneConfirmed) {
-      redirect('/onboarding/verify');
-    }
-  }
-
-  // Note: subscription gating is enforced at signup-flow completion only
-  // (verify page redirects new tenants to /onboarding/plan). The dashboard
-  // does NOT bounce un-subscribed tenants — existing live tenants pre-date
-  // billing and must keep their access.
+  // Note: no email/phone verification gate. New signups land here directly
+  // (zero-friction onboarding — see docs/onboarding-audit-2026-05.md).
+  // Phone is verified lazily when an SMS feature is first used.
+  // Subscription gating is also off — existing live tenants pre-date billing
+  // and must keep their access.
 
   const timezone = tenant?.timezone || 'America/Vancouver';
   const vertical = tenant?.vertical || 'pressure_washing';
