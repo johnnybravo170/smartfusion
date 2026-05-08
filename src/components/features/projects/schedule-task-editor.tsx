@@ -19,6 +19,7 @@ import type { ProjectScheduleTask } from '@/lib/db/queries/project-schedule';
 import {
   createScheduleTaskAction,
   deleteScheduleTaskAction,
+  setTaskPredecessorsAction,
   updateScheduleTaskAction,
 } from '@/server/actions/project-schedule';
 
@@ -28,10 +29,16 @@ type Mode =
 
 export function ScheduleTaskEditor({
   mode,
+  allTasks,
+  initialPredecessorIds,
   open,
   onClose,
 }: {
   mode: Mode;
+  /** Every active task on the project (for the "Depends on" picker). */
+  allTasks: ProjectScheduleTask[];
+  /** Current predecessor task ids for the task being edited. */
+  initialPredecessorIds: string[];
   open: boolean;
   onClose: () => void;
 }) {
@@ -67,6 +74,23 @@ export function ScheduleTaskEditor({
   const [confidence, setConfidence] = useState(initial.confidence);
   const [clientVisible, setClientVisible] = useState(initial.client_visible);
   const [notes, setNotes] = useState(initial.notes);
+  // "Depends on" picker — predecessors are stored as a Set so toggling
+  // is O(1). Default-populated from the auto-bootstrapped phase edges.
+  const [predecessorIds, setPredecessorIds] = useState<Set<string>>(
+    () => new Set(initialPredecessorIds),
+  );
+
+  const togglePredecessor = (taskId: string) => {
+    setPredecessorIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
+
+  const currentTaskId = mode.kind === 'edit' ? mode.task.id : null;
+  const candidatePredecessors = allTasks.filter((t) => t.id !== currentTaskId);
 
   const submit = () => {
     setError(null);
@@ -101,6 +125,29 @@ export function ScheduleTaskEditor({
         setError(res.error);
         return;
       }
+
+      // Persist the "Depends on" set if it changed. Edit mode only —
+      // create mode would need the new task's id which we now have via
+      // res.taskId, so we can also handle it. We always call the action
+      // when there's a delta vs the initial state.
+      const targetTaskId = mode.kind === 'edit' ? mode.task.id : res.taskId;
+      const initialSet = new Set(initialPredecessorIds);
+      const desiredArray = Array.from(predecessorIds);
+      const initialArray = Array.from(initialSet);
+      const setsDiffer =
+        desiredArray.length !== initialArray.length ||
+        desiredArray.some((id) => !initialSet.has(id));
+      if (setsDiffer) {
+        const depRes = await setTaskPredecessorsAction({
+          taskId: targetTaskId,
+          predecessorIds: desiredArray,
+        });
+        if (!depRes.ok) {
+          setError(depRes.error);
+          return;
+        }
+      }
+
       onClose();
       router.refresh();
     });
@@ -222,6 +269,33 @@ export function ScheduleTaskEditor({
               className="mt-1 w-full rounded-md border bg-background px-2 py-1.5 text-sm"
             />
           </label>
+
+          {candidatePredecessors.length > 0 ? (
+            <div className="block text-xs font-medium">
+              <span className="block text-muted-foreground">
+                Depends on <span className="font-normal">({predecessorIds.size} selected)</span>
+              </span>
+              <p className="mt-0.5 text-[11px] font-normal text-muted-foreground">
+                When you extend a predecessor, this task shifts forward to follow.
+              </p>
+              <div className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-md border bg-background p-2">
+                {candidatePredecessors.map((t) => (
+                  <label
+                    key={t.id}
+                    className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-muted/50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={predecessorIds.has(t.id)}
+                      onChange={() => togglePredecessor(t.id)}
+                      className="rounded"
+                    />
+                    <span className="truncate text-xs font-normal">{t.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {error ? (

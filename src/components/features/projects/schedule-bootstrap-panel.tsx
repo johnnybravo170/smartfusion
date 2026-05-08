@@ -138,6 +138,10 @@ export function ScheduleBootstrapPanel({
             projectId,
             defaultStartDate: new Date().toISOString().slice(0, 10),
           }}
+          // Empty-state has no existing tasks, so the picker has nothing
+          // to choose from — gets hidden by candidatePredecessors check.
+          allTasks={[]}
+          initialPredecessorIds={[]}
           open={true}
           onClose={() => setBlankCreatorOpen(false)}
         />

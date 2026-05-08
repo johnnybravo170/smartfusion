@@ -36,6 +36,7 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
     { data: joinRows },
     { data: phaseRows },
     { data: tradeRows },
+    { data: dependencyRows },
     { data: projectMeta },
   ] = await Promise.all([
     listScheduleTasksForProject(projectId),
@@ -47,6 +48,10 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
       .eq('project_id', projectId)
       .order('display_order', { ascending: true }),
     supabase.from('trade_templates').select('id, typical_phase'),
+    supabase
+      .from('project_schedule_dependencies')
+      .select('predecessor_task_id, successor_task_id')
+      .eq('project_id', projectId),
     // Pending customer-notify state for the Undo affordance. Only the
     // scheduled_at matters when sent_at and cancelled_at are both null
     // — any other combination = no Undo available.
@@ -64,8 +69,7 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
   const pn = projectMeta as Record<string, unknown> | null;
   const startDate = (pn?.start_date as string | null) ?? null;
   const pendingNotifyAt =
-    pn &&
-    pn.schedule_notify_scheduled_at &&
+    pn?.schedule_notify_scheduled_at &&
     !pn.schedule_notify_sent_at &&
     !pn.schedule_notify_cancelled_at
       ? (pn.schedule_notify_scheduled_at as string)
@@ -107,6 +111,17 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
     };
   });
 
+  // Build a successor → predecessor[] map so the editor can render the
+  // current "Depends on" set for any task in O(1).
+  const predecessorsByTaskId: Record<string, string[]> = {};
+  for (const e of dependencyRows ?? []) {
+    const r = e as Record<string, unknown>;
+    const succ = r.successor_task_id as string;
+    const pred = r.predecessor_task_id as string;
+    if (!predecessorsByTaskId[succ]) predecessorsByTaskId[succ] = [];
+    predecessorsByTaskId[succ].push(pred);
+  }
+
   if (tasks.length === 0) {
     return (
       <div className="space-y-3">
@@ -125,6 +140,7 @@ export default async function ScheduleTabServer({ projectId }: { projectId: stri
         phases={phases}
         tradeTypicalPhase={Object.fromEntries(tradeTypicalPhaseById)}
         pendingNotifyAt={pendingNotifyAt}
+        predecessorsByTaskId={predecessorsByTaskId}
       />
     </div>
   );

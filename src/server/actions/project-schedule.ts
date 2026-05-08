@@ -50,6 +50,27 @@ const UNMAPPED_TASK_DURATION_DAYS = 3;
 /** Mid-timeline default for unmapped tasks so mapped trades sort first. */
 const UNMAPPED_SEQUENCE_POSITION = 50;
 
+/**
+ * Canonical residential-reno phase order, lower-cased to match
+ * trade_templates.typical_phase normalization. Used by the bootstrap
+ * to wire phase-aware dependency edges: Demo → Framing → Rough-in →
+ * Drywall → … so extending Framing pulls every Rough-in task forward.
+ *
+ * "Planning & selections" is operator-side bookkeeping that doesn't
+ * appear in trade_templates so it's omitted; the chain starts at Demo.
+ */
+const CANONICAL_PHASE_ORDER = [
+  'demo',
+  'framing',
+  'rough-in',
+  'inspection',
+  'drywall',
+  'cabinets & fixtures',
+  'finishes',
+  'punch list',
+  'final walkthrough',
+];
+
 type LaidOutTask = {
   trade: ResolvedTrade;
   planned_start_date: string;
@@ -247,45 +268,59 @@ export async function bootstrapProjectScheduleAction(
   const { data: insertedRows, error: insertErr } = await supabase
     .from('project_schedule_tasks')
     .insert(inserts)
-    .select('id, planned_start_date');
+    .select('id, trade_template_id');
   if (insertErr) return { ok: false, error: insertErr.message };
 
-  // Auto-bootstrap finish_to_start dependency edges between consecutive
-  // tasks. "Consecutive" = ordered by planned_start_date; tasks at the
-  // same start (parallel tracks) chain to the same predecessor instead
-  // of to each other. Drives cascade-on-edit via project_schedule_
-  // dependencies.
+  // Auto-bootstrap dependency edges by PHASE. Tasks in phase N depend
+  // on every task in the previous populated phase. Within a phase,
+  // tasks are siblings (no edges to each other) — Plumbing and
+  // Electrical are both rough-ins, both depend on Framing, neither
+  // depends on the other.
   //
-  // Skipped for blank bootstraps — they have no inserts.
+  // Tasks without a typical_phase (custom budget categories the GC
+  // didn't map) get NO auto-edges — operator can add them manually
+  // via the task edit modal's "Depends on" picker.
   if ((insertedRows ?? []).length >= 2) {
-    const sorted = [...(insertedRows as Array<{ id: string; planned_start_date: string }>)].sort(
-      (a, b) => a.planned_start_date.localeCompare(b.planned_start_date),
-    );
+    // Map task → typical_phase via the trade list we already resolved.
+    // Trades passed into resolveTrades carry typical_phase; we threaded
+    // them into the inserts above, but the `select('trade_template_id')`
+    // gives us the link back.
+    const tradePhaseByTradeId = new Map<string, string>();
+    for (const t of trades) {
+      if (t.trade_template_id && t.typical_phase) {
+        tradePhaseByTradeId.set(t.trade_template_id, t.typical_phase.trim().toLowerCase());
+      }
+    }
+
+    const tasksByPhase = new Map<string, string[]>();
+    for (const row of insertedRows as Array<{ id: string; trade_template_id: string | null }>) {
+      const phase = row.trade_template_id ? tradePhaseByTradeId.get(row.trade_template_id) : null;
+      if (!phase) continue;
+      const list = tasksByPhase.get(phase) ?? [];
+      list.push(row.id);
+      tasksByPhase.set(phase, list);
+    }
+
+    const orderedPhases = CANONICAL_PHASE_ORDER.filter((p) => tasksByPhase.has(p));
     const edges: Array<{
       project_id: string;
       tenant_id: string;
       predecessor_task_id: string;
       successor_task_id: string;
     }> = [];
-    // Group tasks by start date so parallel tasks (same start) all
-    // depend on the previous group rather than chaining among themselves.
-    let prevGroup: Array<{ id: string; planned_start_date: string }> = [sorted[0]];
-    for (let i = 1; i < sorted.length; i++) {
-      const cur = sorted[i];
-      if (cur.planned_start_date === prevGroup[0].planned_start_date) {
-        prevGroup.push(cur);
-        continue;
+    for (let i = 1; i < orderedPhases.length; i++) {
+      const preds = tasksByPhase.get(orderedPhases[i - 1]) ?? [];
+      const succs = tasksByPhase.get(orderedPhases[i]) ?? [];
+      for (const predId of preds) {
+        for (const succId of succs) {
+          edges.push({
+            project_id: projectId,
+            tenant_id: tenant.id,
+            predecessor_task_id: predId,
+            successor_task_id: succId,
+          });
+        }
       }
-      // New group — link every member of prevGroup as a predecessor of
-      // cur. We only edge from the FIRST member of prevGroup to keep
-      // the graph sparse; the cascade math walks transitively anyway.
-      edges.push({
-        project_id: projectId,
-        tenant_id: tenant.id,
-        predecessor_task_id: prevGroup[0].id,
-        successor_task_id: cur.id,
-      });
-      prevGroup = [cur];
     }
     if (edges.length > 0) {
       await supabase.from('project_schedule_dependencies').insert(edges);
@@ -302,6 +337,119 @@ export async function bootstrapProjectScheduleAction(
  * "Clear schedule" action before re-bootstrapping, and as a recovery
  * lever if the bootstrap produced a wrong shape.
  */
+// ---------------------------------------------------------------------------
+// v2: manual dependency edges
+// ---------------------------------------------------------------------------
+
+/**
+ * Set the predecessors of a task. Replaces the existing predecessor
+ * set with the supplied list — i.e. takes a target state and reconciles.
+ * Cleaner contract than separate add/remove actions for the modal's
+ * multi-select UI which thinks in terms of "the predecessors I want
+ * after save" not "diff from current."
+ *
+ * Validates: no self-edge, no cycles (predecessor's transitive ancestors
+ * mustn't include the successor). Cycle check uses the live edge graph
+ * minus the edges being replaced.
+ *
+ * After persisting, runs cascadeForwardFromTask on the updated task so
+ * a freshly-added edge that's now violated triggers the shift.
+ */
+export async function setTaskPredecessorsAction(input: {
+  taskId: string;
+  predecessorIds: string[];
+}): Promise<TaskMutationResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  const supabase = await createClient();
+
+  // Self-edge check.
+  if (input.predecessorIds.includes(input.taskId)) {
+    return { ok: false, error: "A task can't depend on itself." };
+  }
+
+  // Load task + its project for the cascade hop.
+  const { data: task } = await supabase
+    .from('project_schedule_tasks')
+    .select('id, project_id')
+    .eq('id', input.taskId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (!task) return { ok: false, error: 'Task not found.' };
+  const projectId = (task as Record<string, unknown>).project_id as string;
+
+  // Cycle check — would adding any of the proposed predecessors create
+  // a path from input.taskId back to itself? Walk the graph FORWARD
+  // from each candidate predecessor; if we hit input.taskId, the edge
+  // would close a cycle.
+  if (input.predecessorIds.length > 0) {
+    const { data: allEdges } = await supabase
+      .from('project_schedule_dependencies')
+      .select('predecessor_task_id, successor_task_id')
+      .eq('project_id', projectId);
+    const adj = new Map<string, string[]>();
+    for (const e of allEdges ?? []) {
+      const r = e as Record<string, unknown>;
+      const p = r.predecessor_task_id as string;
+      const s = r.successor_task_id as string;
+      // Skip the edges we're about to replace — they don't count
+      // toward the post-update graph.
+      if (s === input.taskId) continue;
+      const list = adj.get(p) ?? [];
+      list.push(s);
+      adj.set(p, list);
+    }
+    for (const candidatePred of input.predecessorIds) {
+      // Walk forward from candidatePred; if we reach input.taskId, cycle.
+      const seen = new Set<string>();
+      const stack = [candidatePred];
+      while (stack.length > 0) {
+        const cur = stack.pop() as string;
+        if (cur === input.taskId) {
+          return {
+            ok: false,
+            error: 'That dependency would create a cycle.',
+          };
+        }
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        for (const next of adj.get(cur) ?? []) stack.push(next);
+      }
+    }
+  }
+
+  // Replace strategy: delete the row's existing predecessor edges, then
+  // insert the new set. Single transaction would be ideal but Supabase's
+  // JS client doesn't expose them directly; the small race window
+  // between delete + insert is acceptable for a low-frequency manual
+  // edit.
+  const { error: delErr } = await supabase
+    .from('project_schedule_dependencies')
+    .delete()
+    .eq('successor_task_id', input.taskId);
+  if (delErr) return { ok: false, error: delErr.message };
+
+  if (input.predecessorIds.length > 0) {
+    const inserts = input.predecessorIds.map((predId) => ({
+      tenant_id: tenant.id,
+      project_id: projectId,
+      predecessor_task_id: predId,
+      successor_task_id: input.taskId,
+    }));
+    const { error: insErr } = await supabase.from('project_schedule_dependencies').insert(inserts);
+    if (insErr) return { ok: false, error: insErr.message };
+  }
+
+  // Run cascade — a newly-added edge whose constraint is currently
+  // violated will shift this task forward (and its successors).
+  for (const predId of input.predecessorIds) {
+    await cascadeForwardFromTask(supabase, projectId, predId);
+  }
+
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true, taskId: input.taskId };
+}
+
 /**
  * Cancel a pending customer schedule-update notification before the
  * cron drainer fires it. Stamps `schedule_notify_cancelled_at` so the
