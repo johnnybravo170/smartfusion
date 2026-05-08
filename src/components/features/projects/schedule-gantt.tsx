@@ -414,7 +414,7 @@ export function ScheduleGantt({
                       onPointerMove={isDragging ? handleDragMove : undefined}
                       onPointerUp={isDragging ? handleDragEnd : undefined}
                       onPointerCancel={isDragging ? handleDragEnd : undefined}
-                      className="absolute right-0 top-0 z-10 h-full w-2 cursor-ew-resize rounded-r-md border-0 bg-transparent p-0 opacity-0 transition-opacity hover:bg-foreground/20 hover:opacity-100 group-hover:opacity-60"
+                      className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-ew-resize rounded-r-md border-0 bg-foreground/20 p-0 opacity-40 transition-all hover:w-2 hover:bg-foreground/30 hover:opacity-100 group-hover:opacity-70"
                       style={{ touchAction: 'none' }}
                     />
                   ) : null}

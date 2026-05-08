@@ -13,6 +13,7 @@
  * server-side and the operator sees the populated Gantt.
  */
 
+import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { ScheduleTaskEditor } from '@/components/features/projects/schedule-task-editor';
@@ -42,19 +43,47 @@ export function ScheduleBootstrapPanel({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [blankCreatorOpen, setBlankCreatorOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Track which source the operator picked so the loading overlay can
+  // tell them what they're waiting for. Budget mode may invoke AI
+  // (3-5s); template/blank are fast.
+  const [pendingSource, setPendingSource] = useState<BootstrapSource['kind'] | null>(null);
 
   const run = (source: BootstrapSource) => {
     setError(null);
+    setPendingSource(source.kind);
     startTransition(async () => {
       const res = await bootstrapProjectScheduleAction(projectId, source);
       if (!res.ok) {
         setError(res.error);
+        setPendingSource(null);
         return;
       }
       setPickerOpen(false);
       router.refresh();
     });
   };
+
+  const loadingCopy =
+    pendingSource === 'budget'
+      ? 'Generating your schedule…'
+      : pendingSource === 'template'
+        ? 'Applying template…'
+        : 'Setting up…';
+
+  if (pending) {
+    return (
+      <div className="flex min-h-48 flex-col items-center justify-center rounded-lg border bg-card p-12 text-center">
+        <Loader2 className="size-8 animate-spin text-primary" />
+        <p className="mt-4 text-sm font-medium">{loadingCopy}</p>
+        {pendingSource === 'budget' ? (
+          <p className="mt-1 max-w-md text-xs text-muted-foreground">
+            We&rsquo;re reading your budget categories and laying out a draft order. This usually
+            takes 3–5 seconds.
+          </p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border bg-card p-8">
