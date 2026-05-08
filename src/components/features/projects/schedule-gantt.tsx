@@ -470,8 +470,18 @@ export function ScheduleGantt({
                           gridColumnEnd: `span ${colSpan}`,
                           touchAction: 'none',
                         }}
-                        title={tooltip}
                       >
+                        {/* Hover/focus tooltip — instant (no native-title delay).
+                            Hides during active drag so it doesn't follow the
+                            cursor and obscure the bar. */}
+                        {!isDragging ? (
+                          <span
+                            role="tooltip"
+                            className="pointer-events-none invisible absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-xs font-medium text-background opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+                          >
+                            {tooltip}
+                          </span>
+                        ) : null}
                         {draggable ? (
                           <button
                             type="button"
