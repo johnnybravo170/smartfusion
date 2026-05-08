@@ -79,23 +79,24 @@ function SignupForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Create your account</CardTitle>
-        <CardDescription>Start your first quote in minutes.</CardDescription>
+        <CardTitle className="text-2xl">Get started with HeyHenry</CardTitle>
+        <CardDescription>Run your jobs from the truck. We handle the paperwork.</CardDescription>
       </CardHeader>
       <form onSubmit={onSubmit}>
         <CardContent className="space-y-4">
           {referralCode ? (
             <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-              You were referred by a fellow contractor. Sign up to get a 14-day extended trial.
+              You were referred by a fellow contractor — your trial gets bumped to 14 days.
             </div>
           ) : null}
           {selectedPlan ? (
             <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
-              Selected plan: <span className="font-medium">{PLAN_CATALOG[selectedPlan].name}</span>
+              You&apos;re starting on{' '}
+              <span className="font-medium">{PLAN_CATALOG[selectedPlan].name}</span>
               {selectedBilling ? (
                 <span className="text-muted-foreground"> · {selectedBilling}</span>
               ) : null}
-              <span className="text-muted-foreground"> · 14-day free trial</span>
+              <span className="text-muted-foreground"> · 14-day free trial, no card required</span>
             </div>
           ) : null}
           <div className="space-y-2">
@@ -156,7 +157,7 @@ function SignupForm() {
         </CardContent>
         <CardFooter className="flex flex-col gap-3 pt-2">
           <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? 'Creating account…' : 'Create account'}
+            {pending ? 'Setting things up…' : 'Create my account'}
           </Button>
           <Link
             href="/login"
@@ -165,7 +166,7 @@ function SignupForm() {
             Already have an account? Sign in
           </Link>
           <p className="w-full text-center text-xs text-muted-foreground">
-            14-day free trial, cancel anytime — see{' '}
+            14-day free trial. Cancel any time — see{' '}
             <Link href="/refund-policy" className="underline underline-offset-2">
               refund policy
             </Link>

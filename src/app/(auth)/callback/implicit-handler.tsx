@@ -44,7 +44,11 @@ export function CallbackImplicitHandler({ next }: { next: string }) {
   }, [router, next]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+    <div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
+      <span
+        aria-hidden
+        className="inline-block size-5 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground"
+      />
       {message}
     </div>
   );

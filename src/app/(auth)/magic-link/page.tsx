@@ -51,8 +51,8 @@ export default function MagicLinkPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Magic link</CardTitle>
-        <CardDescription>We&apos;ll email you a one-click sign-in link.</CardDescription>
+        <CardTitle className="text-2xl">Email me a sign-in link</CardTitle>
+        <CardDescription>One click and you&apos;re in. No password to remember.</CardDescription>
       </CardHeader>
       <form onSubmit={onSubmit}>
         <CardContent className="space-y-4">

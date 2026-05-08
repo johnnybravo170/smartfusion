@@ -25,7 +25,7 @@ export default async function CheckEmailPage({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Check your email</CardTitle>
+        <CardTitle className="text-2xl">Check your inbox</CardTitle>
         <CardDescription>
           {email ? (
             <>
@@ -38,7 +38,8 @@ export default async function CheckEmailPage({
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground">
-          Click the link in the email to sign in. You can close this tab once you do.
+          Click the link in the email to land back here, signed in. You can close this tab once you
+          do.
         </p>
       </CardContent>
       <CardFooter>
