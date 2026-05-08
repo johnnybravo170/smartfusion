@@ -40,6 +40,14 @@ jobs:
         # public privacy policy lying. See scripts/check-vendor-coverage.ts.
         run: pnpm exec tsx scripts/check-vendor-coverage.ts
 
+      - name: Migration prefix collisions
+        # Two PRs that land migrations with the same prefix produce
+        # silent skips: whichever runs first wins, the others are
+        # recorded as applied but their SQL never runs. Bail at CI so
+        # this stops shipping broken phases. See
+        # scripts/check-migration-prefixes.ts.
+        run: pnpm exec tsx scripts/check-migration-prefixes.ts
+
       - name: Unit tests
         run: pnpm test
 

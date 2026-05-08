@@ -1,0 +1,73 @@
+#!/usr/bin/env sh
+# Pre-push: catch migration prefix collisions BEFORE they hit a PR.
+#
+# The CI lint (scripts/check-migration-prefixes.ts) catches duplicates
+# within a single working tree. This hook catches the more common case:
+# I just added a migration locally with prefix X, but origin/main has
+# already merged a different migration with the same X via a parallel
+# PR. Without this guard I'd push, the second migration would silently
+# never run, and the bug surfaces only when something tries to use it.
+#
+# Strategy:
+#   1. Fetch origin/main (best-effort; offline pushes still go through).
+#   2. List migration files my push is about to add.
+#   3. For each, check if the same prefix already exists on origin/main.
+#   4. Bail loudly if it does.
+#
+# To bypass for a known-safe case: `git push --no-verify`. Don't reach
+# for it casually — silent skips are exactly the bug this hook exists
+# to prevent.
+
+set -e
+
+# Best-effort fetch — don't block pushes if the network's down.
+git fetch origin main --quiet 2>/dev/null || {
+  echo "[pre-push] couldn't fetch origin/main; skipping migration prefix check."
+  exit 0
+}
+
+# Files my push adds vs origin/main, scoped to migrations.
+ADDED=$(git diff --diff-filter=A --name-only origin/main...HEAD -- supabase/migrations/ | grep '\.sql$' || true)
+
+if [ -z "$ADDED" ]; then
+  exit 0
+fi
+
+# Build the set of prefixes already present on origin/main.
+REMOTE_PREFIXES=$(git ls-tree -r --name-only origin/main -- supabase/migrations/ \
+  | grep '\.sql$' \
+  | sed -E 's|^supabase/migrations/([0-9]+)_.*$|\1|' \
+  | sort -u)
+
+COLLISIONS=""
+while IFS= read -r path; do
+  [ -z "$path" ] && continue
+  fname=$(basename "$path")
+  prefix=$(echo "$fname" | sed -E 's/^([0-9]+)_.*$/\1/')
+  case "$prefix" in
+    [0-9]*) ;;
+    *)
+      # Prefix didn't parse — skip silently, the CI lint will catch it.
+      continue
+      ;;
+  esac
+  if echo "$REMOTE_PREFIXES" | grep -qx "$prefix"; then
+    COLLISIONS="${COLLISIONS}  ${fname}: prefix ${prefix} already on origin/main\n"
+  fi
+done <<EOF
+$ADDED
+EOF
+
+if [ -n "$COLLISIONS" ]; then
+  echo ""
+  echo "✗ migration prefix collision with origin/main:"
+  echo ""
+  printf "%b" "$COLLISIONS"
+  echo ""
+  echo "Rebase onto origin/main and rename the colliding file(s) to fresh prefixes."
+  echo "Prefer the timestamp format (YYYYMMDDHHMMSS_*) so this stops happening."
+  echo "See AGENTS.md migration-conventions."
+  echo ""
+  echo "To bypass intentionally: git push --no-verify"
+  exit 1
+fi
