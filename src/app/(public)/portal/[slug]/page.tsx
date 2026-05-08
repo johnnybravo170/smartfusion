@@ -606,9 +606,10 @@ export default async function PortalPage({
     initialMessages = (messageRows ?? []) as MessageRow[];
   } else if (tab === 'schedule') {
     // Customer-visible schedule rows + the small set of trade templates
-    // they reference (for disruption warnings). Two flat selects, no
-    // PostgREST embed — same robustness reasoning as the operator tab.
-    const [{ data: taskRows }, { data: tradeRows }] = await Promise.all([
+    // they reference (for disruption warnings) + project_phases (for
+    // phase-color-coded bars). Three flat selects, no PostgREST embed
+    // — same robustness reasoning as the operator tab.
+    const [{ data: taskRows }, { data: tradeRows }, { data: phaseRows }] = await Promise.all([
       admin
         .from('project_schedule_tasks')
         .select(
@@ -618,23 +619,41 @@ export default async function PortalPage({
         .eq('client_visible', true)
         .is('deleted_at', null)
         .order('display_order', { ascending: true }),
-      admin.from('trade_templates').select('id, slug, disruption_level'),
+      admin.from('trade_templates').select('id, slug, disruption_level, typical_phase'),
+      admin.from('project_phases').select('id, name').eq('project_id', projectId),
     ]);
-    const tradeBySlugMap = new Map<string, { slug: string; disruption_level: string }>();
+    const tradeById = new Map<
+      string,
+      { slug: string; disruption_level: string; typical_phase: string | null }
+    >();
     for (const tr of tradeRows ?? []) {
       const r = tr as Record<string, unknown>;
-      tradeBySlugMap.set(r.id as string, {
+      tradeById.set(r.id as string, {
         slug: r.slug as string,
         disruption_level: r.disruption_level as string,
+        typical_phase: (r.typical_phase as string | null) ?? null,
       });
+    }
+    const phaseNameById = new Map<string, string>();
+    for (const ph of phaseRows ?? []) {
+      const r = ph as Record<string, unknown>;
+      phaseNameById.set(r.id as string, r.name as string);
     }
     scheduleTasks = (taskRows ?? []).map((row) => {
       const r = row as Record<string, unknown>;
       const tradeId = r.trade_template_id as string | null;
-      const trade = tradeId ? tradeBySlugMap.get(tradeId) : null;
+      const trade = tradeId ? tradeById.get(tradeId) : null;
+      const phaseId = r.phase_id as string | null;
+      // Phase color resolution: prefer the project's actual phase name
+      // (matches the customer's phase-rail vocabulary), fall back to the
+      // trade template's canonical typical_phase when the project uses
+      // custom phase names that don't match the seeded color keys.
+      const phaseName =
+        (phaseId ? phaseNameById.get(phaseId) : null) ?? trade?.typical_phase ?? null;
       return {
         ...(r as unknown as PortalScheduleTaskView),
         warning: trade?.disruption_level === 'high' ? disruptionWarningCopy(trade.slug) : null,
+        phaseName,
       };
     });
   }

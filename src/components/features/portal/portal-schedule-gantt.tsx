@@ -13,6 +13,7 @@
  */
 
 import type { ProjectScheduleTask } from '@/lib/db/queries/project-schedule';
+import { phaseColorFor } from '@/lib/ui/gantt-phase-colors';
 
 const MONTH_FORMAT = new Intl.DateTimeFormat('en-CA', { month: 'short', year: 'numeric' });
 const DAY_FMT = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric' });
@@ -124,6 +125,8 @@ function DayBacking({ meta }: { meta: DayMeta[] }) {
 export type PortalScheduleTaskView = ProjectScheduleTask & {
   /** Generic warning copy when the underlying trade is high-disruption. */
   warning: string | null;
+  /** Phase name resolved from `phase_id` — drives bar color. */
+  phaseName: string | null;
 };
 
 export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[] }) {
@@ -197,7 +200,11 @@ export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[]
                 <DayBacking meta={dayMeta} />
                 <div
                   className={`my-1 h-5 self-center rounded-md shadow-sm ${
-                    isDone ? 'bg-emerald-500' : task.warning ? 'bg-amber-500' : 'bg-primary'
+                    isDone
+                      ? 'bg-emerald-500'
+                      : task.warning
+                        ? 'bg-amber-500'
+                        : phaseColorFor(task.phaseName).firm
                   }`}
                   style={{
                     gridRow: 1,
