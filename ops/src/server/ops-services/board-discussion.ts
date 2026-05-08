@@ -73,6 +73,7 @@ const POSTURE_BLOCK = `**Posture.** You are advising on a vertical SaaS growing 
 const MAX_CHAIR_TURNS = 30; // hard ceiling regardless of budget
 const MAX_EXCHANGE_TURNS_PER_CRUX = 5;
 const NOVELTY_AUTO_CLOSE_THRESHOLD = 2; // 2 chair turns in a row with new_information=false → close
+const MAX_CONSECUTIVE_INVALID_ACTIONS = 3; // chair hallucinated IDs N times in a row → close
 const ADVISOR_OPENING_MAX_TOKENS = 800;
 const ADVISOR_EXCHANGE_MAX_TOKENS = 500;
 const FINAL_POSITION_MAX_TOKENS = 1200;
@@ -312,7 +313,9 @@ async function runPhaseC(
   if (initialCruxes.length === 0) return;
 
   let consecutiveNoNewInfo = 0;
+  let consecutiveInvalid = 0;
   const exchangesPerCrux = new Map<string, number>();
+  const panelIds = new Set(panel.map((p) => p.id));
 
   for (let turn = 0; turn < MAX_CHAIR_TURNS; turn++) {
     if (await sessionOverBudget(session.id)) break;
@@ -320,6 +323,7 @@ async function runPhaseC(
     const cruxes = await listCruxes(session.id);
     const open = cruxes.filter((c) => c.status === 'open');
     if (open.length === 0) break;
+    const openIds = new Set(open.map((c) => c.id));
 
     const action = await chairPickAction(
       session,
@@ -329,6 +333,21 @@ async function runPhaseC(
       exchangesPerCrux,
       records,
     );
+
+    // Validate that any IDs the chair returned actually exist. The model
+    // sometimes hallucinates UUIDs that pass schema validation but aren't
+    // in our open-crux / panel index — without this guard, addMessage
+    // hits a FK violation and kills the loop with no recovery.
+    const invalid = validateChairIds(action, openIds, panelIds);
+    if (invalid) {
+      console.warn(
+        `[board-discussion] chair returned invalid ${invalid} (action=${action.action}) — skipping turn`,
+      );
+      consecutiveInvalid++;
+      if (consecutiveInvalid >= MAX_CONSECUTIVE_INVALID_ACTIONS) break;
+      continue;
+    }
+    consecutiveInvalid = 0;
 
     await addMessage({
       session_id: session.id,
@@ -454,6 +473,26 @@ async function chairPickAction(
   await incrementSessionSpend(session.id, res.cost_cents);
 
   return parseJson(res.text, chairActionSchema, 'chair action');
+}
+
+/** Returns the name of the first invalid ID field, or null if all IDs
+ *  reference real cruxes / advisors. The chair occasionally fabricates
+ *  UUIDs that pass schema validation; this catches them before they
+ *  reach the FK constraint. */
+function validateChairIds(
+  action: ChairAction,
+  openCruxIds: Set<string>,
+  panelIds: Set<string>,
+): string | null {
+  if ('crux_id' in action && !openCruxIds.has(action.crux_id)) return 'crux_id';
+  if (action.action === 'exchange') {
+    if (!panelIds.has(action.advisor_a)) return 'advisor_a';
+    if (!panelIds.has(action.advisor_b)) return 'advisor_b';
+  } else if (action.action === 'challenge') {
+    if (!panelIds.has(action.challenger_id)) return 'challenger_id';
+    if (!panelIds.has(action.target_id)) return 'target_id';
+  }
+  return null;
 }
 
 async function runExchange(
