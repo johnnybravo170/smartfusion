@@ -9,11 +9,17 @@
  * a reference frame: weekend bands, Monday gridlines, day-of-month
  * markers, and a today indicator if today falls in range.
  *
- * Click-to-edit: when `onTaskClick` is supplied, each row is wrapped
- * in a button that fires the callback. Drag-to-reschedule lands in a
- * follow-up PR.
+ * Interactivity is opt-in via callbacks:
+ *  - `onTaskClick(task)` — wraps each row in a button + makes the bar
+ *    clickable to open the edit modal.
+ *  - `onTaskUpdate(taskId, patch)` — enables drag-to-reschedule and
+ *    drag-to-resize. Pointer-event-based; the bar captures the pointer
+ *    on mousedown, tracks deltaDays as the cursor moves, and fires the
+ *    persisted update on release. A click without movement falls
+ *    through to `onTaskClick`.
  */
 
+import { useRef, useState } from 'react';
 import type { ProjectScheduleTask } from '@/lib/db/queries/project-schedule';
 
 const MONTH_FORMAT = new Intl.DateTimeFormat('en-CA', { month: 'short', year: 'numeric' });
@@ -119,13 +125,37 @@ function DayBacking({ meta }: { meta: DayMeta[] }) {
   );
 }
 
+type DragState = {
+  taskId: string;
+  kind: 'move' | 'resize';
+  pointerStartX: number;
+  origStart: Date;
+  origDuration: number;
+  deltaDays: number;
+};
+
 export function ScheduleGantt({
   tasks,
   onTaskClick,
+  onTaskUpdate,
 }: {
   tasks: ProjectScheduleTask[];
   onTaskClick?: (task: ProjectScheduleTask) => void;
+  onTaskUpdate?: (
+    taskId: string,
+    patch: { planned_start_date?: string; planned_duration_days?: number },
+  ) => void;
 }) {
+  // Callback ref so it doesn't fight the union type of BarCell (div or
+  // button). The first task row registers itself as the measurement
+  // surface for drag-day calculations.
+  const gridRef = useRef<HTMLElement | null>(null);
+  const setGridRef = (el: HTMLElement | null) => {
+    gridRef.current = el;
+  };
+  const dragMovedRef = useRef(false);
+  const [drag, setDrag] = useState<DragState | null>(null);
+
   if (tasks.length === 0) return null;
 
   // Earliest start + latest end across all tasks. Latest end = start +
@@ -139,8 +169,90 @@ export function ScheduleGantt({
   const months = monthHeaderSegments(earliest, totalDays);
   const dayMeta = computeDayMeta(earliest, totalDays);
   const interactive = Boolean(onTaskClick);
+  const draggable = Boolean(onTaskUpdate);
 
   const gridCols = `repeat(${totalDays}, 1fr)`;
+
+  const handleDragStart = (
+    e: React.PointerEvent<HTMLElement>,
+    task: ProjectScheduleTask,
+    kind: 'move' | 'resize',
+  ) => {
+    if (!onTaskUpdate) return;
+    e.stopPropagation();
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragMovedRef.current = false;
+    setDrag({
+      taskId: task.id,
+      kind,
+      pointerStartX: e.clientX,
+      origStart: parseDate(task.planned_start_date),
+      origDuration: task.planned_duration_days,
+      deltaDays: 0,
+    });
+  };
+
+  const handleDragMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (!drag || !gridRef.current) return;
+    const colWidth = gridRef.current.offsetWidth / totalDays;
+    if (colWidth <= 0) return;
+    const deltaDays = Math.round((e.clientX - drag.pointerStartX) / colWidth);
+    if (deltaDays !== drag.deltaDays) {
+      if (deltaDays !== 0) dragMovedRef.current = true;
+      setDrag({ ...drag, deltaDays });
+    }
+  };
+
+  const handleDragEnd = (e: React.PointerEvent<HTMLElement>) => {
+    if (!drag) return;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    const snapshot = drag;
+    setDrag(null);
+    if (snapshot.deltaDays === 0) return;
+    if (snapshot.kind === 'move') {
+      const newStart = addDays(snapshot.origStart, snapshot.deltaDays);
+      onTaskUpdate?.(snapshot.taskId, {
+        planned_start_date: newStart.toISOString().slice(0, 10),
+      });
+    } else {
+      const newDuration = Math.max(1, snapshot.origDuration + snapshot.deltaDays);
+      onTaskUpdate?.(snapshot.taskId, { planned_duration_days: newDuration });
+    }
+  };
+
+  const handleBarClick = (e: React.MouseEvent, task: ProjectScheduleTask) => {
+    e.stopPropagation();
+    if (dragMovedRef.current) {
+      // Click event fired as part of a drag-end — suppress.
+      dragMovedRef.current = false;
+      return;
+    }
+    onTaskClick?.(task);
+  };
+
+  // Compute optimistic position for the currently-dragging task.
+  const positionFor = (task: ProjectScheduleTask, taskIndex: number) => {
+    let colStart = diffDays(starts[taskIndex], earliest) + 1;
+    let colSpan = task.planned_duration_days;
+    if (drag && drag.taskId === task.id && drag.deltaDays !== 0) {
+      if (drag.kind === 'move') colStart += drag.deltaDays;
+      else colSpan = Math.max(1, colSpan + drag.deltaDays);
+    }
+    // Clamp into the visible timeline so the bar never paints into
+    // negative columns. Drag-end persists the unclamped value, which
+    // widens the timeline on the next render.
+    if (colStart < 1) {
+      colSpan = Math.max(1, colSpan + (colStart - 1));
+      colStart = 1;
+    }
+    if (colStart + colSpan - 1 > totalDays) {
+      colSpan = Math.max(1, totalDays - colStart + 1);
+    }
+    return { colStart, colSpan };
+  };
 
   return (
     <div className="rounded-lg border bg-card">
@@ -184,11 +296,10 @@ export function ScheduleGantt({
         </div>
 
         {tasks.map((task, i) => {
-          const taskStart = starts[i];
-          const colStart = diffDays(taskStart, earliest) + 1;
-          const colSpan = task.planned_duration_days;
+          const { colStart, colSpan } = positionFor(task, i);
           const isFirm = task.confidence === 'firm';
           const isDone = task.status === 'done';
+          const isDragging = drag?.taskId === task.id;
           const barClasses = isDone
             ? 'bg-emerald-500'
             : isFirm
@@ -196,6 +307,8 @@ export function ScheduleGantt({
               : 'border border-dashed border-primary bg-primary/10';
           const NameCell = interactive ? 'button' : 'div';
           const BarCell = interactive ? 'button' : 'div';
+          // First row carries the gridRef so we can measure column width
+          // for drag-day calculations.
           return (
             <div key={task.id} className="contents">
               <NameCell
@@ -220,21 +333,50 @@ export function ScheduleGantt({
               <BarCell
                 {...(interactive ? { type: 'button' as const } : {})}
                 onClick={interactive ? () => onTaskClick?.(task) : undefined}
+                ref={i === 0 ? setGridRef : undefined}
                 className={`relative grid min-h-8 ${interactive ? 'cursor-pointer' : ''}`}
                 style={{ gridTemplateColumns: gridCols }}
               >
                 <DayBacking meta={dayMeta} />
-                <div
-                  className={`relative my-1 h-5 self-center rounded-md shadow-sm transition-opacity ${barClasses} ${
-                    interactive ? 'hover:opacity-90' : ''
+                <button
+                  type="button"
+                  aria-label={`${task.name} — ${task.planned_duration_days} days. Click to edit.`}
+                  onPointerDown={draggable ? (e) => handleDragStart(e, task, 'move') : undefined}
+                  onPointerMove={draggable && isDragging ? handleDragMove : undefined}
+                  onPointerUp={draggable && isDragging ? handleDragEnd : undefined}
+                  onPointerCancel={draggable && isDragging ? handleDragEnd : undefined}
+                  onClick={(e) => handleBarClick(e, task)}
+                  className={`group relative my-1 h-5 self-center rounded-md border-0 p-0 shadow-sm transition-opacity ${barClasses} ${
+                    draggable
+                      ? isDragging
+                        ? 'cursor-grabbing opacity-90'
+                        : 'cursor-grab hover:opacity-90'
+                      : interactive
+                        ? 'hover:opacity-90'
+                        : ''
                   }`}
                   style={{
                     gridRow: 1,
                     gridColumnStart: colStart,
                     gridColumnEnd: `span ${colSpan}`,
+                    touchAction: 'none',
                   }}
                   title={`${task.name} — ${task.planned_duration_days}d (${task.confidence})`}
-                />
+                >
+                  {draggable ? (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-label="Drag to resize task duration"
+                      onPointerDown={(e) => handleDragStart(e, task, 'resize')}
+                      onPointerMove={isDragging ? handleDragMove : undefined}
+                      onPointerUp={isDragging ? handleDragEnd : undefined}
+                      onPointerCancel={isDragging ? handleDragEnd : undefined}
+                      className="absolute right-0 top-0 z-10 h-full w-2 cursor-ew-resize rounded-r-md border-0 bg-transparent p-0 opacity-0 transition-opacity hover:bg-foreground/20 hover:opacity-100 group-hover:opacity-60"
+                      style={{ touchAction: 'none' }}
+                    />
+                  ) : null}
+                </button>
               </BarCell>
             </div>
           );
