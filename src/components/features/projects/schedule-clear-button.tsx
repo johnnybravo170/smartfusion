@@ -31,7 +31,7 @@ export function ScheduleClearButton({ projectId }: { projectId: string }) {
 
   return (
     <Button type="button" variant="outline" size="sm" onClick={handle} disabled={pending}>
-      {pending ? 'Clearing…' : 'Clear & re-bootstrap'}
+      {pending ? 'Clearing…' : 'Clear & start over'}
     </Button>
   );
 }

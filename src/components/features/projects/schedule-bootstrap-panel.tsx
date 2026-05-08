@@ -3,7 +3,7 @@
 /**
  * Empty-state bootstrap panel for the Schedule tab.
  *
- * Three big-button choice — Apply template / Bootstrap from budget /
+ * Three big-button choice — Apply template / Build from budget /
  * Start blank — per the Gantt v0 spec. The "Apply template" button
  * opens a sub-modal listing the seeded project_type_templates so the
  * GC picks which one (Kitchen Reno / Bath Reno / Basement Finish /
@@ -112,7 +112,7 @@ export function ScheduleBootstrapPanel({
           disabled={pending}
           className="flex h-32 flex-col items-start justify-between rounded-md border bg-background p-4 text-left transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
         >
-          <span className="text-sm font-semibold">Bootstrap from budget</span>
+          <span className="text-sm font-semibold">Build from your budget</span>
           <span className="text-xs text-muted-foreground">
             Use the trades already in your budget categories.
           </span>
