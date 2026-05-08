@@ -44,13 +44,15 @@ export async function GET(request: Request) {
   // "Today" depends on the tenant's local timezone — the cron fires once per
   // day at a fixed UTC instant, but each tenant's calendar date at that
   // instant differs by zone. Pull a 3-day window of assignments and filter
-  // per-tenant against their local today.
+  // per-tenant against their local today. Format candidate dates explicitly
+  // in UTC so they're stable regardless of runtime tz.
   const utcNow = new Date();
   const dayMs = 86_400_000;
+  const utcFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' });
   const candidateDates = [
-    new Intl.DateTimeFormat('en-CA').format(new Date(utcNow.getTime() - dayMs)),
-    new Intl.DateTimeFormat('en-CA').format(utcNow),
-    new Intl.DateTimeFormat('en-CA').format(new Date(utcNow.getTime() + dayMs)),
+    utcFmt.format(new Date(utcNow.getTime() - dayMs)),
+    utcFmt.format(utcNow),
+    utcFmt.format(new Date(utcNow.getTime() + dayMs)),
   ];
 
   const { data: assignRows } = await admin

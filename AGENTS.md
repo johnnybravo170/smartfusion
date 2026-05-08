@@ -25,3 +25,13 @@ Two guards exist:
 - `.husky/pre-push` fetches `origin/main` and bails if a migration you're about to push collides with one already on remote (catches the rebase-and-forget case).
 
 Both are bypassable (`git push --no-verify`); don't reach for the bypass casually — silent skips are exactly what these guards exist to prevent.
+
+# Timezones
+
+The runtime tz on Vercel is UTC. Bare `Date.toLocaleDateString(...)` / `toLocaleTimeString(...)` / `new Intl.DateTimeFormat(...)` without a `timeZone:` arg formats in UTC and silently shifts dates for any user not in UTC. Always render dates in the contractor's tenant tz.
+
+- **Server code:** call `formatDate(iso, { timezone })` from `src/lib/date/format.ts` (tenant tz lives on `tenant.timezone` from `getCurrentTenant()`).
+- **Client code:** call `useTenantTimezone()` from `src/lib/auth/tenant-context.tsx` — the dashboard, worker, and public-portal layouts wrap children in `<TenantProvider>`.
+- **AI tool handlers:** module-level state set via `setToolTimezone(tenant.timezone)` in `src/app/api/henry/tool/route.ts` — already wired up; new tool formatters go through the existing pattern.
+
+`tests/unit/timezone-no-bare-tolocale.test.ts` blocks bare `toLocale*` and bare `new Intl.DateTimeFormat(...)` calls in CI. See PATTERNS.md §23 for the full convention including adjacent gotchas (`Date.getHours()`, `Date.toLocaleString` on Dates) the lint rule doesn't catch.
