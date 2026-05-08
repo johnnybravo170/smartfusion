@@ -10,11 +10,13 @@ import { RefreshCw, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTransition } from 'react';
 import { toast } from 'sonner';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { RecurringRuleRow } from '@/lib/db/queries/expense-recurring';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { cancelRecurringRuleAction } from '@/server/actions/expense-recurring';
 
 export function RecurringRulesCard({ rules }: { rules: RecurringRuleRow[] }) {
+  const tz = useTenantTimezone();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -58,11 +60,12 @@ export function RecurringRulesCard({ rules }: { rules: RecurringRuleRow[] }) {
                 <p className="truncate font-medium">{label}</p>
                 <p className="text-xs text-muted-foreground">
                   {catLabel} · day {r.day_of_month} · next{' '}
-                  {new Date(r.next_run_at).toLocaleDateString('en-CA', {
+                  {new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
                     month: 'short',
                     day: 'numeric',
                     year: 'numeric',
-                  })}
+                  }).format(new Date(r.next_run_at))}
                 </p>
               </div>
               <div className="flex items-center gap-3">

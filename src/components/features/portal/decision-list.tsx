@@ -11,6 +11,7 @@ import { Loader2, X } from 'lucide-react';
 import { useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { ProjectDecision } from '@/lib/db/queries/project-decisions';
 import { cn } from '@/lib/utils';
 import { dismissDecisionAction } from '@/server/actions/project-decisions';
@@ -35,6 +36,7 @@ export function DecisionList({
 }
 
 function DecisionRow({ decision, projectId }: { decision: ProjectDecision; projectId: string }) {
+  const tz = useTenantTimezone();
   const [pending, startTransition] = useTransition();
 
   function onDismiss() {
@@ -61,7 +63,12 @@ function DecisionRow({ decision, projectId }: { decision: ProjectDecision; proje
         ) : null}
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
           {decision.due_date ? (
-            <span>Due {new Date(decision.due_date).toLocaleDateString('en-CA')}</span>
+            <span>
+              Due{' '}
+              {new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(
+                new Date(decision.due_date),
+              )}
+            </span>
           ) : null}
           {decision.status === 'decided' ? (
             <span>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { PublicViewLogger } from '@/components/features/public/public-view-logger';
+import { formatDate } from '@/lib/date/format';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -50,7 +51,7 @@ export default async function PublicInvoiceViewPage({
   const { data: tenant } = await supabase
     .from('tenants')
     .select(
-      'name, gst_number, wcb_number, invoice_payment_instructions, invoice_terms, invoice_policies',
+      'name, gst_number, wcb_number, invoice_payment_instructions, invoice_terms, invoice_policies, timezone',
     )
     .eq('id', invoice.tenant_id)
     .single();
@@ -114,17 +115,11 @@ export default async function PublicInvoiceViewPage({
       ? Math.round((invoice.tax_cents / invoice.amount_cents) * 100)
       : 5;
 
-  const invoiceDate = invoice.sent_at
-    ? new Date(invoice.sent_at).toLocaleDateString('en-CA', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      })
-    : new Date(invoice.created_at).toLocaleDateString('en-CA', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
+  const tenantTz = (tenant?.timezone as string | null) ?? undefined;
+  const invoiceDate = formatDate(invoice.sent_at ?? invoice.created_at, {
+    timezone: tenantTz,
+    style: 'long',
+  });
 
   const isPaid = invoice.status === 'paid';
   const isVoid = invoice.status === 'void';
@@ -157,7 +152,7 @@ export default async function PublicInvoiceViewPage({
           <p className="text-sm font-medium text-emerald-800">
             This {docLabel.toLowerCase()} has been paid.
             {invoice.paid_at &&
-              ` Paid on ${new Date(invoice.paid_at).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}.`}
+              ` Paid on ${formatDate(invoice.paid_at, { timezone: tenantTz, style: 'long' })}.`}
           </p>
         </div>
       )}

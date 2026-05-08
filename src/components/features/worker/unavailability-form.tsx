@@ -34,8 +34,11 @@ export function UnavailabilityForm({ workerProfileId, date }: Props) {
     if (end < start) return [from];
     const out: string[] = [];
     const d = new Date(start);
+    // Symmetric runtime-tz YYYY-MM-DD round-trip — both endpoints constructed
+    // and formatted in the same tz, used as opaque date keys for the server.
+    const fmt = new Intl.DateTimeFormat('en-CA');
     while (d <= end) {
-      out.push(d.toLocaleDateString('en-CA'));
+      out.push(fmt.format(d));
       d.setDate(d.getDate() + 1);
     }
     return out;

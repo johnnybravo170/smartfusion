@@ -1,9 +1,10 @@
 /**
  * GET /api/workers/time-nudge
  *
- * Daily 7pm cron (America/Edmonton). For every worker scheduled to a project
- * today who hasn't logged any time_entries for today, send an email (and SMS
- * if nudge_sms is on) prompting them to log their hours.
+ * Daily cron. For every worker scheduled to a project today (in their
+ * tenant's local timezone) who hasn't logged any time_entries for today,
+ * send an email (and SMS if nudge_sms is on) prompting them to log their
+ * hours.
  *
  * Runs once per day, so no dedupe is needed — a repeat manual run would
  * re-send, which is acceptable for a cron endpoint gated by CRON_SECRET.
@@ -16,8 +17,8 @@ import { sendSms } from '@/lib/twilio/client';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-function todayInEdmonton(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Edmonton' });
+function localDate(tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 }
 
 type PendingWorker = {
@@ -39,37 +40,70 @@ export async function GET(request: Request) {
   }
 
   const admin = createAdminClient();
-  const today = todayInEdmonton();
 
-  // 1. Workers scheduled today.
+  // "Today" depends on the tenant's local timezone — the cron fires once per
+  // day at a fixed UTC instant, but each tenant's calendar date at that
+  // instant differs by zone. Pull a 3-day window of assignments and filter
+  // per-tenant against their local today.
+  const utcNow = new Date();
+  const dayMs = 86_400_000;
+  const candidateDates = [
+    new Intl.DateTimeFormat('en-CA').format(new Date(utcNow.getTime() - dayMs)),
+    new Intl.DateTimeFormat('en-CA').format(utcNow),
+    new Intl.DateTimeFormat('en-CA').format(new Date(utcNow.getTime() + dayMs)),
+  ];
+
   const { data: assignRows } = await admin
     .from('project_assignments')
-    .select('tenant_id, worker_profile_id')
-    .eq('scheduled_date', today);
+    .select('tenant_id, worker_profile_id, scheduled_date')
+    .in('scheduled_date', candidateDates);
+
+  const tenantIds = Array.from(new Set((assignRows ?? []).map((a) => a.tenant_id as string)));
+  const { data: tenantRows } = await admin
+    .from('tenants')
+    .select('id, timezone')
+    .in('id', tenantIds);
+  const tenantTzById = new Map<string, string>(
+    (tenantRows ?? []).map((t) => [
+      t.id as string,
+      (t.timezone as string | null) ?? 'America/Vancouver',
+    ]),
+  );
+  const todayByTenant = new Map<string, string>();
+  for (const tid of tenantIds) {
+    todayByTenant.set(tid, localDate(tenantTzById.get(tid) ?? 'America/Vancouver'));
+  }
 
   const pairs = new Map<string, { tenant_id: string; worker_profile_id: string }>();
   for (const a of assignRows ?? []) {
-    const key = `${a.tenant_id as string}|${a.worker_profile_id as string}`;
-    pairs.set(key, {
-      tenant_id: a.tenant_id as string,
-      worker_profile_id: a.worker_profile_id as string,
-    });
+    const tid = a.tenant_id as string;
+    const sched = a.scheduled_date as string;
+    if (todayByTenant.get(tid) !== sched) continue;
+    const key = `${tid}|${a.worker_profile_id as string}`;
+    pairs.set(key, { tenant_id: tid, worker_profile_id: a.worker_profile_id as string });
   }
 
   if (pairs.size === 0) {
     return Response.json({ ok: true, scheduled: 0, nudged: 0 });
   }
 
-  // 2. Drop anyone who already logged time today.
+  // Drop anyone who already logged time on their tenant-local today.
   const workerIds = Array.from(pairs.values()).map((p) => p.worker_profile_id);
   const { data: loggedRows } = await admin
     .from('time_entries')
-    .select('worker_profile_id')
-    .eq('entry_date', today)
-    .in('worker_profile_id', workerIds);
-  const loggedIds = new Set((loggedRows ?? []).map((r) => r.worker_profile_id as string));
+    .select('worker_profile_id, tenant_id, entry_date')
+    .in('worker_profile_id', workerIds)
+    .in('entry_date', candidateDates);
+  const loggedKeys = new Set<string>();
+  for (const r of loggedRows ?? []) {
+    const tid = r.tenant_id as string;
+    if (todayByTenant.get(tid) !== r.entry_date) continue;
+    loggedKeys.add(`${tid}|${r.worker_profile_id as string}`);
+  }
 
-  const pending = Array.from(pairs.values()).filter((p) => !loggedIds.has(p.worker_profile_id));
+  const pending = Array.from(pairs.entries())
+    .filter(([key]) => !loggedKeys.has(key))
+    .map(([, v]) => v);
   if (pending.length === 0) {
     return Response.json({ ok: true, scheduled: pairs.size, nudged: 0 });
   }

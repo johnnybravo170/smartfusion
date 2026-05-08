@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { CloneProjectDialog } from '@/components/features/projects/clone-project-dialog';
 import { ProjectNameEditor } from '@/components/features/projects/project-name-editor';
 import { ProjectStatusBadge } from '@/components/features/projects/project-status-badge';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { cn } from '@/lib/utils';
 import type { LifecycleStage } from '@/lib/validators/project';
 
@@ -54,6 +55,7 @@ export function ProjectsTable({
   projects: ProjectRow[];
   customerOptions: CustomerOption[];
 }) {
+  const tz = useTenantTimezone();
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [hydrated, setHydrated] = useState(false);
@@ -190,11 +192,12 @@ export function ProjectsTable({
               </td>
               <td className="px-4 py-3 text-muted-foreground">
                 {p.start_date
-                  ? new Date(p.start_date).toLocaleDateString('en-CA', {
+                  ? new Intl.DateTimeFormat('en-CA', {
+                      timeZone: tz,
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
-                    })
+                    }).format(new Date(p.start_date))
                   : '—'}
               </td>
               <td className="px-4 py-3 text-right tabular-nums">

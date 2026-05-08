@@ -3,6 +3,7 @@ import { DocumentUpload } from '@/components/features/portal/document-upload';
 import { HomeRecordButton } from '@/components/features/portal/home-record-button';
 import { HomeRecordEmailButton } from '@/components/features/portal/home-record-email-button';
 import { TradeContactsList } from '@/components/features/portal/trade-contacts-list';
+import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getHomeRecordForProject } from '@/lib/db/queries/home-records';
 import {
   listDocumentsForProject,
@@ -11,12 +12,14 @@ import {
 } from '@/lib/db/queries/project-documents';
 
 export default async function DocumentsTabServer({ projectId }: { projectId: string }) {
-  const [documents, homeRecord, suppliers, projectSubs] = await Promise.all([
+  const [documents, homeRecord, suppliers, projectSubs, tenant] = await Promise.all([
     listDocumentsForProject(projectId),
     getHomeRecordForProject(projectId),
     listSubAndVendorContactsForTenant(),
     listSubcontractorsForProject(projectId),
+    getCurrentTenant(),
   ]);
+  const tz = tenant?.timezone ?? 'America/Vancouver';
 
   return (
     <div className="space-y-6">
@@ -39,12 +42,13 @@ export default async function DocumentsTabServer({ projectId }: { projectId: str
             {homeRecord ? (
               <p className="mt-1 text-[11px] text-muted-foreground">
                 Last generated{' '}
-                {new Date(homeRecord.generated_at).toLocaleString('en-CA', {
+                {new Intl.DateTimeFormat('en-CA', {
+                  timeZone: tz,
                   month: 'short',
                   day: 'numeric',
                   hour: 'numeric',
                   minute: '2-digit',
-                })}
+                }).format(new Date(homeRecord.generated_at))}
               </p>
             ) : null}
           </div>
@@ -60,13 +64,15 @@ export default async function DocumentsTabServer({ projectId }: { projectId: str
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">
             <span>
               {homeRecord.emailed_at
-                ? `Emailed to ${homeRecord.emailed_to ?? 'homeowner'} on ${new Date(
-                    homeRecord.emailed_at,
-                  ).toLocaleDateString('en-CA', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}`
+                ? `Emailed to ${homeRecord.emailed_to ?? 'homeowner'} on ${new Intl.DateTimeFormat(
+                    'en-CA',
+                    {
+                      timeZone: tz,
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    },
+                  ).format(new Date(homeRecord.emailed_at))}`
                 : 'Not yet emailed to the homeowner.'}
             </span>
             <HomeRecordEmailButton

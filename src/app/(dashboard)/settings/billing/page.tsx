@@ -32,8 +32,8 @@ export default async function BillingPage() {
   const hasCustomer = Boolean(data?.stripe_customer_id);
 
   const planCopy = PLAN_CATALOG[plan] ?? PLAN_CATALOG.starter;
-  const renewalDate = periodEnd ? formatDate(periodEnd) : null;
-  const trialDate = trialEnd ? formatDate(trialEnd) : null;
+  const renewalDate = periodEnd ? formatDate(periodEnd, tenant.timezone) : null;
+  const trialDate = trialEnd ? formatDate(trialEnd, tenant.timezone) : null;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -118,11 +118,12 @@ export default async function BillingPage() {
   );
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-CA', {
+function formatDate(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
+  }).format(new Date(iso));
 }

@@ -4,6 +4,7 @@ import { Trash2 } from 'lucide-react';
 import { useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { WorkerExpense } from '@/lib/db/queries/worker-expenses';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { deleteWorkerExpenseAction } from '@/server/actions/worker-expenses';
@@ -17,6 +18,7 @@ function canDelete(createdAt: string): boolean {
 }
 
 export function WorkerExpenseList({ entries }: Props) {
+  const tz = useTenantTimezone();
   const [pending, startTransition] = useTransition();
 
   if (entries.length === 0) {
@@ -63,11 +65,12 @@ export function WorkerExpenseList({ entries }: Props) {
               <div className="flex items-center gap-2 text-sm">
                 <span className="font-medium">{formatCurrency(entry.amount_cents)}</span>
                 <span className="text-muted-foreground">
-                  {new Date(`${entry.expense_date}T00:00`).toLocaleDateString('en-CA', {
+                  {new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
                     weekday: 'short',
                     month: 'short',
                     day: 'numeric',
-                  })}
+                  }).format(new Date(`${entry.expense_date}T00:00`))}
                 </span>
               </div>
               <p className="text-sm">

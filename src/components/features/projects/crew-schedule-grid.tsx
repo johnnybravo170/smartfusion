@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { ReasonTag } from '@/lib/db/queries/worker-unavailability';
 import {
   bulkAssignDatesAction,
@@ -80,10 +81,10 @@ type Interaction =
       moved: boolean;
     };
 
-function addDays(iso: string, offset: number): string {
+function addDays(iso: string, offset: number, tz: string): string {
   const d = new Date(`${iso}T00:00`);
   d.setDate(d.getDate() + offset);
-  return d.toLocaleDateString('en-CA');
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
 }
 
 function clamp(n: number, lo: number, hi: number) {
@@ -134,7 +135,8 @@ function buildRunsFor(
 }
 
 export function CrewScheduleGrid({ projectId, startDate, days, workers, cells }: Props) {
-  const dates: string[] = Array.from({ length: days }, (_, i) => addDays(startDate, i));
+  const tz = useTenantTimezone();
+  const dates: string[] = Array.from({ length: days }, (_, i) => addDays(startDate, i, tz));
 
   const [interaction, setInteraction] = useState<Interaction | null>(null);
   const [dialog, setDialog] = useState<{
@@ -329,7 +331,14 @@ export function CrewScheduleGrid({ projectId, startDate, days, workers, cells }:
               key={d}
               className={`border-l px-1 py-2 text-center ${isWeekend ? 'text-muted-foreground/70' : ''}`}
             >
-              <div>{dt.toLocaleDateString('en-CA', { weekday: 'short' }).slice(0, 2)}</div>
+              <div>
+                {new Intl.DateTimeFormat('en-CA', {
+                  timeZone: tz,
+                  weekday: 'short',
+                })
+                  .format(dt)
+                  .slice(0, 2)}
+              </div>
               <div>{dt.getDate()}</div>
             </div>
           );
@@ -625,12 +634,14 @@ function ScheduleWorkerDialog({
   const [type, setType] = useState<'work' | 'time_off'>('work');
   const [reasonTag, setReasonTag] = useState<ReasonTag>('vacation');
 
+  const tz = useTenantTimezone();
   function getDates(): string[] {
     const dates: string[] = [];
     const d = new Date(`${from}T00:00`);
     const end = new Date(`${to}T00:00`);
+    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz });
     while (d <= end) {
-      dates.push(d.toLocaleDateString('en-CA'));
+      dates.push(fmt.format(d));
       d.setDate(d.getDate() + 1);
     }
     return dates;
@@ -669,11 +680,12 @@ function ScheduleWorkerDialog({
 
   const label =
     from === to
-      ? new Date(`${from}T00:00`).toLocaleDateString('en-CA', {
+      ? new Intl.DateTimeFormat('en-CA', {
+          timeZone: tz,
           weekday: 'short',
           month: 'short',
           day: 'numeric',
-        })
+        }).format(new Date(`${from}T00:00`))
       : `${from} → ${to}`;
 
   return (

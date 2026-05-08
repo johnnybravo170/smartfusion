@@ -1,5 +1,6 @@
 import { ChangeOrderDiffView } from '@/components/features/change-orders/change-order-diff-view';
 import { PublicViewLogger } from '@/components/features/public/public-view-logger';
+import { formatDate } from '@/lib/date/format';
 import type { ChangeOrderLineRow } from '@/lib/db/queries/change-orders';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ApprovalForm } from './approval-form';
@@ -21,7 +22,7 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
        flow_version, category_notes,
        management_fee_override_rate,
        projects:project_id (name, management_fee_rate, customers:customer_id (name)),
-       tenants:tenant_id (name)`,
+       tenants:tenant_id (name, timezone)`,
     )
     .eq('approval_code', code)
     .single();
@@ -43,6 +44,7 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
   const _customerRaw = project?.customers as Record<string, unknown> | null;
   const projectName = (project?.name as string) ?? 'Project';
   const businessName = (tenant?.name as string) ?? 'Your Contractor';
+  const tenantTz = (tenant?.timezone as string | null) ?? undefined;
 
   // Already responded
   if (coData.status === 'approved') {
@@ -63,12 +65,7 @@ export default async function ApprovalPage({ params }: { params: Promise<{ code:
         <h1 className="text-2xl font-semibold">Already Approved</h1>
         <p className="mt-2 text-muted-foreground">
           This change order was approved by {coData.approved_by_name as string} on{' '}
-          {new Date(coData.approved_at as string).toLocaleDateString('en-CA', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-          })}
-          .
+          {formatDate(coData.approved_at as string, { timezone: tenantTz, style: 'long' })}.
         </p>
       </div>
     );

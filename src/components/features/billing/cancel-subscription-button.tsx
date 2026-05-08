@@ -24,6 +24,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import {
   type CancelRefundPreview,
   cancelSubscriptionAction,
@@ -33,6 +34,7 @@ import {
 type Preview = CancelRefundPreview;
 
 export function CancelSubscriptionButton() {
+  const tz = useTenantTimezone();
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -108,7 +110,7 @@ export function CancelSubscriptionButton() {
                   </p>
                   <p>
                     Your access continues until{' '}
-                    <strong>{formatAccessEnd(preview.accessEndsAt)}</strong>.
+                    <strong>{formatAccessEnd(preview.accessEndsAt, tz)}</strong>.
                   </p>
                 </>
               ) : null}
@@ -141,11 +143,12 @@ function formatCents(cents: number, currency: string): string {
   }
 }
 
-function formatAccessEnd(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-CA', {
+function formatAccessEnd(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
+  }).format(new Date(iso));
 }

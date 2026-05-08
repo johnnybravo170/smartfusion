@@ -13,6 +13,7 @@
 
 import { ArrowUpRight, Banknote, Clock, FileText, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { CostLineActualsSummary } from '@/lib/db/queries/cost-line-actuals';
 import { formatCurrency } from '@/lib/pricing/calculator';
 
@@ -52,6 +53,7 @@ export function CostLineActualsInline({
   /** Pre-fetched line actuals; undefined = no actuals on this line. */
   actuals?: CostLineActualsSummary;
 }) {
+  const tz = useTenantTimezone();
   const data = actuals ?? EMPTY;
 
   if (data.rows.length === 0) {
@@ -111,10 +113,11 @@ export function CostLineActualsInline({
       <ul className="divide-y divide-muted">
         {data.rows.slice(0, 10).map((r) => {
           const Icon = KIND_ICONS[r.kind];
-          const date = new Date(r.occurred_at).toLocaleDateString('en-CA', {
+          const date = new Intl.DateTimeFormat('en-CA', {
+            timeZone: tz,
             month: 'short',
             day: 'numeric',
-          });
+          }).format(new Date(r.occurred_at));
           return (
             <li key={`${r.kind}-${r.id}`} className="flex items-center gap-2 py-1.5">
               <Icon className="size-3.5 shrink-0 text-muted-foreground" />

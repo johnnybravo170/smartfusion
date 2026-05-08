@@ -24,15 +24,22 @@ const statusVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'o
   churned: 'destructive',
 };
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
+function formatDate(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
+  }).format(new Date(iso));
 }
 
-export function ReferralHistory({ referrals }: { referrals: ReferralEntry[] }) {
+export function ReferralHistory({
+  referrals,
+  timezone,
+}: {
+  referrals: ReferralEntry[];
+  timezone: string;
+}) {
   if (referrals.length === 0) {
     return (
       <Card>
@@ -73,7 +80,9 @@ export function ReferralHistory({ referrals }: { referrals: ReferralEntry[] }) {
                     {r.status.replace('_', ' ')}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-muted-foreground">{formatDate(r.created_at)}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {formatDate(r.created_at, timezone)}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

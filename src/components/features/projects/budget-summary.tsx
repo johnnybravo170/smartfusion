@@ -2,6 +2,7 @@
 
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Fragment, useState } from 'react';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-orders';
 import { withFrom } from '@/lib/nav/from-link';
 import { formatCurrency } from '@/lib/pricing/calculator';
@@ -680,6 +681,7 @@ function CategoryBreakdown({
   coContributions: AppliedChangeOrderContribution[];
   fromTab?: FromTab;
 }) {
+  const tz = useTenantTimezone();
   const linkBase = projectId ? `/projects/${projectId}` : null;
   const focus = budgetCategoryId ? `&focus=${budgetCategoryId}` : '';
   return (
@@ -709,10 +711,11 @@ function CategoryBreakdown({
                   {c.co_title}
                 </a>
                 <span className="text-muted-foreground tabular-nums">
-                  {new Date(c.applied_at).toLocaleDateString('en-CA', {
+                  {new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
                     month: 'short',
                     day: 'numeric',
-                  })}
+                  }).format(new Date(c.applied_at))}
                 </span>
               </li>
             ))}

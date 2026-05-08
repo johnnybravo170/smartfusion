@@ -40,13 +40,12 @@ export const metadata = {
 
 const cadFormat = new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' });
 
-function formatDate(iso: string | null | undefined): string {
+function formatDate(iso: string | null | undefined, tz: string | undefined): string {
   if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-CA', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  return new Intl.DateTimeFormat('en-CA', {
+    dateStyle: 'long',
+    timeZone: tz ?? 'America/Vancouver',
+  }).format(new Date(iso));
 }
 
 export default async function HomeRecordPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -63,6 +62,21 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
   const snapshot = (record as Record<string, unknown>).snapshot as HomeRecordSnapshotV1;
   const hasPdf = Boolean((record as Record<string, unknown>).pdf_path);
   const hasZip = Boolean((record as Record<string, unknown>).zip_path);
+
+  // Pull tenant tz so all rendered dates land in the contractor's local time
+  // rather than UTC. Side-query via project — snapshot is frozen, tz isn't.
+  const projectId = (record as Record<string, unknown>).project_id as string;
+  const { data: tenantRow } = await admin
+    .from('projects')
+    .select('tenants:tenant_id (timezone)')
+    .eq('id', projectId)
+    .single();
+  const tenantNode = (tenantRow as Record<string, unknown> | null)?.tenants as
+    | { timezone?: string | null }
+    | { timezone?: string | null }[]
+    | null;
+  const tenantObj = Array.isArray(tenantNode) ? tenantNode[0] : tenantNode;
+  const tenantTz = tenantObj?.timezone ?? undefined;
 
   // Re-sign all storage paths in one batch (separate buckets, so two
   // calls — photos + project-docs).
@@ -167,7 +181,7 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
         ) : null}
         <p className="mt-3 text-xs text-muted-foreground">
           {logoUrl ? '' : `Prepared by ${snapshot.contractor.name} • `}
-          Generated {formatDate(snapshot.generated_at)}
+          Generated {formatDate(snapshot.generated_at, tenantTz)}
         </p>
         {hasPdf || hasZip ? (
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -197,7 +211,11 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
           <p className="text-sm leading-relaxed text-muted-foreground">
             {snapshot.project.description}
           </p>
-          <DateRow start={snapshot.project.start_date} end={snapshot.project.target_end_date} />
+          <DateRow
+            start={snapshot.project.start_date}
+            end={snapshot.project.target_end_date}
+            tz={tenantTz}
+          />
         </Section>
       ) : null}
 
@@ -225,10 +243,10 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
                     <span className="font-medium">{phase.name}</span>
                     <span className="text-xs text-muted-foreground">
                       {phase.status === 'complete'
-                        ? `Completed ${formatDate(phase.completed_at)}`
+                        ? `Completed ${formatDate(phase.completed_at, tenantTz)}`
                         : phase.status === 'in_progress'
                           ? phase.started_at
-                            ? `Started ${formatDate(phase.started_at)}`
+                            ? `Started ${formatDate(phase.started_at, tenantTz)}`
                             : 'In progress'
                           : 'Upcoming'}
                     </span>
@@ -367,7 +385,7 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   {d.decided_value === 'approved' ? 'Approved' : 'Declined'}
                   {d.decided_by_customer ? ` by ${d.decided_by_customer}` : ''} on{' '}
-                  {formatDate(d.decided_at)}
+                  {formatDate(d.decided_at, tenantTz)}
                 </p>
               </li>
             ))}
@@ -396,7 +414,7 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   Approved
                   {co.approved_by_name ? ` by ${co.approved_by_name}` : ''}
-                  {co.approved_at ? ` on ${formatDate(co.approved_at)}` : ''}
+                  {co.approved_at ? ` on ${formatDate(co.approved_at, tenantTz)}` : ''}
                   {co.timeline_impact_days ? ` • +${co.timeline_impact_days} days` : ''}
                 </p>
               </li>
@@ -441,7 +459,7 @@ export default async function HomeRecordPage({ params }: { params: Promise<{ slu
                             )}
                             {d.expires_at ? (
                               <p className="text-xs text-muted-foreground">
-                                Expires {formatDate(d.expires_at)}
+                                Expires {formatDate(d.expires_at, tenantTz)}
                               </p>
                             ) : null}
                           </div>
@@ -474,13 +492,21 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function DateRow({ start, end }: { start: string | null; end: string | null }) {
+function DateRow({
+  start,
+  end,
+  tz,
+}: {
+  start: string | null;
+  end: string | null;
+  tz: string | undefined;
+}) {
   if (!start && !end) return null;
   return (
     <p className="mt-2 text-xs text-muted-foreground">
-      {start ? `Started ${formatDate(start)}` : ''}
+      {start ? `Started ${formatDate(start, tz)}` : ''}
       {start && end ? ' • ' : ''}
-      {end ? `Target ${formatDate(end)}` : ''}
+      {end ? `Target ${formatDate(end, tz)}` : ''}
     </p>
   );
 }

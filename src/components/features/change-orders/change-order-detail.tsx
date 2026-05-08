@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ManualApprovalDialog } from '@/components/features/projects/manual-approval-dialog';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { ChangeOrderLineRow, ChangeOrderRow } from '@/lib/db/queries/change-orders';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import type { ChangeOrderStatus } from '@/lib/validators/change-order';
@@ -29,6 +30,7 @@ export function ChangeOrderDetail({
   budgetCategoryNamesById?: Record<string, string>;
   diffLines?: ChangeOrderLineRow[];
 }) {
+  const tz = useTenantTimezone();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -248,11 +250,12 @@ export function ChangeOrderDetail({
         <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 text-sm">
           <p className="text-xs text-emerald-800">
             <span className="font-semibold">Applied to estimate</span> ·{' '}
-            {new Date(co.applied_at).toLocaleDateString('en-CA', {
+            {new Intl.DateTimeFormat('en-CA', {
+              timeZone: tz,
               month: 'short',
               day: 'numeric',
               year: 'numeric',
-            })}
+            }).format(new Date(co.applied_at))}
             {co.apply_warnings && co.apply_warnings.length > 0
               ? ` · ${co.apply_warnings.length} warning${co.apply_warnings.length === 1 ? '' : 's'}`
               : ''}
@@ -312,62 +315,47 @@ export function ChangeOrderDetail({
       <div className="rounded-lg border p-4">
         <p className="text-xs text-muted-foreground mb-3">Timeline</p>
         <div className="space-y-2 text-sm">
-          <div className="flex gap-3">
-            <span className="font-medium text-muted-foreground w-24">Created</span>
-            <span>
-              {new Date(co.created_at).toLocaleString('en-CA', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit',
-              })}
-            </span>
-          </div>
-          {co.status !== 'draft' ? (
-            <div className="flex gap-3">
-              <span className="font-medium text-muted-foreground w-24">Sent</span>
-              <span>
-                {new Date(co.updated_at).toLocaleString('en-CA', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}
-              </span>
-            </div>
-          ) : null}
-          {co.approved_at ? (
-            <div className="flex gap-3">
-              <span className="font-medium text-emerald-700 w-24">Approved</span>
-              <span>
-                {new Date(co.approved_at).toLocaleString('en-CA', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}{' '}
-                by {co.approved_by_name}
-              </span>
-            </div>
-          ) : null}
-          {co.declined_at ? (
-            <div className="flex gap-3">
-              <span className="font-medium text-red-700 w-24">Declined</span>
-              <span>
-                {new Date(co.declined_at).toLocaleString('en-CA', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}
-                {co.declined_reason ? ` — ${co.declined_reason}` : ''}
-              </span>
-            </div>
-          ) : null}
+          {(() => {
+            const fmt = new Intl.DateTimeFormat('en-CA', {
+              timeZone: tz,
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+            });
+            return (
+              <>
+                <div className="flex gap-3">
+                  <span className="font-medium text-muted-foreground w-24">Created</span>
+                  <span>{fmt.format(new Date(co.created_at))}</span>
+                </div>
+                {co.status !== 'draft' ? (
+                  <div className="flex gap-3">
+                    <span className="font-medium text-muted-foreground w-24">Sent</span>
+                    <span>{fmt.format(new Date(co.updated_at))}</span>
+                  </div>
+                ) : null}
+                {co.approved_at ? (
+                  <div className="flex gap-3">
+                    <span className="font-medium text-emerald-700 w-24">Approved</span>
+                    <span>
+                      {fmt.format(new Date(co.approved_at))} by {co.approved_by_name}
+                    </span>
+                  </div>
+                ) : null}
+                {co.declined_at ? (
+                  <div className="flex gap-3">
+                    <span className="font-medium text-red-700 w-24">Declined</span>
+                    <span>
+                      {fmt.format(new Date(co.declined_at))}
+                      {co.declined_reason ? ` — ${co.declined_reason}` : ''}
+                    </span>
+                  </div>
+                ) : null}
+              </>
+            );
+          })()}
         </div>
       </div>
 

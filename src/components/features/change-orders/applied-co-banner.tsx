@@ -25,6 +25,7 @@ import { ChevronDown, ChevronUp, ExternalLink, FileEdit, Info } from 'lucide-rea
 import Link from 'next/link';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { ProjectVersionListItem } from '@/lib/db/queries/project-versions';
 import { withFrom } from '@/lib/nav/from-link';
 import { formatCurrency } from '@/lib/pricing/calculator';
@@ -125,12 +126,14 @@ function VersionRow({
   projectId: string;
   isLast: boolean;
 }) {
+  const tz = useTenantTimezone();
   const date = new Date(version.signed_at);
-  const dateText = date.toLocaleDateString('en-CA', {
+  const dateText = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
+  }).format(date);
 
   // Each row deep-links to the most relevant detail surface:
   //   - CO rows → CO detail page

@@ -10,6 +10,7 @@ import { ReferralHistory } from '@/components/features/referrals/referral-histor
 import { ReferralLinkCard } from '@/components/features/referrals/referral-link-card';
 import { ReferralStats } from '@/components/features/referrals/referral-stats';
 import { SendReferralForm } from '@/components/features/referrals/send-referral-form';
+import { requireTenant } from '@/lib/auth/helpers';
 import {
   getReferralHistoryAction,
   getReferralLinkAction,
@@ -21,6 +22,7 @@ export const metadata = {
 };
 
 export default async function ReferralsPage() {
+  const { tenant } = await requireTenant();
   const [linkResult, statsResult, historyResult] = await Promise.all([
     getReferralLinkAction(),
     getReferralStatsAction(),
@@ -48,7 +50,7 @@ export default async function ReferralsPage() {
 
       <ReferralStats stats={stats} />
 
-      <ReferralHistory referrals={history} />
+      <ReferralHistory referrals={history} timezone={tenant.timezone} />
     </div>
   );
 }

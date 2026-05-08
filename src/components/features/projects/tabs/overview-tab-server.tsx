@@ -12,6 +12,7 @@ import { BillingModeEditor } from '@/components/features/projects/billing-mode-e
 import { VarianceTab } from '@/components/features/projects/budget-summary';
 import { ManagementFeeEditor } from '@/components/features/projects/management-fee-editor';
 import { ProjectTimeline } from '@/components/features/projects/project-timeline';
+import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getProjectChangeOrderContributions } from '@/lib/db/queries/change-orders';
 import { getVarianceReport } from '@/lib/db/queries/cost-lines';
 import { listProjectEvents } from '@/lib/db/queries/project-events';
@@ -61,32 +62,27 @@ async function VarianceSection({ projectId }: { projectId: string }) {
 async function ProjectFactsSection({ projectId }: { projectId: string }) {
   // getProject is React.cache-wrapped, so this dedupes against the
   // VarianceSection call above when both run in the same request.
-  const project = await getProject(projectId);
+  const [project, tenant] = await Promise.all([getProject(projectId), getCurrentTenant()]);
   if (!project) return null;
+  const tz = tenant?.timezone ?? 'America/Vancouver';
+  const dateFmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
       <div className="rounded-lg border p-4">
         <p className="text-xs text-muted-foreground">Start Date</p>
         <p className="text-sm font-medium">
-          {project.start_date
-            ? new Date(project.start_date).toLocaleDateString('en-CA', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              })
-            : 'Not set'}
+          {project.start_date ? dateFmt.format(new Date(project.start_date)) : 'Not set'}
         </p>
       </div>
       <div className="rounded-lg border p-4">
         <p className="text-xs text-muted-foreground">Target End</p>
         <p className="text-sm font-medium">
-          {project.target_end_date
-            ? new Date(project.target_end_date).toLocaleDateString('en-CA', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              })
-            : 'Not set'}
+          {project.target_end_date ? dateFmt.format(new Date(project.target_end_date)) : 'Not set'}
         </p>
       </div>
       <div className="rounded-lg border p-4">

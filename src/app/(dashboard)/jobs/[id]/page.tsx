@@ -201,7 +201,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             <Link href={`/jobs/${job.id}/change-orders/new`}>New Change Order</Link>
           </Button>
         </header>
-        <ChangeOrderList changeOrders={changeOrders} jobId={job.id} />
+        <ChangeOrderList changeOrders={changeOrders} jobId={job.id} timezone={tz} />
       </section>
 
       <section className="rounded-xl border bg-card p-5">

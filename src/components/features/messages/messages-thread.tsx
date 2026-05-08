@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import {
   cancelProjectMessageNotifyAction,
   getProjectMessagesAction,
@@ -41,6 +42,7 @@ export function MessagesThread({
   customerName: string;
   portalSlug: string | null;
 }) {
+  const tz = useTenantTimezone();
   const [messages, setMessages] = useState<MessageRow[]>(initialMessages);
   const [body, setBody] = useState('');
   const [pending, startTransition] = useTransition();
@@ -158,10 +160,11 @@ export function MessagesThread({
                   </p>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.body}</p>
                   <p className="mt-1 text-[10px] opacity-70">
-                    {new Date(m.created_at).toLocaleTimeString('en-CA', {
+                    {new Intl.DateTimeFormat('en-CA', {
+                      timeZone: tz,
                       hour: 'numeric',
                       minute: '2-digit',
-                    })}
+                    }).format(new Date(m.created_at))}
                   </p>
                 </div>
               </div>

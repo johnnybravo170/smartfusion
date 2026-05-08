@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { ProjectWithCategories } from '@/lib/db/queries/worker-time';
 import { splitTotalByRate } from '@/lib/expenses/tax-split';
 import { extractReceiptFieldsAction } from '@/server/actions/extract-receipt';
@@ -34,8 +35,9 @@ type Props = {
 export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
   const router = useRouter();
   const params = useSearchParams();
+  const tz = useTenantTimezone();
   const initialProject = params.get('project') ?? projects[0]?.project_id ?? '';
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 
   const [pending, startTransition] = useTransition();
   const [extracting, setExtracting] = useState(false);

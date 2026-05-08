@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useTenantTimezone } from '@/lib/auth/tenant-context';
 
 export type DuplicateExpense = {
   existing_id: string;
@@ -35,15 +36,17 @@ type Props = {
   busy?: boolean;
 };
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-CA', {
+function formatDate(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
+  }).format(new Date(iso));
 }
 
 export function DuplicateExpenseDialog({ duplicate, onClose, onForceSave, busy }: Props) {
+  const tz = useTenantTimezone();
   const router = useRouter();
 
   return (
@@ -60,7 +63,7 @@ export function DuplicateExpenseDialog({ duplicate, onClose, onForceSave, busy }
                 </span>{' '}
                 at <span className="font-medium text-foreground">{duplicate.vendor}</span> on{' '}
                 <span className="font-medium text-foreground">
-                  {formatDate(duplicate.expense_date)}
+                  {formatDate(duplicate.expense_date, tz)}
                 </span>
                 . Log this one anyway?
               </>
