@@ -16,7 +16,7 @@ type SearchParams = Promise<{
 }>;
 
 export default async function OnboardingPlanPage({ searchParams }: { searchParams: SearchParams }) {
-  const { user, tenant } = await requireTenant();
+  const { tenant } = await requireTenant();
 
   // Personal workspaces don't have a paid plan surface — bounce out.
   if (tenant.vertical === 'personal') redirect('/dashboard');
@@ -29,11 +29,6 @@ export default async function OnboardingPlanPage({ searchParams }: { searchParam
     .eq('id', tenant.id)
     .single();
   if (row?.stripe_subscription_id) redirect('/dashboard');
-
-  // Verification gate (mirrors dashboard layout).
-  const phoneVerified = !!tenant.member.phone_verified_at;
-  const emailVerified = !!user.email_confirmed_at;
-  if (!emailVerified || !phoneVerified) redirect('/onboarding/verify');
 
   const params = await searchParams;
   const initialPlan = isPlan(params.plan) ? params.plan : null;

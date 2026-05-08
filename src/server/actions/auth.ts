@@ -16,7 +16,6 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { newTenantMemberDefaults } from '@/lib/auth/helpers';
 import { updateReferralOnSignup } from '@/lib/db/queries/referrals';
-import { sendEmail } from '@/lib/email/send';
 import { generateReferralCode } from '@/lib/referral/code-generator';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -63,12 +62,13 @@ export async function signupAction(input: {
 
   const admin = createAdminClient();
 
-  // 1. Create the auth user (email NOT auto-confirmed; verification email
-  //    is sent below after the tenant rows are in place).
+  // 1. Create the auth user, already-confirmed. We don't gate product access
+  //    on email verification — bounces are handled separately. See
+  //    docs/onboarding-audit-2026-05.md.
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
     password,
-    email_confirm: false,
+    email_confirm: true,
   });
   if (createErr || !created?.user) {
     const msg = createErr?.message ?? 'Could not create user.';
@@ -171,60 +171,18 @@ export async function signupAction(input: {
     return { error: `Account created but sign-in failed: ${signInErr.message}` };
   }
 
-  // 5. Send the email-verification link via Resend (non-fatal — user can
-  //    request a re-send from /onboarding/verify if delivery fails).
-  await sendVerificationEmail({ email, businessName }).catch((err) => {
-    console.warn('Failed to send verification email on signup:', err);
-  });
-
-  // Preserve plan/billing/promo choice from marketing-site URL through the
-  // verify step so the plan picker can pre-select and pre-apply.
-  const verifyParams = new URLSearchParams();
-  if (input.plan) verifyParams.set('plan', input.plan);
-  if (input.billing) verifyParams.set('billing', input.billing);
-  if (input.promo) verifyParams.set('promo', input.promo);
-  const qs = verifyParams.toString();
-  redirect(qs ? `/onboarding/verify?${qs}` : '/onboarding/verify');
-}
-
-async function sendVerificationEmail(input: {
-  email: string;
-  businessName: string;
-}): Promise<void> {
-  const admin = createAdminClient();
-  const origin = await originFromHeaders();
-  // 'magiclink' on an existing unconfirmed user both signs them in and
-  // marks email_confirmed_at — exactly what we want for verification.
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: 'magiclink',
-    email: input.email,
-    options: { redirectTo: `${origin}/callback?next=/onboarding/verify` },
-  });
-  if (error || !data?.properties?.action_link) {
-    throw new Error(error?.message ?? 'Could not generate verification link.');
+  // If the customer arrived from a paid-plan CTA on the marketing site,
+  // route them through the plan picker → Stripe Checkout. Otherwise drop
+  // them straight into the dashboard — zero-friction trial.
+  const wantsCheckout = Boolean(input.plan && input.billing);
+  if (wantsCheckout) {
+    const qs = new URLSearchParams();
+    if (input.plan) qs.set('plan', input.plan);
+    if (input.billing) qs.set('billing', input.billing);
+    if (input.promo) qs.set('promo', input.promo);
+    redirect(`/onboarding/plan?${qs.toString()}`);
   }
-  const link = data.properties.action_link;
-  await sendEmail({
-    to: input.email,
-    subject: 'Confirm your HeyHenry email',
-    html: `
-      <p>Hi,</p>
-      <p>Confirm your email to finish setting up <strong>${escapeHtml(input.businessName)}</strong> on HeyHenry:</p>
-      <p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#0a0a0a;color:#fff;text-decoration:none;border-radius:6px;">Confirm email</a></p>
-      <p>Or open this link: <br/><a href="${link}">${link}</a></p>
-      <p>This link expires in 24 hours.</p>
-    `,
-    caslCategory: 'transactional',
-    relatedType: 'auth',
-  });
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  redirect('/dashboard');
 }
 
 export async function loginAction(input: {
