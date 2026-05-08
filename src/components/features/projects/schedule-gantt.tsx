@@ -23,10 +23,35 @@ import { useRef, useState } from 'react';
 import type { ProjectScheduleTask } from '@/lib/db/queries/project-schedule';
 
 const MONTH_FORMAT = new Intl.DateTimeFormat('en-CA', { month: 'short', year: 'numeric' });
+const DAY_FMT = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric' });
+const DAY_FMT_WITH_YEAR = new Intl.DateTimeFormat('en-CA', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
 const DAY_MS = 86_400_000;
 
 function parseDate(yyyyMmDd: string): Date {
   return new Date(`${yyyyMmDd}T00:00:00Z`);
+}
+
+/**
+ * Format a task's start/end window as readable copy for tooltips.
+ * Inclusive end date — i.e. the last day of work, not the day after.
+ *
+ *   1 day:                "Mar 16"
+ *   Same month:           "Mar 16 – Mar 18"
+ *   Crosses month:        "Mar 30 – Apr 2"
+ *   Crosses year:         "Dec 28, 2025 – Jan 4, 2026"
+ */
+function formatDateRange(startStr: string, durationDays: number): string {
+  const start = new Date(`${startStr}T00:00:00Z`);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + Math.max(0, durationDays - 1));
+  if (durationDays <= 1) return DAY_FMT.format(start);
+  const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
+  const fmt = sameYear ? DAY_FMT : DAY_FMT_WITH_YEAR;
+  return `${fmt.format(start)} – ${fmt.format(end)}`;
 }
 
 function diffDays(later: Date, earlier: Date): number {
@@ -307,6 +332,23 @@ export function ScheduleGantt({
               : 'border border-dashed border-primary bg-primary/10';
           const NameCell = interactive ? 'button' : 'div';
           const BarCell = interactive ? 'button' : 'div';
+          // Tooltip date/duration tracks the optimistic drag preview so
+          // the operator can see exactly where the bar will land before
+          // they release.
+          let displayStart = task.planned_start_date;
+          let displayDuration = task.planned_duration_days;
+          if (drag && drag.taskId === task.id && drag.deltaDays !== 0) {
+            if (drag.kind === 'move') {
+              displayStart = addDays(parseDate(task.planned_start_date), drag.deltaDays)
+                .toISOString()
+                .slice(0, 10);
+            } else {
+              displayDuration = Math.max(1, displayDuration + drag.deltaDays);
+            }
+          }
+          const dateRange = formatDateRange(displayStart, displayDuration);
+          const dayWord = displayDuration === 1 ? 'day' : 'days';
+          const tooltip = `${task.name} · ${dateRange} · ${displayDuration} ${dayWord} (${task.confidence})`;
           // First row carries the gridRef so we can measure column width
           // for drag-day calculations.
           return (
@@ -340,7 +382,7 @@ export function ScheduleGantt({
                 <DayBacking meta={dayMeta} />
                 <button
                   type="button"
-                  aria-label={`${task.name} — ${task.planned_duration_days} days. Click to edit.`}
+                  aria-label={`${tooltip}. Click to edit.`}
                   onPointerDown={draggable ? (e) => handleDragStart(e, task, 'move') : undefined}
                   onPointerMove={draggable && isDragging ? handleDragMove : undefined}
                   onPointerUp={draggable && isDragging ? handleDragEnd : undefined}
@@ -361,7 +403,7 @@ export function ScheduleGantt({
                     gridColumnEnd: `span ${colSpan}`,
                     touchAction: 'none',
                   }}
-                  title={`${task.name} — ${task.planned_duration_days}d (${task.confidence})`}
+                  title={tooltip}
                 >
                   {draggable ? (
                     <button

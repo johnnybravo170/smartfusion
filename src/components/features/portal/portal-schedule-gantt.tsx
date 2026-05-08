@@ -15,10 +15,31 @@
 import type { ProjectScheduleTask } from '@/lib/db/queries/project-schedule';
 
 const MONTH_FORMAT = new Intl.DateTimeFormat('en-CA', { month: 'short', year: 'numeric' });
+const DAY_FMT = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric' });
+const DAY_FMT_WITH_YEAR = new Intl.DateTimeFormat('en-CA', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
 const DAY_MS = 86_400_000;
 
 function parseDate(yyyyMmDd: string): Date {
   return new Date(`${yyyyMmDd}T00:00:00Z`);
+}
+
+/**
+ * "Mar 16" / "Mar 16 – Mar 18" / "Dec 28, 2025 – Jan 4, 2026" depending
+ * on duration and whether the window crosses a year. Inclusive end —
+ * the last day of work, not the day after.
+ */
+function formatDateRange(startStr: string, durationDays: number): string {
+  const start = new Date(`${startStr}T00:00:00Z`);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + Math.max(0, durationDays - 1));
+  if (durationDays <= 1) return DAY_FMT.format(start);
+  const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
+  const fmt = sameYear ? DAY_FMT : DAY_FMT_WITH_YEAR;
+  return `${fmt.format(start)} – ${fmt.format(end)}`;
 }
 
 function diffDays(later: Date, earlier: Date): number {
@@ -183,7 +204,7 @@ export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[]
                     gridColumnStart: colStart,
                     gridColumnEnd: `span ${colSpan}`,
                   }}
-                  title={task.name}
+                  title={`${task.name} · ${formatDateRange(task.planned_start_date, task.planned_duration_days)} · ${task.planned_duration_days} ${task.planned_duration_days === 1 ? 'day' : 'days'}`}
                 />
               </div>
             </div>
