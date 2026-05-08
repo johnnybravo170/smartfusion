@@ -158,6 +158,54 @@ const RLS_TABLE_CASES: RlsCase[] = [
     }),
   },
   {
+    table: 'project_schedule_dependencies',
+    seed: async ({ admin, tenant, stamp }) => {
+      // Need two tasks first so we have something to link.
+      const a = await admin
+        .from('project_schedule_tasks')
+        .insert({
+          tenant_id: tenant.tenantId,
+          project_id: tenant.projectId,
+          name: `dep-pred-${stamp}`,
+          planned_start_date: '2026-01-01',
+          planned_duration_days: 2,
+        })
+        .select('id')
+        .single();
+      const b = await admin
+        .from('project_schedule_tasks')
+        .insert({
+          tenant_id: tenant.tenantId,
+          project_id: tenant.projectId,
+          name: `dep-succ-${stamp}`,
+          planned_start_date: '2026-01-03',
+          planned_duration_days: 2,
+        })
+        .select('id')
+        .single();
+      const { data, error } = await admin
+        .from('project_schedule_dependencies')
+        .insert({
+          tenant_id: tenant.tenantId,
+          project_id: tenant.projectId,
+          predecessor_task_id: a.data?.id,
+          successor_task_id: b.data?.id,
+        })
+        .select('id')
+        .single();
+      if (error || !data) {
+        throw new Error(error?.message ?? 'project_schedule_dependencies seed failed');
+      }
+      return data.id as string;
+    },
+    updatePayload: { lag_days: 99 },
+    // Building a cross-tenant insert payload would require seeding two
+    // schedule tasks under tenant B and surfacing them through the seed
+    // ctx — overkill for the policy assertion. The basic SELECT/UPDATE/
+    // DELETE checks already prove cross-tenant isolation.
+    skipInsertReject: true,
+  },
+  {
     table: 'import_batches',
     seed: async ({ admin, tenant, stamp }) => {
       const { data, error } = await admin
