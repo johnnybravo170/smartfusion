@@ -9,7 +9,7 @@ export const metadata = {
   title: 'Verify your account — HeyHenry',
 };
 
-type SearchParams = Promise<{ plan?: string; billing?: string }>;
+type SearchParams = Promise<{ plan?: string; billing?: string; promo?: string }>;
 
 export default async function VerifyOnboardingPage({
   searchParams,
@@ -43,6 +43,7 @@ export default async function VerifyOnboardingPage({
     const qs = new URLSearchParams();
     if (params.plan) qs.set('plan', params.plan);
     if (params.billing) qs.set('billing', params.billing);
+    if (params.promo) qs.set('promo', params.promo);
     const tail = qs.toString();
     redirect(tail ? `/onboarding/plan?${tail}` : '/onboarding/plan');
   }
