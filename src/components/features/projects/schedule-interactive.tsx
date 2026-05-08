@@ -35,6 +35,7 @@ export function ScheduleInteractive({
   phases,
   tradeTypicalPhase,
   pendingNotifyAt,
+  predecessorsByTaskId,
 }: {
   projectId: string;
   tasks: ProjectScheduleTask[];
@@ -47,6 +48,9 @@ export function ScheduleInteractive({
    *  null when no notify is queued (default tenant flag off, OR notify
    *  already sent/cancelled). Drives the Undo banner. */
   pendingNotifyAt: string | null;
+  /** successor task id → list of predecessor task ids. Threaded into
+   *  the editor's "Depends on" picker. */
+  predecessorsByTaskId: Record<string, string[]>;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -209,6 +213,8 @@ export function ScheduleInteractive({
       {editingTask ? (
         <ScheduleTaskEditor
           mode={{ kind: 'edit', task: editingTask }}
+          allTasks={tasks}
+          initialPredecessorIds={predecessorsByTaskId[editingTask.id] ?? []}
           open={true}
           onClose={() => setEditingTask(null)}
         />
@@ -217,6 +223,8 @@ export function ScheduleInteractive({
       {creating ? (
         <ScheduleTaskEditor
           mode={{ kind: 'create', projectId, defaultStartDate }}
+          allTasks={tasks}
+          initialPredecessorIds={[]}
           open={true}
           onClose={() => setCreating(false)}
         />
