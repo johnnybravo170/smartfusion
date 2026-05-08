@@ -44,10 +44,6 @@ const ALLOWED_FILES = new Set<string>([
   // explicitly — already correct usage.
   'src/app/(admin)/admin/ar/sequences/[id]/page.tsx',
 
-  // Social-post API route — single use, low-impact (weekday label for AI
-  // post generation). Tracked as follow-up.
-  'src/app/api/social-post/route.ts',
-
   // This guardrail itself.
   'tests/unit/timezone-no-bare-tolocale.test.ts',
 ]);

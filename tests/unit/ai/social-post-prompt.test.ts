@@ -70,4 +70,38 @@ describe('buildSocialPrompt', () => {
     });
     expect(user).toContain('JSON');
   });
+
+  it('renders weekday + time-of-day in the contractor tenant timezone', () => {
+    // 2026-05-08T05:00:00Z → Vancouver: Thursday May 7, 22:00 (evening)
+    //                       Toronto:    Friday May 8, 01:00 (morning)
+    // Without tz support, both would bucket as the runtime tz's hour —
+    // wrong for a contractor in either zone if the route runs on UTC.
+    const completedAt = '2026-05-08T05:00:00Z';
+
+    const vancouver = buildSocialPrompt({
+      platform: 'instagram',
+      businessName: 'Sparkle Wash',
+      completedAt,
+      timezone: 'America/Vancouver',
+    });
+    expect(vancouver.user).toContain('Thursday evening');
+
+    const toronto = buildSocialPrompt({
+      platform: 'instagram',
+      businessName: 'Sparkle Wash',
+      completedAt,
+      timezone: 'America/Toronto',
+    });
+    expect(toronto.user).toContain('Friday morning');
+  });
+
+  it('falls back to America/Vancouver when timezone is omitted', () => {
+    const { user } = buildSocialPrompt({
+      platform: 'instagram',
+      businessName: 'Sparkle Wash',
+      completedAt: '2026-05-08T05:00:00Z',
+    });
+    // Vancouver is UTC-7 in May (PDT) → Thu 22:00 → evening
+    expect(user).toContain('Thursday evening');
+  });
 });
