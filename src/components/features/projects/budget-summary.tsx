@@ -67,6 +67,7 @@ function StatBox({
   highlight,
   danger,
   success,
+  href,
 }: {
   label: string;
   value: string;
@@ -74,11 +75,11 @@ function StatBox({
   highlight?: boolean;
   danger?: boolean;
   success?: boolean;
+  href?: string;
 }) {
-  return (
-    <div
-      className={`rounded-lg border p-4 ${success ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : highlight ? 'bg-primary/5 border-primary/30' : ''} ${danger ? 'bg-destructive/5 border-destructive/30' : ''}`}
-    >
+  const baseClass = `block rounded-lg border p-4 ${success ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800' : highlight ? 'bg-primary/5 border-primary/30' : ''} ${danger ? 'bg-destructive/5 border-destructive/30' : ''}`;
+  const inner = (
+    <>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p
         className={`mt-1 text-xl font-semibold tabular-nums ${danger ? 'text-destructive' : success ? 'text-emerald-700 dark:text-emerald-300' : highlight ? 'text-primary' : ''}`}
@@ -86,8 +87,16 @@ function StatBox({
         {value}
       </p>
       {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
-    </div>
+    </>
   );
+  if (href) {
+    return (
+      <a href={href} className={`${baseClass} transition-colors hover:bg-muted/40`}>
+        {inner}
+      </a>
+    );
+  }
+  return <div className={baseClass}>{inner}</div>;
 }
 
 type AnyCoSummary = {
@@ -229,7 +238,11 @@ export function VarianceTab({
           sub={estSub}
           highlight
         />
-        <StatBox label="Committed" value={formatCurrency(committed_cents)} />
+        <StatBox
+          label="Committed"
+          value={formatCurrency(committed_cents)}
+          href={projectId ? `/projects/${projectId}?tab=costs&sub=quotes` : undefined}
+        />
         <StatBox
           label="Actual Cost"
           value={formatCurrency(actual_total_cents)}
@@ -241,6 +254,11 @@ export function VarianceTab({
             .filter(Boolean)
             .join(' · ')}
           danger={isAtRisk}
+          href={
+            projectId
+              ? `/projects/${projectId}?tab=costs&sub=${actual_expenses_cents >= actual_bills_cents ? 'expenses' : 'bills'}`
+              : undefined
+          }
         />
         <StatBox
           label={marginLabel}
