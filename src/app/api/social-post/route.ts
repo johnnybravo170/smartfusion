@@ -53,6 +53,9 @@ export function buildSocialPrompt(opts: {
   surfaces?: string[];
   businessName: string;
   completedAt?: string | null;
+  /** Tenant tz so weekday + time-of-day reflect the contractor's local clock,
+   *  not Vercel's UTC runtime. Defaults to America/Vancouver for tests. */
+  timezone?: string;
 }): { system: string; user: string } {
   const system = `You write social media captions for a local pressure washing business. Your job is to sound like a real person who is proud of their work, not a marketing agency.
 
@@ -88,8 +91,14 @@ For hashtags: 5-8 max. Mix of local (#abbotsford #fraservalley) and trade (#pres
   lines.push(`- Business name: ${opts.businessName}`);
   if (opts.completedAt) {
     const d = new Date(opts.completedAt);
-    const day = d.toLocaleDateString('en-CA', { weekday: 'long' });
-    const time = d.getHours() < 12 ? 'morning' : d.getHours() < 17 ? 'afternoon' : 'evening';
+    const tz = opts.timezone ?? 'America/Vancouver';
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: tz, weekday: 'long' }).format(d);
+    // Hour in the tenant's local clock — Date.getHours() would use the
+    // server's tz (UTC on Vercel) and bucket midnight-ET into "morning".
+    const hourLocal = Number(
+      new Intl.DateTimeFormat('en-CA', { timeZone: tz, hour: 'numeric', hour12: false }).format(d),
+    );
+    const time = hourLocal < 12 ? 'morning' : hourLocal < 17 ? 'afternoon' : 'evening';
     lines.push(`- Completed: ${day} ${time}`);
   }
   lines.push('');
@@ -220,6 +229,7 @@ export async function POST(request: Request) {
     surfaces,
     businessName: tenant.name,
     completedAt: job.completed_at ?? null,
+    timezone: tenant.timezone,
   });
 
   const model = process.env.CHAT_MODEL || 'claude-sonnet-4-6';
