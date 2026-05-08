@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/ops-gate';
+import { MobileNav } from './mobile-nav';
 import { MoreMenu } from './more-menu';
 import { SignOutButton } from './sign-out-button';
 
@@ -38,9 +39,9 @@ export default async function AuthedLayout({ children }: { children: React.React
   return (
     <div className="min-h-screen">
       <header className="border-b border-[var(--border)]">
-        <div className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
+        <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3 md:px-6">
           <span className="text-sm font-semibold tracking-tight">HeyHenry Ops</span>
-          <nav className="flex items-center gap-4 text-sm">
+          <nav className="hidden items-center gap-4 text-sm md:flex">
             {PRIMARY_NAV.map((n) => (
               <Link
                 key={n.href}
@@ -52,13 +53,16 @@ export default async function AuthedLayout({ children }: { children: React.React
             ))}
             <MoreMenu items={MORE_NAV} />
           </nav>
-          <div className="ml-auto flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
+          <div className="ml-auto hidden items-center gap-3 text-xs text-[var(--muted-foreground)] md:flex">
             <span title={admin.email}>{admin.email.split('@')[0]}</span>
             <SignOutButton />
           </div>
+          <div className="ml-auto md:hidden">
+            <MobileNav primary={PRIMARY_NAV} more={MORE_NAV} email={admin.email} />
+          </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-8">{children}</main>
     </div>
   );
 }
