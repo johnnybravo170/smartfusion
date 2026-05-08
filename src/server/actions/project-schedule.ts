@@ -192,69 +192,17 @@ export async function bootstrapProjectScheduleAction(
     (project.start_date as string | null) ?? new Date().toISOString().slice(0, 10);
   const startDate = new Date(`${startDateStr}T00:00:00Z`);
 
-  // Hybrid AI bootstrap: when source=budget AND any category didn't map
-  // to a canonical trade, the static sequence_position table puts those
-  // unmapped categories mid-timeline in arbitrary order. Engage AI to do
-  // a smarter ordering with realistic durations and parallel tracks.
-  // Static path stays in charge for fully-mapped budgets and for
-  // template / blank sources.
-  let aiOffsets: Map<string, { offset: number; duration: number }> | null = null;
-  if (source.kind === 'budget' && trades.some((t) => t.trade_template_id === null)) {
-    // Pull estimate_cents + display_order for the AI prompt — gives the
-    // model scope context (a $20k Plumbing line is a bigger task than
-    // a $1k one).
-    const { data: catMeta } = await supabase
-      .from('project_budget_categories')
-      .select('id, estimate_cents, display_order')
-      .eq('project_id', projectId);
-    const metaById = new Map<string, { estimate_cents: number; display_order: number }>();
-    for (const row of catMeta ?? []) {
-      const r = row as Record<string, unknown>;
-      metaById.set(r.id as string, {
-        estimate_cents: (r.estimate_cents as number | null) ?? 0,
-        display_order: (r.display_order as number | null) ?? 0,
-      });
-    }
-    const aiInputCategories = trades
-      .filter((t): t is ResolvedTrade & { budget_category_id: string } =>
-        Boolean(t.budget_category_id),
-      )
-      .map((t) => {
-        const meta = metaById.get(t.budget_category_id);
-        // For unmapped categories, give the AI a name-based phase hint
-        // so it doesn't default unfamiliar names to the middle of the
-        // timeline. Mapped categories pass the trade name as the hint
-        // (existing behavior).
-        const phaseHint = t.trade_template_id
-          ? t.name
-          : (classifyCategoryName(t.name)?.label ?? null);
-        return {
-          id: t.budget_category_id,
-          name: t.name,
-          estimateCents: meta?.estimate_cents ?? 0,
-          displayOrder: meta?.display_order ?? 0,
-          tradeName: phaseHint,
-        };
-      });
-    const ai = await generateAiBootstrap({
-      projectName: (project.name as string) ?? 'Project',
-      projectDescription: (project.description as string | null) ?? null,
-      categories: aiInputCategories,
-    });
-    if (ai) {
-      aiOffsets = new Map();
-      for (const t of ai) {
-        aiOffsets.set(t.budget_category_id, {
-          offset: t.start_offset_days,
-          duration: t.duration_days,
-        });
-      }
-    }
-  }
-
-  const laidOut = aiOffsets
-    ? layoutTasksFromOffsets(trades, startDate, aiOffsets)
-    : layoutTasksSerial(trades, startDate);
+  // The AI bootstrap path was producing bad orderings — putting mapped
+  // trades first and unmapped customs at the END regardless of their
+  // names. Even with phase-label hints in the prompt the model wasn't
+  // overcoming the input-order bias. Trust the deterministic
+  // classifier instead: phase-classifier.ts assigns canonical
+  // sequence_positions to unmapped names ("Site prep + demo" → 10,
+  // "Structural framing + roof" → 20), and layoutTasksSerial sorts by
+  // those positions. Result: predictable, debuggable order. We can
+  // re-introduce AI later for within-phase decisions (parallel vs
+  // serial rough-ins) once the foundations are right.
+  const laidOut = layoutTasksSerial(trades, startDate);
 
   const inserts = laidOut.map(({ trade, planned_start_date, display_order }) => ({
     tenant_id: tenant.id,
