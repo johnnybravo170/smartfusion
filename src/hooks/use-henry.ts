@@ -17,6 +17,7 @@
  * exposes `toggleVoice` / `stopSpeaking` only — push-to-talk is gone.
  */
 
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { findFeatureByPath } from '@/lib/ai/feature-catalog';
 import { CLIENT_TOOL_NAMES } from '@/lib/henry/openai-tools';
@@ -52,6 +53,32 @@ export type UseHenryReturn = {
 
 const PANEL_STORAGE_KEY = 'heyhenry-chat-open';
 const SAMPLE_RATE = 24_000; // OpenAI Realtime = PCM16 24kHz both directions
+
+/**
+ * Tool name prefixes that signal a state mutation. After a tool with
+ * one of these prefixes returns successfully, we fire router.refresh()
+ * so the underlying RSC page (whatever tab the operator is on)
+ * re-renders with the new data — no manual reload needed.
+ *
+ * Keep it conservative: read-only tools (`list_*`, `get_*`) shouldn't
+ * trigger a refresh because that's wasted work in voice sessions where
+ * tools fire continuously.
+ */
+const MUTATING_TOOL_PREFIXES = [
+  'create_',
+  'update_',
+  'delete_',
+  'set_',
+  'add_',
+  'remove_',
+  'transition_',
+  'cancel_',
+  'send_',
+  'mark_',
+  'upsert_',
+  'lock_',
+  'unlock_',
+];
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -207,6 +234,8 @@ export function useHenry(): UseHenryReturn {
   const [error, setError] = useState<string | null>(null);
   const clearError = useCallback(() => setError(null), []);
 
+  const router = useRouter();
+
   const screen = useHenryScreen();
   const screenRef = useRef(screen);
   screenRef.current = screen;
@@ -305,11 +334,18 @@ export function useHenry(): UseHenryReturn {
     async (callId: string, name: string, argsJson: string): Promise<void> => {
       setActiveTool(name);
       let output: string;
+      let mutated = false;
       try {
         const args = argsJson ? JSON.parse(argsJson) : {};
         if (CLIENT_TOOL_NAMES.has(name)) {
           output = runClientTool(name, args, screenRef.current);
         } else {
+          // Tool name prefixes that signal a state mutation. After a
+          // successful call we'll fire router.refresh() so the underlying
+          // page (e.g. the Schedule tab the operator was looking at when
+          // they asked Henry to "lock in the dates") re-fetches RSC data
+          // and reflects the change without a manual reload.
+          mutated = MUTATING_TOOL_PREFIXES.some((p) => name.startsWith(p));
           const res = await fetch('/api/henry/tool', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -343,6 +379,15 @@ export function useHenry(): UseHenryReturn {
         setActiveTool(null);
       }
 
+      // Refresh the underlying RSC page when a mutating tool succeeded
+      // so the operator sees the change without a manual reload (e.g.
+      // Henry firms up a task → Schedule tab re-renders with the solid
+      // bar). Only when output doesn't start with our error prefixes —
+      // we don't want to refresh on a no-op tool failure.
+      if (mutated && !/^(Tool ".+" failed|Failed |Tool call failed)/.test(output)) {
+        router.refresh();
+      }
+
       sendEvent({
         type: 'conversation.item.create',
         item: {
@@ -353,7 +398,7 @@ export function useHenry(): UseHenryReturn {
       });
       sendEvent({ type: 'response.create' });
     },
-    [sendEvent],
+    [sendEvent, router],
   );
 
   // ─── Server event handler ──────────────────────────────────────────────
