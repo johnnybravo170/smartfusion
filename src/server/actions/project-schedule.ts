@@ -19,6 +19,7 @@
  */
 
 import { revalidatePath } from 'next/cache';
+import { classifyCategoryName } from '@/lib/ai/phase-classifier';
 import { generateAiBootstrap } from '@/lib/ai/schedule-bootstrap';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
@@ -220,12 +221,19 @@ export async function bootstrapProjectScheduleAction(
       )
       .map((t) => {
         const meta = metaById.get(t.budget_category_id);
+        // For unmapped categories, give the AI a name-based phase hint
+        // so it doesn't default unfamiliar names to the middle of the
+        // timeline. Mapped categories pass the trade name as the hint
+        // (existing behavior).
+        const phaseHint = t.trade_template_id
+          ? t.name
+          : (classifyCategoryName(t.name)?.label ?? null);
         return {
           id: t.budget_category_id,
           name: t.name,
           estimateCents: meta?.estimate_cents ?? 0,
           displayOrder: meta?.display_order ?? 0,
-          tradeName: t.trade_template_id ? t.name : null,
+          tradeName: phaseHint,
         };
       });
     const ai = await generateAiBootstrap({
@@ -975,14 +983,19 @@ async function resolveTrades(
         budget_category_id: budgetCategoryId,
       };
     }
+    // Read the category NAME for canonical-phase keywords. "Site prep
+    // + demo" → 10, "Structural framing + roof" → 20, "Pizza Oven" →
+    // 75 (cabinets / built-ins), etc. When nothing matches, fall back
+    // to mid-timeline keyed by the category's display_order so at
+    // least the order is stable.
+    const classified = classifyCategoryName(budgetName);
     return {
       trade_template_id: null,
       name: budgetName,
       duration_days: UNMAPPED_TASK_DURATION_DAYS,
-      // Bias unmapped tasks toward the middle of the timeline, then break
-      // ties by their position in the budget so the order isn't random.
-      sequence_position: UNMAPPED_SEQUENCE_POSITION + Math.min(displayOrder, 49),
-      typical_phase: null,
+      sequence_position:
+        classified?.sequencePosition ?? UNMAPPED_SEQUENCE_POSITION + Math.min(displayOrder, 49),
+      typical_phase: classified?.phase ?? null,
       budget_category_id: budgetCategoryId,
     };
   });
