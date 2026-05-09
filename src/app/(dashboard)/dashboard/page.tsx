@@ -1,6 +1,8 @@
 import { Suspense } from 'react';
+import { FirstRunHero } from '@/components/features/dashboard/first-run-hero';
 import { getCurrentUser, requireTenant } from '@/lib/auth/helpers';
 import { getHourInTimezone } from '@/lib/db/queries/dashboard';
+import { isFirstRunTenant } from '@/lib/db/queries/first-run';
 import { getBusinessProfile, getOperatorProfile } from '@/lib/db/queries/profile';
 import { AttentionSection } from './_sections/attention-section';
 import { JobsSection } from './_sections/jobs-section';
@@ -26,9 +28,10 @@ export default async function DashboardPage() {
   const hour = getHourInTimezone(tz);
   const greeting = getGreeting(hour);
 
-  const [profile, operator] = await Promise.all([
+  const [profile, operator, firstRun] = await Promise.all([
     getBusinessProfile(tenant.id),
     user ? getOperatorProfile(tenant.id, user.id) : Promise.resolve(null),
+    isFirstRunTenant(tenant.id),
   ]);
 
   const firstName = operator?.firstName?.trim() || null;
@@ -55,6 +58,8 @@ export default async function DashboardPage() {
           </p>
         </div>
       </div>
+
+      {firstRun ? <FirstRunHero firstName={firstName} vertical={tenant.vertical} /> : null}
 
       <Suspense fallback={<AttentionSkeleton />}>
         <AttentionSection />
