@@ -23,7 +23,11 @@ import { createClient } from '@/lib/supabase/server';
 import { normalizePhone } from '@/lib/twilio/client';
 import { loginSchema, magicLinkSchema, signupSchema } from '@/lib/validators/auth';
 
-export type ActionError = { error: string; fieldErrors?: Record<string, string[]> };
+export type ActionError = {
+  error: string;
+  fieldErrors?: Record<string, string[]>;
+  code?: 'EMAIL_ALREADY_REGISTERED';
+};
 
 async function originFromHeaders(): Promise<string> {
   const h = await headers();
@@ -73,7 +77,20 @@ export async function signupAction(input: {
   });
   if (createErr || !created?.user) {
     const msg = createErr?.message ?? 'Could not create user.';
-    // "already been registered" and variants — surface to the user.
+    // Detect "already registered" so the form can show a recovery path
+    // (sign-in link with email pre-filled) instead of a dead-end error.
+    const lower = msg.toLowerCase();
+    const code = (createErr as { code?: string } | null)?.code;
+    if (
+      code === 'email_exists' ||
+      code === 'user_already_exists' ||
+      (lower.includes('already') && lower.includes('regist'))
+    ) {
+      return {
+        error: 'An account with this email already exists.',
+        code: 'EMAIL_ALREADY_REGISTERED',
+      };
+    }
     return { error: msg };
   }
 
