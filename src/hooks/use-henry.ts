@@ -247,6 +247,11 @@ export function useHenry(): UseHenryReturn {
   const procNodeRef = useRef<ScriptProcessorNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const playbackCursorRef = useRef<number>(0);
+  // Track every AudioBufferSourceNode we schedule so we can explicitly
+  // stop() them on teardown. Closing the AudioContext SHOULD silence
+  // queued sources but iOS Safari is inconsistent — explicit stop is
+  // belt-and-suspenders so the user actually gets silence on tap.
+  const scheduledSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const currentAssistantIdRef = useRef<string | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
 
@@ -275,6 +280,51 @@ export function useHenry(): UseHenryReturn {
       } catch {
         // localStorage unavailable
       }
+      // Closing the panel = "I'm done with Henry for now." Tear down
+      // the voice session so audio stops and the mic releases. Without
+      // this Henry kept reacting to ambient sound and finishing his
+      // last sentence after the panel was already gone.
+      if (!next && (wsRef.current || micStreamRef.current)) {
+        // Use rAF so the close animation can start before we yank
+        // the audio context.
+        queueMicrotask(() => {
+          // Inline the disconnect-y bits directly to avoid a forward
+          // reference (disconnect isn't defined yet at this point in
+          // the file).
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            try {
+              wsRef.current.send(JSON.stringify({ type: 'response.cancel' }));
+            } catch {
+              /* socket may have closed mid-send */
+            }
+          }
+          wsRef.current?.close();
+          wsRef.current = null;
+          micStreamRef.current?.getTracks().forEach((t) => {
+            t.stop();
+          });
+          micStreamRef.current = null;
+          for (const src of scheduledSourcesRef.current) {
+            try {
+              src.stop();
+            } catch {
+              /* already stopped */
+            }
+            try {
+              src.disconnect();
+            } catch {
+              /* not connected */
+            }
+          }
+          scheduledSourcesRef.current.clear();
+          outputAudioCtxRef.current?.close().catch(() => {});
+          outputAudioCtxRef.current = null;
+          playbackCursorRef.current = 0;
+          setVoiceEnabled(false);
+          setVoiceState('off');
+          setActiveTool(null);
+        });
+      }
       return next;
     });
   }, []);
@@ -282,6 +332,32 @@ export function useHenry(): UseHenryReturn {
   const clearHistory = useCallback(() => {
     setMessages([]);
     setActiveTool(null);
+    // Stop Henry mid-sentence if he's currently speaking, and cancel
+    // any pending response. Without this, hitting the trash icon
+    // emptied the visible thread but Henry kept finishing his
+    // previous turn.
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({ type: 'response.cancel' }));
+      } catch {
+        /* socket may have closed mid-send */
+      }
+    }
+    for (const src of scheduledSourcesRef.current) {
+      try {
+        src.stop();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        src.disconnect();
+      } catch {
+        /* not connected */
+      }
+    }
+    scheduledSourcesRef.current.clear();
+    playbackCursorRef.current = 0;
+    setVoiceState((prev) => (prev === 'speaking' ? 'idle' : prev));
   }, []);
 
   const sendEvent = useCallback((evt: Record<string, unknown>) => {
@@ -311,23 +387,52 @@ export function useHenry(): UseHenryReturn {
     src.start(startAt);
     playbackCursorRef.current = startAt + buffer.duration;
     setVoiceState('speaking');
+    // Track for explicit teardown; remove from set when it ends naturally.
+    scheduledSourcesRef.current.add(src);
+    src.onended = () => {
+      scheduledSourcesRef.current.delete(src);
+    };
+  }, []);
+
+  /**
+   * Silence everything immediately — explicit stop on every queued audio
+   * source, then close the output context. Belt-and-suspenders; closing
+   * the context alone has been seen to leave a residual trail on iOS.
+   */
+  const silenceAllAudio = useCallback(() => {
+    for (const src of scheduledSourcesRef.current) {
+      try {
+        src.stop();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        src.disconnect();
+      } catch {
+        /* not connected */
+      }
+    }
+    scheduledSourcesRef.current.clear();
+    outputAudioCtxRef.current?.close().catch(() => {});
+    outputAudioCtxRef.current = null;
+    playbackCursorRef.current = 0;
   }, []);
 
   const stopSpeaking = useCallback(() => {
-    const ctx = outputAudioCtxRef.current;
-    if (!ctx) return;
-    ctx.close().catch(() => {});
-    const fresh = new AudioContext({ sampleRate: SAMPLE_RATE });
-    // Eagerly resume — iOS Safari creates fresh contexts in 'suspended' state
-    // when not inside a user gesture (this codepath runs from a WS message
+    if (!outputAudioCtxRef.current) return;
+    // Tell the server to stop generating BEFORE we tear down audio so
+    // the cancel event lands on an open WS.
+    sendEvent({ type: 'response.cancel' });
+    silenceAllAudio();
+    // Spin up a fresh context for the next response chunk. Eagerly
+    // resume — iOS Safari creates fresh contexts in 'suspended' state
+    // outside a user gesture (this codepath runs from a WS message
     // handler, which iOS does NOT count as a gesture).
+    const fresh = new AudioContext({ sampleRate: SAMPLE_RATE });
     fresh.resume().catch(() => {});
     outputAudioCtxRef.current = fresh;
-    playbackCursorRef.current = 0;
     setVoiceState('idle');
-    // Also tell the server to stop generating.
-    sendEvent({ type: 'response.cancel' });
-  }, [sendEvent]);
+  }, [sendEvent, silenceAllAudio]);
 
   // ─── Tool call dispatch ────────────────────────────────────────────────
   const handleFunctionCall = useCallback(
@@ -767,16 +872,24 @@ export function useHenry(): UseHenryReturn {
     // User-initiated teardown — clear the auto-reconnect lockout so the next
     // session can also auto-recover from its first abnormal close.
     reconnectAttemptedRef.current = false;
+    // Tell the server to stop generating BEFORE closing the WS so the
+    // cancel actually lands.
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({ type: 'response.cancel' }));
+      } catch {
+        /* socket may have closed mid-send */
+      }
+    }
     wsRef.current?.close();
     wsRef.current = null;
     stopMicCapture();
-    outputAudioCtxRef.current?.close().catch(() => {});
-    outputAudioCtxRef.current = null;
-    playbackCursorRef.current = 0;
+    silenceAllAudio();
     setVoiceEnabled(false);
     setVoiceState('off');
     setIsLoading(false);
-  }, [stopMicCapture]);
+    setActiveTool(null);
+  }, [stopMicCapture, silenceAllAudio]);
 
   // Keep refs current so the WS onclose closure (which captures `connect`
   // before it's fully defined) can call the latest versions.
