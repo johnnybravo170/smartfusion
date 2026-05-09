@@ -15,6 +15,7 @@ describe('signupSchema', () => {
       password: 'correct-horse-9',
       businessName: "Will's Painting Co",
       phone: '+1 604 555 1234',
+      acceptedPolicies: true,
     });
     expect(result.success).toBe(true);
   });
@@ -25,8 +26,20 @@ describe('signupSchema', () => {
       password: 'abc12345',
       businessName: 'Acme',
       phone: '+1 604 555 1234',
+      acceptedPolicies: true,
     });
     expect(result.email).toBe('will@example.com');
+  });
+
+  it('rejects a payload that has not accepted policies', () => {
+    const result = signupSchema.safeParse({
+      email: 'a@b.co',
+      password: 'abc12345',
+      businessName: 'Acme',
+      phone: '+1 604 555 1234',
+      acceptedPolicies: false,
+    });
+    expect(result.success).toBe(false);
   });
 
   it('rejects a password without a letter', () => {

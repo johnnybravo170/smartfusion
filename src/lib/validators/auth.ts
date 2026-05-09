@@ -32,6 +32,11 @@ export const signupSchema = z.object({
     .trim()
     .min(7, { message: 'Enter a phone number we can text a code to.' })
     .max(20, { message: 'Phone number is too long.' }),
+  // Defence in depth: the form blocks submit until the box is checked, but we
+  // also reject server-side so a tampered request can't bypass the gate.
+  acceptedPolicies: z.literal(true, {
+    message: 'You must accept the Terms of Service and Privacy Policy.',
+  }),
 });
 
 export const loginSchema = z.object({
