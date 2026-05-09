@@ -77,7 +77,7 @@ export default async function InboundEmailInboxPage({
 
   const projects = (projectsRaw ?? []).map((p) => ({ id: p.id as string, name: p.name as string }));
 
-  const inboundAddress = 'henry@heyhenry.io';
+  const inboundAddress = 'henry@inbound.heyhenry.io';
 
   const filteredProjectName = projectFilter
     ? (projects.find((p) => p.id === projectFilter)?.name ?? 'Unknown project')

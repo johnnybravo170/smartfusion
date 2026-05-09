@@ -5,7 +5,7 @@
  * project_messages thread. To make that work, every customer-facing
  * email needs three things:
  *
- *   1. `reply-to: henry@heyhenry.io` — so Reply lands on our inbound
+ *   1. `reply-to: henry@inbound.heyhenry.io` — so Reply lands on our inbound
  *      webhook instead of the operator's personal Gmail.
  *   2. A custom `Message-ID` header derived from the message row id —
  *      so `In-Reply-To` on the customer's reply walks straight back to
@@ -20,8 +20,10 @@
 
 import { projectRefFooter } from './project-ref';
 
-/** All customer-facing reply traffic lands here (webhook routes by sender). */
-export const CUSTOMER_REPLY_TO = 'henry@heyhenry.io';
+/** All customer-facing reply traffic lands here (webhook routes by sender).
+ *  Subdomain `inbound.heyhenry.io` keeps inbound MX isolated from the root
+ *  domain so Google Workspace can own root receive without conflict. */
+export const CUSTOMER_REPLY_TO = 'henry@inbound.heyhenry.io';
 
 /**
  * Build the custom Message-ID for an outbound email tied to a specific
