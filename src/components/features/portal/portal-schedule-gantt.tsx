@@ -140,11 +140,14 @@ export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[]
 
   const months = monthHeaderSegments(earliest, totalDays);
   const dayMeta = computeDayMeta(earliest, totalDays);
-  const gridCols = `repeat(${totalDays}, 1fr)`;
+  // minmax(12px, 1fr) keeps each day-column at least 12px wide on
+  // narrow screens; the outer wrapper scrolls horizontally instead of
+  // compressing bars to invisible dots.
+  const gridCols = `repeat(${totalDays}, minmax(12px, 1fr))`;
 
   return (
-    <div className="rounded-lg border bg-card">
-      <div className="grid grid-cols-[140px_1fr] gap-x-3 px-3 py-2 text-xs">
+    <div className="overflow-x-auto rounded-lg border bg-card">
+      <div className="grid grid-cols-[110px_1fr] gap-x-3 px-3 py-2 text-xs sm:grid-cols-[140px_1fr]">
         <div />
         <div className="grid auto-rows-min" style={{ gridTemplateColumns: gridCols }}>
           <DayBacking meta={dayMeta} />

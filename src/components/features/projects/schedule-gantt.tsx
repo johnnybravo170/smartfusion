@@ -206,7 +206,12 @@ export function ScheduleGantt({
   const interactive = Boolean(onTaskClick);
   const draggable = Boolean(onTaskUpdate);
 
-  const gridCols = `repeat(${totalDays}, 1fr)`;
+  // minmax(12px, 1fr) keeps each day-column at least 12px wide on
+  // narrow screens. The outer wrapper sets overflow-x-auto so when
+  // totalDays * 12 > viewport, the chart scrolls horizontally instead
+  // of compressing bars into invisible dots. On desktop the 1fr lets
+  // it fill available width as before.
+  const gridCols = `repeat(${totalDays}, minmax(12px, 1fr))`;
 
   const handleDragStart = (
     e: React.PointerEvent<HTMLElement>,
@@ -328,8 +333,8 @@ export function ScheduleGantt({
   const showGroupHeaders = groups.length > 1 || (groups[0]?.phaseId ?? null) !== null;
 
   return (
-    <div className="rounded-lg border bg-card">
-      <div className="grid grid-cols-[180px_1fr] gap-x-3 px-3 py-2 text-xs">
+    <div className="overflow-x-auto rounded-lg border bg-card">
+      <div className="grid grid-cols-[140px_1fr] gap-x-3 px-3 py-2 text-xs sm:grid-cols-[180px_1fr]">
         {/* Two header rows: months above, day-of-month markers below. */}
         <div />
         <div className="grid auto-rows-min" style={{ gridTemplateColumns: gridCols }}>
