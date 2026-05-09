@@ -26,7 +26,7 @@ import { sendSms } from '@/lib/twilio/client';
 
 export type EstimateActionResult =
   | { ok: true; id?: string; code?: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; requiresGstNumber?: boolean };
 
 function generateApprovalCode(): string {
   return crypto.randomBytes(12).toString('base64url').slice(0, 16);
@@ -71,6 +71,23 @@ export async function sendEstimateForApprovalAction(input: {
   if (!tenant) return { ok: false, error: 'Not signed in.' };
 
   const supabase = await createClient();
+
+  // First-send gate: a CRA-compliant estimate must carry the contractor's
+  // GST/HST number. We don't collect this at signup (kills activation);
+  // we collect it at the moment it actually has to be on the document.
+  // Once set, the operator never sees this prompt again.
+  const { data: tenantTax } = await supabase
+    .from('tenants')
+    .select('gst_number')
+    .eq('id', tenant.id)
+    .maybeSingle();
+  if (!tenantTax?.gst_number) {
+    return {
+      ok: false,
+      error: 'Add your GST/HST number before sending estimates.',
+      requiresGstNumber: true,
+    };
+  }
 
   const { data: project, error: projErr } = await supabase
     .from('projects')

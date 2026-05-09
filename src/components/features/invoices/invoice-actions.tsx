@@ -4,6 +4,7 @@ import { Ban, CheckCircle, Copy, Loader2, Mail, Send } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { GstNumberPromptDialog } from '@/components/features/shared/gst-number-prompt-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,25 +70,60 @@ export function InvoiceActions({
     return Array.from(new Set(fromList));
   }
 
+  // GST/HST first-send gate. Both `sendInvoiceAction` and
+  // `resendInvoiceAction` return `requiresGstNumber: true` when the
+  // tenant hasn't set a number yet. We cache the recipient list + which
+  // path to retry, swap in the prompt, and re-issue once the number is
+  // saved.
+  const [gstPromptOpen, setGstPromptOpen] = useState(false);
+  const [retryAction, setRetryAction] = useState<'send' | 'resend' | null>(null);
+  const [retryRecipients, setRetryRecipients] = useState<string[] | null>(null);
+
+  async function performSend(recipients: string[]): Promise<void> {
+    const result = await sendInvoiceAction({ invoiceId, recipientEmails: recipients });
+    if (result.ok) {
+      toast.success('Invoice sent!');
+      if (result.warning) toast.warning(result.warning);
+      if (result.paymentUrl) {
+        await navigator.clipboard.writeText(result.paymentUrl).catch(() => {});
+        toast.info('Payment link copied to clipboard.');
+      }
+      setRetryAction(null);
+      setRetryRecipients(null);
+      router.refresh();
+      return;
+    }
+    if (!result.ok && result.requiresGstNumber) {
+      setRetryAction('send');
+      setRetryRecipients(recipients);
+      setGstPromptOpen(true);
+      return;
+    }
+    toast.error(result.error);
+  }
+
+  async function performResend(recipients: string[]): Promise<void> {
+    const result = await resendInvoiceAction({ invoiceId, recipientEmails: recipients });
+    if (result.ok) {
+      toast.success('Invoice resent.');
+      if (result.warning) toast.warning(result.warning);
+      setRetryAction(null);
+      setRetryRecipients(null);
+      router.refresh();
+      return;
+    }
+    if (!result.ok && result.requiresGstNumber) {
+      setRetryAction('resend');
+      setRetryRecipients(recipients);
+      setGstPromptOpen(true);
+      return;
+    }
+    toast.error(result.error);
+  }
+
   function handleSend() {
     startTransition(async () => {
-      const result = await sendInvoiceAction({
-        invoiceId,
-        recipientEmails: selectedRecipients(),
-      });
-      if (result.ok) {
-        toast.success('Invoice sent!');
-        if (result.warning) {
-          toast.warning(result.warning);
-        }
-        if (result.paymentUrl) {
-          await navigator.clipboard.writeText(result.paymentUrl).catch(() => {});
-          toast.info('Payment link copied to clipboard.');
-        }
-        router.refresh();
-      } else {
-        toast.error(result.error);
-      }
+      await performSend(selectedRecipients());
     });
   }
 
@@ -105,19 +141,17 @@ export function InvoiceActions({
 
   function handleResend() {
     startTransition(async () => {
-      const result = await resendInvoiceAction({
-        invoiceId,
-        recipientEmails: selectedRecipients(),
-      });
-      if (result.ok) {
-        toast.success('Invoice resent.');
-        if (result.warning) {
-          toast.warning(result.warning);
-        }
-        router.refresh();
-      } else {
-        toast.error(result.error);
-      }
+      await performResend(selectedRecipients());
+    });
+  }
+
+  function handleGstSaved() {
+    const recipients = retryRecipients;
+    const action = retryAction;
+    if (!recipients || !action) return;
+    startTransition(async () => {
+      if (action === 'send') await performSend(recipients);
+      else await performResend(recipients);
     });
   }
 
@@ -170,6 +204,12 @@ export function InvoiceActions({
           </AlertDialogContent>
         </AlertDialog>
         <VoidButton onVoid={handleVoid} isPending={isPending} />
+        <GstNumberPromptDialog
+          open={gstPromptOpen}
+          onOpenChange={setGstPromptOpen}
+          kind="invoice"
+          onSaved={handleGstSaved}
+        />
       </div>
     );
   }
@@ -236,6 +276,12 @@ export function InvoiceActions({
           }
         />
         <VoidButton onVoid={handleVoid} isPending={isPending} />
+        <GstNumberPromptDialog
+          open={gstPromptOpen}
+          onOpenChange={setGstPromptOpen}
+          kind="invoice"
+          onSaved={handleGstSaved}
+        />
       </div>
     );
   }

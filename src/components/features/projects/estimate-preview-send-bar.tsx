@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { AutoFollowupRow } from '@/components/features/shared/auto-followup-row';
+import { GstNumberPromptDialog } from '@/components/features/shared/gst-number-prompt-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -100,21 +101,38 @@ export function EstimatePreviewSendBar({
 
   const emailInputRef = useRef<HTMLInputElement>(null);
 
+  // GST/HST first-send gate. The send action returns
+  // `requiresGstNumber: true` when the tenant hasn't set a number yet;
+  // we cache the recipient list for the retry, swap in the prompt, and
+  // re-issue once the operator saves their number.
+  const [gstPromptOpen, setGstPromptOpen] = useState(false);
+  const [retryRecipients, setRetryRecipients] = useState<string[] | null>(null);
+
+  async function performSend(recipients: string[]): Promise<void> {
+    const res = await sendEstimateForApprovalAction({
+      projectId,
+      note: note.trim() || null,
+      autoFollowupOverride: autoFollowup,
+      recipientEmails: recipients,
+    });
+    if (res.ok) {
+      toast.success('Estimate sent to customer');
+      setOpen(false);
+      setRetryRecipients(null);
+      router.push(`/projects/${projectId}?tab=budget`);
+      return;
+    }
+    if (!res.ok && res.requiresGstNumber) {
+      setRetryRecipients(recipients);
+      setGstPromptOpen(true);
+      return;
+    }
+    toast.error(res.error);
+  }
+
   function handleSend() {
     startTransition(async () => {
-      const res = await sendEstimateForApprovalAction({
-        projectId,
-        note: note.trim() || null,
-        autoFollowupOverride: autoFollowup,
-        recipientEmails: selectedRecipients(),
-      });
-      if (res.ok) {
-        toast.success('Estimate sent to customer');
-        setOpen(false);
-        router.push(`/projects/${projectId}?tab=budget`);
-      } else {
-        toast.error(res.error);
-      }
+      await performSend(selectedRecipients());
     });
   }
 
@@ -143,19 +161,15 @@ export function EstimatePreviewSendBar({
           ),
         ),
       );
-      const res = await sendEstimateForApprovalAction({
-        projectId,
-        note: note.trim() || null,
-        autoFollowupOverride: autoFollowup,
-        recipientEmails: recipients,
-      });
-      if (res.ok) {
-        toast.success('Estimate sent to customer');
-        setOpen(false);
-        router.push(`/projects/${projectId}?tab=budget`);
-      } else {
-        toast.error(res.error);
-      }
+      await performSend(recipients);
+    });
+  }
+
+  function handleGstSaved() {
+    const recipients = retryRecipients;
+    if (!recipients) return;
+    startTransition(async () => {
+      await performSend(recipients);
     });
   }
 
@@ -374,6 +388,13 @@ export function EstimatePreviewSendBar({
           )}
         </AlertDialog>
       </div>
+
+      <GstNumberPromptDialog
+        open={gstPromptOpen}
+        onOpenChange={setGstPromptOpen}
+        kind="estimate"
+        onSaved={handleGstSaved}
+      />
     </div>
   );
 }

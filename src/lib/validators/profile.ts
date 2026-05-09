@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import { optionalGstNumberSchema } from './tax-id';
 
 const OPTIONAL_STRING = z.string().trim().max(500, 'Too long.').optional().or(z.literal(''));
 
@@ -21,7 +22,7 @@ export const businessProfileSchema = z.object({
   contactEmail: z.string().trim().email('Not a valid email.').optional().or(z.literal('')),
   websiteUrl: OPTIONAL_STRING,
   reviewUrl: OPTIONAL_STRING,
-  gstNumber: OPTIONAL_STRING,
+  gstNumber: optionalGstNumberSchema,
   wcbNumber: OPTIONAL_STRING,
 });
 

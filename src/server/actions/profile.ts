@@ -23,6 +23,7 @@ import {
   type SocialsInput,
   socialsSchema,
 } from '@/lib/validators/profile';
+import { gstNumberSchema, normalizeGstNumber } from '@/lib/validators/tax-id';
 
 export type ProfileActionResult =
   | { ok: true }
@@ -64,7 +65,7 @@ export async function updateBusinessProfileAction(
       contact_email: emptyToNull(parsed.data.contactEmail),
       website_url: emptyToNull(parsed.data.websiteUrl),
       review_url: emptyToNull(parsed.data.reviewUrl),
-      gst_number: emptyToNull(parsed.data.gstNumber),
+      gst_number: parsed.data.gstNumber?.trim() ? normalizeGstNumber(parsed.data.gstNumber) : null,
       wcb_number: emptyToNull(parsed.data.wcbNumber),
       updated_at: new Date().toISOString(),
     })
@@ -72,6 +73,35 @@ export async function updateBusinessProfileAction(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath('/settings');
+  revalidatePath('/settings/profile');
+  return { ok: true };
+}
+
+/**
+ * Single-field update for the GST/HST number. Used by the first-send gate
+ * on estimates + invoices so an operator can set their number inline
+ * without leaving the send flow. Strict format validation; normalizes on
+ * save.
+ */
+export async function setTenantGstNumberAction(gstNumber: string): Promise<ProfileActionResult> {
+  const parsed = gstNumberSchema.safeParse(gstNumber);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? 'Invalid GST/HST number.',
+    };
+  }
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('tenants')
+    .update({ gst_number: parsed.data, updated_at: new Date().toISOString() })
+    .eq('id', tenant.id);
+  if (error) return { ok: false, error: error.message };
+
   revalidatePath('/settings/profile');
   return { ok: true };
 }
