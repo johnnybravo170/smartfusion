@@ -17,6 +17,7 @@ import { redirect } from 'next/navigation';
 import { newTenantMemberDefaults } from '@/lib/auth/helpers';
 import { updateReferralOnSignup } from '@/lib/db/queries/referrals';
 import { sendWelcomeEmail } from '@/lib/email/welcome';
+import { CURRENT_PRIVACY_VERSION, CURRENT_TOS_VERSION } from '@/lib/legal/versions';
 import { generateReferralCode } from '@/lib/referral/code-generator';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -43,6 +44,7 @@ export async function signupAction(input: {
   password: string;
   businessName: string;
   phone: string;
+  acceptedPolicies: boolean;
   referralCode?: string;
   plan?: string;
   billing?: string;
@@ -121,12 +123,17 @@ export async function signupAction(input: {
     }
     createdTenantId = tenant.id;
 
+    const acceptedAt = new Date().toISOString();
     const { error: memberErr } = await admin.from('tenant_members').insert({
       tenant_id: tenant.id,
       user_id: userId,
       role: 'owner',
       ...(await newTenantMemberDefaults(admin, userId)),
       phone: normalizedPhone,
+      tos_version: CURRENT_TOS_VERSION,
+      tos_accepted_at: acceptedAt,
+      privacy_version: CURRENT_PRIVACY_VERSION,
+      privacy_accepted_at: acceptedAt,
     });
     if (memberErr) {
       // Tenant row exists but membership failed — delete the tenant too so

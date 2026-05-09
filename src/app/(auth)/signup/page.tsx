@@ -23,6 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { isBillingCycle, isPlan, PLAN_CATALOG } from '@/lib/billing/plans';
@@ -34,6 +35,7 @@ function SignupForm() {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [alreadyRegisteredEmail, setAlreadyRegisteredEmail] = useState<string | null>(null);
+  const [acceptedPolicies, setAcceptedPolicies] = useState(false);
 
   const referralCode = params.get('ref') ?? undefined;
   const planParam = params.get('plan');
@@ -64,6 +66,7 @@ function SignupForm() {
         password,
         businessName,
         phone,
+        acceptedPolicies,
         referralCode,
         plan: selectedPlan ?? undefined,
         billing: selectedBilling ?? undefined,
@@ -155,6 +158,38 @@ function SignupForm() {
               At least 8 characters with one letter and one number.
             </p>
           </div>
+          <div className="flex items-start gap-2 pt-1">
+            <Checkbox
+              id="acceptedPolicies"
+              checked={acceptedPolicies}
+              onCheckedChange={(v) => setAcceptedPolicies(v === true)}
+              disabled={pending}
+              className="mt-0.5"
+              required
+            />
+            <Label
+              htmlFor="acceptedPolicies"
+              className="text-xs font-normal leading-snug text-muted-foreground"
+            >
+              I agree to the{' '}
+              <Link
+                href="/terms"
+                target="_blank"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link
+                href="/privacy"
+                target="_blank"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Privacy Policy
+              </Link>
+              .
+            </Label>
+          </div>
           {alreadyRegisteredEmail ? (
             <div
               className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
@@ -176,7 +211,7 @@ function SignupForm() {
           ) : null}
         </CardContent>
         <CardFooter className="flex flex-col gap-3 pt-2">
-          <Button type="submit" className="w-full" disabled={pending}>
+          <Button type="submit" className="w-full" disabled={pending || !acceptedPolicies}>
             {pending ? 'Setting things up…' : 'Create my account'}
           </Button>
           <Link
