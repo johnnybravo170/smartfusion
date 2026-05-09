@@ -69,7 +69,7 @@ export async function sendWelcomeEmail(tenantId: string): Promise<void> {
   const result = await sendEmail({
     to: email,
     from: 'Jonathan @ HeyHenry <hello@heyhenry.io>',
-    replyTo: 'hello@heyhenry.io',
+    replyTo: 'hello@inbound.heyhenry.io',
     subject: 'Welcome to HeyHenry — quick note from Jonathan',
     html,
     caslCategory: 'transactional',
