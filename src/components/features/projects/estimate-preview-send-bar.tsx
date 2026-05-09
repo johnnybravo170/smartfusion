@@ -12,6 +12,7 @@ import { ArrowLeft, Loader2, Send } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
+import { EstimatePreflightWarnings } from '@/components/features/projects/estimate-preflight-warnings';
 import { AutoFollowupRow } from '@/components/features/shared/auto-followup-row';
 import { GstNumberPromptDialog } from '@/components/features/shared/gst-number-prompt-dialog';
 import {
@@ -29,6 +30,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import type { EstimatePreflight } from '@/lib/estimate/preflight';
 import { patchCustomerEmailAction } from '@/server/actions/customers';
 import { sendEstimateForApprovalAction } from '@/server/actions/estimate-approval';
 
@@ -47,6 +49,10 @@ type Props = {
   autoFollowupTenantDefault: boolean;
   /** Whether the tenant's plan unlocks the follow-up feature. */
   autoFollowupAvailable: boolean;
+  /** Pre-send sanity-check result. Surfaced as a condensed warning
+   *  strip inside the send-confirm dialog so the operator can't miss
+   *  $0 lines / envelope drift. Non-blocking — they can still send. */
+  preflight?: EstimatePreflight;
 };
 
 export function EstimatePreviewSendBar({
@@ -60,6 +66,7 @@ export function EstimatePreviewSendBar({
   alreadySent,
   autoFollowupTenantDefault,
   autoFollowupAvailable,
+  preflight,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -221,6 +228,9 @@ export function EstimatePreviewSendBar({
               </AlertDialogHeader>
 
               <div className="space-y-3">
+                {preflight ? (
+                  <EstimatePreflightWarnings preflight={preflight} variant="strip" />
+                ) : null}
                 <div className="space-y-1.5">
                   <Label htmlFor="inline-email">Email address</Label>
                   <Input
@@ -295,6 +305,9 @@ export function EstimatePreviewSendBar({
                 </AlertDialogTitle>
                 <AlertDialogDescription asChild>
                   <div className="space-y-3 text-sm">
+                    {preflight ? (
+                      <EstimatePreflightWarnings preflight={preflight} variant="strip" />
+                    ) : null}
                     <div className="space-y-1">
                       <p>
                         Sending estimate to{' '}

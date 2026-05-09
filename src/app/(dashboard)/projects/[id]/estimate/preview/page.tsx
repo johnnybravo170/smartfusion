@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { EstimatePreflightWarnings } from '@/components/features/projects/estimate-preflight-warnings';
 import { EstimatePreviewSendBar } from '@/components/features/projects/estimate-preview-send-bar';
 import {
   EstimateRender,
@@ -7,6 +8,7 @@ import {
 import { resolveTenantAutoFollowupEnabled } from '@/lib/ar/system-sequences';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { hasFeature } from '@/lib/billing/features';
+import { runEstimatePreflight } from '@/lib/estimate/preflight';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -69,12 +71,18 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
       .order('created_at', { ascending: true }),
     supabase
       .from('project_budget_categories')
-      .select('id, name, section, description, display_order')
+      .select('id, name, section, description, display_order, estimate_cents')
       .eq('project_id', id),
   ]);
   const categoryInfo = new Map<
     string,
-    { name: string; section: string | null; description: string | null; order: number }
+    {
+      name: string;
+      section: string | null;
+      description: string | null;
+      order: number;
+      estimateCents: number;
+    }
   >();
   for (const b of categories ?? []) {
     categoryInfo.set(b.id as string, {
@@ -82,6 +90,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
       section: (b.section as string | null) ?? null,
       description: (b.description as string | null) ?? null,
       order: (b.display_order as number) ?? 0,
+      estimateCents: (b.estimate_cents as number) ?? 0,
     });
   }
 
@@ -130,6 +139,32 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
   const status =
     (p.estimate_status as 'draft' | 'pending_approval' | 'approved' | 'declined') ?? 'draft';
 
+  // Pre-send sanity check. Catches $0 line items + envelope-vs-lines
+  // drift before the estimate goes out — both flagged inline for the
+  // operator to fix, but non-blocking. Same shape feeds the
+  // send-confirm dialog's compact warning strip.
+  const preflight = runEstimatePreflight({
+    lines: (lines ?? []).map((l) => {
+      const raw = l as {
+        id: string;
+        label: string | null;
+        line_price_cents: number;
+        budget_category_id: string | null;
+      };
+      return {
+        id: raw.id,
+        label: raw.label,
+        line_price_cents: raw.line_price_cents,
+        budget_category_id: raw.budget_category_id,
+      };
+    }),
+    categories: Array.from(categoryInfo.entries()).map(([id, info]) => ({
+      id,
+      name: info.name,
+      estimate_cents: info.estimateCents,
+    })),
+  });
+
   // Auto-followup checkbox — defaults to tenant setting, gated to Growth plan.
   const tenantCtx = await getCurrentTenant();
   const autoFollowupAvailable = tenantCtx
@@ -155,7 +190,10 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
         alreadySent={status !== 'draft'}
         autoFollowupTenantDefault={autoFollowupTenantDefault}
         autoFollowupAvailable={autoFollowupAvailable}
+        preflight={preflight}
       />
+
+      <EstimatePreflightWarnings preflight={preflight} projectId={id} variant="card" />
 
       <div className="rounded-lg border bg-card p-6 shadow-sm">
         <p className="mb-4 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
