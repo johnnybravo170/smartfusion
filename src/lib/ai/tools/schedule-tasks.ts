@@ -51,6 +51,34 @@ export const scheduleTaskTools: AiTool[] = [
   },
   {
     definition: {
+      name: 'regenerate_schedule_dependencies',
+      description:
+        'Wipe the project\'s existing dependency edges and rebuild them via phase-aware bucketing. Use when the operator says things like "wire up the dependencies" / "lock in the schedule shape" / "make later tasks depend on earlier ones" / "set the dependencies based on the chart." This is wipe-and-replace: any manual "Depends on" edits the operator made via the task editor are discarded. Warn the operator first if they\'ve made manual edits ("This will reset any per-task Depends on tweaks — proceed?"). After regeneration, dragging an early task forward will pull every later task forward via the cascade.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          project_id: { type: 'string', description: 'Project UUID' },
+        },
+        required: ['project_id'],
+      },
+    },
+    handler: async (input) => {
+      try {
+        const { regenerateScheduleDependenciesAction } = await import(
+          '@/server/actions/project-schedule'
+        );
+        const res = await regenerateScheduleDependenciesAction({
+          projectId: input.project_id as string,
+        });
+        if (!res.ok) return `Failed to regenerate dependencies: ${res.error}`;
+        return `Done. ${res.edgesCreated} ${res.edgesCreated === 1 ? 'edge' : 'edges'} created. Dragging an early task forward will now pull later tasks along.`;
+      } catch (e) {
+        return `Failed to regenerate dependencies: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    },
+  },
+  {
+    definition: {
       name: 'update_schedule_task',
       description:
         'Patch a Gantt-schedule task — supply only the fields you want to change. Use this when the operator says things like "lock in electrical\'s dates" (set confidence=\'firm\'), "mark drywall done" (status=\'done\'), "hide the inspection day from the customer" (client_visible=false), or "push plumbing to March 18" (planned_start_date=\'2026-03-18\'). When the operator names a task, call list_schedule_tasks first to resolve the id. Date or duration changes auto-cascade to downstream tasks via the dependency graph.',
