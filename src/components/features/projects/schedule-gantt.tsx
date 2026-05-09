@@ -335,8 +335,10 @@ export function ScheduleGantt({
   return (
     <div className="overflow-x-auto rounded-lg border bg-card">
       <div className="grid grid-cols-[140px_1fr] gap-x-3 px-3 py-2 text-xs sm:grid-cols-[180px_1fr]">
-        {/* Two header rows: months above, day-of-month markers below. */}
-        <div />
+        {/* Two header rows: months above, day-of-month markers below.
+            Top-left corner is sticky so it covers the timeline header
+            as the operator scrolls horizontally on mobile. */}
+        <div className="sticky left-0 z-20 bg-card" />
         <div className="grid auto-rows-min" style={{ gridTemplateColumns: gridCols }}>
           <DayBacking meta={dayMeta} />
           {/* Month labels span their column range (row 1) */}
@@ -378,7 +380,7 @@ export function ScheduleGantt({
           return groups.map((group) => (
             <div key={`group-${group.phaseId ?? 'none'}`} className="contents">
               {showGroupHeaders ? (
-                <div className="col-span-2 mt-3 border-t pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+                <div className="sticky left-0 z-20 col-span-2 mt-3 border-t bg-card pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
                   {group.phaseName ?? 'Other'}
                 </div>
               ) : null}
@@ -426,7 +428,7 @@ export function ScheduleGantt({
                     <NameCell
                       {...(interactive ? { type: 'button' as const } : {})}
                       onClick={interactive ? () => onTaskClick?.(task) : undefined}
-                      className={`flex min-h-8 items-center truncate py-1 text-left text-sm ${
+                      className={`sticky left-0 z-20 flex min-h-8 items-center truncate bg-card py-1 pr-2 text-left text-sm ${
                         interactive ? 'cursor-pointer rounded hover:bg-muted/50' : ''
                       }`}
                     >
