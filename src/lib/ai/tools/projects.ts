@@ -173,13 +173,17 @@ export const projectTools: AiTool[] = [
     definition: {
       name: 'update_project',
       description:
-        'Patch fields on an existing project. Useful when the operator says things like "the Glenwood project is starting March 4" or "push the kitchen reno end date back two weeks" — you\'d update start_date / target_end_date here. Only fields you supply are written; omitted fields stay as-is. Lifecycle stage transitions go through transition_project_stage instead.',
+        'Patch fields on an existing project. Use ONLY for stable project metadata that the customer sees on emails, quotes, and invoices: name, description, start_date, target_end_date. Examples: "the Glenwood project is starting March 4" → set start_date. "push the kitchen reno end date back two weeks" → set target_end_date. "rename the bath reno to second-floor bath reno" → set name. Lifecycle stage transitions go through transition_project_stage instead. Only fields you supply are written; omitted fields stay as-is.\n\nDO NOT use this tool to record activity, status, or summaries — those belong on per-task notes (update_schedule_task notes=...) or on a worklog entry. The description field is shown on customer-facing materials, so writing things like "Electrical dates locked Mar 24" there pollutes the customer\'s view of the project.',
       input_schema: {
         type: 'object',
         properties: {
           id: { type: 'string', description: 'Project UUID' },
-          name: { type: 'string', description: 'New name' },
-          description: { type: 'string', description: 'New description' },
+          name: { type: 'string', description: 'New project name (1-3 words typical).' },
+          description: {
+            type: 'string',
+            description:
+              'STABLE project description shown on customer materials (e.g. "Master ensuite + walk-in closet, full electrical refresh"). Do NOT write activity / status / "I locked X" notes here — use update_schedule_task with `notes` instead.',
+          },
           start_date: {
             type: 'string',
             description:
