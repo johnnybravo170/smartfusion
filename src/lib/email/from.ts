@@ -1,31 +1,32 @@
 /**
- * Build the From header for a tenant-sent email.
+ * Build the From header for a tenant-originated email.
  *
  * Display name = tenant.name (fallback: "Hey Henry").
- * Address      = RESEND_FROM_EMAIL (the platform-verified sending address).
- *                We do NOT send from tenant.contact_email because we're not
- *                DKIM-authorized on arbitrary tenant domains.
- * Reply-To     = tenant.contact_email when set (so customer replies land in
- *                the operator's inbox), else undefined.
+ * Address      = noreply@tenants.heyhenry.io (the platform-verified
+ *                sending address on the tenant-originated subdomain).
+ *                We do NOT send from tenant.contact_email because we're
+ *                not DKIM-authorized on arbitrary tenant domains.
+ * Reply-To     = tenant.contact_email when set (so customer replies land
+ *                in the operator's inbox), else undefined.
  *
  * The resulting header looks like:
- *   From:     "Jon's Amazing Service" <noreply@mail.heyhenry.io>
+ *   From:     "Jon's Amazing Service" <noreply@tenants.heyhenry.io>
  *   Reply-To: jon@jonsamazingservice.com
  */
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import { FROM_EMAIL } from './client';
+import { FROM_EMAIL_TENANTS_ADDR } from './client';
 
 export type TenantFromHeader = {
   from: string;
   replyTo: string | undefined;
 };
 
-// Pull the sender address out of whatever `RESEND_FROM_EMAIL` contains —
+// Pull the bare sender address out of whatever the constant contains —
 // either a bare email or the "Name <addr>" form. We always override the
-// display name anyway; we just want the address.
+// display name with the tenant's name; we just need the address part.
 function senderAddress(): string {
-  const raw = FROM_EMAIL;
+  const raw = FROM_EMAIL_TENANTS_ADDR;
   const match = raw.match(/<([^>]+)>/);
   return match ? match[1] : raw;
 }
