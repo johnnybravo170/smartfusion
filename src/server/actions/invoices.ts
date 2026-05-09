@@ -28,7 +28,12 @@ import {
 
 export type InvoiceActionResult =
   | { ok: true; id?: string; paymentUrl?: string; warning?: string }
-  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: Record<string, string[]>;
+      requiresGstNumber?: boolean;
+    };
 
 /**
  * Create a draft invoice for a completed job. If the job has a linked quote,
@@ -210,10 +215,21 @@ export async function sendInvoiceAction(input: {
   const { data: tenantRow } = await supabase
     .from('tenants')
     .select(
-      'stripe_account_id, name, invoice_payment_instructions, invoice_terms, invoice_policies',
+      'stripe_account_id, name, invoice_payment_instructions, invoice_terms, invoice_policies, gst_number',
     )
     .eq('id', tenant.id)
     .single();
+
+  // First-send gate: CRA requires the contractor's GST/HST number on the
+  // invoice. We don't collect at signup; we collect at the moment the
+  // document gets generated. After it's set once, this prompt never fires.
+  if (!tenantRow?.gst_number) {
+    return {
+      ok: false,
+      error: 'Add your GST/HST number before sending invoices.',
+      requiresGstNumber: true,
+    };
+  }
 
   const stripeAccountId = tenantRow?.stripe_account_id as string | null;
   const { resolveInvoiceDocFields } = await import('@/lib/invoices/default-doc-fields');
@@ -434,9 +450,20 @@ export async function resendInvoiceAction(input: {
   // Load tenant invoice doc defaults and resolve against per-invoice overrides.
   const { data: tenantDocs } = await supabase
     .from('tenants')
-    .select('invoice_payment_instructions, invoice_terms, invoice_policies')
+    .select('invoice_payment_instructions, invoice_terms, invoice_policies, gst_number')
     .eq('id', tenant.id)
     .single();
+
+  // First-send gate also applies on resend — covers the (rare) case where
+  // a sent invoice predates the gate and the tenant later cleared the
+  // GST# field.
+  if (!tenantDocs?.gst_number) {
+    return {
+      ok: false,
+      error: 'Add your GST/HST number before resending invoices.',
+      requiresGstNumber: true,
+    };
+  }
   const { resolveInvoiceDocFields } = await import('@/lib/invoices/default-doc-fields');
   const resolvedDocs = resolveInvoiceDocFields({
     override: {

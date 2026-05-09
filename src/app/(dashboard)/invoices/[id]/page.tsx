@@ -7,6 +7,7 @@ import { InvoiceLineItems } from '@/components/features/invoices/invoice-line-it
 import { InvoiceNote } from '@/components/features/invoices/invoice-note';
 import { InvoiceOverridesEditor } from '@/components/features/invoices/invoice-overrides-editor';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
+import { MissingGstNotice } from '@/components/features/invoices/missing-gst-notice';
 import { PrintButton } from '@/components/features/shared/print-button';
 import { DetailPageNav } from '@/components/layout/detail-page-nav';
 import { Button } from '@/components/ui/button';
@@ -202,6 +203,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </p>
         </section>
       )}
+
+      {/* Defense-in-depth GST# warning — gate at send time should make
+       *  this impossible, but if a draft predates the gate or the field
+       *  was cleared, surface it inline so the operator can fix it
+       *  without bouncing to settings. */}
+      {showSetupBanner && !gstNumber ? <MissingGstNotice /> : null}
 
       {/* Inline default-fields setup — pops a dialog, no Settings detour */}
       {showSetupBanner ? <InvoiceDefaultsSetupBanner current={docFields} /> : null}
