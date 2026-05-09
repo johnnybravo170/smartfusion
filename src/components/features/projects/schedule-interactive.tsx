@@ -162,10 +162,14 @@ export function ScheduleInteractive({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          {visibleTasks.length} {visibleTasks.length === 1 ? 'task' : 'tasks'} · click to edit ·
-          drag to reschedule · drag the right edge to resize
+          {visibleTasks.length} {visibleTasks.length === 1 ? 'task' : 'tasks'}
+          {/* Drag hints don't apply on touch — keep them desktop-only. */}
+          <span className="hidden sm:inline">
+            {' · '}click to edit · drag to reschedule · drag the right edge to resize
+          </span>
+          <span className="sm:hidden"> · tap any bar to edit</span>
         </p>
         <div className="flex gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => setCreating(true)}>
