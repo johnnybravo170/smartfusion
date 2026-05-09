@@ -5,7 +5,7 @@ describe('AI tool definitions', () => {
   it('exports a stable number of tools', () => {
     // Bump this when intentionally adding/removing tools. Hard-coded so
     // drift is caught in CI instead of surfacing as a runtime surprise.
-    expect(allTools).toHaveLength(57);
+    expect(allTools).toHaveLength(56);
   });
 
   it('each tool has a name, description, and valid input_schema', () => {

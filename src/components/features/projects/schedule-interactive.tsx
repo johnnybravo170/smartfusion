@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { ScheduleClearButton } from '@/components/features/projects/schedule-clear-button';
 import { ScheduleGantt } from '@/components/features/projects/schedule-gantt';
+import { ScheduleRegenerateDepsButton } from '@/components/features/projects/schedule-regenerate-deps-button';
 import { ScheduleTaskEditor } from '@/components/features/projects/schedule-task-editor';
 import { Button } from '@/components/ui/button';
 import type { ProjectScheduleTask } from '@/lib/db/queries/project-schedule';
@@ -175,6 +176,7 @@ export function ScheduleInteractive({
           <Button type="button" variant="outline" size="sm" onClick={() => setCreating(true)}>
             + Add task
           </Button>
+          <ScheduleRegenerateDepsButton projectId={projectId} />
           <ScheduleClearButton projectId={projectId} />
         </div>
       </div>
