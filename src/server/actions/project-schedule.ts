@@ -82,6 +82,71 @@ type LaidOutTask = {
  * Serial layout — each task starts where the previous one ended.
  * Used as the static fallback when AI bootstrap isn't engaged or fails.
  */
+/**
+ * Compute phase-aware dependency edges for a set of tasks. Tasks in the
+ * earlier "phase bucket" (lower sequence_position) become predecessors
+ * of every task in the next-populated bucket. Within a bucket, tasks
+ * are siblings — Plumbing and Electrical are both at rough-in (~35-38),
+ * both depend on Framing tasks, neither depends on the other.
+ *
+ * Phase resolution per task:
+ *   - Mapped trade → trade_templates.sequence_position
+ *   - Unmapped → classifyCategoryName(name).sequencePosition (PR #142)
+ *   - Neither → no edge for this task
+ *
+ * Bucketing: round sequence_position to the nearest 5 so neighbours
+ * (Plumbing 35 + Electrical 38) end up in the same bucket. Cabinets
+ * (75) + Plumbing fixtures (78) also collapse — that's intentional.
+ */
+function buildPhaseAwareEdges(input: {
+  projectId: string;
+  tenantId: string;
+  tasks: Array<{ id: string; trade_template_id: string | null; name: string }>;
+  tradeSeqByTradeId: Map<string, number>;
+}): Array<{
+  project_id: string;
+  tenant_id: string;
+  predecessor_task_id: string;
+  successor_task_id: string;
+}> {
+  const tasksByBucket = new Map<number, string[]>();
+  for (const t of input.tasks) {
+    let pos: number | null = null;
+    if (t.trade_template_id) {
+      pos = input.tradeSeqByTradeId.get(t.trade_template_id) ?? null;
+    } else {
+      pos = classifyCategoryName(t.name)?.sequencePosition ?? null;
+    }
+    if (pos === null) continue;
+    const bucket = Math.round(pos / 5) * 5;
+    const list = tasksByBucket.get(bucket) ?? [];
+    list.push(t.id);
+    tasksByBucket.set(bucket, list);
+  }
+  const sorted = Array.from(tasksByBucket.keys()).sort((a, b) => a - b);
+  const edges: Array<{
+    project_id: string;
+    tenant_id: string;
+    predecessor_task_id: string;
+    successor_task_id: string;
+  }> = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const preds = tasksByBucket.get(sorted[i - 1]) ?? [];
+    const succs = tasksByBucket.get(sorted[i]) ?? [];
+    for (const predId of preds) {
+      for (const succId of succs) {
+        edges.push({
+          project_id: input.projectId,
+          tenant_id: input.tenantId,
+          predecessor_task_id: predId,
+          successor_task_id: succId,
+        });
+      }
+    }
+  }
+  return edges;
+}
+
 function layoutTasksSerial(trades: ResolvedTrade[], startDate: Date): LaidOutTask[] {
   let cursor = 0;
   return trades.map((trade, idx) => {
@@ -224,60 +289,24 @@ export async function bootstrapProjectScheduleAction(
   const { data: insertedRows, error: insertErr } = await supabase
     .from('project_schedule_tasks')
     .insert(inserts)
-    .select('id, trade_template_id');
+    .select('id, trade_template_id, name');
   if (insertErr) return { ok: false, error: insertErr.message };
 
-  // Auto-bootstrap dependency edges by PHASE. Tasks in phase N depend
-  // on every task in the previous populated phase. Within a phase,
-  // tasks are siblings (no edges to each other) — Plumbing and
-  // Electrical are both rough-ins, both depend on Framing, neither
-  // depends on the other.
-  //
-  // Tasks without a typical_phase (custom budget categories the GC
-  // didn't map) get NO auto-edges — operator can add them manually
-  // via the task edit modal's "Depends on" picker.
+  // Auto-bootstrap dependency edges using phase-aware logic shared
+  // with the regenerate_schedule_dependencies Henry tool.
   if ((insertedRows ?? []).length >= 2) {
-    // Map task → typical_phase via the trade list we already resolved.
-    // Trades passed into resolveTrades carry typical_phase; we threaded
-    // them into the inserts above, but the `select('trade_template_id')`
-    // gives us the link back.
-    const tradePhaseByTradeId = new Map<string, string>();
+    const tradeSeqByTradeId = new Map<string, number>();
     for (const t of trades) {
-      if (t.trade_template_id && t.typical_phase) {
-        tradePhaseByTradeId.set(t.trade_template_id, t.typical_phase.trim().toLowerCase());
+      if (t.trade_template_id) {
+        tradeSeqByTradeId.set(t.trade_template_id, t.sequence_position);
       }
     }
-
-    const tasksByPhase = new Map<string, string[]>();
-    for (const row of insertedRows as Array<{ id: string; trade_template_id: string | null }>) {
-      const phase = row.trade_template_id ? tradePhaseByTradeId.get(row.trade_template_id) : null;
-      if (!phase) continue;
-      const list = tasksByPhase.get(phase) ?? [];
-      list.push(row.id);
-      tasksByPhase.set(phase, list);
-    }
-
-    const orderedPhases = CANONICAL_PHASE_ORDER.filter((p) => tasksByPhase.has(p));
-    const edges: Array<{
-      project_id: string;
-      tenant_id: string;
-      predecessor_task_id: string;
-      successor_task_id: string;
-    }> = [];
-    for (let i = 1; i < orderedPhases.length; i++) {
-      const preds = tasksByPhase.get(orderedPhases[i - 1]) ?? [];
-      const succs = tasksByPhase.get(orderedPhases[i]) ?? [];
-      for (const predId of preds) {
-        for (const succId of succs) {
-          edges.push({
-            project_id: projectId,
-            tenant_id: tenant.id,
-            predecessor_task_id: predId,
-            successor_task_id: succId,
-          });
-        }
-      }
-    }
+    const edges = buildPhaseAwareEdges({
+      projectId,
+      tenantId: tenant.id,
+      tasks: insertedRows as Array<{ id: string; trade_template_id: string | null; name: string }>,
+      tradeSeqByTradeId,
+    });
     if (edges.length > 0) {
       await supabase.from('project_schedule_dependencies').insert(edges);
     }
@@ -311,6 +340,89 @@ export async function bootstrapProjectScheduleAction(
  * After persisting, runs cascadeForwardFromTask on the updated task so
  * a freshly-added edge that's now violated triggers the shift.
  */
+/**
+ * Wipe the project's existing dependency edges and rebuild them via
+ * phase-aware bucketing. Used when an existing schedule has no edges
+ * (e.g. bootstrapped before phase-aware logic shipped, or built one
+ * task at a time via "Start blank") and the operator wants the chart
+ * to behave like a fresh bootstrap without losing their drag/edit work.
+ *
+ * Returns count of edges created. The wipe is unconditional — the
+ * intent is "reset to phase-aware defaults", which means tossing any
+ * manual edits the operator made via setTaskPredecessorsAction. Henry
+ * tool description spells that out so the model warns the operator
+ * before calling.
+ */
+export async function regenerateScheduleDependenciesAction(input: {
+  projectId: string;
+}): Promise<{ ok: true; edgesCreated: number } | { ok: false; error: string }> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  const supabase = await createClient();
+
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id, portal_slug')
+    .eq('id', input.projectId)
+    .single();
+  if (!project) return { ok: false, error: 'Project not found.' };
+
+  const { data: tasks } = await supabase
+    .from('project_schedule_tasks')
+    .select('id, trade_template_id, name')
+    .eq('project_id', input.projectId)
+    .is('deleted_at', null);
+  if (!tasks || tasks.length === 0) {
+    return { ok: false, error: 'No active tasks on this project.' };
+  }
+
+  // Resolve trade sequence_positions for the mapped tasks. One query —
+  // small N (~30 trade templates seeded).
+  const tradeIds = Array.from(
+    new Set(
+      (tasks as Array<{ trade_template_id: string | null }>)
+        .map((t) => t.trade_template_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const tradeSeqByTradeId = new Map<string, number>();
+  if (tradeIds.length > 0) {
+    const { data: tradeRows } = await supabase
+      .from('trade_templates')
+      .select('id, sequence_position')
+      .in('id', tradeIds);
+    for (const r of tradeRows ?? []) {
+      const row = r as Record<string, unknown>;
+      tradeSeqByTradeId.set(row.id as string, row.sequence_position as number);
+    }
+  }
+
+  const edges = buildPhaseAwareEdges({
+    projectId: input.projectId,
+    tenantId: tenant.id,
+    tasks: tasks as Array<{ id: string; trade_template_id: string | null; name: string }>,
+    tradeSeqByTradeId,
+  });
+
+  // Wipe-and-replace. Operator-initiated reset, so trash any prior
+  // manual edits (no easy way to keep them coherent with the new
+  // structure anyway).
+  const { error: delErr } = await supabase
+    .from('project_schedule_dependencies')
+    .delete()
+    .eq('project_id', input.projectId);
+  if (delErr) return { ok: false, error: delErr.message };
+
+  if (edges.length > 0) {
+    const { error: insErr } = await supabase.from('project_schedule_dependencies').insert(edges);
+    if (insErr) return { ok: false, error: insErr.message };
+  }
+
+  revalidatePath(`/projects/${input.projectId}`);
+  if (project.portal_slug) revalidatePath(`/portal/${project.portal_slug}`);
+  return { ok: true, edgesCreated: edges.length };
+}
+
 export async function setTaskPredecessorsAction(input: {
   taskId: string;
   predecessorIds: string[];
