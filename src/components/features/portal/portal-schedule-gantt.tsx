@@ -148,7 +148,9 @@ export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[]
   return (
     <div className="overflow-x-auto rounded-lg border bg-card">
       <div className="grid grid-cols-[110px_1fr] gap-x-3 px-3 py-2 text-xs sm:grid-cols-[140px_1fr]">
-        <div />
+        {/* Sticky top-left so it covers the timeline header on
+            horizontal scroll. */}
+        <div className="sticky left-0 z-20 bg-card" />
         <div className="grid auto-rows-min" style={{ gridTemplateColumns: gridCols }}>
           <DayBacking meta={dayMeta} />
           {months.map((m) => (
@@ -189,7 +191,7 @@ export function PortalScheduleGantt({ tasks }: { tasks: PortalScheduleTaskView[]
           const isDone = task.status === 'done';
           return (
             <div key={task.id} className="contents">
-              <div className="flex min-h-8 flex-col justify-center truncate py-1 text-sm">
+              <div className="sticky left-0 z-20 flex min-h-8 flex-col justify-center truncate bg-card py-1 pr-2 text-sm">
                 <span className={isDone ? 'text-muted-foreground line-through' : ''}>
                   {task.name}
                 </span>
