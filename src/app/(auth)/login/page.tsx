@@ -43,6 +43,7 @@ function LoginForm() {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const recoveryUsed = searchParams.get('recovery') === '1';
+  const prefilledEmail = searchParams.get('email')?.trim() || '';
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -86,6 +87,7 @@ function LoginForm() {
               name="email"
               type="email"
               autoComplete="email"
+              defaultValue={prefilledEmail}
               required
               disabled={pending}
             />

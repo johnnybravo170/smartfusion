@@ -33,6 +33,7 @@ function SignupForm() {
   const params = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [alreadyRegisteredEmail, setAlreadyRegisteredEmail] = useState<string | null>(null);
 
   const referralCode = params.get('ref') ?? undefined;
   const planParam = params.get('plan');
@@ -50,6 +51,7 @@ function SignupForm() {
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    setAlreadyRegisteredEmail(null);
     const form = new FormData(e.currentTarget);
     const email = String(form.get('email') ?? '');
     const password = String(form.get('password') ?? '');
@@ -68,6 +70,10 @@ function SignupForm() {
         promo: promoParam,
       });
       if (result && 'error' in result) {
+        if (result.code === 'EMAIL_ALREADY_REGISTERED') {
+          setAlreadyRegisteredEmail(email);
+          return;
+        }
         setError(result.error);
         toast.error(result.error);
         return;
@@ -149,6 +155,20 @@ function SignupForm() {
               At least 8 characters with one letter and one number.
             </p>
           </div>
+          {alreadyRegisteredEmail ? (
+            <div
+              className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+              role="alert"
+            >
+              <p>An account with this email already exists.</p>
+              <Link
+                href={`/login?email=${encodeURIComponent(alreadyRegisteredEmail)}`}
+                className="inline-block font-medium underline underline-offset-2"
+              >
+                Sign in instead →
+              </Link>
+            </div>
+          ) : null}
           {error ? (
             <p className="text-sm text-destructive" role="alert">
               {error}
