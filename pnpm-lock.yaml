@@ -74,6 +74,9 @@ importers:
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
+      postmark:
+        specifier: ^4.0.7
+        version: 4.0.7
       radix-ui:
         specifier: ^1.4.3
         version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -5254,6 +5257,9 @@ packages:
   postgres@3.4.9:
     resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
     engines: {node: '>=12'}
+
+  postmark@4.0.7:
+    resolution: {integrity: sha512-DjNniUl1XNCGUKhCR98ePd5gv16rlUAVKKaU9TUqnE3hDSqfT9XDulu1idjagQmdyGscqnRtXk/puAEiYMeevg==}
 
   powershell-utils@0.1.0:
     resolution: {integrity: sha512-dM0jVuXJPsDN6DvRpea484tCUaMiXWjuCn++HGTqUWzGDjv5tZkEZldAJ/UMlqRYGFrD/etByo4/xOuC/snX2A==}
@@ -11208,6 +11214,12 @@ snapshots:
       xtend: 4.0.2
 
   postgres@3.4.9: {}
+
+  postmark@4.0.7:
+    dependencies:
+      axios: 1.15.0
+    transitivePeerDependencies:
+      - debug
 
   powershell-utils@0.1.0: {}
 

@@ -1,15 +1,14 @@
 /**
  * Polite bounce reply for forwards from unrecognised senders.
  *
- * Sent from `henry@heyhenry.io` so the conversational voice matches the
- * inbox the operator forwarded to. Until A0 verifies that address in
- * Resend it will fail-soft (logged in email_send_log as `failed`); we
- * still persist the bounced inbound_emails row regardless.
+ * Sent from `henry@inbound.heyhenry.io` so the conversational voice
+ * matches the address the operator forwarded to, AND so any reply lands
+ * back at the inbound parser (inbound.heyhenry.io has the MX → Postmark).
  */
 
 import { sendEmail } from '@/lib/email/send';
 
-const HENRY_FROM = 'Henry <henry@heyhenry.io>';
+const HENRY_FROM = 'Henry <henry@inbound.heyhenry.io>';
 
 function escapeHtml(s: string): string {
   return s
