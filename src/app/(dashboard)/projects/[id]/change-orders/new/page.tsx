@@ -36,11 +36,11 @@ export default async function NewChangeOrderPage({
   return (
     <div className="mx-auto w-full max-w-5xl">
       <Link
-        href={`/projects/${id}?tab=change-orders`}
+        href={`/projects/${id}?tab=budget`}
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-3.5" />
-        Change Orders
+        Budget
       </Link>
 
       <h1 className="mb-2 text-2xl font-semibold tracking-tight">New Change Order</h1>

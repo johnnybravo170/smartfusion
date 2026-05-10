@@ -1211,7 +1211,7 @@ async function dispatchChangeOrderNotifications(args: {
     if (u.id && u.email) emailByUserId.set(u.id, u.email);
   }
 
-  const projectUrl = `https://app.heyhenry.io/projects/${projectId}?tab=change-orders`;
+  const projectUrl = `https://app.heyhenry.io/projects/${projectId}?tab=budget`;
   const verb = response === 'approved' ? 'approved' : 'declined';
   const preview = byName
     ? `Change order "${title}" was ${verb} by ${byName}.`

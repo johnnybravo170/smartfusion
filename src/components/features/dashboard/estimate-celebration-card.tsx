@@ -75,7 +75,7 @@ export function EstimateCelebrationCard({ celebration }: { celebration: Estimate
         </div>
         <p className="mt-0.5 text-sm text-emerald-800 dark:text-emerald-300">
           <Link
-            href={`/projects/${celebration.projectId}?tab=estimate`}
+            href={`/projects/${celebration.projectId}?tab=budget`}
             className="underline underline-offset-2 hover:no-underline"
           >
             {isApproved ? 'Open the project' : celebration.projectName}

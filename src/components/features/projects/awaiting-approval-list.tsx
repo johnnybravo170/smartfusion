@@ -63,7 +63,7 @@ function ViewBadge({ project }: { project: AwaitingApprovalProject }) {
 function Row({ project }: { project: AwaitingApprovalProject }) {
   return (
     <Link
-      href={`/projects/${project.id}?tab=estimate`}
+      href={`/projects/${project.id}?tab=budget`}
       className="group flex items-center gap-3 rounded-md border bg-card px-3 py-3 transition-colors hover:bg-muted/50"
     >
       <div className="min-w-0 flex-1">
