@@ -520,7 +520,7 @@ async function notifyOperatorOfFirstView(params: {
 
   // MUST be app.heyhenry.io (not heyhenry.io — that's the marketing site).
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.heyhenry.io';
-  const projectUrl = `${appUrl}/projects/${projectId}?tab=estimate`;
+  const projectUrl = `${appUrl}/projects/${projectId}?tab=budget`;
 
   const who = customerName ?? 'Your customer';
   await sendEmail({
@@ -588,7 +588,7 @@ async function notifyOperatorOfApproval(params: {
 
   // MUST be app.heyhenry.io (not heyhenry.io — that's the marketing site).
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.heyhenry.io';
-  const projectUrl = `${appUrl}/projects/${projectId}?tab=estimate`;
+  const projectUrl = `${appUrl}/projects/${projectId}?tab=budget`;
 
   const who = customerName ?? 'Your customer';
   await sendEmail({
@@ -725,7 +725,7 @@ async function dispatchFeedbackNotifications(args: {
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.heyhenry.io';
-  const feedbackUrl = `${appUrl}/projects/${projectId}?tab=estimate#feedback`;
+  const feedbackUrl = `${appUrl}/projects/${projectId}?tab=budget#feedback`;
   const count = comments.length;
   const noun = count === 1 ? 'comment' : 'comments';
   const subject = `💬 ${customerName} left ${count} ${noun} on your estimate`;

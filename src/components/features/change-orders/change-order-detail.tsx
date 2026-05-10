@@ -96,7 +96,7 @@ export function ChangeOrderDetail({
       setLoading(false);
       return;
     }
-    router.push(`/projects/${projectId}?tab=change-orders`);
+    router.push(`/projects/${projectId}?tab=budget`);
   }
 
   const costFormatted =
@@ -149,7 +149,7 @@ export function ChangeOrderDetail({
                   return;
                 }
                 toast.success('Change order deleted.');
-                router.push(`/projects/${projectId}?tab=change-orders`);
+                router.push(`/projects/${projectId}?tab=budget`);
               }}
               disabled={loading}
               className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"

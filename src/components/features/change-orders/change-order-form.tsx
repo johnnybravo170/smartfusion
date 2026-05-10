@@ -104,7 +104,7 @@ export function ChangeOrderForm({
       }
     }
 
-    const returnPath = projectId ? `/projects/${projectId}?tab=change-orders` : `/jobs/${jobId}`;
+    const returnPath = projectId ? `/projects/${projectId}?tab=budget` : `/jobs/${jobId}`;
     router.push(returnPath);
     router.refresh();
   }

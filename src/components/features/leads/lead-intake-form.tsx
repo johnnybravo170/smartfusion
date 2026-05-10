@@ -936,7 +936,7 @@ export function LeadIntakeForm({
         return;
       }
       toast.success('Project created');
-      router.push(`/projects/${res.projectId}?tab=estimate`);
+      router.push(`/projects/${res.projectId}?tab=budget`);
     });
   }
 

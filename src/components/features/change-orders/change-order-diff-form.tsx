@@ -487,7 +487,7 @@ export function ChangeOrderDiffForm({
     if (goToPreview && result.id) {
       router.push(`/projects/${projectId}/change-orders/${result.id}`);
     } else {
-      router.push(`/projects/${projectId}?tab=change-orders`);
+      router.push(`/projects/${projectId}?tab=budget`);
     }
     router.refresh();
   }
