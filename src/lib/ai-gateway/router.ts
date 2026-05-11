@@ -216,6 +216,7 @@ export class Gateway {
           model: '<unknown>',
           outcome: 'error',
           error_kind: err.kind,
+          error_message: err.message?.slice(0, 500) ?? undefined,
           latency_ms: 0,
         });
       }

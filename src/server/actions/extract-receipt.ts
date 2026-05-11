@@ -109,23 +109,23 @@ ${categoryField}  "card_last4": LAST 4 DIGITS of the card used to pay, if visibl
 Note: Canadian receipts commonly show GST/HST as "GST 5%", "HST 13%", "GST incl.", "GST INCLUDED", or "GST/HST". The amount_cents field is always the receipt total with tax included. pre_tax_amount_cents + tax_amount_cents must equal amount_cents (within 1¢ rounding) — if they don't reconcile, return null for both rather than guessing.${categorySection}`;
 }
 
-// `additionalProperties: false` + every property required is what OpenAI
-// strict-mode needs. The gateway falls through to OpenAI on Gemini
-// overload, so the schema must satisfy the strictest provider.
+// OpenAI strict mode requires additionalProperties: false and nullable fields
+// as anyOf [{type}, {type: 'null'}] — NOT type: ['X', 'null']. Gemini and
+// Anthropic accept this shape too, so one schema works across all providers.
 const RECEIPT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    amount_cents: { type: ['integer', 'null'] },
-    pre_tax_amount_cents: { type: ['integer', 'null'] },
-    tax_amount_cents: { type: ['integer', 'null'] },
-    vendor: { type: ['string', 'null'] },
-    vendor_gst_number: { type: ['string', 'null'] },
-    expense_date: { type: ['string', 'null'] },
-    description: { type: ['string', 'null'] },
-    category_id: { type: ['string', 'null'] },
-    card_last4: { type: ['string', 'null'] },
-    card_network: { type: ['string', 'null'] },
+    amount_cents: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+    pre_tax_amount_cents: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+    tax_amount_cents: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+    vendor: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    vendor_gst_number: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    expense_date: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    description: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    category_id: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    card_last4: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    card_network: { anyOf: [{ type: 'string' }, { type: 'null' }] },
   },
   required: [
     'amount_cents',

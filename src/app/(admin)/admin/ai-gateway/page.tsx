@@ -18,9 +18,11 @@ import {
   getRecentFailures,
   getTierProgress,
   getTopTasksByCostMtd,
+  getVoiceUsageMtd,
   microsToUsd,
   type ProviderName,
   type TierProgress,
+  type VoiceUsageMtd,
 } from '@/lib/ai-gateway';
 import { cn } from '@/lib/utils';
 
@@ -35,14 +37,21 @@ const PROVIDERS: ProviderName[] = ['openai', 'gemini', 'anthropic'];
 export default async function AdminAiGatewayPage() {
   // Pull everything in parallel. With ai_calls indexed on (provider,
   // created_at DESC) and (created_at DESC), all of these are cheap.
-  const [spendMtdByProvider, healthByProvider, tierProgressByProvider, topTasks, recentFailures] =
-    await Promise.all([
-      Promise.all(PROVIDERS.map((p) => getProviderSpendMicros(p, 'mtd'))),
-      Promise.all(PROVIDERS.map((p) => getProviderHealth(p, '24h'))),
-      Promise.all(PROVIDERS.map((p) => getTierProgress(p))),
-      getTopTasksByCostMtd(10),
-      getRecentFailures(50),
-    ]);
+  const [
+    spendMtdByProvider,
+    healthByProvider,
+    tierProgressByProvider,
+    topTasks,
+    recentFailures,
+    voiceUsage,
+  ] = await Promise.all([
+    Promise.all(PROVIDERS.map((p) => getProviderSpendMicros(p, 'mtd'))),
+    Promise.all(PROVIDERS.map((p) => getProviderHealth(p, '24h'))),
+    Promise.all(PROVIDERS.map((p) => getTierProgress(p))),
+    getTopTasksByCostMtd(10),
+    getRecentFailures(50),
+    getVoiceUsageMtd(),
+  ]);
 
   const openBreakers = gateway().openBreakers();
   const totalMtdMicros = spendMtdByProvider.reduce((acc, m) => acc + m, BigInt(0));
@@ -102,6 +111,8 @@ export default async function AdminAiGatewayPage() {
         ))}
       </div>
 
+      <VoiceSessionCard usage={voiceUsage} />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Tier-climb progress</CardTitle>
@@ -156,17 +167,27 @@ export default async function AdminAiGatewayPage() {
               <ul className="flex flex-col divide-y text-xs">
                 {recentFailures.map((f, i) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: failures are ordered + display-only
-                  <li key={i} className="grid grid-cols-[80px_60px_1fr_auto] gap-2 py-1.5">
-                    <span className="tabular-nums text-muted-foreground">
-                      {fmtRelative(f.created_at)}
-                    </span>
-                    <span className="font-medium">{f.provider}</span>
-                    <span className="truncate" title={f.task}>
-                      {f.task}
-                    </span>
-                    <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
-                      {f.status}
-                    </span>
+                  <li key={i} className="flex flex-col gap-0.5 py-1.5">
+                    <div className="grid grid-cols-[80px_60px_1fr_auto] gap-2">
+                      <span className="tabular-nums text-muted-foreground">
+                        {fmtRelative(f.created_at)}
+                      </span>
+                      <span className="font-medium">{f.provider}</span>
+                      <span className="truncate" title={f.task}>
+                        {f.task}
+                      </span>
+                      <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+                        {f.status}
+                      </span>
+                    </div>
+                    {f.error_message ? (
+                      <p
+                        className="truncate text-muted-foreground pl-[88px]"
+                        title={f.error_message}
+                      >
+                        {f.error_message}
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -224,6 +245,71 @@ function ProviderSpendCard({
             p50 {health.p50_latency}ms · p95 {health.p95_latency}ms
           </p>
         ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function VoiceSessionCard({ usage }: { usage: VoiceUsageMtd }) {
+  const fmtMin = (m: number) => (m < 1 ? `${Math.round(m * 60)}s` : `${m.toFixed(1)}m`);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Voice sessions (MTD)</CardTitle>
+        <CardDescription>
+          Henry voice turns logged this month. Input = mic audio; Output = assistant audio. Tracked
+          separately from the gateway — costs appear on provider invoices, not in{' '}
+          <code className="text-xs">ai_calls</code>.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {usage.turns === 0 ? (
+          <p className="text-sm text-muted-foreground">No voice sessions logged this month.</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">Turns</p>
+                <p className="tabular-nums font-semibold">{usage.turns.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Input audio</p>
+                <p className="tabular-nums font-semibold">{fmtMin(usage.input_minutes)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Output audio</p>
+                <p className="tabular-nums font-semibold">{fmtMin(usage.output_minutes)}</p>
+              </div>
+            </div>
+            {usage.byProvider.length > 0 ? (
+              <ul className="flex flex-col divide-y text-xs">
+                {usage.byProvider.map((row) => (
+                  <li
+                    key={row.provider}
+                    className="grid grid-cols-[80px_1fr_80px_80px] gap-2 py-1.5 items-center"
+                  >
+                    <span className="font-medium capitalize">{row.provider}</span>
+                    <div className="relative h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full bg-blue-500"
+                        style={{
+                          width: `${Math.round((row.turns / usage.turns) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="tabular-nums text-muted-foreground text-right">
+                      {row.turns} turns
+                    </span>
+                    <span className="tabular-nums text-right">
+                      {fmtMin(row.input_minutes + row.output_minutes)} total
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

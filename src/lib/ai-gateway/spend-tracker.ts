@@ -8,6 +8,7 @@
  *   - getTierProgress(provider) → composed result
  *   - getRecentFailures(limit) → "last 50 failures" table
  *   - getTopTasksByCostMtd(limit) → "top 10 tasks by cost MTD"
+ *   - getVoiceUsageMtd() → voice session metrics from henry_interactions
  */
 
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -220,4 +221,75 @@ function percentile(sortedAsc: number[], p: number): number {
   if (sortedAsc.length === 0) return 0;
   const idx = Math.min(sortedAsc.length - 1, Math.floor(sortedAsc.length * p));
   return sortedAsc[idx];
+}
+
+// ----------------------------------------------------------------------
+// Voice session metrics (reads henry_interactions, not ai_calls)
+// ----------------------------------------------------------------------
+
+export type VoiceProviderStats = {
+  provider: string;
+  turns: number;
+  input_minutes: number;
+  output_minutes: number;
+};
+
+export type VoiceUsageMtd = {
+  /** Total voice turns (log entries) this month. */
+  turns: number;
+  /** Total mic input in minutes. */
+  input_minutes: number;
+  /** Total assistant audio output in minutes. */
+  output_minutes: number;
+  /** Breakdown by provider (openai / gemini). */
+  byProvider: VoiceProviderStats[];
+};
+
+/**
+ * Aggregate voice session metrics for the current calendar month.
+ * Queries henry_interactions where provider IS NOT NULL (voice-only rows).
+ */
+export async function getVoiceUsageMtd(now: Date = new Date()): Promise<VoiceUsageMtd> {
+  const admin = createAdminClient();
+  const since = startOfMonth(now);
+  const { data, error } = await admin
+    .from('henry_interactions')
+    .select('provider, audio_input_seconds, audio_output_seconds')
+    .not('provider', 'is', null)
+    .gte('created_at', since.toISOString());
+  if (error) throw new Error(`voice usage query failed: ${error.message}`);
+
+  let totalTurns = 0;
+  let totalInputSec = 0;
+  let totalOutputSec = 0;
+  const map = new Map<string, { turns: number; input_sec: number; output_sec: number }>();
+
+  for (const r of data ?? []) {
+    const p = r.provider as string;
+    totalTurns++;
+    const inSec = (r.audio_input_seconds as number | null) ?? 0;
+    const outSec = (r.audio_output_seconds as number | null) ?? 0;
+    totalInputSec += inSec;
+    totalOutputSec += outSec;
+
+    const cur = map.get(p) ?? { turns: 0, input_sec: 0, output_sec: 0 };
+    cur.turns++;
+    cur.input_sec += inSec;
+    cur.output_sec += outSec;
+    map.set(p, cur);
+  }
+
+  return {
+    turns: totalTurns,
+    input_minutes: totalInputSec / 60,
+    output_minutes: totalOutputSec / 60,
+    byProvider: Array.from(map.entries())
+      .map(([provider, v]) => ({
+        provider,
+        turns: v.turns,
+        input_minutes: v.input_sec / 60,
+        output_minutes: v.output_sec / 60,
+      }))
+      .sort((a, b) => b.turns - a.turns),
+  };
 }

@@ -25,6 +25,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { type NextRequest, NextResponse } from 'next/server';
 import { finishAgentRun, recordAgentRun } from '@/lib/agents';
+import { anthropicSonnetCostCents, trackOpsAiCall } from '@/lib/llm/telemetry';
 import { createServiceClient } from '@/lib/supabase';
 import { sendOpsEmail } from '@/server/ops-services/email';
 
@@ -353,10 +354,23 @@ Respond with JSON only, no prose. Schema:
   "re_snooze_to": "YYYY-MM-DD, or null"
 }`;
 
+  const t0 = Date.now();
   const response = await client.messages.create({
     model: SONNET_MODEL,
     max_tokens: 800,
     messages: [{ role: 'user', content: prompt }],
+  });
+  const tokensIn = response.usage.input_tokens + (response.usage.cache_read_input_tokens ?? 0);
+  const tokensOut = response.usage.output_tokens;
+  trackOpsAiCall({
+    task: 'ops:ideas_review',
+    provider: 'anthropic',
+    model: SONNET_MODEL,
+    status: 'success',
+    tokens_in: tokensIn,
+    tokens_out: tokensOut,
+    cost_cents: anthropicSonnetCostCents(tokensIn, tokensOut),
+    latency_ms: Date.now() - t0,
   });
 
   const textBlock = response.content.find((b) => b.type === 'text');

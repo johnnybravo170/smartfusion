@@ -5,6 +5,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { trackOpsAiCall } from './telemetry';
 import {
   LlmError,
   type LlmProvider,
@@ -61,7 +62,16 @@ export class AnthropicLlmProvider implements LlmProvider {
         { timeout: req.timeout_ms ?? 120_000 },
       );
     } catch (err) {
-      throw wrapAnthropicError(err);
+      const wrapped = wrapAnthropicError(err);
+      trackOpsAiCall({
+        task: req.task ?? 'ops:board',
+        provider: 'anthropic',
+        model: req.model,
+        status: 'error',
+        latency_ms: Date.now() - t0,
+        error_message: wrapped.message,
+      });
+      throw wrapped;
     }
 
     const text = msg.content
@@ -78,7 +88,7 @@ export class AnthropicLlmProvider implements LlmProvider {
     const tokens_out = msg.usage.output_tokens;
 
     const rate = lookupRate(req.model);
-    return {
+    const result: LlmResponse = {
       provider: 'anthropic',
       model: msg.model ?? req.model,
       text,
@@ -87,6 +97,17 @@ export class AnthropicLlmProvider implements LlmProvider {
       cost_cents: tokensToCents(tokens_in, tokens_out, rate.in, rate.out),
       latency_ms: Date.now() - t0,
     };
+    trackOpsAiCall({
+      task: req.task ?? 'ops:board',
+      provider: 'anthropic',
+      model: result.model,
+      status: 'success',
+      tokens_in: result.prompt_tokens,
+      tokens_out: result.completion_tokens,
+      cost_cents: result.cost_cents,
+      latency_ms: result.latency_ms,
+    });
+    return result;
   }
 }
 

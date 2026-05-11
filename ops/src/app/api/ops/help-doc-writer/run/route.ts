@@ -23,6 +23,7 @@ import { GoogleGenAI } from '@google/genai';
 import { type NextRequest, NextResponse } from 'next/server';
 import { finishAgentRun, recordAgentRun } from '@/lib/agents';
 import { contentHash, embedText } from '@/lib/embed';
+import { geminiFlashCostCents, trackOpsAiCall } from '@/lib/llm/telemetry';
 import { createServiceClient } from '@/lib/supabase';
 
 export const maxDuration = 300;
@@ -444,10 +445,23 @@ ${detail.commit.message}
 USER-FACING FILES CHANGED:
 ${filesBlock}`;
 
+  const t0 = Date.now();
   const response = await ai.models.generateContent({
     model: MODEL,
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     config: { responseMimeType: 'application/json', temperature: 0.2 },
+  });
+  const tokensIn = response.usageMetadata?.promptTokenCount ?? 0;
+  const tokensOut = response.usageMetadata?.candidatesTokenCount ?? 0;
+  trackOpsAiCall({
+    task: 'ops:help_doc_writer',
+    provider: 'gemini',
+    model: MODEL,
+    status: 'success',
+    tokens_in: tokensIn,
+    tokens_out: tokensOut,
+    cost_cents: geminiFlashCostCents(tokensIn, tokensOut),
+    latency_ms: Date.now() - t0,
   });
 
   const raw = response.text ?? '';

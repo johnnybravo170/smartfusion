@@ -37,6 +37,9 @@ export type RouterAttemptEvent = {
   tenant_id?: string | null;
   outcome: 'success' | 'error';
   error_kind?: AiErrorKind;
+  /** First 500 chars of the provider error message. Persisted to ai_calls
+   *  so failures are diagnosable from the dashboard without reading logs. */
+  error_message?: string;
   tokens_in?: number;
   tokens_out?: number;
   cost_micros?: bigint;

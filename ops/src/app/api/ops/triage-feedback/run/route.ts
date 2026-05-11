@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { type NextRequest, NextResponse } from 'next/server';
 import { finishAgentRun, recordAgentRun } from '@/lib/agents';
+import { geminiFlashCostCents, trackOpsAiCall } from '@/lib/llm/telemetry';
 import { createServiceClient } from '@/lib/supabase';
 import {
   type ActorCtx,
@@ -340,10 +341,23 @@ ${(card.body as string | null) ?? '(empty)'}
 EXISTING TODO CARDS (potential dedup targets):
 ${dedupCandidates.map((c) => `- ${c.id}: ${c.title}`).join('\n') || '(none)'}`;
 
+  const t0 = Date.now();
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     config: { responseMimeType: 'application/json', temperature: 0.1 },
+  });
+  const tokensIn = response.usageMetadata?.promptTokenCount ?? 0;
+  const tokensOut = response.usageMetadata?.candidatesTokenCount ?? 0;
+  trackOpsAiCall({
+    task: 'ops:triage_feedback',
+    provider: 'gemini',
+    model: 'gemini-2.5-flash',
+    status: 'success',
+    tokens_in: tokensIn,
+    tokens_out: tokensOut,
+    cost_cents: geminiFlashCostCents(tokensIn, tokensOut),
+    latency_ms: Date.now() - t0,
   });
 
   const raw = response.text ?? '';

@@ -77,7 +77,7 @@ function eventToRow(event: RouterAttemptEvent): AiCallRow {
     // below 2^53 micros per row.
     cost_micros: event.cost_micros !== undefined ? Number(event.cost_micros) : null,
     latency_ms: event.latency_ms,
-    error_message: null, // reserved column; not used today.
+    error_message: event.error_message ?? null,
   };
 }
 

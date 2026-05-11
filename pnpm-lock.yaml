@@ -113,6 +113,9 @@ importers:
       twilio:
         specifier: ^5.13.1
         version: 5.13.1
+      ws:
+        specifier: ^8.20.0
+        version: 8.20.0
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5
@@ -153,6 +156,9 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.2.3(@types/react@19.2.14)
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       '@vitest/ui':
         specifier: ^4.1.4
         version: 4.1.4(vitest@4.1.4)

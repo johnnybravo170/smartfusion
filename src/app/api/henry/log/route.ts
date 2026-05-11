@@ -19,6 +19,7 @@ type LogBody = {
   assistantText?: string;
   toolCalls?: Array<Record<string, unknown>>;
   model?: string;
+  provider?: string;
   inputTokens?: number;
   outputTokens?: number;
   cachedInputTokens?: number;
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
     assistant_text: body.assistantText ?? null,
     tool_calls: body.toolCalls ?? [],
     model: body.model ?? null,
+    provider: body.provider ?? null,
     input_tokens: body.inputTokens ?? null,
     output_tokens: body.outputTokens ?? null,
     cached_input_tokens: body.cachedInputTokens ?? null,
