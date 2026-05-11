@@ -12,7 +12,7 @@
  *     memos not supported on this surface (receipts only).
  */
 
-import { AlertCircle, DollarSign, Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { AlertCircle, DollarSign, Loader2, RefreshCw, Sparkles, Tag } from 'lucide-react';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import {
@@ -23,6 +23,11 @@ import {
   ExpenseTaxSplitChip,
   type TaxSplitMode,
 } from '@/components/features/expenses/expense-tax-split-chip';
+import {
+  LabelCardDialog,
+  type LabelCardResult,
+} from '@/components/features/payment-sources/label-card-dialog';
+import { PaymentSourcePill } from '@/components/features/payment-sources/payment-source-pill';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -42,6 +47,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useTenantTimezone } from '@/lib/auth/tenant-context';
+import type { PaymentSourceLite } from '@/lib/db/queries/payment-sources';
 import { splitTotalByRate } from '@/lib/expenses/tax-split';
 import { compressReceiptIfImage, isTimeoutError, withTimeout } from '@/lib/storage/resize-image';
 import { cn } from '@/lib/utils';
@@ -52,6 +58,7 @@ import {
 } from '@/server/actions/expenses';
 import { extractReceiptFieldsAction } from '@/server/actions/extract-receipt';
 import { logOverheadExpenseAction } from '@/server/actions/overhead-expenses';
+import { listPaymentSourcesAction } from '@/server/actions/payment-sources';
 
 /** Cap how long we wait for the OCR round-trip before giving the operator
  *  back control — at 30s on poor signal they deserve a retry affordance,
@@ -141,6 +148,17 @@ function ExpenseDialogBody({
   const categoriesRef = useRef<CategoryOption[]>([]);
   const projectsRef = useRef<ProjectOption[]>([]);
 
+  // Payment-source state — mirrors the standalone overhead-expense-form.
+  // null source = let the server fall back to the tenant default on
+  // insert (the default's id is also pre-selected here for UX).
+  const [paymentSources, setPaymentSources] = useState<PaymentSourceLite[]>([]);
+  const [paymentSourceId, setPaymentSourceId] = useState<string | null>(null);
+  const [cardLast4, setCardLast4] = useState<string | null>(null);
+  // last4 read off the receipt that doesn't match any registered source
+  // — triggers a "Label this card?" affordance below the picker.
+  const [unknownLast4, setUnknownLast4] = useState<string | null>(null);
+  const [labelCardOpen, setLabelCardOpen] = useState(false);
+
   const tenantTz = useTenantTimezone();
   const [amount, setAmount] = useState('');
   const [vendor, setVendor] = useState('');
@@ -190,9 +208,10 @@ function ExpenseDialogBody({
     let cancelled = false;
     setLoadingLookups(true);
     const promise = (async () => {
-      const [projectsRes, categoriesRes] = await Promise.all([
+      const [projectsRes, categoriesRes, sourcesRes] = await Promise.all([
         listProjectsWithCategoriesForExpenseAction(),
         listExpenseCategoryOptionsAction(),
+        listPaymentSourcesAction(),
       ]);
       if (cancelled) return;
       if (projectsRes.ok) {
@@ -202,6 +221,13 @@ function ExpenseDialogBody({
       if (categoriesRes.ok) {
         setCategories(categoriesRes.options);
         categoriesRef.current = categoriesRes.options;
+      }
+      if (sourcesRes.ok) {
+        setPaymentSources(sourcesRes.sources);
+        // Pre-select the default so the picker is never visually blank —
+        // matches the standalone overhead form's behavior.
+        const defaultId = sourcesRes.sources.find((s) => s.is_default)?.id ?? null;
+        setPaymentSourceId((prev) => prev ?? defaultId);
       }
       setLoadingLookups(false);
     })();
@@ -308,6 +334,29 @@ function ExpenseDialogBody({
           setSuggestedFromOcr(true);
         }
       }
+
+      // Apply payment-source resolution. Three cases (mirrors
+      // overhead-expense-form):
+      //   matched_card     → silently set the source.
+      //   unknown_card     → keep the default but surface a "Label this
+      //                      card?" affordance with the last4.
+      //   fallback_default → no card visible (cash / e-transfer); leave
+      //                      the already-default-set picker alone.
+      // We also refresh the catalog from the OCR response so a card
+      // labeled mid-session is visible without a page reload.
+      if (fields.paymentSources.length > 0) {
+        setPaymentSources(fields.paymentSources);
+      }
+      if (fields.cardLast4) setCardLast4(fields.cardLast4);
+      if (fields.paymentSourceResolution === 'matched_card' && fields.paymentSourceId) {
+        setPaymentSourceId(fields.paymentSourceId);
+        setUnknownLast4(null);
+      } else if (fields.paymentSourceResolution === 'unknown_card' && fields.cardLast4) {
+        setUnknownLast4(fields.cardLast4);
+      } else {
+        setUnknownLast4(null);
+      }
+
       toast.success('Receipt read — review and save.');
     } catch (err) {
       // Timeout or thrown network error. Inline chip is the durable
@@ -324,6 +373,31 @@ function ExpenseDialogBody({
 
   function handleRetryExtract() {
     if (receipt) void runExtract(receipt);
+  }
+
+  /** After the user labels an unknown card from the dialog, splice it
+   *  into the catalog and pre-select it so the picker reflects reality
+   *  without a page reload. */
+  function handleCardLabeled(saved: LabelCardResult) {
+    setPaymentSources((prev) => {
+      const without = prev.filter((p) => p.id !== saved.id);
+      return [
+        ...without,
+        {
+          id: saved.id,
+          label: saved.label,
+          last4: saved.last4,
+          kind: saved.kind,
+          paid_by: saved.paid_by,
+          is_default: false,
+        },
+      ];
+    });
+    setPaymentSourceId(saved.id);
+    setCardLast4(saved.last4);
+    setUnknownLast4(null);
+    setLabelCardOpen(false);
+    toast.success(`Saved card ${saved.label}.`);
   }
 
   function onDrop(e: React.DragEvent<HTMLButtonElement>) {
@@ -357,6 +431,8 @@ function ExpenseDialogBody({
       if (vendorGstNumber.trim()) fd.append('vendor_gst_number', vendorGstNumber.trim());
       if (description.trim()) fd.append('description', description.trim());
       if (receipt) fd.append('receipt', receipt);
+      if (paymentSourceId) fd.append('payment_source_id', paymentSourceId);
+      if (cardLast4) fd.append('card_last4', cardLast4);
       if (force) fd.append('force', '1');
 
       if (mode === 'project') {
@@ -608,6 +684,62 @@ function ExpenseDialogBody({
         </div>
       )}
 
+      {/* Paid by — payment source picker. OCR auto-resolves when it
+          reads a card last4 it recognizes; unknowns surface a "Label
+          this card?" link below the picker. */}
+      <div>
+        <Label
+          htmlFor="exp-payment-source"
+          className="mb-1 block text-xs font-medium text-muted-foreground"
+        >
+          Paid by
+        </Label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={paymentSourceId ?? ''}
+            onValueChange={(v) => setPaymentSourceId(v || null)}
+            disabled={busy || loadingLookups || paymentSources.length === 0}
+          >
+            <SelectTrigger id="exp-payment-source" className="min-w-[200px] flex-1">
+              <SelectValue placeholder={loadingLookups ? 'Loading…' : 'Pick a source'} />
+            </SelectTrigger>
+            <SelectContent>
+              {paymentSources.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.label}
+                  {s.last4 ? ` ····${s.last4}` : ''}
+                  {s.is_default ? ' (default)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {paymentSourceId
+            ? (() => {
+                const sel = paymentSources.find((s) => s.id === paymentSourceId);
+                return sel ? <PaymentSourcePill source={sel} /> : null;
+              })()
+            : null}
+        </div>
+        {unknownLast4 ? (
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+            <Tag className="size-3" />
+            Receipt was paid with ····{unknownLast4} — that card isn&apos;t labeled yet.
+            <button
+              type="button"
+              onClick={() => setLabelCardOpen(true)}
+              className="font-medium underline-offset-2 hover:underline"
+            >
+              Label this card
+            </button>
+          </p>
+        ) : null}
+        {cardLast4 && !unknownLast4 ? (
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Card ····{cardLast4} read from receipt.
+          </p>
+        ) : null}
+      </div>
+
       {/* Common fields */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
@@ -755,6 +887,15 @@ function ExpenseDialogBody({
         }}
         busy={busy}
       />
+
+      {labelCardOpen && unknownLast4 ? (
+        <LabelCardDialog
+          open
+          onOpenChange={setLabelCardOpen}
+          last4={unknownLast4}
+          onSaved={handleCardLabeled}
+        />
+      ) : null}
     </form>
   );
 }

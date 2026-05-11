@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { requireWorker } from '@/lib/auth/helpers';
+import { getDefaultPaymentSourceId } from '@/lib/db/queries/payment-sources';
 import { isWorkerAssignedToProject } from '@/lib/db/queries/project-assignments';
 import { getOrCreateWorkerProfile } from '@/lib/db/queries/worker-profiles';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -23,6 +24,16 @@ const schema = z.object({
   vendor_gst_number: z.string().trim().max(40).optional().or(z.literal('')),
   description: z.string().trim().max(2000).optional().or(z.literal('')),
   expense_date: z.string().min(1),
+  // Payment source funding the expense. Empty = fall back to tenant
+  // default in the insert so the row is never silently un-attributed.
+  payment_source_id: z.string().uuid().optional().or(z.literal('')),
+  // Last 4 of the card snapshot, written verbatim for audit even if the
+  // labeled source is later renamed/archived.
+  card_last4: z
+    .string()
+    .regex(/^\d{4}$/)
+    .optional()
+    .or(z.literal('')),
 });
 
 const RECEIPTS_BUCKET = 'receipts';
@@ -51,6 +62,8 @@ export async function logWorkerExpenseAction(formData: FormData): Promise<Worker
     vendor_gst_number: String(formData.get('vendor_gst_number') ?? ''),
     description: String(formData.get('description') ?? ''),
     expense_date: String(formData.get('expense_date') ?? ''),
+    payment_source_id: String(formData.get('payment_source_id') ?? ''),
+    card_last4: String(formData.get('card_last4') ?? ''),
   };
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
@@ -90,6 +103,10 @@ export async function logWorkerExpenseAction(formData: FormData): Promise<Worker
     receiptStoragePath = path;
   }
 
+  // Fall back to the tenant default source when the form didn't pick one.
+  const paymentSourceId =
+    parsed.data.payment_source_id?.trim() || (await getDefaultPaymentSourceId());
+
   const { data, error } = await admin
     .from('expenses')
     .insert({
@@ -107,6 +124,8 @@ export async function logWorkerExpenseAction(formData: FormData): Promise<Worker
       description: parsed.data.description?.trim() || null,
       receipt_storage_path: receiptStoragePath,
       expense_date: parsed.data.expense_date,
+      payment_source_id: paymentSourceId,
+      card_last4: parsed.data.card_last4?.trim() || null,
     })
     .select('id')
     .single();

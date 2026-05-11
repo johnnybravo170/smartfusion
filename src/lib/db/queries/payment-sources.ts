@@ -92,3 +92,65 @@ export function paidByLabel(p: PaymentSourcePaidBy): string {
   if (p === 'personal_reimbursable') return 'Reimbursable';
   return 'Petty cash';
 }
+
+const NETWORK_LITERALS: PaymentSourceNetwork[] = [
+  'visa',
+  'mastercard',
+  'amex',
+  'interac',
+  'discover',
+  'other',
+];
+
+/**
+ * Coerce a free-form network string from OCR ("Visa", "DEBIT", "MC") to
+ * the canonical enum or null. Used by every receipt OCR path that pulls
+ * card info — overhead form, bulk import, and the single-receipt flows
+ * driven by quick-log / worker form.
+ */
+export function normalizePaymentNetwork(v: string | null): PaymentSourceNetwork | null {
+  if (!v) return null;
+  const lc = v.toLowerCase().trim();
+  return (NETWORK_LITERALS as string[]).includes(lc) ? (lc as PaymentSourceNetwork) : null;
+}
+
+/**
+ * Pull the last 4 digits from a free-form card line. Models return many
+ * shapes ("****1234", "VISA 1234", "...1234", "Card # XXXXXXXXXXXX1234")
+ * — we want only the trailing 4 digits as a string. Null when fewer than
+ * 4 digits exist anywhere in the input.
+ */
+export function extractCardLast4(raw: string | null): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D+/g, '');
+  if (digits.length < 4) return null;
+  return digits.slice(-4);
+}
+
+export type PaymentSourceResolution = 'matched_card' | 'unknown_card' | 'fallback_default' | 'none';
+
+/**
+ * Decide which payment source an OCR'd receipt belongs to, given the
+ * tenant's catalog and any last-4 digits the model could read off the
+ * receipt:
+ *  - `matched_card`     → last4 matches an active source; use its id.
+ *  - `unknown_card`     → last4 was read but doesn't match any source;
+ *                         caller surfaces a "Label this card?" prompt.
+ *  - `fallback_default` → no card visible (cash, e-transfer, paper);
+ *                         use the tenant default source.
+ *  - `none`             → no default configured (rare — tenant seed
+ *                         should always provide one).
+ */
+export function resolvePaymentSource(
+  cardLast4: string | null,
+  sources: { id: string; last4: string | null; is_default: boolean; archived_at?: string | null }[],
+): { paymentSourceId: string | null; resolution: PaymentSourceResolution } {
+  if (cardLast4) {
+    const matched = sources.find((s) => s.last4 === cardLast4 && !s.archived_at);
+    if (matched) return { paymentSourceId: matched.id, resolution: 'matched_card' };
+    return { paymentSourceId: null, resolution: 'unknown_card' };
+  }
+  const def = sources.find((s) => s.is_default);
+  if (def) return { paymentSourceId: def.id, resolution: 'fallback_default' };
+  return { paymentSourceId: null, resolution: 'none' };
+}
