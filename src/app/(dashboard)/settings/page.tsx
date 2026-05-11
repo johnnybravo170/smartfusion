@@ -21,6 +21,7 @@ import { ChecklistSettingsCard } from '@/components/features/settings/checklist-
 import { DataExportCard } from '@/components/features/settings/data-export-card';
 import { EstimatingDetailLevelCard } from '@/components/features/settings/estimating-detail-level-card';
 import { PublicQuoteLinkCard } from '@/components/features/settings/public-quote-link-card';
+import { QuickBooksConnectCard } from '@/components/features/settings/quickbooks-connect-card';
 import { QuoteSettingsCard } from '@/components/features/settings/quote-settings-card';
 import { StripeConnectCard } from '@/components/features/settings/stripe-connect-card';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,6 +43,27 @@ async function StripeSection() {
     <StripeConnectCard
       stripeAccountId={(data?.stripe_account_id as string) ?? null}
       stripeOnboardedAt={(data?.stripe_onboarded_at as string) ?? null}
+    />
+  );
+}
+
+async function QuickBooksSection() {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return null;
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('tenants')
+    .select('qbo_realm_id, qbo_company_name, qbo_connected_at, qbo_environment')
+    .eq('id', tenant.id)
+    .single();
+
+  return (
+    <QuickBooksConnectCard
+      realmId={(data?.qbo_realm_id as string) ?? null}
+      companyName={(data?.qbo_company_name as string) ?? null}
+      connectedAt={(data?.qbo_connected_at as string) ?? null}
+      environment={(data?.qbo_environment as 'sandbox' | 'production') ?? null}
     />
   );
 }
@@ -221,6 +243,10 @@ export default function SettingsPage() {
 
       <Suspense fallback={<div className="h-48 animate-pulse rounded-xl border bg-card" />}>
         <StripeSection />
+      </Suspense>
+
+      <Suspense fallback={<div className="h-48 animate-pulse rounded-xl border bg-card" />}>
+        <QuickBooksSection />
       </Suspense>
 
       <Suspense fallback={<div className="h-48 animate-pulse rounded-xl border bg-card" />}>
