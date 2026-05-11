@@ -138,6 +138,10 @@ function ExpenseDialogBody({
   // OCR suggestion. Drives a "Suggested by Henry" badge so the user can
   // tell the auto-fill apart from their own pick.
   const [suggestedFromOcr, setSuggestedFromOcr] = useState(false);
+  // True after an OCR call where we passed a category list but the model
+  // returned null. Drives a "Henry couldn't pick one" hint so the missing
+  // suggestion is visible, not silent.
+  const [categoryMiss, setCategoryMiss] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Closure-stable references to the loaded lookups + the load promise.
@@ -263,6 +267,7 @@ function ExpenseDialogBody({
     setExtracting(true);
     setExtractError(null);
     setSuggestedFromOcr(false);
+    setCategoryMiss(false);
     try {
       // Wait for the initial lookups fetch so a fast user (open dialog
       // → snap → upload in <200ms) can't outrun it and ship an empty
@@ -333,6 +338,11 @@ function ExpenseDialogBody({
           setBudgetCategoryId(fields.categoryId);
           setSuggestedFromOcr(true);
         }
+      } else if (candidates.length > 0) {
+        // We passed a candidate list but Henry returned null. Surface
+        // this so the missing suggestion isn't silent — the operator
+        // knows they need to pick manually.
+        setCategoryMiss(true);
       }
 
       // Apply payment-source resolution. Three cases (mirrors
@@ -624,6 +634,7 @@ function ExpenseDialogBody({
               onValueChange={(v) => {
                 setBudgetCategoryId(v);
                 setSuggestedFromOcr(false);
+                setCategoryMiss(false);
               }}
               disabled={busy || projectCategories.length === 0}
             >
@@ -645,6 +656,10 @@ function ExpenseDialogBody({
                 <Sparkles className="size-2.5" />
                 Suggested by Henry
               </span>
+            ) : categoryMiss && !budgetCategoryId ? (
+              <span className="mt-1 text-[10px] text-muted-foreground">
+                Henry couldn&apos;t pick one — choose above.
+              </span>
             ) : null}
           </div>
         </div>
@@ -661,6 +676,7 @@ function ExpenseDialogBody({
             onValueChange={(v) => {
               setOverheadCategoryId(v);
               setSuggestedFromOcr(false);
+              setCategoryMiss(false);
             }}
             disabled={busy || loadingLookups}
           >
@@ -679,6 +695,10 @@ function ExpenseDialogBody({
             <span className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
               <Sparkles className="size-2.5" />
               Suggested by Henry
+            </span>
+          ) : categoryMiss && !overheadCategoryId ? (
+            <span className="mt-1 text-[10px] text-muted-foreground">
+              Henry couldn&apos;t pick one — choose above.
             </span>
           ) : null}
         </div>
@@ -721,17 +741,28 @@ function ExpenseDialogBody({
             : null}
         </div>
         {unknownLast4 ? (
-          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
-            <Tag className="size-3" />
-            Receipt was paid with ····{unknownLast4} — that card isn&apos;t labeled yet.
-            <button
-              type="button"
-              onClick={() => setLabelCardOpen(true)}
-              className="font-medium underline-offset-2 hover:underline"
-            >
-              Label this card
-            </button>
-          </p>
+          <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950">
+            <div className="flex items-start gap-2">
+              <Tag className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                  You paid with ····{unknownLast4}
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  That card isn&apos;t labeled yet. Label it so future receipts auto-match — pick
+                  Business / personal / petty cash and we&apos;ll remember.
+                </p>
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button type="button" size="sm" onClick={() => setLabelCardOpen(true)}>
+                Yes, label this card
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setUnknownLast4(null)}>
+                Not now
+              </Button>
+            </div>
+          </div>
         ) : null}
         {cardLast4 && !unknownLast4 ? (
           <p className="mt-1 text-[10px] text-muted-foreground">
