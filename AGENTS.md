@@ -35,3 +35,14 @@ The runtime tz on Vercel is UTC. Bare `Date.toLocaleDateString(...)` / `toLocale
 - **AI tool handlers:** module-level state set via `setToolTimezone(tenant.timezone)` in `src/app/api/henry/tool/route.ts` — already wired up; new tool formatters go through the existing pattern.
 
 `tests/unit/timezone-no-bare-tolocale.test.ts` blocks bare `toLocale*` and bare `new Intl.DateTimeFormat(...)` calls in CI. See PATTERNS.md §23 for the full convention including adjacent gotchas (`Date.getHours()`, `Date.toLocaleString` on Dates) the lint rule doesn't catch.
+
+# Working in a worktree
+
+Worktrees under `.claude/worktrees/<name>/` start without gitignored config files (`.env.local`, `.env.sentry-build-plugin`), so `pnpm dev` boots but every server-rendered route throws on Supabase init. Before doing anything else in a new worktree:
+
+```
+bash scripts/setup-worktree.sh
+pnpm install   # if node_modules is empty
+```
+
+`scripts/setup-worktree.sh` symlinks the env files from the main checkout (always the first entry in `git worktree list`). Idempotent — re-run any time. When you rotate secrets in main, every worktree picks it up for free. If the dev server still complains about a missing env var after running it, that file isn't in the script's `FILES` list yet — add it there, not in a one-off symlink.

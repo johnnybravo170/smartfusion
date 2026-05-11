@@ -22,6 +22,12 @@ import { requireTenant } from '@/lib/auth/helpers';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
+/** Category the caller wants Henry to choose from. The caller decides
+ *  what list is appropriate (project budget categories vs tenant chart-
+ *  of-accounts). Server validates the model's returned id against this
+ *  list — anything off-list drops to null silently. */
+export type ReceiptCategoryOption = { id: string; label: string };
+
 export type ReceiptExtractionResult =
   | {
       ok: true;
@@ -43,11 +49,26 @@ export type ReceiptExtractionResult =
         vendorGstNumber: string | null;
         expenseDate: string | null; // YYYY-MM-DD
         description: string | null;
+        /** Suggested category id from the caller-supplied options. Null
+         *  when no options were passed, no confident match, or the model
+         *  returned an id not in the option set. */
+        categoryId: string | null;
+        /** Pre-resolved label so the caller doesn't have to look it up. */
+        categoryLabel: string | null;
       };
     }
   | { ok: false; error: string };
 
-const PROMPT = `You extract structured fields from receipt photos or PDFs for a Canadian contractor. Return ONLY JSON matching this exact shape — no prose, no markdown fences. Use null for any field you cannot read with confidence.
+function buildPrompt(categoryLines: string | null): string {
+  const categoryField = categoryLines
+    ? `  "category_id": pick the BEST matching category id from the list below. Match on the kind of purchase (lumber → "Materials"; gas → "Vehicle: Fuel"; restaurant → "Meals"; etc.). Return the id verbatim from the list. If nothing fits or you genuinely can't tell, return null — don't force a guess.\n`
+    : `  "category_id": always null on this call (no category list provided).\n`;
+
+  const categorySection = categoryLines
+    ? `\n\nAvailable categories (id — label):\n${categoryLines}`
+    : '';
+
+  return `You extract structured fields from receipt photos or PDFs for a Canadian contractor. Return ONLY JSON matching this exact shape — no prose, no markdown fences. Use null for any field you cannot read with confidence.
 
 {
   "amount_cents": INTEGER cents — receipt grand total, tax INCLUDED. e.g. $18.40 → 1840.
@@ -57,12 +78,17 @@ const PROMPT = `You extract structured fields from receipt photos or PDFs for a 
   "vendor_gst_number": the vendor's GST/HST business number if printed. Canadian format is 9 digits + "RT" + 4 digits (e.g. "123456789 RT0001"). Commonly labeled "GST Reg #", "HST #", "BN", "Business Number", or near the vendor's address. If only the 9-digit root is shown, return those 9 digits. null if not visible.
   "expense_date": "YYYY-MM-DD" — transaction date, not print time.
   "description": one short line describing what was purchased (e.g. "lumber and fasteners", "lunch for crew"). null if unclear.
+${categoryField}}
+
+Note: Canadian receipts commonly show GST/HST as "GST 5%", "HST 13%", "GST incl.", "GST INCLUDED", or "GST/HST". The amount_cents field is always the receipt total with tax included. pre_tax_amount_cents + tax_amount_cents must equal amount_cents (within 1¢ rounding) — if they don't reconcile, return null for both rather than guessing.${categorySection}`;
 }
 
-Note: Canadian receipts commonly show GST/HST as "GST 5%", "HST 13%", "GST incl.", "GST INCLUDED", or "GST/HST". The amount_cents field is always the receipt total with tax included. pre_tax_amount_cents + tax_amount_cents must equal amount_cents (within 1¢ rounding) — if they don't reconcile, return null for both rather than guessing.`;
-
+// `additionalProperties: false` + every property required is what OpenAI
+// strict-mode needs. The gateway falls through to OpenAI on Gemini
+// overload, so the schema must satisfy the strictest provider.
 const RECEIPT_SCHEMA = {
   type: 'object',
+  additionalProperties: false,
   properties: {
     amount_cents: { type: ['integer', 'null'] },
     pre_tax_amount_cents: { type: ['integer', 'null'] },
@@ -71,6 +97,7 @@ const RECEIPT_SCHEMA = {
     vendor_gst_number: { type: ['string', 'null'] },
     expense_date: { type: ['string', 'null'] },
     description: { type: ['string', 'null'] },
+    category_id: { type: ['string', 'null'] },
   },
   required: [
     'amount_cents',
@@ -80,6 +107,7 @@ const RECEIPT_SCHEMA = {
     'vendor_gst_number',
     'expense_date',
     'description',
+    'category_id',
   ],
 };
 
@@ -91,7 +119,38 @@ type RawReceipt = {
   vendor_gst_number: unknown;
   expense_date: unknown;
   description: unknown;
+  category_id: unknown;
 };
+
+/** Parse the optional `category_options` FormData field. Invalid JSON or
+ *  bad shape silently disables suggestion — the OCR still runs. */
+function parseCategoryOptions(formData: FormData): ReceiptCategoryOption[] {
+  const raw = formData.get('category_options');
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const out: ReceiptCategoryOption[] = [];
+    const seen = new Set<string>();
+    for (const item of parsed) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        typeof item.id === 'string' &&
+        typeof item.label === 'string' &&
+        item.id.trim() &&
+        item.label.trim() &&
+        !seen.has(item.id)
+      ) {
+        seen.add(item.id);
+        out.push({ id: item.id, label: item.label });
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Translate gateway errors to user-safe messages. Never leaks provider
@@ -139,13 +198,19 @@ export async function extractReceiptFieldsAction(
   const buf = Buffer.from(await file.arrayBuffer());
   const base64 = buf.toString('base64');
 
+  const categoryOptions = parseCategoryOptions(formData);
+  const categoryLines =
+    categoryOptions.length > 0
+      ? categoryOptions.map((o) => `  ${o.id} — ${o.label}`).join('\n')
+      : null;
+
   let parsed: RawReceipt;
   try {
     const res = await gateway().runStructured<RawReceipt>({
       kind: 'structured',
       task: 'receipt_ocr',
       tenant_id: tenant.id,
-      prompt: PROMPT,
+      prompt: buildPrompt(categoryLines),
       schema: RECEIPT_SCHEMA,
       file: { mime, base64, filename: file.name },
       temperature: 0.1,
@@ -193,6 +258,18 @@ export async function extractReceiptFieldsAction(
       ? parsed.description.trim()
       : null;
 
+  // Validate the model's suggestion against the supplied options. An id
+  // that isn't in the list (made-up, hallucinated, stale) drops to null
+  // silently — the caller's form falls through to a manual pick.
+  const rawCategoryId =
+    typeof parsed.category_id === 'string' && parsed.category_id.trim()
+      ? parsed.category_id.trim()
+      : null;
+  const matchedCategory =
+    rawCategoryId && categoryOptions.length > 0
+      ? (categoryOptions.find((o) => o.id === rawCategoryId) ?? null)
+      : null;
+
   return {
     ok: true,
     fields: {
@@ -203,6 +280,8 @@ export async function extractReceiptFieldsAction(
       vendorGstNumber,
       expenseDate,
       description,
+      categoryId: matchedCategory?.id ?? null,
+      categoryLabel: matchedCategory?.label ?? null,
     },
   };
 }

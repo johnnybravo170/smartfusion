@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { PaymentSourceLite } from '@/lib/db/queries/payment-sources';
+import { compressReceiptIfImage, withTimeout } from '@/lib/storage/resize-image';
 import {
   type CategoryPickerOptionLite,
   type CommitReceiptImportRow,
@@ -40,6 +41,11 @@ import {
   type ProposedReceiptExpense,
   parseReceiptForImportAction,
 } from '@/server/actions/onboarding-import-receipts';
+
+/** Per-file OCR timeout. The fan-out loop is sequential, so a single
+ *  hung receipt would otherwise stall the whole batch. 30s matches the
+ *  single-receipt forms. */
+const PER_FILE_OCR_TIMEOUT_MS = 30_000;
 
 type Stage = 'input' | 'processing' | 'preview' | 'done';
 
@@ -94,18 +100,28 @@ export function ReceiptImportWizard() {
     // sequential keeps the UX predictable and avoids hammering the
     // gateway. Receipt OCR is the throttling concern, not throughput.
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      // Compress images right before upload — 20 phone-camera receipts
+      // would otherwise push 100MB+ through one server-action queue.
+      // PDFs and decode failures pass through unchanged.
+      const file = await compressReceiptIfImage(files[i]);
       const fd = new FormData();
       fd.set('file', file);
       let res: Awaited<ReturnType<typeof parseReceiptForImportAction>>;
       try {
-        res = await parseReceiptForImportAction(fd);
+        res = await withTimeout(parseReceiptForImportAction(fd), PER_FILE_OCR_TIMEOUT_MS);
       } catch (err) {
         // One thrown call (network / function timeout) used to freeze the
         // whole batch on the processing stage. Treat it like a parse error
         // so the loop continues and the operator can retry that file.
         console.error('parseReceiptForImportAction failed', err);
-        res = { ok: false, error: 'Could not read this receipt.', filename: file.name };
+        res = {
+          ok: false,
+          error:
+            err instanceof Error && err.name === 'TimeoutError'
+              ? 'Receipt timed out — retry this one.'
+              : 'Could not read this receipt.',
+          filename: file.name,
+        };
       }
       if (res.ok) {
         // Categories + payment sources come back identical on every

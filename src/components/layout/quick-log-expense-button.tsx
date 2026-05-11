@@ -12,7 +12,7 @@
  *     memos not supported on this surface (receipts only).
  */
 
-import { DollarSign, Loader2 } from 'lucide-react';
+import { AlertCircle, DollarSign, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import {
@@ -43,6 +43,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { splitTotalByRate } from '@/lib/expenses/tax-split';
+import { compressReceiptIfImage, isTimeoutError, withTimeout } from '@/lib/storage/resize-image';
 import { cn } from '@/lib/utils';
 import {
   listExpenseCategoryOptionsAction,
@@ -51,6 +52,11 @@ import {
 } from '@/server/actions/expenses';
 import { extractReceiptFieldsAction } from '@/server/actions/extract-receipt';
 import { logOverheadExpenseAction } from '@/server/actions/overhead-expenses';
+
+/** Cap how long we wait for the OCR round-trip before giving the operator
+ *  back control — at 30s on poor signal they deserve a retry affordance,
+ *  not an open-ended spinner. */
+const OCR_TIMEOUT_MS = 30_000;
 
 type Mode = 'project' | 'overhead';
 type ProjectOption = {
@@ -117,8 +123,23 @@ function ExpenseDialogBody({
 
   const [receipt, setReceipt] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
+  // Persistent OCR error rendered inline next to the dropzone, with a
+  // Retry button — survives toast dismissal so a contractor on weak
+  // signal can't miss it after switching apps and back.
+  const [extractError, setExtractError] = useState<string | null>(null);
+  // Track whether the most recently-applied category came from Henry's
+  // OCR suggestion. Drives a "Suggested by Henry" badge so the user can
+  // tell the auto-fill apart from their own pick.
+  const [suggestedFromOcr, setSuggestedFromOcr] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Closure-stable references to the loaded lookups + the load promise.
+  // The OCR call awaits the promise before reading the refs so a fast
+  // user (dialog open → snap → upload in <200ms) can't race past the
+  // lookups fetch and ship an empty candidate list.
+  const lookupsLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const categoriesRef = useRef<CategoryOption[]>([]);
+  const projectsRef = useRef<ProjectOption[]>([]);
 
   const tenantTz = useTenantTimezone();
   const [amount, setAmount] = useState('');
@@ -167,18 +188,24 @@ function ExpenseDialogBody({
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      setLoadingLookups(true);
+    setLoadingLookups(true);
+    const promise = (async () => {
       const [projectsRes, categoriesRes] = await Promise.all([
         listProjectsWithCategoriesForExpenseAction(),
         listExpenseCategoryOptionsAction(),
       ]);
       if (cancelled) return;
-      if (projectsRes.ok) setProjects(projectsRes.projects);
-      if (categoriesRes.ok) setCategories(categoriesRes.options);
+      if (projectsRes.ok) {
+        setProjects(projectsRes.projects);
+        projectsRef.current = projectsRes.projects;
+      }
+      if (categoriesRes.ok) {
+        setCategories(categoriesRes.options);
+        categoriesRef.current = categoriesRes.options;
+      }
       setLoadingLookups(false);
-    }
-    void load();
+    })();
+    lookupsLoadPromiseRef.current = promise;
     return () => {
       cancelled = true;
     };
@@ -186,19 +213,64 @@ function ExpenseDialogBody({
 
   const projectCategories = projects.find((p) => p.id === projectId)?.categories ?? [];
 
-  async function handleReceipt(file: File | null) {
-    setReceipt(file);
-    if (!file) return;
-    const supported = file.type.startsWith('image/') || file.type === 'application/pdf';
-    if (!supported) return;
+  async function handleReceipt(input: File | null) {
+    if (!input) {
+      setReceipt(null);
+      setExtractError(null);
+      return;
+    }
+    const supported = input.type.startsWith('image/') || input.type === 'application/pdf';
+    if (!supported) {
+      setReceipt(input);
+      setExtractError(null);
+      return;
+    }
 
+    // Compress images once up front so the OCR call AND the final submit
+    // upload both ship a smaller payload — critical on weak cell signal.
+    const file = await compressReceiptIfImage(input);
+    setReceipt(file);
+    await runExtract(file);
+  }
+
+  async function runExtract(file: File) {
     setExtracting(true);
+    setExtractError(null);
+    setSuggestedFromOcr(false);
     try {
+      // Wait for the initial lookups fetch so a fast user (open dialog
+      // → snap → upload in <200ms) can't outrun it and ship an empty
+      // candidate list. After this awaits, the refs are guaranteed
+      // populated regardless of React render timing.
+      if (lookupsLoadPromiseRef.current) {
+        await lookupsLoadPromiseRef.current;
+      }
+
       const fd = new FormData();
       fd.append('receipt', file);
-      const res = await extractReceiptFieldsAction(fd);
+      // Pass the candidate category list that matches the current mode so
+      // Henry can pre-fill it. Project mode → that project's budget
+      // categories. Overhead mode → the tenant's chart of accounts (parent
+      // headers filtered out — they aren't selectable). Project mode with
+      // no project picked yet → no candidates; operator picks manually
+      // after picking the project.
+      let candidates: Array<{ id: string; label: string }> = [];
+      if (mode === 'overhead') {
+        candidates = categoriesRef.current
+          .filter((c) => !c.isParentHeader)
+          .map((c) => ({ id: c.id, label: c.label }));
+      } else if (mode === 'project' && projectId) {
+        const project = projectsRef.current.find((p) => p.id === projectId);
+        if (project && project.categories.length > 0) {
+          candidates = project.categories.map((c) => ({ id: c.id, label: c.name }));
+        }
+      }
+      if (candidates.length > 0) {
+        fd.append('category_options', JSON.stringify(candidates));
+      }
+      const res = await withTimeout(extractReceiptFieldsAction(fd), OCR_TIMEOUT_MS);
       if (!res.ok) {
-        toast.error(`Could not read receipt: ${res.error}`);
+        setExtractError(res.error);
         return;
       }
       // Never silently overwrite values the operator has already typed.
@@ -224,10 +296,34 @@ function ExpenseDialogBody({
       }
       if (fields.expenseDate) setDate(fields.expenseDate);
       if (fields.description && !description.trim()) setDescription(fields.description);
+      // Apply Henry's category suggestion to the right slot for the
+      // current mode — overhead writes to overheadCategoryId, project
+      // writes to budgetCategoryId. Don't overwrite an explicit pick.
+      if (fields.categoryId) {
+        if (mode === 'overhead' && !overheadCategoryId) {
+          setOverheadCategoryId(fields.categoryId);
+          setSuggestedFromOcr(true);
+        } else if (mode === 'project' && !budgetCategoryId) {
+          setBudgetCategoryId(fields.categoryId);
+          setSuggestedFromOcr(true);
+        }
+      }
       toast.success('Receipt read — review and save.');
+    } catch (err) {
+      // Timeout or thrown network error. Inline chip is the durable
+      // surface; toast can scroll off-screen on phones.
+      setExtractError(
+        isTimeoutError(err)
+          ? "Couldn't reach Henry — weak signal? Retry the scan or fill the form by hand."
+          : 'Could not read receipt. Retry or fill the form by hand.',
+      );
     } finally {
       setExtracting(false);
     }
+  }
+
+  function handleRetryExtract() {
+    if (receipt) void runExtract(receipt);
   }
 
   function onDrop(e: React.DragEvent<HTMLButtonElement>) {
@@ -364,6 +460,23 @@ function ExpenseDialogBody({
           hidden
           onChange={(e) => handleReceipt(e.target.files?.[0] ?? null)}
         />
+        {extractError ? (
+          <div className="mt-2 flex items-start gap-2 rounded-md bg-destructive/10 px-2 py-1.5">
+            <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+            <p className="flex-1 text-xs text-destructive">{extractError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleRetryExtract}
+              disabled={extracting || !receipt}
+              className="h-7 shrink-0 gap-1 px-2 text-xs"
+            >
+              <RefreshCw className="size-3" />
+              Retry
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {/* Mode toggle */}
@@ -372,6 +485,7 @@ function ExpenseDialogBody({
           active={mode === 'project'}
           onClick={() => {
             setMode('project');
+            setSuggestedFromOcr(false);
             refreshAutoSplit();
           }}
         >
@@ -381,6 +495,7 @@ function ExpenseDialogBody({
           active={mode === 'overhead'}
           onClick={() => {
             setMode('overhead');
+            setSuggestedFromOcr(false);
             refreshAutoSplit();
           }}
         >
@@ -430,7 +545,10 @@ function ExpenseDialogBody({
             </Label>
             <Select
               value={budgetCategoryId}
-              onValueChange={setBudgetCategoryId}
+              onValueChange={(v) => {
+                setBudgetCategoryId(v);
+                setSuggestedFromOcr(false);
+              }}
               disabled={busy || projectCategories.length === 0}
             >
               <SelectTrigger id="exp-category">
@@ -446,6 +564,12 @@ function ExpenseDialogBody({
                 ))}
               </SelectContent>
             </Select>
+            {suggestedFromOcr && budgetCategoryId ? (
+              <span className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Sparkles className="size-2.5" />
+                Suggested by Henry
+              </span>
+            ) : null}
           </div>
         </div>
       ) : (
@@ -458,7 +582,10 @@ function ExpenseDialogBody({
           </Label>
           <Select
             value={overheadCategoryId}
-            onValueChange={setOverheadCategoryId}
+            onValueChange={(v) => {
+              setOverheadCategoryId(v);
+              setSuggestedFromOcr(false);
+            }}
             disabled={busy || loadingLookups}
           >
             <SelectTrigger id="exp-category">
@@ -472,6 +599,12 @@ function ExpenseDialogBody({
               ))}
             </SelectContent>
           </Select>
+          {suggestedFromOcr && overheadCategoryId ? (
+            <span className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Sparkles className="size-2.5" />
+              Suggested by Henry
+            </span>
+          ) : null}
         </div>
       )}
 
