@@ -42,7 +42,9 @@ type InviteInfo = {
 type Mode = 'new' | 'existing';
 
 export default function JoinPage() {
-  const params = useParams<{ code: string }>();
+  // Route is /join/[code], so useParams always has code at runtime even though
+  // Next's types say it's nullable.
+  const params = useParams<{ code: string }>() as { code: string };
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +53,7 @@ export default function JoinPage() {
   const [mode, setMode] = useState<Mode>('new');
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
-  const code = params?.code;
+  const code = params.code;
 
   // Post-join destination varies by role: workers land on /w, bookkeepers
   // on /bk, full team members on the regular dashboard.
