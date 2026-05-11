@@ -308,6 +308,25 @@ export default function SettingsPage() {
         </Card>
       </Link>
 
+      <Link href="/settings/pricebook" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Ruler className="size-5" />
+                <div>
+                  <CardTitle>Pricebook</CardTitle>
+                  <CardDescription>
+                    Services, parts, labour, and project-priced work for quotes and invoices.
+                  </CardDescription>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </div>
+          </CardHeader>
+        </Card>
+      </Link>
+
       <Link href="/settings/catalog" className="block">
         <Card className="transition-colors hover:bg-muted/50">
           <CardHeader>
@@ -315,8 +334,11 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2">
                 <Ruler className="size-5" />
                 <div>
-                  <CardTitle>Service Catalog</CardTitle>
-                  <CardDescription>Surface types and pricing for your quotes.</CardDescription>
+                  <CardTitle>Service Catalog (legacy)</CardTitle>
+                  <CardDescription>
+                    Sqft pricing for pressure-washing quotes. Replaced by Pricebook in an upcoming
+                    release.
+                  </CardDescription>
                 </div>
               </div>
               <ChevronRight className="size-5 text-muted-foreground" />
