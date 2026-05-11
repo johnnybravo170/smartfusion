@@ -9,6 +9,7 @@
  * never silently zero out the cost.
  */
 
+import { trackOpsAiCall } from './telemetry';
 import {
   LlmError,
   type LlmProvider,
@@ -121,12 +122,21 @@ export class OpenRouterLlmProvider implements LlmProvider {
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       const retryable = res.status >= 500 || res.status === 429;
-      throw new LlmError(
+      const err = new LlmError(
         `OpenRouter ${res.status}: ${body.slice(0, 500)}`,
         'openrouter',
         res.status,
         retryable,
       );
+      trackOpsAiCall({
+        task: req.task ?? 'ops:board',
+        provider: 'openrouter',
+        model: req.model,
+        status: 'error',
+        latency_ms: Date.now() - t0,
+        error_message: err.message.slice(0, 500),
+      });
+      throw err;
     }
 
     const data = (await res.json()) as {
@@ -139,7 +149,7 @@ export class OpenRouterLlmProvider implements LlmProvider {
     const tokens_out = data.usage?.completion_tokens ?? 0;
 
     const { in_per_m, out_per_m } = await getRate(req.model);
-    return {
+    const result: LlmResponse = {
       provider: 'openrouter',
       model: data.model ?? req.model,
       text,
@@ -148,6 +158,17 @@ export class OpenRouterLlmProvider implements LlmProvider {
       cost_cents: tokensToCents(tokens_in, tokens_out, in_per_m, out_per_m),
       latency_ms: Date.now() - t0,
     };
+    trackOpsAiCall({
+      task: req.task ?? 'ops:board',
+      provider: 'openrouter',
+      model: result.model,
+      status: 'success',
+      tokens_in: result.prompt_tokens,
+      tokens_out: result.completion_tokens,
+      cost_cents: result.cost_cents,
+      latency_ms: result.latency_ms,
+    });
+    return result;
   }
 }
 

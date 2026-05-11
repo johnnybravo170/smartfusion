@@ -12,6 +12,7 @@ import { getCustomer } from '@/lib/db/queries/customers';
 import { getJob } from '@/lib/db/queries/jobs';
 import { listPhotosByJob, type PhotoWithUrl } from '@/lib/db/queries/photos';
 import { getQuote } from '@/lib/db/queries/quotes';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 // ---------------------------------------------------------------------------
 // Lazy-init Anthropic client (matches chat route pattern)
@@ -281,12 +282,38 @@ export async function POST(request: Request) {
       },
     ];
 
+    const t0 = Date.now();
     const response = await client.messages.create({
       model,
       max_tokens: 1024,
       system,
       messages: [{ role: 'user', content: userContent }],
     });
+    const latency_ms = Date.now() - t0;
+
+    // Fire-and-forget telemetry to ai_calls so this appears in the gateway dashboard.
+    const tokensIn = response.usage.input_tokens + (response.usage.cache_read_input_tokens ?? 0);
+    const tokensOut = response.usage.output_tokens;
+    // Sonnet 4.6: $3/M in, $15/M out. cost_micros = cost_usd * 100_000_000.
+    const costUsd = (tokensIn / 1_000_000) * 3 + (tokensOut / 1_000_000) * 15;
+    const cost_micros = Math.round(costUsd * 100_000_000);
+    createAdminClient()
+      .from('ai_calls')
+      .insert({
+        task: 'social_post',
+        provider: 'anthropic',
+        model: response.model ?? model,
+        status: 'success',
+        attempt_index: 0,
+        tokens_in: tokensIn,
+        tokens_out: tokensOut,
+        cost_micros,
+        latency_ms,
+        tenant_id: tenant.id,
+      })
+      .then(({ error }) => {
+        if (error) console.error('[social-post telemetry] ai_calls insert failed:', error.message);
+      });
 
     // Extract text from response
     const textBlock = response.content.find((b) => b.type === 'text');

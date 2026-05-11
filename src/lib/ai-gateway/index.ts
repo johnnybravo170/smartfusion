@@ -40,7 +40,7 @@ export type {
   RouterHooks,
 } from './router-types';
 export { DEFAULT_ROUTE, lookupRoute, ROUTING } from './routing';
-export type { SpendWindow } from './spend-tracker';
+export type { SpendWindow, VoiceProviderStats, VoiceUsageMtd } from './spend-tracker';
 export {
   getProviderHealth,
   getProviderLifetime,
@@ -48,6 +48,7 @@ export {
   getRecentFailures,
   getTierProgress,
   getTopTasksByCostMtd,
+  getVoiceUsageMtd,
 } from './spend-tracker';
 export type { KnownTask } from './tasks';
 export { KNOWN_TASKS } from './tasks';

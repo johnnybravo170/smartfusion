@@ -31,6 +31,9 @@ export type LlmSystemBlock = string | { text: string; cache?: boolean };
 export type LlmRequest = {
   /** Sonnet, Kimi, etc. Provider-specific identifier. */
   model: string;
+  /** Task label written to public.ai_calls for cost attribution.
+   *  Defaults to 'ops:board' when omitted. */
+  task?: string;
   /** System prompt. Pass an array to mark cache breakpoints (Anthropic only,
    *  but the contract is portable: non-supporting providers concatenate). */
   system?: LlmSystemBlock | LlmSystemBlock[];

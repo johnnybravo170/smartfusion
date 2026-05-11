@@ -1,16 +1,17 @@
 /**
  * POST /api/henry/session
  *
- * Mints an ephemeral OpenAI Realtime client_secret, preconfigured with the
- * operator's system prompt + tool declarations. The browser opens a WebSocket
- * to the Realtime API using that secret; no server proxy needed.
+ * Returns session credentials for Henry's real-time voice session.
+ * The provider is selected by the HENRY_VOICE_PROVIDER env var:
  *
- * Why not the raw OPENAI_API_KEY: client_secrets expire in ~1 minute, so a
- * leak is a minute of risk instead of a permanent credential.
+ *   openai (default) → mints an ephemeral OpenAI client_secret; browser
+ *                       connects directly to wss://api.openai.com/v1/realtime
+ *   gemini           → returns a proxyUrl; browser connects to our
+ *                       /api/henry/gemini-proxy Pages Router WS handler
+ *   auto             → tries OpenAI first; falls back to Gemini on any mint
+ *                       failure (tier limits, key rotation, outage)
  *
- * Previously this route backed Gemini Live. Migrated to OpenAI Realtime on
- * 2026-04-21 after 2.5-native-audio was deprecated and 3.1-flash-live-preview
- * proved unusably slow.
+ * Response shape: SessionInitResponse from src/lib/henry/providers/types.ts
  */
 
 import { getSystemPrompt } from '@/lib/ai/system-prompt';
@@ -29,14 +30,52 @@ export async function POST() {
       return Response.json({ error: 'Unauthorized', reason }, { status: 401 });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return Response.json({ error: 'Server missing OPENAI_API_KEY' }, { status: 500 });
+    const preference = (process.env.HENRY_VOICE_PROVIDER ?? 'openai') as
+      | 'openai'
+      | 'gemini'
+      | 'auto';
+
+    // ── Gemini-only ──────────────────────────────────────────────────────
+    if (preference === 'gemini') {
+      return buildGeminiResponse();
     }
 
-    const systemPrompt = getSystemPrompt(tenant.name, tenant.timezone, tenant.vertical);
-    const tools = [...toOpenAIRealtimeTools(allTools), ...clientRealtimeTools];
+    // ── OpenAI-only ──────────────────────────────────────────────────────
+    if (preference === 'openai') {
+      const result = await tryMintOpenAI(tenant);
+      if (result.ok) return Response.json(result.payload);
+      return Response.json({ error: result.error }, { status: 502 });
+    }
 
+    // ── Auto: try OpenAI, fall back to Gemini ────────────────────────────
+    const result = await tryMintOpenAI(tenant);
+    if (result.ok) return Response.json(result.payload);
+    console.warn('[Henry session] OpenAI mint failed, falling back to Gemini:', result.error);
+    return buildGeminiResponse();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[Henry session] unexpected failure:', msg, e);
+    return Response.json({ error: `Session route crashed: ${msg}` }, { status: 500 });
+  }
+}
+
+// ─── OpenAI mint helper ──────────────────────────────────────────────────────
+
+type OpenAIMintResult =
+  | { ok: true; payload: { provider: 'openai'; clientSecret: string; model: string } }
+  | { ok: false; error: string };
+
+async function tryMintOpenAI(
+  tenant: Awaited<ReturnType<typeof getCurrentTenant>>,
+): Promise<OpenAIMintResult> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return { ok: false, error: 'Server missing OPENAI_API_KEY' };
+  if (!tenant) return { ok: false, error: 'No tenant' };
+
+  const systemPrompt = getSystemPrompt(tenant.name, tenant.timezone, tenant.vertical);
+  const tools = [...toOpenAIRealtimeTools(allTools), ...clientRealtimeTools];
+
+  try {
     const mintRes = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
       method: 'POST',
       headers: {
@@ -76,25 +115,38 @@ export async function POST() {
     if (!mintRes.ok) {
       const body = await mintRes.text();
       console.error('[Henry session] mint failed:', mintRes.status, body);
-      return Response.json(
-        { error: `OpenAI client_secret mint ${mintRes.status}: ${body}` },
-        { status: 500 },
-      );
+      return { ok: false, error: `OpenAI client_secret mint ${mintRes.status}: ${body}` };
     }
 
     const minted = (await mintRes.json()) as { value?: string; expires_at?: number };
     if (!minted.value) {
-      return Response.json({ error: 'client_secret response missing value' }, { status: 500 });
+      return { ok: false, error: 'client_secret response missing value' };
     }
 
-    return Response.json({
-      clientSecret: minted.value,
-      model: REALTIME_MODEL,
-      expiresAt: minted.expires_at ?? null,
-    });
+    return {
+      ok: true,
+      payload: { provider: 'openai', clientSecret: minted.value, model: REALTIME_MODEL },
+    };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[Henry session] unexpected failure:', msg, e);
-    return Response.json({ error: `Session route crashed: ${msg}` }, { status: 500 });
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// ─── Gemini proxy URL builder ────────────────────────────────────────────────
+
+function buildGeminiResponse(): Response {
+  if (!process.env.GEMINI_API_KEY) {
+    return Response.json({ error: 'GEMINI_API_KEY not configured' }, { status: 503 });
+  }
+
+  // Derive the WebSocket URL for the proxy from the app's public URL.
+  // In development this is ws://localhost:3000; on Vercel it's wss://<domain>.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+  const proxyUrl =
+    appUrl
+      .replace(/^https:\/\//, 'wss://')
+      .replace(/^http:\/\//, 'ws://')
+      .replace(/\/$/, '') + '/api/henry/gemini-proxy';
+
+  return Response.json({ provider: 'gemini', proxyUrl });
 }
