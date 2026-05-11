@@ -29,7 +29,7 @@ set search_path = public, extensions;
 
 -- 4 policies per tenant-scoped table (select own / deny other-select /
 --   insert own / deny other-insert) times 11 tables (customers,
---   service_catalog, quotes, quote_surfaces, jobs, photos, invoices, todos,
+--   catalog_items, quotes, quote_surfaces, jobs, photos, invoices, todos,
 --   worklog_entries, audit_log, data_exports) = 44.
 -- Plus 1 revocation test = 45 total assertions.
 select plan(45);
@@ -85,31 +85,31 @@ select throws_ok(
 );
 
 -- ============================================================================
--- service_catalog
+-- catalog_items
 -- ============================================================================
 
 select test_act_as('11111111-1111-1111-1111-111111111111');
 select lives_ok(
-    $$insert into public.service_catalog (tenant_id, surface_type, label) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'driveway', 'Driveway')$$,
-    'service_catalog: tenant A user can insert into tenant A'
+    $$insert into public.catalog_items (tenant_id, name, pricing_model, unit_label, unit_price_cents, surface_type) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Driveway', 'per_unit', 'sqft', 25, 'driveway')$$,
+    'catalog_items: tenant A user can insert into tenant A'
 );
 select is(
-    (select count(*)::int from public.service_catalog),
+    (select count(*)::int from public.catalog_items),
     1,
-    'service_catalog: tenant A user sees their own row'
+    'catalog_items: tenant A user sees their own row'
 );
 
 select test_act_as('22222222-2222-2222-2222-222222222222');
 select is(
-    (select count(*)::int from public.service_catalog),
+    (select count(*)::int from public.catalog_items),
     0,
-    'service_catalog: tenant B user sees 0 tenant A rows'
+    'catalog_items: tenant B user sees 0 tenant A rows'
 );
 select throws_ok(
-    $$insert into public.service_catalog (tenant_id, surface_type, label) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'deck', 'Deck')$$,
+    $$insert into public.catalog_items (tenant_id, name, pricing_model, unit_label, unit_price_cents, surface_type) values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Deck', 'per_unit', 'sqft', 40, 'deck')$$,
     '42501',
     null,
-    'service_catalog: tenant B user cannot insert under tenant A'
+    'catalog_items: tenant B user cannot insert under tenant A'
 );
 
 -- ============================================================================

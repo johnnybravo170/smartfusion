@@ -458,7 +458,7 @@ export function TimeExpenseTab({
   // Deep-link from Budget tab's "Spent on this category" panel:
   // `?tab=time&focus=<budget_category_id>` lands the operator pre-filtered.
   const searchParams = useSearchParams();
-  const focusCategoryId = searchParams.get('focus');
+  const focusCategoryId = searchParams?.get('focus');
   const focusCategoryName = focusCategoryId
     ? (categories.find((b) => b.id === focusCategoryId)?.name ?? null)
     : null;

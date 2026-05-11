@@ -3,9 +3,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { QuoteForm } from '@/components/features/quotes/quote-form';
 import { requireTenant } from '@/lib/auth/helpers';
+import { listMapQuoteCatalog } from '@/lib/db/queries/catalog-items';
 import { listCustomers } from '@/lib/db/queries/customers';
 import { getQuote } from '@/lib/db/queries/quotes';
-import { listCatalogEntries } from '@/lib/db/queries/service-catalog';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { updateQuoteAction } from '@/server/actions/quotes';
 
@@ -20,7 +20,7 @@ export default async function EditQuotePage({ params }: { params: Promise<{ id: 
   const [quote, customers, catalog, taxCtx] = await Promise.all([
     getQuote(id),
     listCustomers({ limit: 500 }),
-    listCatalogEntries(),
+    listMapQuoteCatalog(),
     canadianTax.getContext(tenant.id),
   ]);
 

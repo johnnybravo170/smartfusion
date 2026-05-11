@@ -192,7 +192,7 @@ export function OwnerCalendar({
     d.setMonth(d.getMonth() + deltaMonths);
     d.setDate(d.getDate() + deltaDays);
     const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const params = new URLSearchParams(sp);
+    const params = new URLSearchParams(sp ?? undefined);
     params.set('ym', ym);
     if (view === 'two-week') {
       // Two-week view also tracks the day inside the month — store as ?ym=YYYY-MM
@@ -203,14 +203,14 @@ export function OwnerCalendar({
   }
 
   function setView(next: View) {
-    const params = new URLSearchParams(sp);
+    const params = new URLSearchParams(sp ?? undefined);
     if (next === 'month') params.delete('view');
     else params.set('view', 'two-week');
     router.push(`/calendar?${params.toString()}`);
   }
 
   function jumpToToday() {
-    const params = new URLSearchParams(sp);
+    const params = new URLSearchParams(sp ?? undefined);
     params.delete('ym');
     router.push(`/calendar?${params.toString()}`);
   }

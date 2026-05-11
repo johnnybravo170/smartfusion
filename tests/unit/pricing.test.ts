@@ -15,15 +15,17 @@ import {
 } from '@/lib/pricing/calculator';
 
 const DRIVEWAY: CatalogEntry = {
-  surface_type: 'driveway',
-  price_per_sqft_cents: 15, // $0.15/sqft
+  pricing_model: 'per_unit',
+  unit_price_cents: 15, // $0.15/sqft
   min_charge_cents: 5000, // $50 minimum
+  unit_label: 'sqft',
 };
 
 const SIDING: CatalogEntry = {
-  surface_type: 'siding',
-  price_per_sqft_cents: 25,
+  pricing_model: 'per_unit',
+  unit_price_cents: 25,
   min_charge_cents: 7500,
+  unit_label: 'sqft',
 };
 
 describe('calculateSurfacePrice', () => {
@@ -65,13 +67,34 @@ describe('calculateSurfacePrice', () => {
 
   it('rounds computed price to nearest cent', () => {
     const catalog: CatalogEntry = {
-      surface_type: 'test',
-      price_per_sqft_cents: 13, // $0.13/sqft
+      pricing_model: 'per_unit',
+      unit_price_cents: 13, // $0.13/sqft
       min_charge_cents: 0,
+      unit_label: 'sqft',
     };
     const surface: SurfaceInput = { surface_type: 'test', sqft: 7.7 };
     // 7.7 * 13 = 100.1 → rounds to 100
     expect(calculateSurfacePrice(surface, catalog)).toBe(100);
+  });
+
+  it('throws when given a non-per_unit pricing_model', () => {
+    const flat: CatalogEntry = {
+      pricing_model: 'fixed',
+      unit_price_cents: 5000,
+      min_charge_cents: null,
+    };
+    expect(() => calculateSurfacePrice({ surface_type: 'test', sqft: 100 }, flat)).toThrow(
+      /pricing_model='per_unit'/,
+    );
+  });
+
+  it('treats null unit_price/min_charge as zero', () => {
+    const empty: CatalogEntry = {
+      pricing_model: 'per_unit',
+      unit_price_cents: null,
+      min_charge_cents: null,
+    };
+    expect(calculateSurfacePrice({ surface_type: 'test', sqft: 100 }, empty)).toBe(0);
   });
 });
 

@@ -16,13 +16,13 @@ export function BoardViewToggle() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const queryString = searchParams.toString();
+  const queryString = searchParams?.toString();
   const listHref = `/jobs/list${queryString ? `?${queryString}` : ''}`;
   const boardHref = `/jobs${queryString ? `?${queryString}` : ''}`;
   const calendarHref = `/jobs/calendar${queryString ? `?${queryString}` : ''}`;
 
-  const listActive = pathname.startsWith('/jobs/list');
-  const calendarActive = pathname.startsWith('/jobs/calendar');
+  const listActive = pathname?.startsWith('/jobs/list');
+  const calendarActive = pathname?.startsWith('/jobs/calendar');
   const boardActive = !listActive && !calendarActive;
 
   return (

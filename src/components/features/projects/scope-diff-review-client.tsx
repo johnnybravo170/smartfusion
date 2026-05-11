@@ -40,10 +40,10 @@ export function ScopeDiffReviewClient({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const open = searchParams.get('review') === 'diff';
+  const open = searchParams?.get('review') === 'diff';
 
   function close() {
-    const sp = new URLSearchParams(searchParams.toString());
+    const sp = new URLSearchParams(searchParams?.toString());
     sp.delete('review');
     const next = sp.toString();
     router.replace(next ? `?${next}` : '?', { scroll: false });

@@ -124,7 +124,7 @@ export function BudgetCategoriesTable({
   // budget_category_name (case-insensitive — variance categories arrive lowercase
   // capitalize; category names are operator-typed). Highlight fades after
   // ~2.5s so the table looks normal again on subsequent interactions.
-  const focusName = searchParams.get('focus');
+  const focusName = searchParams?.get('focus');
   const focusCategoryId = useMemo(() => {
     if (!focusName) return null;
     const needle = focusName.toLowerCase().trim();

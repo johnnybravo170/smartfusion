@@ -118,7 +118,7 @@ export function CostsByCategoryView({
   const unallocated = rowsByCategory.get('') ?? [];
 
   const searchParams = useSearchParams();
-  const focusName = (searchParams.get('focus') ?? '').toLowerCase().trim();
+  const focusName = (searchParams?.get('focus') ?? '').toLowerCase().trim();
   const focusedCategoryRef = useRef<HTMLDivElement | null>(null);
 
   // Scroll to the focused category on mount / focus change. Stays subtle

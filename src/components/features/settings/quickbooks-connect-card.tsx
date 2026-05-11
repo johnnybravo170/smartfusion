@@ -31,7 +31,7 @@ export function QuickBooksConnectCard({ realmId, companyName, connectedAt, envir
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
-  const qboParam = searchParams.get('qbo');
+  const qboParam = searchParams?.get('qbo');
   const isConnected = Boolean(realmId && connectedAt);
 
   // Handle return from Intuit OAuth.

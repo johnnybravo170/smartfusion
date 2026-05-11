@@ -51,7 +51,7 @@ test.describe
         }
         await admin.from('quotes').delete().eq('tenant_id', createdTenantId);
         await admin.from('customers').delete().eq('tenant_id', createdTenantId);
-        await admin.from('service_catalog').delete().eq('tenant_id', createdTenantId);
+        await admin.from('catalog_items').delete().eq('tenant_id', createdTenantId);
         await admin.from('todos').delete().eq('tenant_id', createdTenantId);
         await admin.from('worklog_entries').delete().eq('tenant_id', createdTenantId);
         await admin.from('tenant_members').delete().eq('tenant_id', createdTenantId);
@@ -96,22 +96,30 @@ test.describe
         role: 'owner',
       });
 
-      // Seed catalog entries.
-      await admin.from('service_catalog').insert([
+      // Seed pricebook entries (per_unit/sqft items for the map quote flow).
+      await admin.from('catalog_items').insert([
         {
           tenant_id: createdTenantId,
+          name: 'Driveway',
           surface_type: 'driveway',
-          label: 'Driveway',
-          price_per_sqft_cents: 15,
+          pricing_model: 'per_unit',
+          unit_label: 'sqft',
+          unit_price_cents: 15,
           min_charge_cents: 5000,
+          category: 'service',
+          is_taxable: true,
           is_active: true,
         },
         {
           tenant_id: createdTenantId,
+          name: 'House Siding',
           surface_type: 'siding',
-          label: 'House Siding',
-          price_per_sqft_cents: 25,
+          pricing_model: 'per_unit',
+          unit_label: 'sqft',
+          unit_price_cents: 25,
           min_charge_cents: 7500,
+          category: 'service',
+          is_taxable: true,
           is_active: true,
         },
       ]);

@@ -28,14 +28,15 @@ export function CostsSubtabs({ counts }: { counts: Record<CostsSubtabKey, number
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const current: CostsSubtabKey =
-    (TABS.find((t) => t.key === searchParams.get('sub'))?.key as CostsSubtabKey) ?? 'quotes';
+    (TABS.find((t) => t.key === searchParams?.get('sub'))?.key as CostsSubtabKey) ?? 'quotes';
 
   function navigate(key: CostsSubtabKey) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString());
     if (key === 'quotes') params.delete('sub');
     else params.set('sub', key);
     const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    const base = pathname ?? '/';
+    router.replace(qs ? `${base}?${qs}` : base, { scroll: false });
   }
 
   return (

@@ -14,7 +14,7 @@ import { redirect } from 'next/navigation';
 import { emitArEvent } from '@/lib/ar/event-bus';
 import { ensureQuoteFollowupSequence, shouldEnrollQuoteFollowup } from '@/lib/ar/system-sequences';
 import { getCurrentTenant } from '@/lib/auth/helpers';
-import type { CatalogEntryRow } from '@/lib/db/queries/service-catalog';
+import { listMapQuoteCatalog, mapQuoteCatalogByType } from '@/lib/db/queries/catalog-items';
 import {
   calculateQuoteTotal,
   calculateSurfacePrice,
@@ -84,18 +84,18 @@ export async function createQuoteAction(input: unknown): Promise<QuoteActionResu
 
   const supabase = await createClient();
 
-  // Load catalog entries to compute pricing server-side (never trust client prices).
-  const { data: catalogData, error: catErr } = await supabase
-    .from('service_catalog')
-    .select('surface_type, price_per_sqft_cents, min_charge_cents')
-    .eq('is_active', true);
-
-  if (catErr) {
-    return { ok: false, error: `Failed to load catalog: ${catErr.message}` };
+  // Load catalog (per_unit/sqft items) to compute pricing server-side —
+  // never trust client prices. Falls back to the client-provided price
+  // when the surface_type isn't in the catalog.
+  let catalogMap: ReturnType<typeof mapQuoteCatalogByType>;
+  try {
+    catalogMap = mapQuoteCatalogByType(await listMapQuoteCatalog());
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Failed to load catalog: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
-
-  const catalog = (catalogData ?? []) as CatalogEntryRow[];
-  const catalogMap = new Map(catalog.map((c) => [c.surface_type, c]));
 
   // Price each surface from catalog (server authoritative).
   const pricedSurfaces = parsed.data.surfaces.map((s) => {
@@ -183,14 +183,16 @@ export async function updateQuoteAction(input: unknown): Promise<QuoteActionResu
 
   const supabase = await createClient();
 
-  // Load catalog for server-side pricing.
-  const { data: catalogData } = await supabase
-    .from('service_catalog')
-    .select('surface_type, price_per_sqft_cents, min_charge_cents')
-    .eq('is_active', true);
-
-  const catalog = (catalogData ?? []) as CatalogEntryRow[];
-  const catalogMap = new Map(catalog.map((c) => [c.surface_type, c]));
+  // Load catalog (per_unit/sqft items) for server-side pricing.
+  let catalogMap: ReturnType<typeof mapQuoteCatalogByType>;
+  try {
+    catalogMap = mapQuoteCatalogByType(await listMapQuoteCatalog());
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Failed to load catalog: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
 
   const pricedSurfaces = parsed.data.surfaces.map((s) => {
     const entry = catalogMap.get(s.surface_type);
@@ -803,71 +805,6 @@ export async function duplicateQuoteAction(input: { quoteId: string }): Promise<
 
   revalidatePath('/quotes');
   return { ok: true, id: newQuote.id };
-}
-
-export async function upsertCatalogEntryAction(input: {
-  id?: string;
-  surface_type: string;
-  label: string;
-  price_per_sqft_cents: number;
-  min_charge_cents: number;
-  is_active?: boolean;
-}): Promise<QuoteActionResult> {
-  const tenant = await getCurrentTenant();
-  if (!tenant) {
-    return { ok: false, error: 'Not signed in or missing tenant.' };
-  }
-
-  if (!input.surface_type.trim() || !input.label.trim()) {
-    return { ok: false, error: 'Surface type and label are required.' };
-  }
-
-  const supabase = await createClient();
-
-  if (input.id) {
-    // Update existing.
-    const { error } = await supabase
-      .from('service_catalog')
-      .update({
-        surface_type: input.surface_type.trim(),
-        label: input.label.trim(),
-        price_per_sqft_cents: input.price_per_sqft_cents,
-        min_charge_cents: input.min_charge_cents,
-        is_active: input.is_active ?? true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', input.id);
-
-    if (error) {
-      return { ok: false, error: error.message };
-    }
-
-    revalidatePath('/settings/catalog');
-    revalidatePath('/settings');
-    return { ok: true, id: input.id };
-  }
-
-  // Insert new.
-  const { data, error } = await supabase
-    .from('service_catalog')
-    .insert({
-      tenant_id: tenant.id,
-      surface_type: input.surface_type.trim(),
-      label: input.label.trim(),
-      price_per_sqft_cents: input.price_per_sqft_cents,
-      min_charge_cents: input.min_charge_cents,
-      is_active: input.is_active ?? true,
-    })
-    .select('id')
-    .single();
-
-  if (error || !data) {
-    return { ok: false, error: error?.message ?? 'Failed to create catalog entry.' };
-  }
-
-  revalidatePath('/settings/catalog');
-  revalidatePath('/settings');
-  return { ok: true, id: data.id };
 }
 
 // ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ export function ArNav() {
   return (
     <nav className="-mb-px flex gap-6 border-b" aria-label="Autoresponder sections">
       {TABS.map((t) => {
-        const active = pathname.startsWith(t.href);
+        const active = pathname?.startsWith(t.href);
         return (
           <Link
             key={t.href}

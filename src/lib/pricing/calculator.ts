@@ -4,6 +4,10 @@
  * Zero framework imports. These are deterministic functions that take data in
  * and return numbers out. All monetary values are in cents (integers) to avoid
  * floating-point drift.
+ *
+ * Source of truth is `catalog_items` (the unified pricebook). The legacy
+ * sqft-only `service_catalog` table is gone — the map-based quote builder
+ * filters catalog_items by `surface_type` + `pricing_model='per_unit'`.
  */
 
 export type SurfaceInput = {
@@ -11,19 +15,35 @@ export type SurfaceInput = {
   sqft: number;
 };
 
+/**
+ * Catalog row shape consumed by the pricing math. Sub-typed loosely so
+ * callers can pass `CatalogItemRow` directly without massaging fields.
+ */
 export type CatalogEntry = {
-  surface_type: string;
-  price_per_sqft_cents: number;
-  min_charge_cents: number;
+  pricing_model: 'fixed' | 'per_unit' | 'hourly' | 'time_and_materials';
+  unit_price_cents: number | null;
+  min_charge_cents: number | null;
+  unit_label?: string | null;
 };
 
 /**
- * Calculate the price for a single surface. The price is the greater of
- * (sqft * rate) or the minimum charge for that surface type.
+ * Calculate the price for a single surface on a map-based quote.
+ *
+ * The map builder only produces `per_unit`/`sqft` items today — any other
+ * pricing model on the catalog entry passed in is treated as a programming
+ * error (the quote builder is supposed to filter those out before calling
+ * this). Pricing is `max(sqft * rate, min_charge)`.
  */
 export function calculateSurfacePrice(surface: SurfaceInput, catalog: CatalogEntry): number {
-  const computed = Math.round(surface.sqft * catalog.price_per_sqft_cents);
-  return Math.max(computed, catalog.min_charge_cents);
+  if (catalog.pricing_model !== 'per_unit') {
+    throw new Error(
+      `calculateSurfacePrice expects pricing_model='per_unit', got '${catalog.pricing_model}'. The map quote builder must filter catalog items before pricing.`,
+    );
+  }
+  const unitPrice = catalog.unit_price_cents ?? 0;
+  const minCharge = catalog.min_charge_cents ?? 0;
+  const computed = Math.round(surface.sqft * unitPrice);
+  return Math.max(computed, minCharge);
 }
 
 /**

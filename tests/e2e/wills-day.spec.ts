@@ -102,24 +102,32 @@ test.describe
       createdTenantId = mem?.tenant_id as string;
 
       // ----------------------------------------------------------------
-      // 2. Seed service catalog entries via admin
+      // 2. Seed pricebook entries via admin (per_unit/sqft for map quote flow)
       // ----------------------------------------------------------------
-      await admin.from('service_catalog').insert([
+      await admin.from('catalog_items').insert([
         {
           tenant_id: createdTenantId,
+          name: 'Driveway',
           surface_type: 'driveway',
-          label: 'Driveway',
-          price_per_sqft_cents: 15,
+          pricing_model: 'per_unit',
+          unit_label: 'sqft',
+          unit_price_cents: 15,
           min_charge_cents: 5000,
-          active: true,
+          category: 'service',
+          is_taxable: true,
+          is_active: true,
         },
         {
           tenant_id: createdTenantId,
+          name: 'House Siding',
           surface_type: 'siding',
-          label: 'House Siding',
-          price_per_sqft_cents: 25,
+          pricing_model: 'per_unit',
+          unit_label: 'sqft',
+          unit_price_cents: 25,
           min_charge_cents: 7500,
-          active: true,
+          category: 'service',
+          is_taxable: true,
+          is_active: true,
         },
       ]);
 

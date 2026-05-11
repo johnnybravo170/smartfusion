@@ -40,8 +40,8 @@ type Props = {
 export function DetailPageNav({ homeHref, homeLabel }: Props) {
   const router = useRouter();
   const params = useSearchParams();
-  const fromHref = params.get('from');
-  const fromLabel = params.get('fromLabel');
+  const fromHref = params?.get('from');
+  const fromLabel = params?.get('fromLabel');
   const [hasInternalHistory, setHasInternalHistory] = useState(false);
 
   useEffect(() => {

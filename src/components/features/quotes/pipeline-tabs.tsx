@@ -31,7 +31,7 @@ export function PipelineTabs({ counts }: { counts: QuoteStatusCounts }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const current: TabKey =
-    (TABS.find((t) => t.key === searchParams.get('status'))?.key as TabKey) ?? 'all';
+    (TABS.find((t) => t.key === searchParams?.get('status'))?.key as TabKey) ?? 'all';
 
   function countFor(key: TabKey): number {
     if (key === 'all') return counts.all;
@@ -39,11 +39,12 @@ export function PipelineTabs({ counts }: { counts: QuoteStatusCounts }) {
   }
 
   function navigate(key: TabKey) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString());
     if (key === 'all') params.delete('status');
     else params.set('status', key);
     const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    const base = pathname ?? '/';
+    router.replace(qs ? `${base}?${qs}` : base, { scroll: false });
   }
 
   return (

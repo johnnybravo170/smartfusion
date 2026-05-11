@@ -608,7 +608,7 @@ export function CostsTab({
 
   const searchParams = useSearchParams();
   const sub: CostsSubtabKey = (() => {
-    const raw = searchParams.get('sub');
+    const raw = searchParams?.get('sub');
     if (raw === 'quotes' || raw === 'pos' || raw === 'bills' || raw === 'expenses') return raw;
     // No explicit subtab — pick the first one that has content so the
     // page isn't a wall of "No quotes yet" when there are 18 bills sitting
@@ -620,7 +620,7 @@ export function CostsTab({
     if (purchaseOrders.length > 0) return 'pos';
     return 'quotes';
   })();
-  const groupByCategory = searchParams.get('view') === 'category';
+  const groupByCategory = searchParams?.get('view') === 'category';
   // Drill-down filter: Budget tab links here with `?focus=<budget_category_id>`
   // (category-level) or `?focus_line=<cost_line_id>` (line-level) so the operator
   // lands on Spend already filtered. Bills, expenses, and vendor-quote
@@ -628,8 +628,8 @@ export function CostsTab({
   // line items' cost_line.budget_category_id (resolved in
   // listPurchaseOrders). focus_line is finer-grained — applied on top of /
   // instead of focus.
-  const focusCategoryId = searchParams.get('focus');
-  const focusLineId = searchParams.get('focus_line');
+  const focusCategoryId = searchParams?.get('focus');
+  const focusLineId = searchParams?.get('focus_line');
   const filteredBills = focusLineId
     ? bills.filter((b) => b.cost_line_id === focusLineId)
     : focusCategoryId

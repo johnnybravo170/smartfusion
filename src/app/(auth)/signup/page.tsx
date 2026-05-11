@@ -37,15 +37,15 @@ function SignupForm() {
   const [alreadyRegisteredEmail, setAlreadyRegisteredEmail] = useState<string | null>(null);
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
 
-  const referralCode = params.get('ref') ?? undefined;
-  const planParam = params.get('plan');
-  const billingParam = params.get('billing');
-  const promoParam = params.get('promo')?.trim() || undefined;
+  const referralCode = params?.get('ref') ?? undefined;
+  const planParam = params?.get('plan');
+  const billingParam = params?.get('billing');
+  const promoParam = params?.get('promo')?.trim() || undefined;
   const selectedPlan = isPlan(planParam) ? planParam : null;
   const selectedBilling = isBillingCycle(billingParam) ? billingParam : null;
 
   useEffect(() => {
-    if (params.get('error') === 'no_tenant') {
+    if (params?.get('error') === 'no_tenant') {
       setError('Your account is missing a business. Create a new one here or contact support.');
     }
   }, [params]);
