@@ -9,6 +9,20 @@
  *   the underlying TCP socket. Pages Router API routes receive Node.js
  *   IncomingMessage / ServerResponse which support WebSocket upgrade via
  *   req.socket. This is the established pattern for Next.js WebSocket support.
+ *   Next 16's own docs confirm this is not portable — see
+ *   node_modules/next/dist/docs/01-app/02-guides/backend-for-frontend.md:
+ *   "WebSockets won't work because the connection closes on timeout, or after
+ *   the response is generated."
+ *
+ * ⚠ Linked to next.config.ts (`typescript.ignoreBuildErrors`):
+ *   This is the only file under `src/pages/`. Its existence triggers Next's
+ *   pages-compat type augmentation in next-env.d.ts, which makes
+ *   useSearchParams/useParams/usePathname return nullable across all
+ *   app-router code. We work around that by skipping the typecheck inside
+ *   `next build` (the standalone `pnpm typecheck` is the real gate). If this
+ *   file ever moves out of src/pages/ — to a separate long-running service or
+ *   a future Next.js WebSocket primitive — also revert
+ *   `typescript.ignoreBuildErrors` in next.config.ts. They exist as a pair.
  *
  * ⚠ Vercel deployment validation:
  *   Pages Router API routes run as Node.js Serverless Functions on Vercel.
