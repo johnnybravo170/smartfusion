@@ -41,10 +41,10 @@ export function WorkerTimeForm({ projects, initial }: Props) {
   const tz = useTenantTimezone();
   const isEdit = Boolean(initial);
   const initialProject =
-    initial?.project_id ?? params.get('project') ?? projects[0]?.project_id ?? '';
+    initial?.project_id ?? params?.get('project') ?? projects[0]?.project_id ?? '';
   const initialDate =
     initial?.entry_date ??
-    params.get('date') ??
+    params?.get('date') ??
     new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 
   const [pending, startTransition] = useTransition();

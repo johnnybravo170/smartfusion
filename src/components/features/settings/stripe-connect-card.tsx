@@ -33,7 +33,7 @@ export function StripeConnectCard({ stripeAccountId, stripeOnboardedAt }: Props)
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
-  const stripeParam = searchParams.get('stripe');
+  const stripeParam = searchParams?.get('stripe');
   const isConnected = Boolean(stripeAccountId);
   const isOnboarded = Boolean(stripeOnboardedAt);
 

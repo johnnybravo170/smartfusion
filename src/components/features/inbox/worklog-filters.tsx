@@ -5,7 +5,7 @@
  *
  * State lives in the URL so the server component can render the correct
  * filtered list on refresh. Typing is debounced (300ms) so each keystroke
- * doesn't refetch. We snapshot `searchParams.toString()` into a stable
+ * doesn't refetch. We snapshot `searchParams?.toString()` into a stable
  * string so the effect only re-runs when the URL actually moves — matches
  * the pattern used by the Customers search bar.
  */
@@ -48,13 +48,14 @@ export function WorklogFilters({
   const searchId = useId();
   const [query, setQuery] = useState(defaultQuery);
 
-  const paramsString = searchParams.toString();
+  const paramsString = searchParams?.toString();
 
   const push = useCallback(
     (nextParams: URLSearchParams) => {
       if (!nextParams.has('tab')) nextParams.set('tab', 'worklog');
       const qs = nextParams.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname);
+      const base = pathname ?? '/';
+      router.replace(qs ? `${base}?${qs}` : base);
     },
     [pathname, router],
   );

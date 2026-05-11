@@ -46,7 +46,8 @@ export function InboxTabs({
         next.delete('related_type');
       }
       const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname);
+      const base = pathname ?? '/';
+      router.replace(qs ? `${base}?${qs}` : base);
     },
     [router, pathname, searchParams],
   );

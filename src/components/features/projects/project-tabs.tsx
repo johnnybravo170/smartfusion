@@ -35,14 +35,15 @@ export function ProjectTabs({ counts }: { counts: Counts }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const current: TabKey =
-    (TABS.find((t) => t.key === searchParams.get('view'))?.key as TabKey) ?? 'all';
+    (TABS.find((t) => t.key === searchParams?.get('view'))?.key as TabKey) ?? 'all';
 
   function navigate(key: TabKey) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString());
     if (key === 'all') params.delete('view');
     else params.set('view', key);
     const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    const base = pathname ?? '/';
+    router.replace(qs ? `${base}?${qs}` : base, { scroll: false });
   }
 
   return (

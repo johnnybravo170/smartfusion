@@ -79,9 +79,9 @@ export function ProjectIntakeZone({
   // later changes shouldn't re-trigger.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only behaviour is deliberate.
   useEffect(() => {
-    const shouldOpen = searchParams.get('intake') === 'open';
-    const shareToken = searchParams.get('share');
-    const shareName = searchParams.get('share_name') ?? undefined;
+    const shouldOpen = searchParams?.get('intake') === 'open';
+    const shareToken = searchParams?.get('share');
+    const shareName = searchParams?.get('share_name') ?? undefined;
     if (!shouldOpen && !shareToken) return;
     if (shouldOpen) setOpen(true);
 
@@ -112,7 +112,7 @@ export function ProjectIntakeZone({
 
     // Strip the share-related params so a refresh doesn't re-fetch the
     // (now-deleted) file.
-    const sp = new URLSearchParams(searchParams.toString());
+    const sp = new URLSearchParams(searchParams?.toString());
     sp.delete('intake');
     sp.delete('share');
     sp.delete('share_name');

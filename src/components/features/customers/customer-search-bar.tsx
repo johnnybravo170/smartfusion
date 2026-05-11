@@ -40,18 +40,18 @@ export function CustomerSearchBar({ defaultQuery }: { defaultQuery: string }) {
   const [, startTransition] = useTransition();
 
   const currentKind = useMemo<ContactKind | null>(() => {
-    const raw = searchParams.get('kind');
+    const raw = searchParams?.get('kind');
     if (!raw) return null;
     return (contactKinds as readonly string[]).includes(raw) ? (raw as ContactKind) : null;
   }, [searchParams]);
 
   const currentSubtype = useMemo<CustomerType | null>(() => {
-    const raw = searchParams.get('type');
+    const raw = searchParams?.get('type');
     if (raw === 'residential' || raw === 'commercial') return raw;
     return null;
   }, [searchParams]);
 
-  const paramsString = searchParams.toString();
+  const paramsString = searchParams?.toString();
 
   // Debounce the search query.
   useEffect(() => {
@@ -71,7 +71,7 @@ export function CustomerSearchBar({ defaultQuery }: { defaultQuery: string }) {
   }, [query, paramsString, router]);
 
   function applyKind(next: ContactKind | null) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString());
     if (next) params.set('kind', next);
     else params.delete('kind');
     // Changing kind clears any subtype filter (subtype only meaningful for
@@ -83,7 +83,7 @@ export function CustomerSearchBar({ defaultQuery }: { defaultQuery: string }) {
   }
 
   function applySubtype(next: CustomerType | null) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString());
     if (next) params.set('type', next);
     else params.delete('type');
     // Subtype implies kind=customer.

@@ -35,15 +35,15 @@ export function JobListFilters({ customers }: { customers: JobsCustomerOption[] 
   const [, startTransition] = useTransition();
 
   const currentStatus = useMemo(() => {
-    const raw = searchParams.get('status');
+    const raw = searchParams?.get('status');
     if (!raw) return null;
     return (jobStatuses as readonly string[]).includes(raw) ? (raw as JobStatus) : null;
   }, [searchParams]);
 
-  const currentCustomer = searchParams.get('customer_id') ?? '';
+  const currentCustomer = searchParams?.get('customer_id') ?? '';
 
   function applyStatus(next: JobStatus | null) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString());
     if (next) params.set('status', next);
     else params.delete('status');
     startTransition(() => {
@@ -52,7 +52,7 @@ export function JobListFilters({ customers }: { customers: JobsCustomerOption[] 
   }
 
   function applyCustomer(next: string) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString());
     if (next && next !== ALL_CUSTOMERS) params.set('customer_id', next);
     else params.delete('customer_id');
     startTransition(() => {
