@@ -64,8 +64,8 @@ export function WorkerSettingsRow({ profile }: { profile: WorkerProfile }) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-6">
-      <div className="space-y-1">
+    <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-12">
+      <div className="space-y-1 md:col-span-3">
         <Label className="text-xs">Type</Label>
         <Select value={workerType} onValueChange={(v) => setWorkerType(v as typeof workerType)}>
           <SelectTrigger>
@@ -77,7 +77,7 @@ export function WorkerSettingsRow({ profile }: { profile: WorkerProfile }) {
           </SelectContent>
         </Select>
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1 md:col-span-2">
         <Label className="text-xs">Log expenses</Label>
         <Select
           value={canLogExpenses}
@@ -93,7 +93,7 @@ export function WorkerSettingsRow({ profile }: { profile: WorkerProfile }) {
           </SelectContent>
         </Select>
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1 md:col-span-2">
         <Label className="text-xs">Submit invoices</Label>
         <Select value={canInvoice} onValueChange={(v) => setCanInvoice(v as typeof canInvoice)}>
           <SelectTrigger>
@@ -106,7 +106,7 @@ export function WorkerSettingsRow({ profile }: { profile: WorkerProfile }) {
           </SelectContent>
         </Select>
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1 md:col-span-2">
         <Label className="text-xs">Pay ($/hr)</Label>
         <Input
           type="number"
@@ -117,7 +117,7 @@ export function WorkerSettingsRow({ profile }: { profile: WorkerProfile }) {
           placeholder="—"
         />
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1 md:col-span-2">
         <Label className="text-xs">Charge ($/hr)</Label>
         <Input
           type="number"
@@ -128,7 +128,7 @@ export function WorkerSettingsRow({ profile }: { profile: WorkerProfile }) {
           placeholder="—"
         />
       </div>
-      <div className="flex items-end">
+      <div className="flex items-end md:col-span-1">
         <Button onClick={handleSave} disabled={pending} size="sm" className="w-full">
           {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
           Save
