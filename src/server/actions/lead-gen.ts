@@ -57,30 +57,39 @@ export async function submitLeadAction(input: {
     return { ok: false, error: 'Operator not found.' };
   }
 
-  // 3. Load catalog for server-side pricing (never trust client prices).
-  const { data: catalogData } = await admin
-    .from('service_catalog')
-    .select('surface_type, price_per_sqft_cents, min_charge_cents')
+  // 3. Load catalog (per_unit/sqft items) for server-side pricing —
+  // never trust client prices. Public lead form uses the admin client
+  // since there's no auth context, but we still filter by tenant_id.
+  const { data: catalogData, error: catalogErr } = await admin
+    .from('catalog_items')
+    .select('surface_type, pricing_model, unit_price_cents, min_charge_cents, unit_label')
     .eq('tenant_id', tenant.id)
-    .eq('is_active', true);
+    .eq('is_active', true)
+    .eq('pricing_model', 'per_unit')
+    .not('surface_type', 'is', null);
 
-  const catalogMap = new Map(
-    (catalogData ?? []).map(
-      (c: { surface_type: string; price_per_sqft_cents: number; min_charge_cents: number }) => [
-        c.surface_type,
-        c,
-      ],
-    ),
-  );
+  if (catalogErr) {
+    return { ok: false, error: `Failed to load catalog: ${catalogErr.message}` };
+  }
+
+  type CatalogRow = {
+    surface_type: string;
+    pricing_model: 'per_unit';
+    unit_price_cents: number | null;
+    min_charge_cents: number | null;
+    unit_label: string | null;
+  };
+
+  const catalogMap = new Map<string, CatalogRow>();
+  for (const row of (catalogData ?? []) as CatalogRow[]) {
+    if (row.surface_type) catalogMap.set(row.surface_type, row);
+  }
 
   // Price each surface from catalog (server authoritative).
   const pricedSurfaces = parsed.data.surfaces.map((s) => {
     const entry = catalogMap.get(s.surface_type);
     const price_cents = entry
-      ? calculateSurfacePrice(
-          { surface_type: s.surface_type, sqft: s.sqft },
-          entry as { surface_type: string; price_per_sqft_cents: number; min_charge_cents: number },
-        )
+      ? calculateSurfacePrice({ surface_type: s.surface_type, sqft: s.sqft }, entry)
       : s.price_cents;
     return { ...s, price_cents };
   });

@@ -22,12 +22,8 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useHenryForm } from '@/hooks/use-henry-form';
-import type { CatalogEntryRow } from '@/lib/db/queries/service-catalog';
-import {
-  type CatalogEntry,
-  calculateQuoteTotal,
-  calculateSurfacePrice,
-} from '@/lib/pricing/calculator';
+import type { MapQuoteCatalogEntry } from '@/lib/db/queries/catalog-items';
+import { calculateQuoteTotal, calculateSurfacePrice } from '@/lib/pricing/calculator';
 import type { QuoteActionResult } from '@/server/actions/quotes';
 import { QuoteMap } from './quote-map';
 import { type SurfaceEntry, SurfaceList } from './surface-list';
@@ -56,7 +52,7 @@ export type QuoteFormDefaults = {
 export type QuoteFormProps = {
   mode: 'create' | 'edit';
   customers: QuoteFormCustomerOption[];
-  catalog: CatalogEntryRow[];
+  catalog: MapQuoteCatalogEntry[];
   /** Combined tax rate for live preview (e.g. 0.05 AB GST, 0.13 ON HST).
    *  Server recomputes authoritatively at submission, including
    *  tax-exempt zeroing — preview is informational only. */
@@ -184,10 +180,7 @@ export function QuoteForm({
       return;
     }
 
-    const price_cents = calculateSurfacePrice(
-      { surface_type: manualType, sqft },
-      entry as CatalogEntry,
-    );
+    const price_cents = calculateSurfacePrice({ surface_type: manualType, sqft }, entry);
 
     const id = crypto.randomUUID();
     setSurfaces((prev) => [

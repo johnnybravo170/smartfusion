@@ -69,54 +69,47 @@ async function main() {
     await sql`delete from public.jobs where tenant_id = ${tenantId}`;
     await sql`delete from public.quote_surfaces qs using public.quotes q where qs.quote_id=q.id and q.tenant_id=${tenantId}`;
     await sql`delete from public.quotes where tenant_id = ${tenantId}`;
-    await sql`delete from public.service_catalog where tenant_id = ${tenantId}`;
+    await sql`delete from public.catalog_items where tenant_id = ${tenantId}`;
     await sql`delete from public.customers where tenant_id = ${tenantId}`;
     console.log('[seed] wiped');
   }
 
-  // --- Service catalog (pressure washing surfaces + BC pricing) ---
+  // --- Pricebook (pressure washing surfaces + BC pricing) ---
   const catalog = [
+    { name: 'Driveway', surface_type: 'driveway', unit_price_cents: 25, min_charge_cents: 15000 },
     {
-      surface_type: 'driveway',
-      label: 'Driveway',
-      price_per_sqft_cents: 25,
-      min_charge_cents: 15000,
-    },
-    {
+      name: 'House siding',
       surface_type: 'house_siding',
-      label: 'House siding',
-      price_per_sqft_cents: 30,
+      unit_price_cents: 30,
       min_charge_cents: 20000,
     },
+    { name: 'Deck / patio', surface_type: 'deck', unit_price_cents: 40, min_charge_cents: 15000 },
     {
-      surface_type: 'deck',
-      label: 'Deck / patio',
-      price_per_sqft_cents: 40,
-      min_charge_cents: 15000,
-    },
-    {
+      name: 'Roof (soft wash)',
       surface_type: 'roof',
-      label: 'Roof (soft wash)',
-      price_per_sqft_cents: 50,
+      unit_price_cents: 50,
       min_charge_cents: 30000,
     },
     {
+      name: 'Concrete pad',
       surface_type: 'concrete_pad',
-      label: 'Concrete pad',
-      price_per_sqft_cents: 20,
+      unit_price_cents: 20,
       min_charge_cents: 10000,
     },
-    {
-      surface_type: 'sidewalk',
-      label: 'Sidewalk',
-      price_per_sqft_cents: 20,
-      min_charge_cents: 7500,
-    },
+    { name: 'Sidewalk', surface_type: 'sidewalk', unit_price_cents: 20, min_charge_cents: 7500 },
   ];
-  for (const svc of catalog) {
-    await sql`insert into public.service_catalog ${sql({ ...svc, tenant_id: tenantId })} on conflict (tenant_id, surface_type) do update set label=excluded.label, price_per_sqft_cents=excluded.price_per_sqft_cents, min_charge_cents=excluded.min_charge_cents`;
+  for (const item of catalog) {
+    await sql`
+      insert into public.catalog_items (
+        tenant_id, name, surface_type, pricing_model, unit_label,
+        unit_price_cents, min_charge_cents, category, is_taxable, is_active
+      ) values (
+        ${tenantId}, ${item.name}, ${item.surface_type}, 'per_unit', 'sqft',
+        ${item.unit_price_cents}, ${item.min_charge_cents}, 'service', true, true
+      )
+    `;
   }
-  console.log(`[seed] ${catalog.length} service catalog entries`);
+  console.log(`[seed] ${catalog.length} pricebook entries`);
 
   // --- Customers ---
   const customers = [
@@ -292,7 +285,7 @@ async function main() {
     const surfaceRows = qs.surfaces.map((s) => {
       const svc = priceLookup.get(s.surface_type);
       if (!svc) throw new Error(`Unknown surface: ${s.surface_type}`);
-      const computed = Math.round(s.sqft * svc.price_per_sqft_cents);
+      const computed = Math.round(s.sqft * svc.unit_price_cents);
       const price_cents = Math.max(computed, svc.min_charge_cents);
       subtotal += price_cents;
       return { surface_type: s.surface_type, sqft: s.sqft, price_cents };

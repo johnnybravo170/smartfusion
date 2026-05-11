@@ -1,6 +1,6 @@
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { listMapQuoteCatalog, mapQuoteCatalogByType } from '@/lib/db/queries/catalog-items';
 import { getQuote, listQuotes } from '@/lib/db/queries/quotes';
-import { listCatalogEntries } from '@/lib/db/queries/service-catalog';
 import { calculateQuoteTotal, calculateSurfacePrice } from '@/lib/pricing/calculator';
 import { createClient } from '@/lib/supabase/server';
 import { formatCad, formatDate, quoteStatusLabels } from '../format';
@@ -212,8 +212,8 @@ export const quoteTools: AiTool[] = [
           return 'At least one surface is required.';
         }
 
-        // Load the catalog to price each surface
-        const catalog = await listCatalogEntries();
+        // Load the catalog (per_unit/sqft items) to price each surface
+        const catalog = await listMapQuoteCatalog();
         const catalogMap = new Map(catalog.map((c) => [c.surface_type.toLowerCase(), c]));
 
         const pricedSurfaces: {
@@ -443,7 +443,7 @@ export const quoteTools: AiTool[] = [
           return 'At least one surface is required.';
         }
 
-        const catalog = await listCatalogEntries();
+        const catalog = await listMapQuoteCatalog();
         const catalogMap = new Map(catalog.map((c) => [c.surface_type.toLowerCase(), c]));
 
         const pricedSurfaces: { surface_type: string; sqft: number; price_cents: number }[] = [];

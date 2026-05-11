@@ -30,12 +30,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { CatalogEntryRow } from '@/lib/db/queries/service-catalog';
-import {
-  type CatalogEntry,
-  calculateQuoteTotal,
-  calculateSurfacePrice,
-} from '@/lib/pricing/calculator';
+import type { MapQuoteCatalogEntry } from '@/lib/db/queries/catalog-items';
+import { calculateQuoteTotal, calculateSurfacePrice } from '@/lib/pricing/calculator';
+
+/**
+ * Catalog entry shape consumed by the public quote form. Mapped from
+ * `catalog_items` at the page boundary. Re-exports `MapQuoteCatalogEntry`
+ * so the public page boundary has a single import for the shape.
+ */
+export type PublicQuoteCatalogEntry = MapQuoteCatalogEntry;
+
 import { submitLeadAction } from '@/server/actions/lead-gen';
 import { LeadCaptureForm } from './lead-capture-form';
 import { LeadConfirmation } from './lead-confirmation';
@@ -43,7 +47,7 @@ import { LeadConfirmation } from './lead-confirmation';
 type PublicQuoteFormProps = {
   tenantId: string;
   businessName: string;
-  catalog: CatalogEntryRow[];
+  catalog: PublicQuoteCatalogEntry[];
   /** Combined tax rate for live preview (e.g. 0.05 AB GST, 0.13 ON HST).
    *  Server recomputes authoritatively at submission. */
   taxRate: number;
@@ -100,10 +104,7 @@ export function PublicQuoteForm({
       return;
     }
 
-    const price_cents = calculateSurfacePrice(
-      { surface_type: manualType, sqft },
-      entry as CatalogEntry,
-    );
+    const price_cents = calculateSurfacePrice({ surface_type: manualType, sqft }, entry);
 
     const id = crypto.randomUUID();
     setSurfaces((prev) => [

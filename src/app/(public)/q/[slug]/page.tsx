@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { PublicQuoteForm } from '@/components/features/lead-gen/public-quote-form';
+import {
+  type PublicQuoteCatalogEntry,
+  PublicQuoteForm,
+} from '@/components/features/lead-gen/public-quote-form';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -46,27 +49,38 @@ export default async function PublicQuotePage({ params }: Props) {
     notFound();
   }
 
-  // Load active catalog entries for this tenant.
+  // Load per_unit/sqft catalog items for this tenant. The public widget
+  // only handles map-style per-sqft pricing — flat-rate, hourly, and T&M
+  // items live in /settings/pricebook but aren't quotable through this
+  // public page.
   const { data: catalog } = await admin
-    .from('service_catalog')
-    .select(
-      'id, tenant_id, surface_type, label, price_per_sqft_cents, min_charge_cents, is_active, created_at, updated_at',
-    )
+    .from('catalog_items')
+    .select('id, name, surface_type, unit_price_cents, min_charge_cents, unit_label')
     .eq('tenant_id', tenant.id)
     .eq('is_active', true)
-    .order('label', { ascending: true });
+    .eq('pricing_model', 'per_unit')
+    .not('surface_type', 'is', null)
+    .order('name', { ascending: true });
 
-  const catalogEntries = (catalog ?? []) as Array<{
+  type Row = {
     id: string;
-    tenant_id: string;
-    surface_type: string;
-    label: string;
-    price_per_sqft_cents: number;
-    min_charge_cents: number;
-    is_active: boolean;
-    created_at: string;
-    updated_at: string;
-  }>;
+    name: string;
+    surface_type: string | null;
+    unit_price_cents: number | null;
+    min_charge_cents: number | null;
+    unit_label: string | null;
+  };
+  const catalogEntries: PublicQuoteCatalogEntry[] = ((catalog ?? []) as Row[])
+    .filter((row): row is Row & { surface_type: string } => row.surface_type !== null)
+    .map((row) => ({
+      id: row.id,
+      surface_type: row.surface_type,
+      label: row.name,
+      pricing_model: 'per_unit' as const,
+      unit_price_cents: row.unit_price_cents ?? 0,
+      min_charge_cents: row.min_charge_cents ?? 0,
+      unit_label: row.unit_label,
+    }));
 
   if (catalogEntries.length === 0) {
     return (

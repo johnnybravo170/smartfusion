@@ -3,8 +3,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { QuoteForm } from '@/components/features/quotes/quote-form';
 import { requireTenant } from '@/lib/auth/helpers';
+import { listMapQuoteCatalog } from '@/lib/db/queries/catalog-items';
 import { listCustomers } from '@/lib/db/queries/customers';
-import { listCatalogEntries } from '@/lib/db/queries/service-catalog';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createQuoteAction } from '@/server/actions/quotes';
 
@@ -35,7 +35,7 @@ export default async function NewQuotePage({
 
   const [customers, catalog, taxCtx] = await Promise.all([
     listCustomers({ limit: 500 }),
-    listCatalogEntries(),
+    listMapQuoteCatalog(),
     canadianTax.getContext(tenant.id),
   ]);
 
@@ -68,10 +68,10 @@ export default async function NewQuotePage({
         </div>
       ) : catalog.length === 0 ? (
         <div className="rounded-xl border border-dashed bg-card p-6 text-sm">
-          <p className="font-medium">Set up your service catalog first.</p>
+          <p className="font-medium">Set up your pricebook first.</p>
           <p className="mt-1 text-muted-foreground">
-            You need at least one surface type with pricing to create quotes.{' '}
-            <Link href="/settings/catalog" className="text-foreground underline">
+            You need at least one per-sqft surface item to create quotes.{' '}
+            <Link href="/settings/pricebook" className="text-foreground underline">
               Set up pricing
             </Link>{' '}
             and come back.

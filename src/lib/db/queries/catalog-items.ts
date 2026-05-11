@@ -96,3 +96,72 @@ export async function getCatalogItemByQboId(
   }
   return (data as CatalogItemRow | null) ?? null;
 }
+
+/**
+ * Map-quote catalog row — the subset of `catalog_items` the map-based
+ * quote builder uses. Filtered to active per_unit items with a
+ * surface_type set (so the map's surface picker has something to bind
+ * to). Used for both the form picker (array) and the server-side
+ * pricing path (Map keyed by surface_type).
+ */
+export type MapQuoteCatalogEntry = {
+  id: string;
+  surface_type: string;
+  label: string;
+  pricing_model: 'per_unit';
+  unit_price_cents: number;
+  min_charge_cents: number;
+  unit_label: string | null;
+};
+
+export async function listMapQuoteCatalog(): Promise<MapQuoteCatalogEntry[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('catalog_items')
+    .select('id, name, surface_type, unit_price_cents, min_charge_cents, unit_label')
+    .eq('is_active', true)
+    .eq('pricing_model', 'per_unit')
+    .not('surface_type', 'is', null)
+    .order('name', { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to load map-quote catalog: ${error.message}`);
+  }
+
+  const out: MapQuoteCatalogEntry[] = [];
+  for (const row of data ?? []) {
+    const r = row as {
+      id: string;
+      name: string;
+      surface_type: string | null;
+      unit_price_cents: number | null;
+      min_charge_cents: number | null;
+      unit_label: string | null;
+    };
+    if (!r.surface_type) continue;
+    out.push({
+      id: r.id,
+      surface_type: r.surface_type,
+      label: r.name,
+      pricing_model: 'per_unit',
+      unit_price_cents: r.unit_price_cents ?? 0,
+      min_charge_cents: r.min_charge_cents ?? 0,
+      unit_label: r.unit_label,
+    });
+  }
+  return out;
+}
+
+/**
+ * Index a catalog array by surface_type for O(1) lookup in server-side
+ * pricing. First entry wins on duplicates (rare — guarded at the UI).
+ */
+export function mapQuoteCatalogByType(
+  entries: MapQuoteCatalogEntry[],
+): Map<string, MapQuoteCatalogEntry> {
+  const m = new Map<string, MapQuoteCatalogEntry>();
+  for (const e of entries) {
+    if (!m.has(e.surface_type)) m.set(e.surface_type, e);
+  }
+  return m;
+}
