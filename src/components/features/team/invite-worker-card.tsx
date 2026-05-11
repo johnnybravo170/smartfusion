@@ -28,7 +28,7 @@ export function InviteWorkerCard() {
   // Form state
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(true);
   const [workerType, setWorkerType] = useState<'employee' | 'subcontractor'>('employee');
   const [canExpenses, setCanExpenses] = useState<'inherit' | 'yes' | 'no'>('inherit');
   const [canInvoice, setCanInvoice] = useState<'inherit' | 'yes' | 'no'>('inherit');
