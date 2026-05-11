@@ -78,3 +78,50 @@ export async function resizeImage(file: Blob | File, options: ResizeOptions = {}
     return file;
   }
 }
+
+/**
+ * Compress a receipt File for upload. Images go through {@link resizeImage}
+ * with default settings (2048px longest side, JPEG quality 0.85); the result
+ * is rewrapped as a File so downstream code can rely on `.name`. PDFs and any
+ * decode failure pass through unchanged via the underlying fallback.
+ *
+ * Used by every receipt entry point — worker expense form, quick-log dialog,
+ * bulk import wizard — so a contractor on weak cell signal doesn't push raw
+ * 12MP camera output (5–15MB) through the upload.
+ */
+export async function compressReceiptIfImage(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) return file;
+  const resized = await resizeImage(file);
+  if (resized instanceof File) return resized;
+  const outName = /\.(jpe?g|png|webp|gif)$/i.test(file.name) ? file.name : `${file.name}.jpg`;
+  return new File([resized], outName, { type: 'image/jpeg' });
+}
+
+/**
+ * Race a promise against a deadline. Used to cap how long the receipt OCR
+ * round-trip blocks the UI on poor cell signal — Next.js server actions
+ * can't be canceled, but at 30s the operator deserves a retry affordance
+ * instead of an open-ended spinner. Rejects with an error tagged
+ * `name = 'TimeoutError'` so callers can branch on it without string-matching.
+ */
+export async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          const e = new Error('Timed out');
+          e.name = 'TimeoutError';
+          reject(e);
+        }, ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'TimeoutError';
+}

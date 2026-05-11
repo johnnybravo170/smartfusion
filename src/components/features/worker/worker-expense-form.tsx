@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2, Sparkles } from 'lucide-react';
+import { AlertCircle, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -22,8 +22,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { ProjectWithCategories } from '@/lib/db/queries/worker-time';
 import { splitTotalByRate } from '@/lib/expenses/tax-split';
+import { compressReceiptIfImage, isTimeoutError, withTimeout } from '@/lib/storage/resize-image';
 import { extractReceiptFieldsAction } from '@/server/actions/extract-receipt';
 import { logWorkerExpenseAction } from '@/server/actions/worker-expenses';
+
+/** Cap how long we wait for the OCR round-trip before giving the operator
+ *  back control — at 30s on poor cell signal they deserve a retry
+ *  affordance, not an open-ended spinner. */
+const OCR_TIMEOUT_MS = 30_000;
 
 type Props = {
   projects: ProjectWithCategories[];
@@ -41,6 +47,15 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
 
   const [pending, startTransition] = useTransition();
   const [extracting, setExtracting] = useState(false);
+  // Persistent error from the OCR call. Rendered inline next to the
+  // receipt zone with a Retry button — survives toast dismissal so
+  // someone on poor cell signal can't miss it.
+  const [extractError, setExtractError] = useState<string | null>(null);
+  // True when the currently-selected category came from Henry's OCR
+  // suggestion (cleared on manual pick or project change). Drives the
+  // "Suggested by Henry" sparkle so the operator can tell the auto-fill
+  // apart from their own choice.
+  const [suggestedFromOcr, setSuggestedFromOcr] = useState(false);
   const [projectId, setProjectId] = useState(initialProject);
   const [categoryId, setCategoryId] = useState('');
   const [costLineId, setCostLineId] = useState('');
@@ -73,21 +88,48 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
     [categories, categoryId],
   );
 
-  async function handleReceiptPick(file: File | null) {
-    setReceipt(file);
-    if (!file) return;
+  async function handleReceiptPick(input: File | null) {
+    if (!input) {
+      setReceipt(null);
+      setExtractError(null);
+      return;
+    }
 
     // gpt-4o-mini reads images and PDFs both; anything else skips extract.
-    const supported = file.type.startsWith('image/') || file.type === 'application/pdf';
-    if (!supported) return;
+    const supported = input.type.startsWith('image/') || input.type === 'application/pdf';
+    if (!supported) {
+      setReceipt(input);
+      setExtractError(null);
+      return;
+    }
 
+    // Compress once up-front so both this OCR call and the final submit
+    // upload send the smaller version. Field workers on weak signal can't
+    // afford a 12MP raw image.
+    const file = await compressReceiptIfImage(input);
+    setReceipt(file);
+    await runExtract(file);
+  }
+
+  async function runExtract(file: File) {
     setExtracting(true);
+    setExtractError(null);
+    setSuggestedFromOcr(false);
     try {
       const fd = new FormData();
       fd.append('receipt', file);
-      const res = await extractReceiptFieldsAction(fd);
+      // Pass the currently-selected project's budget categories so Henry
+      // can suggest one (e.g. gas → "Vehicle"). Null suggestion when
+      // nothing fits — operator picks manually.
+      if (categories.length > 0) {
+        fd.append(
+          'category_options',
+          JSON.stringify(categories.map((c) => ({ id: c.id, label: c.name }))),
+        );
+      }
+      const res = await withTimeout(extractReceiptFieldsAction(fd), OCR_TIMEOUT_MS);
       if (!res.ok) {
-        toast.error(`Could not read receipt: ${res.error}`);
+        setExtractError(res.error);
         return;
       }
       // Only fill fields the user hasn't already typed into.
@@ -99,6 +141,7 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
         vendorGstNumber: bn,
         expenseDate,
         description: d,
+        categoryId: suggestedCategoryId,
       } = res.fields;
       let filled = 0;
       if (amountCents != null && !amount) {
@@ -133,14 +176,31 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
         setDescription(d);
         filled++;
       }
+      if (suggestedCategoryId && !categoryId) {
+        setCategoryId(suggestedCategoryId);
+        setSuggestedFromOcr(true);
+        filled++;
+      }
       if (filled > 0) {
         toast.success(`Read ${filled} field${filled === 1 ? '' : 's'} from the receipt.`);
       } else {
         toast.message("Couldn't read anything clearly — fill in below.");
       }
+    } catch (err) {
+      // Timeout or thrown network error. Stay quiet on toast — the inline
+      // chip is the durable surface; toast can scroll off-screen on phones.
+      setExtractError(
+        isTimeoutError(err)
+          ? "Couldn't reach Henry — weak signal? Retry the scan or fill the form by hand."
+          : 'Could not read receipt. Retry or fill the form by hand.',
+      );
     } finally {
       setExtracting(false);
     }
+  }
+
+  function handleRetryExtract() {
+    if (receipt) void runExtract(receipt);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -213,6 +273,23 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
             <Sparkles className="size-3" /> {receipt.name}
           </p>
         ) : null}
+        {extractError ? (
+          <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-2 py-1.5">
+            <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+            <p className="flex-1 text-xs text-destructive">{extractError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleRetryExtract}
+              disabled={extracting || !receipt}
+              className="h-7 shrink-0 gap-1 px-2 text-xs"
+            >
+              <RefreshCw className="size-3" />
+              Retry
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-1.5">
@@ -222,6 +299,7 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
           onValueChange={(v) => {
             setProjectId(v);
             setCategoryId('');
+            setSuggestedFromOcr(false);
             // If the new project is cost-plus and we have an amount,
             // (re-)engage auto-split. Manual edits are project-scoped —
             // moving project means the operator's tax assumption is
@@ -259,6 +337,7 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
             onValueChange={(v) => {
               setCategoryId(v);
               setCostLineId('');
+              setSuggestedFromOcr(false);
             }}
           >
             <SelectTrigger id="category">
@@ -272,6 +351,12 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
               ))}
             </SelectContent>
           </Select>
+          {suggestedFromOcr && categoryId ? (
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Sparkles className="size-2.5" />
+              Suggested by Henry
+            </span>
+          ) : null}
         </div>
       ) : null}
 
