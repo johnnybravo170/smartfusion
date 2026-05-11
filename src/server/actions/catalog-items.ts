@@ -147,3 +147,78 @@ export async function activateCatalogItemAction(id: string): Promise<CatalogItem
   revalidatePath('/settings/pricebook');
   return { ok: true, id };
 }
+
+/**
+ * Insert the starter pricebook for the tenant's vertical (HVAC, plumbing,
+ * GC, etc.). Idempotent — items whose name already exists for the tenant
+ * are skipped. Result includes how many were created vs skipped so the UI
+ * can confirm "Added 12 items, skipped 3 you already had."
+ */
+export type SeedPricebookResult =
+  | { ok: true; created: number; skipped: number; vertical: string }
+  | { ok: false; error: string };
+
+export async function seedPricebookFromVerticalAction(): Promise<SeedPricebookResult> {
+  const { getPricebookSeeds } = await import('@/lib/verticals/pricebook-seeds');
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) {
+    return { ok: false, error: 'Not signed in or missing tenant.' };
+  }
+
+  const vertical = tenant.vertical ?? null;
+  const seeds = getPricebookSeeds(vertical);
+  if (seeds.length === 0) {
+    return {
+      ok: false,
+      error: `No starter pricebook for vertical "${vertical ?? 'unknown'}".`,
+    };
+  }
+
+  const supabase = await createClient();
+
+  // Pull existing names once to dedupe in memory. Cheaper than per-row
+  // ON CONFLICT for the small N we expect (≤20 starter items per tenant).
+  const { data: existing, error: listErr } = await supabase
+    .from('catalog_items')
+    .select('name')
+    .eq('tenant_id', tenant.id);
+
+  if (listErr) return { ok: false, error: listErr.message };
+
+  const existingNames = new Set(
+    (existing ?? []).map((r) => ((r.name as string) ?? '').trim().toLowerCase()),
+  );
+
+  const rowsToInsert = seeds
+    .filter((s) => !existingNames.has(s.name.trim().toLowerCase()))
+    .map((s) => ({
+      tenant_id: tenant.id,
+      name: s.name,
+      description: s.description ?? null,
+      pricing_model: s.pricingModel,
+      unit_label: s.unitLabel ?? null,
+      unit_price_cents: s.unitPriceCents ?? null,
+      min_charge_cents: s.minChargeCents ?? null,
+      is_taxable: s.isTaxable ?? true,
+      category: s.category ?? null,
+      surface_type: s.surfaceType ?? null,
+      is_active: true,
+    }));
+
+  if (rowsToInsert.length === 0) {
+    revalidatePath('/settings/pricebook');
+    return { ok: true, created: 0, skipped: seeds.length, vertical: vertical ?? '' };
+  }
+
+  const { error: insertErr } = await supabase.from('catalog_items').insert(rowsToInsert);
+  if (insertErr) return { ok: false, error: insertErr.message };
+
+  revalidatePath('/settings/pricebook');
+  return {
+    ok: true,
+    created: rowsToInsert.length,
+    skipped: seeds.length - rowsToInsert.length,
+    vertical: vertical ?? '',
+  };
+}
