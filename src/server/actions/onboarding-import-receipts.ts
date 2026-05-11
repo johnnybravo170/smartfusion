@@ -150,8 +150,8 @@ export type ProposedReceiptExpense = {
   /** Card network if visible alongside the last 4. */
   cardNetwork: PaymentSourceNetwork | null;
   /** Pre-resolved payment source — either a registered card matching
-   *  card_last4 (label "JB Debit"), or the tenant default if no card
-   *  was seen. null only if even the default lookup failed. */
+   *  card_last4, or the tenant default if no card was seen. null only
+   *  if even the default lookup failed. */
   paymentSourceId: string | null;
   /** Tag so the wizard can render an "Unknown card — label this?"
    *  affordance vs a normal source pill. */

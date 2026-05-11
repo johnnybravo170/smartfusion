@@ -5,9 +5,9 @@
  *
  * Most rows are seeded by `seed_default_payment_sources` on signup
  * (Business / Personal-reimbursable / Petty cash). Card-based sources
- * ("JB Debit", "TD VISA") get added inline from the bulk receipt
- * wizard the first time an unrecognized last4 shows up — `upsertCard`
- * is the thin entry point for that.
+ * (e.g. "Business Visa", "Personal debit") get added inline from the
+ * bulk receipt wizard the first time an unrecognized last4 shows up —
+ * `upsertCard` is the thin entry point for that.
  */
 
 import { revalidatePath } from 'next/cache';
@@ -218,7 +218,7 @@ export async function setDefaultPaymentSourceAction(input: {
 
 /**
  * Used by the bulk-receipt wizard: when the operator clicks "Label this
- * card" on a row with last4=1234 and inputs ("JB Debit", debit, personal),
+ * card" on a row with last4=1234 and inputs (label, kind, paid_by),
  * upsert by (tenant_id, last4). If a row already exists for that last4,
  * we update its label/kind/paid_by — assume the operator is correcting
  * a typo, not creating a duplicate. Returns the resolved id.
