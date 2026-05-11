@@ -240,6 +240,26 @@ export function registerMetaTools(server: McpServer, ctx: McpToolCtx) {
       const endIso = end.toISOString();
       const CAP = 30;
 
+      // --- "you are here" phase context ---
+      // Always fetch knowledge docs tagged 'now' so agents orient on the
+      // current business stage before reading the activity data.
+      const now_context = await safeList(ctx, 'read:knowledge', async () => {
+        const { data } = await service
+          .schema('ops')
+          .from('knowledge_docs')
+          .select('slug, title, body, updated_at')
+          .is('archived_at', null)
+          .contains('tags', ['now'])
+          .order('updated_at', { ascending: false })
+          .limit(3);
+        return (data ?? []).map((d) => ({
+          slug: d.slug as string,
+          title: d.title as string,
+          body: d.body as string | null,
+          updated_at: d.updated_at as string,
+        }));
+      });
+
       // --- worklog ---
       const worklog = await safeList(ctx, 'read:worklog', async () => {
         const { data } = await service
@@ -396,6 +416,7 @@ export function registerMetaTools(server: McpServer, ctx: McpToolCtx) {
       const headline = `Last ${days}d: ${parts.join(' \u00b7 ')}`;
 
       return jsonResult({
+        now_context,
         window: { start: startIso, end: endIso, days },
         worklog,
         kanban,

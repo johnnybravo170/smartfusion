@@ -195,7 +195,24 @@ export async function loadContextSnapshot(): Promise<BoardContextSnapshot> {
 
 /** Render the snapshot as a Markdown block to inject into prompts. */
 export function renderContextBlock(s: BoardContextSnapshot): string {
-  const lines: string[] = ['## Current state of HeyHenry', `(snapshot taken ${s.taken_at})`, ''];
+  const lines: string[] = [];
+
+  // Pin any "now"-tagged knowledge docs at the very top so every advisor
+  // sees the current business phase before anything else.
+  const nowDocs = s.knowledge.filter((d) => d.tags.includes('now'));
+  const otherDocs = s.knowledge.filter((d) => !d.tags.includes('now'));
+
+  if (nowDocs.length) {
+    lines.push('## You are here');
+    for (const d of nowDocs) {
+      if (d.body) lines.push(d.body);
+      if (d.truncated)
+        lines.push(`*(truncated; full doc available via knowledge slug \`${d.slug}\`)*`);
+    }
+    lines.push('');
+  }
+
+  lines.push('## Current state of HeyHenry', `(snapshot taken ${s.taken_at})`, '');
 
   if (s.decisions.length) {
     lines.push('### Recent decisions (last 30d)');
@@ -241,13 +258,13 @@ export function renderContextBlock(s: BoardContextSnapshot): string {
       );
     lines.push('');
   }
-  if (s.knowledge.length) {
+  if (otherDocs.length) {
     lines.push('### Knowledge docs (HeyHenry-the-business reference material)');
     lines.push(
       `(Each is a short doc Jonathan or an agent has written down. Pull from them when relevant; ask for clarification if the right doc seems missing.)`,
     );
     lines.push('');
-    for (const d of s.knowledge) {
+    for (const d of otherDocs) {
       const tagStr = d.tags.length ? ` {${d.tags.join(', ')}}` : '';
       lines.push(`#### ${d.title}${tagStr} \`(${d.slug})\``);
       if (d.body) lines.push(d.body);
