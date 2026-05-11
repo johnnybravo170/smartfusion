@@ -51,7 +51,7 @@ export default function JoinPage() {
   const [mode, setMode] = useState<Mode>('new');
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
-  const code = params.code;
+  const code = params?.code;
 
   // Post-join destination varies by role: workers land on /w, bookkeepers
   // on /bk, full team members on the regular dashboard.
