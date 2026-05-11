@@ -1,13 +1,18 @@
 'use client';
 
-import { AlertCircle, Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { AlertCircle, Loader2, RefreshCw, Sparkles, Tag } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import {
   ExpenseTaxSplitChip,
   type TaxSplitMode,
 } from '@/components/features/expenses/expense-tax-split-chip';
+import {
+  LabelCardDialog,
+  type LabelCardResult,
+} from '@/components/features/payment-sources/label-card-dialog';
+import { PaymentSourcePill } from '@/components/features/payment-sources/payment-source-pill';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,10 +25,12 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useTenantTimezone } from '@/lib/auth/tenant-context';
+import type { PaymentSourceLite } from '@/lib/db/queries/payment-sources';
 import type { ProjectWithCategories } from '@/lib/db/queries/worker-time';
 import { splitTotalByRate } from '@/lib/expenses/tax-split';
 import { compressReceiptIfImage, isTimeoutError, withTimeout } from '@/lib/storage/resize-image';
 import { extractReceiptFieldsAction } from '@/server/actions/extract-receipt';
+import { listPaymentSourcesAction } from '@/server/actions/payment-sources';
 import { logWorkerExpenseAction } from '@/server/actions/worker-expenses';
 
 /** Cap how long we wait for the OCR round-trip before giving the operator
@@ -56,6 +63,27 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
   // "Suggested by Henry" sparkle so the operator can tell the auto-fill
   // apart from their own choice.
   const [suggestedFromOcr, setSuggestedFromOcr] = useState(false);
+
+  // Payment-source state — mirrors the standalone overhead-expense-form.
+  const [paymentSources, setPaymentSources] = useState<PaymentSourceLite[]>([]);
+  const [paymentSourceId, setPaymentSourceId] = useState<string | null>(null);
+  const [cardLast4, setCardLast4] = useState<string | null>(null);
+  const [unknownLast4, setUnknownLast4] = useState<string | null>(null);
+  const [labelCardOpen, setLabelCardOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await listPaymentSourcesAction();
+      if (cancelled || !res.ok) return;
+      setPaymentSources(res.sources);
+      const defaultId = res.sources.find((s) => s.is_default)?.id ?? null;
+      setPaymentSourceId((prev) => prev ?? defaultId);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [projectId, setProjectId] = useState(initialProject);
   const [categoryId, setCategoryId] = useState('');
   const [costLineId, setCostLineId] = useState('');
@@ -181,6 +209,24 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
         setSuggestedFromOcr(true);
         filled++;
       }
+
+      // Payment-source resolution mirrors the overhead form and quick-log
+      // dialog. Refresh the catalog (in case a card was labeled mid-
+      // session in another tab), apply matched-card silently, or prompt
+      // "Label this card?" on unknowns.
+      if (res.fields.paymentSources.length > 0) {
+        setPaymentSources(res.fields.paymentSources);
+      }
+      if (res.fields.cardLast4) setCardLast4(res.fields.cardLast4);
+      if (res.fields.paymentSourceResolution === 'matched_card' && res.fields.paymentSourceId) {
+        setPaymentSourceId(res.fields.paymentSourceId);
+        setUnknownLast4(null);
+      } else if (res.fields.paymentSourceResolution === 'unknown_card' && res.fields.cardLast4) {
+        setUnknownLast4(res.fields.cardLast4);
+      } else {
+        setUnknownLast4(null);
+      }
+
       if (filled > 0) {
         toast.success(`Read ${filled} field${filled === 1 ? '' : 's'} from the receipt.`);
       } else {
@@ -201,6 +247,28 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
 
   function handleRetryExtract() {
     if (receipt) void runExtract(receipt);
+  }
+
+  function handleCardLabeled(saved: LabelCardResult) {
+    setPaymentSources((prev) => {
+      const without = prev.filter((p) => p.id !== saved.id);
+      return [
+        ...without,
+        {
+          id: saved.id,
+          label: saved.label,
+          last4: saved.last4,
+          kind: saved.kind,
+          paid_by: saved.paid_by,
+          is_default: false,
+        },
+      ];
+    });
+    setPaymentSourceId(saved.id);
+    setCardLast4(saved.last4);
+    setUnknownLast4(null);
+    setLabelCardOpen(false);
+    toast.success(`Saved card ${saved.label}.`);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -228,6 +296,8 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
     fd.append('description', description);
     fd.append('expense_date', date);
     if (receipt) fd.append('receipt', receipt);
+    if (paymentSourceId) fd.append('payment_source_id', paymentSourceId);
+    if (cardLast4) fd.append('card_last4', cardLast4);
 
     startTransition(async () => {
       const res = await logWorkerExpenseAction(fd);
@@ -383,6 +453,54 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
       ) : null}
 
       <div className="space-y-1.5">
+        <Label htmlFor="payment-source">Paid by</Label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={paymentSourceId ?? ''}
+            onValueChange={(v) => setPaymentSourceId(v || null)}
+            disabled={paymentSources.length === 0}
+          >
+            <SelectTrigger id="payment-source" className="min-w-[200px] flex-1">
+              <SelectValue placeholder="Pick a source" />
+            </SelectTrigger>
+            <SelectContent>
+              {paymentSources.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.label}
+                  {s.last4 ? ` ····${s.last4}` : ''}
+                  {s.is_default ? ' (default)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {paymentSourceId
+            ? (() => {
+                const sel = paymentSources.find((s) => s.id === paymentSourceId);
+                return sel ? <PaymentSourcePill source={sel} /> : null;
+              })()
+            : null}
+        </div>
+        {unknownLast4 ? (
+          <p className="flex flex-wrap items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+            <Tag className="size-3" />
+            Receipt was paid with ····{unknownLast4} — that card isn&apos;t labeled yet.
+            <button
+              type="button"
+              onClick={() => setLabelCardOpen(true)}
+              className="font-medium underline-offset-2 hover:underline"
+            >
+              Label this card
+            </button>
+          </p>
+        ) : null}
+        {cardLast4 && !unknownLast4 ? (
+          <p className="text-[10px] text-muted-foreground">
+            Card ····{cardLast4} read from receipt.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="space-y-1.5">
         <Label htmlFor="amount">Amount ($)</Label>
         <Input
           id="amount"
@@ -489,6 +607,15 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
         {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
         Log expense
       </Button>
+
+      {labelCardOpen && unknownLast4 ? (
+        <LabelCardDialog
+          open
+          onOpenChange={setLabelCardOpen}
+          last4={unknownLast4}
+          onSaved={handleCardLabeled}
+        />
+      ) : null}
     </form>
   );
 }

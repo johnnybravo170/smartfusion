@@ -46,6 +46,17 @@ const expenseSchema = z.object({
   description: z.string().trim().max(2000).optional().or(z.literal('')),
   receipt_url: z.string().url().optional().or(z.literal('')),
   expense_date: z.string().min(1, { message: 'Date is required.' }),
+  // Which payment source funded the expense — drives reimbursement
+  // pills and (eventually) QB sync routing. Empty = let the insert fall
+  // back to the tenant default.
+  payment_source_id: z.string().uuid().optional().or(z.literal('')),
+  // Last 4 of the card snapshot, written verbatim for audit even if the
+  // labeled source is later renamed/archived.
+  card_last4: z
+    .string()
+    .regex(/^\d{4}$/)
+    .optional()
+    .or(z.literal('')),
 });
 
 /**
@@ -219,6 +230,8 @@ export async function logExpenseWithReceiptAction(
     vendor_gst_number: String(formData.get('vendor_gst_number') ?? ''),
     description: String(formData.get('description') ?? ''),
     expense_date: String(formData.get('expense_date') ?? ''),
+    payment_source_id: String(formData.get('payment_source_id') ?? ''),
+    card_last4: String(formData.get('card_last4') ?? ''),
   };
 
   const parsed = expenseSchema.safeParse(input);
@@ -256,6 +269,13 @@ export async function logExpenseWithReceiptAction(
     receiptStoragePath = path;
   }
 
+  // Fall back to the tenant default source when the form didn't pick
+  // one — matches the overhead path's behavior so the row is never
+  // silently un-attributed.
+  const { getDefaultPaymentSourceId } = await import('@/lib/db/queries/payment-sources');
+  const paymentSourceId =
+    parsed.data.payment_source_id?.trim() || (await getDefaultPaymentSourceId());
+
   const { data, error } = await admin
     .from('expenses')
     .insert({
@@ -272,6 +292,8 @@ export async function logExpenseWithReceiptAction(
       description: parsed.data.description?.trim() || null,
       receipt_storage_path: receiptStoragePath,
       expense_date: parsed.data.expense_date,
+      payment_source_id: paymentSourceId,
+      card_last4: parsed.data.card_last4?.trim() || null,
     })
     .select('id')
     .single();

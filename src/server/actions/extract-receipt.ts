@@ -19,6 +19,16 @@
 
 import { gateway, isAiError } from '@/lib/ai-gateway';
 import { requireTenant } from '@/lib/auth/helpers';
+import {
+  extractCardLast4,
+  listPaymentSources,
+  normalizePaymentNetwork,
+  type PaymentSourceLite,
+  type PaymentSourceNetwork,
+  type PaymentSourceResolution,
+  resolvePaymentSource,
+  toLite,
+} from '@/lib/db/queries/payment-sources';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -55,6 +65,20 @@ export type ReceiptExtractionResult =
         categoryId: string | null;
         /** Pre-resolved label so the caller doesn't have to look it up. */
         categoryLabel: string | null;
+        /** Last 4 of the card the receipt was paid with, if visible. */
+        cardLast4: string | null;
+        /** Card network if printed alongside the last 4. */
+        cardNetwork: PaymentSourceNetwork | null;
+        /** Pre-resolved payment source — matched_card → a labeled card
+         *  whose last4 matches; unknown_card → last4 was read but no
+         *  source matches (caller surfaces "Label this card?"); fall-
+         *  back_default → no card visible, tenant default returned. */
+        paymentSourceId: string | null;
+        paymentSourceResolution: PaymentSourceResolution;
+        /** Tenant catalog of payment sources, so the caller can render
+         *  the picker without an extra round-trip. Pre-sorted with the
+         *  default first. */
+        paymentSources: PaymentSourceLite[];
       };
     }
   | { ok: false; error: string };
@@ -78,7 +102,9 @@ function buildPrompt(categoryLines: string | null): string {
   "vendor_gst_number": the vendor's GST/HST business number if printed. Canadian format is 9 digits + "RT" + 4 digits (e.g. "123456789 RT0001"). Commonly labeled "GST Reg #", "HST #", "BN", "Business Number", or near the vendor's address. If only the 9-digit root is shown, return those 9 digits. null if not visible.
   "expense_date": "YYYY-MM-DD" — transaction date, not print time.
   "description": one short line describing what was purchased (e.g. "lumber and fasteners", "lunch for crew"). null if unclear.
-${categoryField}}
+${categoryField}  "card_last4": LAST 4 DIGITS of the card used to pay, if visible. Receipts show this in many shapes: "VISA ****1234", "DEBIT XXXXXXXXXXXX1234", "Card # ...1234", "Account: ************1234". Return ONLY the 4 digits as a string ("1234"), not the masked prefix. Null if no card line is visible (cash/e-transfer/cheque receipts).
+  "card_network": one of "visa", "mastercard", "amex", "interac", "discover", "other" if the card brand is printed alongside the last 4. Map a plain "DEBIT" with no other brand to "interac" (Canadian default). Null if not visible.
+}
 
 Note: Canadian receipts commonly show GST/HST as "GST 5%", "HST 13%", "GST incl.", "GST INCLUDED", or "GST/HST". The amount_cents field is always the receipt total with tax included. pre_tax_amount_cents + tax_amount_cents must equal amount_cents (within 1¢ rounding) — if they don't reconcile, return null for both rather than guessing.${categorySection}`;
 }
@@ -98,6 +124,8 @@ const RECEIPT_SCHEMA = {
     expense_date: { type: ['string', 'null'] },
     description: { type: ['string', 'null'] },
     category_id: { type: ['string', 'null'] },
+    card_last4: { type: ['string', 'null'] },
+    card_network: { type: ['string', 'null'] },
   },
   required: [
     'amount_cents',
@@ -108,6 +136,8 @@ const RECEIPT_SCHEMA = {
     'expense_date',
     'description',
     'category_id',
+    'card_last4',
+    'card_network',
   ],
 };
 
@@ -120,6 +150,8 @@ type RawReceipt = {
   expense_date: unknown;
   description: unknown;
   category_id: unknown;
+  card_last4: unknown;
+  card_network: unknown;
 };
 
 /** Parse the optional `category_options` FormData field. Invalid JSON or
@@ -204,6 +236,10 @@ export async function extractReceiptFieldsAction(
       ? categoryOptions.map((o) => `  ${o.id} — ${o.label}`).join('\n')
       : null;
 
+  // Pull payment sources in parallel with the OCR call — the resolver
+  // needs them, and the caller wants them for the picker either way.
+  const paymentSourcesPromise = listPaymentSources();
+
   let parsed: RawReceipt;
   try {
     const res = await gateway().runStructured<RawReceipt>({
@@ -270,6 +306,22 @@ export async function extractReceiptFieldsAction(
       ? (categoryOptions.find((o) => o.id === rawCategoryId) ?? null)
       : null;
 
+  // Card extraction + payment-source resolution. extractCardLast4 handles
+  // all the masked-prefix shapes; resolvePaymentSource decides matched /
+  // unknown / fallback. We always return the source catalog so the caller
+  // can render the picker without a second round-trip.
+  const cardLast4 = extractCardLast4(
+    typeof parsed.card_last4 === 'string' ? parsed.card_last4 : null,
+  );
+  const cardNetwork = normalizePaymentNetwork(
+    typeof parsed.card_network === 'string' ? parsed.card_network : null,
+  );
+  const paymentSourcesFull = await paymentSourcesPromise;
+  const { paymentSourceId, resolution: paymentSourceResolution } = resolvePaymentSource(
+    cardLast4,
+    paymentSourcesFull,
+  );
+
   return {
     ok: true,
     fields: {
@@ -282,6 +334,11 @@ export async function extractReceiptFieldsAction(
       description,
       categoryId: matchedCategory?.id ?? null,
       categoryLabel: matchedCategory?.label ?? null,
+      cardLast4,
+      cardNetwork,
+      paymentSourceId,
+      paymentSourceResolution,
+      paymentSources: toLite(paymentSourcesFull),
     },
   };
 }

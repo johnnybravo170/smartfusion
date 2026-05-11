@@ -13,12 +13,31 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getCurrentTenant } from '@/lib/auth/helpers';
-import type {
-  PaymentSourceKind,
-  PaymentSourcePaidBy,
-  PaymentSourceRow,
+import {
+  listPaymentSources,
+  type PaymentSourceKind,
+  type PaymentSourceLite,
+  type PaymentSourcePaidBy,
+  type PaymentSourceRow,
+  toLite,
 } from '@/lib/db/queries/payment-sources';
 import { createAdminClient } from '@/lib/supabase/admin';
+
+/** Thin server-action wrapper for the picker UI in receipt forms that
+ *  aren't server-rendered with the catalog already in props (header
+ *  quick-log dialog, worker expense form). */
+export async function listPaymentSourcesAction(): Promise<
+  { ok: true; sources: PaymentSourceLite[] } | { ok: false; error: string }
+> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  try {
+    const rows = await listPaymentSources();
+    return { ok: true, sources: toLite(rows) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Failed to load.' };
+  }
+}
 
 type Result =
   | { ok: true; id: string }
