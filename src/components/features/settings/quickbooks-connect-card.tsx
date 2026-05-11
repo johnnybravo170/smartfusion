@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { connectQboAction, disconnectQboAction } from '@/server/actions/qbo';
+import { QuickBooksImportLauncher } from './quickbooks-import-launcher';
 
 type Props = {
   realmId: string | null;
@@ -96,11 +97,11 @@ export function QuickBooksConnectCard({ realmId, companyName, connectedAt, envir
                   realm {realmId}
                   {environment === 'sandbox' ? ' · sandbox' : ''}
                 </p>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                  Import flow lands in the next release.
-                </p>
               </div>
             </div>
+
+            <QuickBooksImportLauncher />
+
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" asChild>
                 <a
