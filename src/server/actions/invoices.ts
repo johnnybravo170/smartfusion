@@ -1292,7 +1292,7 @@ export async function generateFinalInvoiceAction(input: {
   // to TRUE (matches Jonathan's all-cost-plus reality).
   const { getVarianceReport } = await import('@/lib/db/queries/cost-lines');
 
-  const [variance, timeRes, expenseRes, priorInvoicesRes] = await Promise.all([
+  const [variance, timeRes, expenseRes, billsRes, priorInvoicesRes] = await Promise.all([
     getVarianceReport(input.projectId),
     supabase
       .from('time_entries')
@@ -1301,6 +1301,17 @@ export async function generateFinalInvoiceAction(input: {
     supabase
       .from('expenses')
       .select('amount_cents, pre_tax_amount_cents')
+      .eq('project_id', input.projectId),
+    // project_bills (vendor/sub invoices, OCR'd from inbound-email or manual
+    // entry) are a separate cost-entry path from `expenses` but feed the same
+    // budget rollup. Cost-plus must bill them too, or sub-heavy renovations
+    // silently lose the mgmt fee on $10–100K of subcontractor cost.
+    // `amount_cents` here is pre-GST (migration 0083); GST is tracked
+    // separately and reclaimed as an ITC, so it's not part of the cost basis.
+    // No status filter: enum is pending|approved|paid with no void state.
+    supabase
+      .from('project_bills')
+      .select('amount_cents, gst_cents')
       .eq('project_id', input.projectId),
     supabase
       .from('invoices')
@@ -1311,10 +1322,24 @@ export async function generateFinalInvoiceAction(input: {
   ]);
 
   const timeEntries = (timeRes.data ?? []) as { hours: number; hourly_rate_cents: number | null }[];
-  const expenses = (expenseRes.data ?? []) as {
+  const expenseRows = (expenseRes.data ?? []) as {
     amount_cents: number;
     pre_tax_amount_cents: number | null;
   }[];
+  const billRows = (billsRes.data ?? []) as {
+    amount_cents: number;
+    gst_cents: number;
+  }[];
+  // Bills' amount_cents is pre-GST, so map straight into pre_tax_amount_cents;
+  // the gross is amount_cents + gst_cents (only consulted by the legacy null-
+  // pre_tax fallback in computeCostPlusBreakdown, which won't fire for bills).
+  const expenses = [
+    ...expenseRows,
+    ...billRows.map((b) => ({
+      amount_cents: b.amount_cents + b.gst_cents,
+      pre_tax_amount_cents: b.amount_cents,
+    })),
+  ];
   const priorInvoices = (priorInvoicesRes.data ?? []) as { amount_cents: number }[];
 
   const priorBilledCents = priorInvoices.reduce((s, i) => s + i.amount_cents, 0);

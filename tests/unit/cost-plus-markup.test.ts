@@ -113,6 +113,43 @@ describe('computeCostPlusBreakdown', () => {
     });
   });
 
+  it('bills mapped from project_bills are marked up like expenses', () => {
+    // Subcontractor invoice arrives via inbound-email → project_bills row.
+    // amount_cents on bills is already pre-GST (migration 0083), so the
+    // caller in invoices.ts maps amount_cents → pre_tax_amount_cents and
+    // amount_cents+gst_cents → amount_cents. Result: bills participate in
+    // markup exactly like a clean-OCR expense, no double-tax.
+    const bill = { amount_cents: 8000000, gst_cents: 1040000 }; // $80k sub @ 13% HST
+    const mapped = {
+      amount_cents: bill.amount_cents + bill.gst_cents,
+      pre_tax_amount_cents: bill.amount_cents,
+    };
+    const breakdown = computeCostPlusBreakdown({
+      timeEntries: [],
+      expenses: [mapped],
+      priorInvoices: [],
+      mgmtRate: 0.18,
+    });
+    expect(breakdown.materialsCents).toBe(8000000);
+    expect(breakdown.mgmtFeeCents).toBe(1440000); // 18% of $80k = $14,400
+  });
+
+  it('mixes bill-mapped + expense rows in one project', () => {
+    // A renovation typically has both: receipts logged as expenses (Home
+    // Depot runs) plus PDF subcontractor invoices flowing through
+    // project_bills. Both must show up in materialsCents.
+    const expense = { amount_cents: 11300, pre_tax_amount_cents: 10000 }; // $100 receipt
+    const billMapped = { amount_cents: 56500, pre_tax_amount_cents: 50000 }; // $500 sub
+    const breakdown = computeCostPlusBreakdown({
+      timeEntries: [],
+      expenses: [expense, billMapped],
+      priorInvoices: [],
+      mgmtRate: 0.15,
+    });
+    expect(breakdown.materialsCents).toBe(60000); // 10000 + 50000
+    expect(breakdown.mgmtFeeCents).toBe(9000); // 15% of 60000
+  });
+
   it('applies markup over labour + materials together (not separately)', () => {
     // Sanity check: rounding once on the sum gives a different answer
     // than rounding each piece. The contract is "markup over the
