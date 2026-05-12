@@ -172,7 +172,6 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             customerSummaryMd: viewPreviewInputs.customerSummaryMd,
             costLines: viewPreviewInputs.costLines,
             categories: viewPreviewInputs.categories,
-            sections: viewPreviewInputs.sections,
             priorBilledCents: viewPreviewInputs.priorBilledCents,
             mgmtRate: viewPreviewInputs.mgmtRate,
             isCostPlus: viewPreviewInputs.isCostPlus,

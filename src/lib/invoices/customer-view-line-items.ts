@@ -65,13 +65,11 @@ export type CustomerViewCategory = {
   id: string;
   name: string;
   description_md: string | null;
-  customer_section_id: string | null;
-};
-
-export type CustomerViewSection = {
-  id: string;
-  name: string;
-  description_md: string | null;
+  /** Section label from `project_budget_categories.section`. This is the
+   *  text-col header the operator uses to group categories in the Budget
+   *  tab (e.g. "Master suite addition", "Pizza Oven"). Empty string =
+   *  ungrouped. Sections mode aggregates categories by this value. */
+  section: string;
 };
 
 /** Cost-plus breakdown — used when isCostPlus=true. Shape mirrors
@@ -110,7 +108,6 @@ export type BuildCustomerViewArgs = {
   /** Fixed-price inputs. Empty when isCostPlus=true. */
   costLines: ReadonlyArray<CustomerViewCostLine>;
   categories: ReadonlyArray<CustomerViewCategory>;
-  sections: ReadonlyArray<CustomerViewSection>;
   /** Sum of already-billed prior invoices, gross. Subtracted as a negative line. */
   priorBilledCents: number;
   /** Decimal — e.g. 0.12 for 12%. */
@@ -131,8 +128,13 @@ export type CustomerViewPreviewRow = {
    *  sum without a customer_summary_md, etc.). */
   body_md: string | null;
   total_cents: number;
-  /** Visual hint for the preview component. Cosmetic only. */
-  kind: 'work' | 'mgmt_fee' | 'prior_credit';
+  /** Visual hint for the preview component. Cosmetic only.
+   *  - work: regular line/category/section row.
+   *  - group_header: presentation-only header that visually contains
+   *    the rows immediately following it (Detailed mode). `total_cents`
+   *    is the group subtotal. Not included in `items` for persistence.
+   *  - mgmt_fee / prior_credit: leaf rows with distinct styling. */
+  kind: 'work' | 'group_header' | 'mgmt_fee' | 'prior_credit';
 };
 
 /** Internal row used inside the helper. Carries everything needed for
@@ -174,7 +176,10 @@ export function buildCustomerViewLineItems(args: BuildCustomerViewArgs): {
   }
 
   return {
-    items: rows.map(rowToItem),
+    // group_header rows are presentation-only and never persist into
+    // invoices.line_items. The customer-facing total stays correct because
+    // the leaf rows under each header carry the actual amounts.
+    items: rows.filter((r) => r.kind !== 'group_header').map(rowToItem),
     preview: rows.map((r) => ({
       title: r.title,
       body_md: r.body_md,
@@ -243,17 +248,79 @@ function buildFixedPrice(args: BuildCustomerViewArgs): Row[] {
     return rows;
   }
 
-  // detailed — one row per priced cost line.
-  const rows: Row[] = args.costLines.map((l) => ({
+  // detailed — cost lines grouped under their parent category header.
+  // Each category that has priced lines emits a group_header row (with
+  // the category's subtotal + description) followed by its line rows
+  // indented underneath. Lines whose category isn't in args.categories
+  // (or has no budget_category_id) fall under an "Other work" header.
+  // When args.categories is empty, the grouping degrades gracefully to
+  // a flat list (legacy behaviour for callers that don't pass category
+  // metadata).
+  const rows: Row[] = buildDetailedGroupedRows(args);
+  if (mgmtFeeCents > 0) rows.push(mgmtFeeRow(args.mgmtRate, mgmtFeeCents));
+  return rows;
+}
+
+function buildDetailedGroupedRows(args: BuildCustomerViewArgs): Row[] {
+  const byCat = new Map<string, CustomerViewCostLine[]>();
+  const uncategorized: CustomerViewCostLine[] = [];
+  for (const line of args.costLines) {
+    if (!line.budget_category_id) {
+      uncategorized.push(line);
+      continue;
+    }
+    const list = byCat.get(line.budget_category_id) ?? [];
+    list.push(line);
+    byCat.set(line.budget_category_id, list);
+  }
+
+  const out: Row[] = [];
+
+  // Flat fallback when caller doesn't pass categories — no grouping context.
+  if (args.categories.length === 0) {
+    for (const l of args.costLines) out.push(makeLineRow(l));
+    return out;
+  }
+
+  for (const cat of args.categories) {
+    const lines = byCat.get(cat.id) ?? [];
+    if (lines.length === 0) continue;
+    const subtotal = lines.reduce((s, l) => s + l.line_price_cents, 0);
+    out.push({
+      title: cat.name,
+      body_md: cat.description_md,
+      quantity: 1,
+      unit_price_cents: subtotal,
+      total_cents: subtotal,
+      kind: 'group_header',
+    });
+    for (const l of lines) out.push(makeLineRow(l));
+  }
+
+  if (uncategorized.length > 0) {
+    const subtotal = uncategorized.reduce((s, l) => s + l.line_price_cents, 0);
+    out.push({
+      title: 'Other work',
+      body_md: null,
+      quantity: 1,
+      unit_price_cents: subtotal,
+      total_cents: subtotal,
+      kind: 'group_header',
+    });
+    for (const l of uncategorized) out.push(makeLineRow(l));
+  }
+  return out;
+}
+
+function makeLineRow(l: CustomerViewCostLine): Row {
+  return {
     title: l.label,
     body_md: l.notes,
     quantity: Number(l.qty),
     unit_price_cents: l.unit_price_cents,
     total_cents: l.line_price_cents,
     kind: 'work',
-  }));
-  if (mgmtFeeCents > 0) rows.push(mgmtFeeRow(args.mgmtRate, mgmtFeeCents));
-  return rows;
+  };
 }
 
 function buildCategoriesRows(args: BuildCustomerViewArgs): Row[] {
@@ -297,37 +364,50 @@ function buildCategoriesRows(args: BuildCustomerViewArgs): Row[] {
 }
 
 function buildSectionsRows(args: BuildCustomerViewArgs): Row[] {
-  const catToSection = new Map<string, string | null>();
+  // Sections come from the `section` text col on each budget category —
+  // the same labels the operator sees as headers in the Budget tab
+  // ("Pizza Oven", "Master suite addition"). When no category has a
+  // non-empty section value, this mode degrades to one row per category
+  // (the same shape as Categories mode).
+  const catToSection = new Map<string, string>();
   for (const cat of args.categories) {
-    catToSection.set(cat.id, cat.customer_section_id);
+    catToSection.set(cat.id, cat.section ?? '');
   }
 
+  const anySection = args.categories.some((c) => (c.section ?? '').trim() !== '');
+  if (!anySection) {
+    // Fallback: no operator-defined sections, so just emit one row per
+    // priced category. Same shape as Categories mode.
+    return buildCategoriesRows(args);
+  }
+
+  // Preserve first-seen order of section labels for stable output.
+  const sectionOrder: string[] = [];
   const bySection = new Map<string, number>();
-  let otherCents = 0;
   for (const line of args.costLines) {
-    const sectionId = line.budget_category_id
-      ? (catToSection.get(line.budget_category_id) ?? null)
-      : null;
-    if (!sectionId) {
-      otherCents += line.line_price_cents;
-      continue;
-    }
-    bySection.set(sectionId, (bySection.get(sectionId) ?? 0) + line.line_price_cents);
+    const section = line.budget_category_id
+      ? (catToSection.get(line.budget_category_id) ?? '')
+      : '';
+    const key = section.trim() === '' ? '' : section;
+    if (!bySection.has(key)) sectionOrder.push(key);
+    bySection.set(key, (bySection.get(key) ?? 0) + line.line_price_cents);
   }
 
   const rows: Row[] = [];
-  for (const s of args.sections) {
-    const total = bySection.get(s.id) ?? 0;
+  for (const key of sectionOrder) {
+    if (key === '') continue; // handle 'Other work' last
+    const total = bySection.get(key) ?? 0;
     if (total <= 0) continue;
     rows.push({
-      title: s.name,
-      body_md: s.description_md,
+      title: key,
+      body_md: null,
       quantity: 1,
       unit_price_cents: total,
       total_cents: total,
       kind: 'work',
     });
   }
+  const otherCents = bySection.get('') ?? 0;
   if (otherCents > 0) {
     rows.push({
       title: 'Other work',
@@ -411,35 +491,105 @@ function buildCostPlus(args: BuildCustomerViewArgs): Row[] {
     return rows;
   }
 
-  // detailed — one row per project_cost_line with actual spend tagged
-  // to that line via cost_line_id. NO receipt-level or time-entry-level
-  // info; the customer sees scope items, not operational data. Lines
-  // with $0 spend (planned-but-untouched) are hidden. Spend not tagged
-  // to any cost line rolls into "Other work". Mgmt fee appended last.
+  // detailed — cost lines grouped under their parent category header,
+  // amounts from byCostLineCents (actual cost-plus spend per line).
+  // NO receipt-level or time-entry-level info; the customer sees scope
+  // items, not operational data. Lines with $0 spend (planned-but-
+  // untouched) are hidden. Spend not tagged to any cost line rolls into
+  // "Other work" header. Mgmt fee appended last.
   const rows: Row[] = [];
   const byLine = breakdown.byCostLineCents ?? {};
   const hasLineData = Object.values(byLine).some((v) => v > 0);
   if (hasLineData) {
+    // Group cost lines by category for grouped emission with headers.
+    const byCat = new Map<string, CustomerViewCostLine[]>();
+    const uncategorized: CustomerViewCostLine[] = [];
     for (const line of args.costLines) {
-      const total = byLine[line.id ?? ''] ?? 0;
-      if (total <= 0) continue;
-      rows.push({
-        title: line.label,
-        body_md: line.notes,
-        quantity: 1,
-        unit_price_cents: total,
-        total_cents: total,
-        kind: 'work',
-      });
+      const spend = byLine[line.id ?? ''] ?? 0;
+      if (spend <= 0) continue; // skip planned-but-untouched
+      if (!line.budget_category_id) {
+        uncategorized.push(line);
+        continue;
+      }
+      const list = byCat.get(line.budget_category_id) ?? [];
+      list.push(line);
+      byCat.set(line.budget_category_id, list);
     }
-    const otherCents = byLine[''] ?? 0;
-    if (otherCents > 0) {
+
+    const hasCategories = args.categories.length > 0;
+
+    if (!hasCategories) {
+      // Flat fallback — no category metadata, just emit lines.
+      for (const line of args.costLines) {
+        const spend = byLine[line.id ?? ''] ?? 0;
+        if (spend <= 0) continue;
+        rows.push({
+          title: line.label,
+          body_md: line.notes,
+          quantity: 1,
+          unit_price_cents: spend,
+          total_cents: spend,
+          kind: 'work',
+        });
+      }
+    } else {
+      for (const cat of args.categories) {
+        const lines = byCat.get(cat.id) ?? [];
+        if (lines.length === 0) continue;
+        const subtotal = lines.reduce((s, l) => s + (byLine[l.id ?? ''] ?? 0), 0);
+        rows.push({
+          title: cat.name,
+          body_md: cat.description_md,
+          quantity: 1,
+          unit_price_cents: subtotal,
+          total_cents: subtotal,
+          kind: 'group_header',
+        });
+        for (const l of lines) {
+          const spend = byLine[l.id ?? ''] ?? 0;
+          rows.push({
+            title: l.label,
+            body_md: l.notes,
+            quantity: 1,
+            unit_price_cents: spend,
+            total_cents: spend,
+            kind: 'work',
+          });
+        }
+      }
+      if (uncategorized.length > 0) {
+        const subtotal = uncategorized.reduce((s, l) => s + (byLine[l.id ?? ''] ?? 0), 0);
+        rows.push({
+          title: 'Other work',
+          body_md: null,
+          quantity: 1,
+          unit_price_cents: subtotal,
+          total_cents: subtotal,
+          kind: 'group_header',
+        });
+        for (const l of uncategorized) {
+          const spend = byLine[l.id ?? ''] ?? 0;
+          rows.push({
+            title: l.label,
+            body_md: l.notes,
+            quantity: 1,
+            unit_price_cents: spend,
+            total_cents: spend,
+            kind: 'work',
+          });
+        }
+      }
+    }
+
+    // Spend not tagged to any cost_line_id at all (key '').
+    const untaggedCents = byLine[''] ?? 0;
+    if (untaggedCents > 0) {
       rows.push({
         title: 'Other work',
         body_md: null,
         quantity: 1,
-        unit_price_cents: otherCents,
-        total_cents: otherCents,
+        unit_price_cents: untaggedCents,
+        total_cents: untaggedCents,
         kind: 'work',
       });
     }
@@ -508,31 +658,43 @@ function buildCostPlusSectionsRows(
   args: BuildCustomerViewArgs,
   breakdown: CustomerViewCostPlusBreakdown,
 ): Row[] {
+  // Use the same `section` text-col primitive as the operator's Budget tab.
+  // When no category has a non-empty section value, degrade to one row per
+  // category (same shape as Categories mode).
   const byCat = breakdown.byCategoryCents ?? {};
-  const catToSection = new Map<string, string | null>();
-  for (const cat of args.categories) {
-    catToSection.set(cat.id, cat.customer_section_id);
+  const anySection = args.categories.some((c) => (c.section ?? '').trim() !== '');
+  if (!anySection) {
+    return buildCostPlusCategoriesRows(args, breakdown);
   }
 
+  const catToSection = new Map<string, string>();
+  for (const cat of args.categories) {
+    catToSection.set(cat.id, (cat.section ?? '').trim());
+  }
+
+  const sectionOrder: string[] = [];
   const bySection = new Map<string, number>();
-  let otherCents = byCat[''] ?? 0; // uncategorized always falls into Other
-  for (const [catId, amount] of Object.entries(byCat)) {
-    if (catId === '' || amount <= 0) continue;
-    const sectionId = catToSection.get(catId) ?? null;
-    if (!sectionId) {
+  let otherCents = byCat[''] ?? 0; // spend with no category → Other
+  for (const cat of args.categories) {
+    const amount = byCat[cat.id] ?? 0;
+    if (amount <= 0) continue;
+    const section = catToSection.get(cat.id) ?? '';
+    const key = section === '' ? '' : section;
+    if (key === '') {
       otherCents += amount;
       continue;
     }
-    bySection.set(sectionId, (bySection.get(sectionId) ?? 0) + amount);
+    if (!bySection.has(key)) sectionOrder.push(key);
+    bySection.set(key, (bySection.get(key) ?? 0) + amount);
   }
 
   const rows: Row[] = [];
-  for (const s of args.sections) {
-    const total = bySection.get(s.id) ?? 0;
+  for (const key of sectionOrder) {
+    const total = bySection.get(key) ?? 0;
     if (total <= 0) continue;
     rows.push({
-      title: s.name,
-      body_md: s.description_md,
+      title: key,
+      body_md: null,
       quantity: 1,
       unit_price_cents: total,
       total_cents: total,

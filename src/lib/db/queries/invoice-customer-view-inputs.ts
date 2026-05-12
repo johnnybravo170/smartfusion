@@ -13,7 +13,6 @@ import type {
   CustomerViewCategory,
   CustomerViewCostLine,
   CustomerViewCostPlusBreakdown,
-  CustomerViewSection,
 } from '@/lib/invoices/customer-view-line-items';
 import { createClient } from '@/lib/supabase/server';
 import type { CustomerViewMode } from '@/lib/validators/project-customer-view';
@@ -28,7 +27,6 @@ export type InvoiceCustomerViewInputs = {
   priorBilledCents: number;
   costLines: CustomerViewCostLine[];
   categories: CustomerViewCategory[];
-  sections: CustomerViewSection[];
   /** Populated only when isCostPlus=true. */
   costPlusBreakdown: CustomerViewCostPlusBreakdown | null;
 };
@@ -60,39 +58,29 @@ export async function loadInvoiceCustomerViewInputs(
   const isCostPlus = (project.is_cost_plus as boolean | null) !== false;
   const mgmtRate = Number((project.management_fee_rate as number | null) ?? 0.12);
 
-  const [
-    { data: costLineRows },
-    { data: categoryRows },
-    { data: sectionRows },
-    { data: priorInvoiceRows },
-  ] = await Promise.all([
-    supabase
-      .from('project_cost_lines')
-      .select('id, label, qty, unit_price_cents, line_price_cents, notes, budget_category_id')
-      .eq('project_id', projectId)
-      .gt('line_price_cents', 0)
-      .order('sort_order')
-      .order('created_at'),
-    supabase
-      .from('project_budget_categories')
-      .select('id, name, description_md, customer_section_id')
-      .eq('project_id', projectId)
-      .order('display_order')
-      .order('name'),
-    supabase
-      .from('project_customer_sections')
-      .select('id, name, description_md')
-      .eq('project_id', projectId)
-      .order('sort_order')
-      .order('created_at'),
-    supabase
-      .from('invoices')
-      .select('amount_cents')
-      .eq('project_id', projectId)
-      .neq('id', invoiceId)
-      .not('status', 'in', '("void")')
-      .is('deleted_at', null),
-  ]);
+  const [{ data: costLineRows }, { data: categoryRows }, { data: priorInvoiceRows }] =
+    await Promise.all([
+      supabase
+        .from('project_cost_lines')
+        .select('id, label, qty, unit_price_cents, line_price_cents, notes, budget_category_id')
+        .eq('project_id', projectId)
+        .gt('line_price_cents', 0)
+        .order('sort_order')
+        .order('created_at'),
+      supabase
+        .from('project_budget_categories')
+        .select('id, name, description_md, section')
+        .eq('project_id', projectId)
+        .order('display_order')
+        .order('name'),
+      supabase
+        .from('invoices')
+        .select('amount_cents')
+        .eq('project_id', projectId)
+        .neq('id', invoiceId)
+        .not('status', 'in', '("void")')
+        .is('deleted_at', null),
+    ]);
 
   const priorBilledCents = (priorInvoiceRows ?? []).reduce(
     (s, r) => s + ((r.amount_cents as number) ?? 0),
@@ -192,7 +180,6 @@ export async function loadInvoiceCustomerViewInputs(
     priorBilledCents,
     costLines: (costLineRows ?? []) as CustomerViewCostLine[],
     categories: (categoryRows ?? []) as CustomerViewCategory[],
-    sections: (sectionRows ?? []) as CustomerViewSection[],
     costPlusBreakdown,
   };
 }

@@ -13,36 +13,32 @@ import {
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
-const SECTION_BATH = { id: 'sec-bath', name: 'Bathroom', description_md: 'Main floor bath reno' };
-const SECTION_KITCHEN = {
-  id: 'sec-kitchen',
-  name: 'Kitchen',
-  description_md: null,
-};
-
+// Section labels live as a text col on project_budget_categories.section.
+// "Bathroom" and "Kitchen" are the operator's section headers (the Budget
+// tab groups categories under these labels).
 const CAT_PLUMBING = {
   id: 'cat-plumbing',
   name: 'Plumbing',
   description_md: 'Rough-in + fixtures',
-  customer_section_id: 'sec-bath',
+  section: 'Bathroom',
 };
 const CAT_TILE = {
   id: 'cat-tile',
   name: 'Tile',
   description_md: null,
-  customer_section_id: 'sec-bath',
+  section: 'Bathroom',
 };
 const CAT_CABINETS = {
   id: 'cat-cabinets',
   name: 'Cabinets',
   description_md: null,
-  customer_section_id: 'sec-kitchen',
+  section: 'Kitchen',
 };
 const CAT_UNCATEGORIZED_NO_SECTION = {
   id: 'cat-extras',
   name: 'Extras',
   description_md: null,
-  customer_section_id: null,
+  section: '',
 };
 
 const LINE_PLUMBING_ROUGHIN = {
@@ -109,7 +105,6 @@ function baseArgs(overrides: Partial<BuildCustomerViewArgs> = {}): BuildCustomer
       LINE_EXTRAS_UNSECTIONED,
     ],
     categories: [CAT_PLUMBING, CAT_TILE, CAT_CABINETS, CAT_UNCATEGORIZED_NO_SECTION],
-    sections: [SECTION_BATH, SECTION_KITCHEN],
     priorBilledCents: 0,
     mgmtRate: 0.12,
     isCostPlus: false,
@@ -219,24 +214,48 @@ describe('buildCustomerViewLineItems — fixed-price sections mode', () => {
     expect(sumTotals(items)).toBe(GRAND_SUBTOTAL);
   });
 
-  it('embeds section description_md into the description', () => {
-    const { items } = buildCustomerViewLineItems(baseArgs({ mode: 'sections' }));
-    expect(items[0].description).toBe('Bathroom — Main floor bath reno');
-  });
-
-  it('skips empty sections', () => {
+  it('falls back to per-category rows when no category has a section label', () => {
     const { items } = buildCustomerViewLineItems(
       baseArgs({
         mode: 'sections',
-        sections: [
-          SECTION_BATH,
-          SECTION_KITCHEN,
-          { id: 'sec-empty', name: 'Garage', description_md: null },
+        // Wipe section labels on every category.
+        categories: [
+          { ...CAT_PLUMBING, section: '' },
+          { ...CAT_TILE, section: '' },
+          { ...CAT_CABINETS, section: '' },
+          { ...CAT_UNCATEGORIZED_NO_SECTION, section: '' },
         ],
       }),
     );
-    const garage = items.find((i) => i.description === 'Garage');
-    expect(garage).toBeUndefined();
+    // With no section labels, sections mode degrades to the same shape
+    // as Categories mode — one row per priced category + Other + mgmt.
+    expect(items.map((i) => i.description)).toEqual([
+      'Plumbing — Rough-in + fixtures',
+      'Tile',
+      'Cabinets',
+      'Extras',
+      'Other work',
+      'Management Fee (12%)',
+    ]);
+  });
+
+  it('skips section labels that contribute no cost', () => {
+    const { items } = buildCustomerViewLineItems(
+      baseArgs({
+        mode: 'sections',
+        categories: [
+          ...baseArgs().categories,
+          // A category in a Garage section with no priced lines.
+          {
+            id: 'cat-garage',
+            name: 'Garage',
+            description_md: null,
+            section: 'Garage',
+          },
+        ],
+      }),
+    );
+    expect(items.find((i) => i.description === 'Garage')).toBeUndefined();
   });
 });
 
@@ -269,7 +288,7 @@ describe('buildCustomerViewLineItems — fixed-price categories mode', () => {
             id: 'cat-unused',
             name: 'Unused',
             description_md: null,
-            customer_section_id: null,
+            section: '',
           },
         ],
       }),
@@ -454,7 +473,6 @@ describe('buildCustomerViewLineItems — cost-plus detailed (per cost line)', ()
     isCostPlus: true,
     costLines: [LINE_TILE_PACKAGE, LINE_TILE_INSTALL, LINE_TUB, LINE_UNTOUCHED],
     categories: [],
-    sections: [],
     mgmtRate: 0.18,
     costPlusBreakdown: {
       labourCents: 600000,
@@ -577,25 +595,40 @@ describe('buildCustomerViewLineItems — cost-plus per-category modes', () => {
 // ─── Preview meta (UI-facing rich rows) ─────────────────────────────────────
 
 describe('buildCustomerViewLineItems — preview meta', () => {
-  it('returns parallel preview rows of equal length to items, totals matching', () => {
+  it('preview leaf rows match the persisted items (group headers are preview-only)', () => {
     const modes = ['lump_sum', 'sections', 'categories', 'detailed'] as const;
     for (const mode of modes) {
       const { items, preview } = buildCustomerViewLineItems(baseArgs({ mode }));
-      expect(preview).toHaveLength(items.length);
+      // Filter out group_header rows; the remaining preview rows should
+      // match items 1-for-1 by total.
+      const leafs = preview.filter((p) => p.kind !== 'group_header');
+      expect(leafs).toHaveLength(items.length);
       for (let i = 0; i < items.length; i++) {
-        expect(preview[i].total_cents).toBe(items[i].total_cents);
+        expect(leafs[i].total_cents).toBe(items[i].total_cents);
       }
     }
   });
 
-  it('detailed mode: title is the cost line label, body_md is the notes', () => {
+  it('detailed mode: emits a group_header per category, with line rows underneath', () => {
     const { preview } = buildCustomerViewLineItems(baseArgs({ mode: 'detailed' }));
     expect(preview[0]).toMatchObject({
+      kind: 'group_header',
+      title: 'Plumbing',
+      body_md: 'Rough-in + fixtures',
+    });
+    expect(preview[1]).toMatchObject({
+      kind: 'work',
       title: 'Plumbing rough-in',
       body_md: '3 fixtures',
-      kind: 'work',
     });
-    expect(preview[1]).toMatchObject({ title: 'Bathroom fixtures', body_md: null });
+    expect(preview[2]).toMatchObject({ kind: 'work', title: 'Bathroom fixtures' });
+  });
+
+  it('detailed mode: uncategorized lines roll under an "Other work" header', () => {
+    const { preview } = buildCustomerViewLineItems(baseArgs({ mode: 'detailed' }));
+    const otherHeader = preview.find((r) => r.kind === 'group_header' && r.title === 'Other work');
+    expect(otherHeader).toBeTruthy();
+    expect(otherHeader?.total_cents).toBe(80000); // Trim work, no budget_category_id
   });
 
   it('categories mode: title is the category name, body_md is description_md', () => {
@@ -604,9 +637,9 @@ describe('buildCustomerViewLineItems — preview meta', () => {
     expect(preview[1]).toMatchObject({ title: 'Tile', body_md: null });
   });
 
-  it('sections mode: title is the section name, body_md is description_md', () => {
+  it('sections mode: title is the section text-col label, no body_md', () => {
     const { preview } = buildCustomerViewLineItems(baseArgs({ mode: 'sections' }));
-    expect(preview[0]).toMatchObject({ title: 'Bathroom', body_md: 'Main floor bath reno' });
+    expect(preview[0]).toMatchObject({ title: 'Bathroom', body_md: null });
     expect(preview[1]).toMatchObject({ title: 'Kitchen', body_md: null });
   });
 
