@@ -71,11 +71,22 @@ export type CustomerViewSection = {
 };
 
 /** Cost-plus breakdown — used when isCostPlus=true. Shape mirrors
- *  `computeCostPlusBreakdown`'s output. */
+ *  `computeCostPlusBreakdown`'s output, plus an optional per-category
+ *  breakdown of the same labour + materials total so the helper can
+ *  produce sections/categories rows. */
 export type CustomerViewCostPlusBreakdown = {
   labourCents: number;
   materialsCents: number;
   mgmtFeeCents: number;
+  /**
+   * Pre-tax cost basis grouped by `budget_category_id`. Sums to
+   * labour + materials (NOT including mgmt fee — mgmt is a separate row
+   * in sections/categories modes). Key `''` (empty string) is the
+   * uncategorized bucket. Optional; required only for sections /
+   * categories modes on cost-plus. When missing or empty for those
+   * modes the helper falls back to the detailed shape.
+   */
+  byCategoryCents?: Record<string, number>;
 };
 
 export type BuildCustomerViewArgs = {
@@ -122,11 +133,14 @@ type Row = {
   kind: CustomerViewPreviewRow['kind'];
 };
 
-/** Modes available on a given project type. Cost-plus can't do sections /
- *  categories because cost-plus draws from time_entries + project_costs,
- *  not estimate sections. UI uses this to grey out unavailable radios. */
-export function availableModesFor(isCostPlus: boolean): CustomerViewMode[] {
-  return isCostPlus ? ['lump_sum', 'detailed'] : ['lump_sum', 'sections', 'categories', 'detailed'];
+/** Modes available on a given project type. Both fixed-price and cost-plus
+ *  expose all four modes now — cost-plus aggregates time_entries +
+ *  project_costs by budget_category_id (see costPlusBreakdown.byCategoryCents).
+ *  When that map is empty for a cost-plus project (no costs tagged with
+ *  a category yet), sections / categories silently fall back to the
+ *  detailed shape inside the helper. */
+export function availableModesFor(_isCostPlus: boolean): CustomerViewMode[] {
+  return ['lump_sum', 'sections', 'categories', 'detailed'];
 }
 
 export function buildCustomerViewLineItems(args: BuildCustomerViewArgs): {
@@ -333,7 +347,29 @@ function buildCostPlus(args: BuildCustomerViewArgs): Row[] {
     throw new Error('costPlusBreakdown is required when isCostPlus=true');
   }
 
-  const mode: CustomerViewMode = args.mode === 'lump_sum' ? 'lump_sum' : 'detailed';
+  // Sections / categories only work when the loader populated the
+  // per-category map. Fall back to detailed when it's missing/empty —
+  // cost-plus projects whose costs haven't been tagged with categories
+  // can't be meaningfully grouped.
+  const hasCategoryData =
+    breakdown.byCategoryCents !== undefined &&
+    Object.values(breakdown.byCategoryCents).some((v) => v > 0);
+  const mode: CustomerViewMode =
+    (args.mode === 'sections' || args.mode === 'categories') && !hasCategoryData
+      ? 'detailed'
+      : args.mode;
+
+  if (mode === 'sections') {
+    const rows = buildCostPlusSectionsRows(args, breakdown);
+    if (breakdown.mgmtFeeCents > 0) rows.push(mgmtFeeRow(args.mgmtRate, breakdown.mgmtFeeCents));
+    return rows;
+  }
+
+  if (mode === 'categories') {
+    const rows = buildCostPlusCategoriesRows(args, breakdown);
+    if (breakdown.mgmtFeeCents > 0) rows.push(mgmtFeeRow(args.mgmtRate, breakdown.mgmtFeeCents));
+    return rows;
+  }
 
   if (mode === 'lump_sum') {
     const total =
@@ -399,6 +435,86 @@ function buildCostPlus(args: BuildCustomerViewArgs): Row[] {
       unit_price_cents: breakdown.mgmtFeeCents,
       total_cents: breakdown.mgmtFeeCents,
       kind: 'mgmt_fee',
+    });
+  }
+  return rows;
+}
+
+function buildCostPlusCategoriesRows(
+  args: BuildCustomerViewArgs,
+  breakdown: CustomerViewCostPlusBreakdown,
+): Row[] {
+  const byCat = breakdown.byCategoryCents ?? {};
+  const rows: Row[] = [];
+  for (const cat of args.categories) {
+    const total = byCat[cat.id] ?? 0;
+    if (total <= 0) continue;
+    rows.push({
+      title: cat.name,
+      body_md: cat.description_md,
+      quantity: 1,
+      unit_price_cents: total,
+      total_cents: total,
+      kind: 'work',
+    });
+  }
+  const uncategorized = byCat[''] ?? 0;
+  if (uncategorized > 0) {
+    rows.push({
+      title: 'Other work',
+      body_md: null,
+      quantity: 1,
+      unit_price_cents: uncategorized,
+      total_cents: uncategorized,
+      kind: 'work',
+    });
+  }
+  return rows;
+}
+
+function buildCostPlusSectionsRows(
+  args: BuildCustomerViewArgs,
+  breakdown: CustomerViewCostPlusBreakdown,
+): Row[] {
+  const byCat = breakdown.byCategoryCents ?? {};
+  const catToSection = new Map<string, string | null>();
+  for (const cat of args.categories) {
+    catToSection.set(cat.id, cat.customer_section_id);
+  }
+
+  const bySection = new Map<string, number>();
+  let otherCents = byCat[''] ?? 0; // uncategorized always falls into Other
+  for (const [catId, amount] of Object.entries(byCat)) {
+    if (catId === '' || amount <= 0) continue;
+    const sectionId = catToSection.get(catId) ?? null;
+    if (!sectionId) {
+      otherCents += amount;
+      continue;
+    }
+    bySection.set(sectionId, (bySection.get(sectionId) ?? 0) + amount);
+  }
+
+  const rows: Row[] = [];
+  for (const s of args.sections) {
+    const total = bySection.get(s.id) ?? 0;
+    if (total <= 0) continue;
+    rows.push({
+      title: s.name,
+      body_md: s.description_md,
+      quantity: 1,
+      unit_price_cents: total,
+      total_cents: total,
+      kind: 'work',
+    });
+  }
+  if (otherCents > 0) {
+    rows.push({
+      title: 'Other work',
+      body_md: null,
+      quantity: 1,
+      unit_price_cents: otherCents,
+      total_cents: otherCents,
+      kind: 'work',
     });
   }
   return rows;
