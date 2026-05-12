@@ -13,7 +13,7 @@ import { listDecisionsForProject } from '@/lib/db/queries/project-decisions';
 import { listPhasesForProject } from '@/lib/db/queries/project-phases';
 import { ensurePortalSlug } from '@/lib/portal/slug';
 import { createClient } from '@/lib/supabase/server';
-import type { CustomerViewMode } from '@/server/actions/project-customer-view';
+import type { CustomerViewMode } from '@/lib/validators/project-customer-view';
 
 export default async function PortalTabServer({ projectId }: { projectId: string }) {
   const supabase = await createClient();

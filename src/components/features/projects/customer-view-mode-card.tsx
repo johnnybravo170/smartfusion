@@ -5,10 +5,8 @@ import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import {
-  type CustomerViewMode,
-  updateCustomerViewModeAction,
-} from '@/server/actions/project-customer-view';
+import type { CustomerViewMode } from '@/lib/validators/project-customer-view';
+import { updateCustomerViewModeAction } from '@/server/actions/project-customer-view';
 
 type Props = {
   projectId: string;

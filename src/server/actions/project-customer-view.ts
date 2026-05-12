@@ -21,14 +21,10 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
+import { customerViewModes } from '@/lib/validators/project-customer-view';
 
-export type ProjectCustomerViewResult = { ok: true } | { ok: false; error: string };
-export type ProjectCustomerViewCreateResult =
-  | { ok: true; id: string }
-  | { ok: false; error: string };
-
-export const customerViewModes = ['lump_sum', 'sections', 'categories', 'detailed'] as const;
-export type CustomerViewMode = (typeof customerViewModes)[number];
+type ProjectCustomerViewResult = { ok: true } | { ok: false; error: string };
+type ProjectCustomerViewCreateResult = { ok: true; id: string } | { ok: false; error: string };
 
 const viewModeSchema = z.object({
   projectId: z.string().uuid(),
