@@ -47,11 +47,12 @@ export const bankTransactions = pgTable(
     matchConfidence: text('match_confidence'),
 
     // FKs declared in the migration; no Drizzle reference here because
-    // some target tables (invoices, expenses, project_bills) lack
-    // first-class Drizzle schemas in this repo.
+    // the target tables (invoices, project_costs) lack first-class
+    // Drizzle schemas in this repo. matchedCostId points at
+    // project_costs(id) — the unified cost table that replaced
+    // expenses + project_bills in PR #8.
     matchedInvoiceId: uuid('matched_invoice_id'),
-    matchedExpenseId: uuid('matched_expense_id'),
-    matchedBillId: uuid('matched_bill_id'),
+    matchedCostId: uuid('matched_cost_id'),
 
     matchedBy: uuid('matched_by'),
     matchedAt: timestamp('matched_at', { withTimezone: true }),
@@ -70,8 +71,7 @@ export const bankTransactions = pgTable(
     check(
       'bank_transactions_one_match',
       sql`(CASE WHEN ${table.matchedInvoiceId} IS NOT NULL THEN 1 ELSE 0 END)
-        + (CASE WHEN ${table.matchedExpenseId} IS NOT NULL THEN 1 ELSE 0 END)
-        + (CASE WHEN ${table.matchedBillId} IS NOT NULL THEN 1 ELSE 0 END)
+        + (CASE WHEN ${table.matchedCostId} IS NOT NULL THEN 1 ELSE 0 END)
         <= 1`,
     ),
     check(
