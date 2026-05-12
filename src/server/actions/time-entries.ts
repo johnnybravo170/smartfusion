@@ -17,6 +17,10 @@ const timeEntrySchema = z.object({
   project_id: z.string().uuid().optional().or(z.literal('')),
   job_id: z.string().uuid().optional().or(z.literal('')),
   budget_category_id: z.string().uuid().optional().or(z.literal('')),
+  /** Optional cost line within the chosen budget category. When set,
+   *  the entry's labour rolls up to the line's per-line Spent column on
+   *  the Budget tab, not just the category total. */
+  cost_line_id: z.string().uuid().optional().or(z.literal('')),
   hours: z.coerce.number().positive({ message: 'Hours must be greater than 0.' }),
   // Required: without a rate the entry contributes $0 to the Budget tab's
   // "Spent by source" rollup, so it looks like no labour was logged at all.
@@ -47,6 +51,7 @@ export async function logTimeAction(input: {
   project_id?: string;
   job_id?: string;
   budget_category_id?: string;
+  cost_line_id?: string;
   hours: number;
   hourly_rate_cents: number;
   notes?: string;
@@ -87,6 +92,7 @@ export async function logTimeAction(input: {
       project_id: projectId,
       job_id: jobId,
       budget_category_id: parsed.data.budget_category_id || null,
+      cost_line_id: parsed.data.cost_line_id || null,
       hours: parsed.data.hours,
       hourly_rate_cents: parsed.data.hourly_rate_cents,
       notes: parsed.data.notes?.trim() || null,
@@ -109,6 +115,7 @@ export async function updateTimeEntryAction(input: {
   project_id?: string;
   job_id?: string;
   budget_category_id?: string;
+  cost_line_id?: string;
   hours: number;
   hourly_rate_cents: number;
   notes?: string;
@@ -135,6 +142,7 @@ export async function updateTimeEntryAction(input: {
       project_id: parsed.data.project_id || null,
       job_id: parsed.data.job_id || null,
       budget_category_id: parsed.data.budget_category_id || null,
+      cost_line_id: parsed.data.cost_line_id || null,
       hours: parsed.data.hours,
       hourly_rate_cents: parsed.data.hourly_rate_cents,
       notes: parsed.data.notes?.trim() || null,
@@ -156,12 +164,24 @@ export async function deleteTimeEntryAction(id: string): Promise<TimeEntryAction
   if (!id) return { ok: false, error: 'Missing time entry id.' };
 
   const supabase = await createClient();
-  const { error } = await supabase.from('time_entries').delete().eq('id', id);
 
+  // Fetch the entry's project/job before deleting so we can revalidate the
+  // surfaces that show this entry. Without revalidatePath the Budget tab's
+  // "Spent by source" rollup stays stale and the deleted row stays visible
+  // until the operator navigates away.
+  const { data: existing } = await supabase
+    .from('time_entries')
+    .select('project_id, job_id')
+    .eq('id', id)
+    .maybeSingle();
+
+  const { error } = await supabase.from('time_entries').delete().eq('id', id);
   if (error) {
     return { ok: false, error: error.message };
   }
 
+  if (existing?.project_id) revalidatePath(`/projects/${existing.project_id}`);
+  if (existing?.job_id) revalidatePath(`/jobs/${existing.job_id}`);
   return { ok: true, id };
 }
 
