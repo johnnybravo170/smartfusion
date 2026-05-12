@@ -141,7 +141,7 @@ export function SubQuoteUploadButton({
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl lg:max-w-4xl xl:max-w-5xl">
+        <DialogContent className="sm:max-w-2xl lg:max-w-4xl xl:max-w-5xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="size-4" /> Review vendor quote

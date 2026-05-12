@@ -597,3 +597,16 @@ Files in this family:
 Persistence convention: store the **toggle values** on the parent row (`*_view_mode`, `*_view_*_inline`), nullable, where null = "inherit from a parent default" (e.g. project's `customer_view_mode`). The materialized shape lives in its own JSONB column (`line_items`). Both are written together on Apply.
 
 When adding a new live-preview surface, mirror these five files. Don't invent a new layering — keep the three-layer separation (helper / loader / client) so the helper stays testable as a pure function.
+
+---
+
+## 26. Dialogs scroll by default — don't re-add overflow handling
+
+The base `DialogContent` and `AlertDialogContent` ship with `max-h-[90dvh] overflow-y-auto`. Long-form dialogs (multi-field intake, expense logging, project intake) scroll *inside* the dialog body on mobile instead of overflowing the viewport and clipping the primary submit button.
+
+Don't re-add `max-h-*` or `overflow-y-auto` on the caller — they're already there. Layer your own `max-w-*` / `sm:max-w-*` width caps as needed. Use `dvh` (not `vh`) anywhere a custom height cap is unavoidable, so iOS Safari's dynamic bottom chrome doesn't clip the bottom row of buttons.
+
+- `src/components/ui/dialog.tsx` — base `DialogContent`.
+- `src/components/ui/alert-dialog.tsx` — base `AlertDialogContent`.
+
+If you find yourself wanting to opt out (e.g. a dialog that should never scroll), prefer making the dialog body shorter — that's the bug.
