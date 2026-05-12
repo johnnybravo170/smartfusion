@@ -32,10 +32,11 @@ export function EstimateTermsEditor({
   snippets: EstimateSnippetRow[];
 }) {
   const [value, setValue] = useState(() => {
-    // First-time population: if the project has no terms yet, merge the
-    // tenant's default snippets into a seed body so the operator lands on
-    // something useful instead of an empty box.
-    if (initialTermsText?.trim()) return initialTermsText;
+    // First-time population ONLY when terms_text is genuinely unset (null).
+    // An empty string means the operator deleted the content on purpose —
+    // re-seeding from defaults in that case would silently undo their edit
+    // every time they reload the page.
+    if (initialTermsText !== null) return initialTermsText;
     const defaults = snippets.filter((s) => s.is_default);
     if (defaults.length === 0) return '';
     return defaults.map((s) => s.body.trim()).join('\n\n');
@@ -73,8 +74,10 @@ export function EstimateTermsEditor({
   // Mount-only: if we pre-populated from defaults, persist that seed once
   // so the customer-facing estimate isn't blank on the first render. Reads
   // the initial values off refs so the effect genuinely has no deps and
-  // only fires once.
-  const seedArgsRef = useRef({ seeded: !initialTermsText?.trim(), initialValue: value });
+  // only fires once. Gate matches the useState initializer above — only
+  // seed when terms_text is genuinely unset (null), never when the operator
+  // has explicitly emptied it.
+  const seedArgsRef = useRef({ seeded: initialTermsText === null, initialValue: value });
   useEffect(() => {
     const { seeded, initialValue } = seedArgsRef.current;
     if (seeded && initialValue.trim()) {
