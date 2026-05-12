@@ -183,31 +183,35 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         />
       ) : null}
 
-      {/* Amount breakdown */}
-      <section className="rounded-xl border bg-card p-5">
-        <div className="flex flex-col gap-2">
-          {showSubtotalRow ? (
+      {/* Amount breakdown — suppressed on drafts while the preview surface
+       *  is showing, since the preview IS the breakdown there. Sent / paid
+       *  / void invoices always show the persisted breakdown. */}
+      {!viewPreviewInputs ? (
+        <section className="rounded-xl border bg-card p-5">
+          <div className="flex flex-col gap-2">
+            {showSubtotalRow ? (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span>{formatCad(subtotalCents)}</span>
+              </div>
+            ) : null}
+            <InvoiceLineItems invoiceId={invoice.id} lineItems={lineItems} isDraft={isDraft} />
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatCad(subtotalCents)}</span>
+              <span className="text-muted-foreground">{taxLabel}</span>
+              <span>{formatCad(invoice.tax_cents)}</span>
             </div>
-          ) : null}
-          <InvoiceLineItems invoiceId={invoice.id} lineItems={lineItems} isDraft={isDraft} />
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">{taxLabel}</span>
-            <span>{formatCad(invoice.tax_cents)}</span>
-          </div>
-          <div className="border-t pt-2">
-            <div className="flex items-center justify-between text-base font-semibold">
-              <span>Total</span>
-              <span>{formatCad(totalCents)}</span>
+            <div className="border-t pt-2">
+              <div className="flex items-center justify-between text-base font-semibold">
+                <span>Total</span>
+                <span>{formatCad(totalCents)}</span>
+              </div>
             </div>
+            {regParts.length > 0 ? (
+              <p className="mt-1 text-xs text-muted-foreground">{regParts.join('  ·  ')}</p>
+            ) : null}
           </div>
-          {regParts.length > 0 ? (
-            <p className="mt-1 text-xs text-muted-foreground">{regParts.join('  ·  ')}</p>
-          ) : null}
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       {/* Customer note */}
       <InvoiceNote invoiceId={invoice.id} note={invoice.customer_note} isDraft={isDraft} />

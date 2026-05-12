@@ -12,9 +12,15 @@
  * server-side and runs the same helper — we never trust client-sent
  * line_items into the database.
  *
+ * Visual structure mirrors `portal-budget-detail.tsx`: one card per row,
+ * with the title bold on the left, the formatted total tabular-aligned on
+ * the right, and (when present) the row's markdown body rendered below
+ * with `RichTextDisplay`. The shape is intentionally familiar — operators
+ * who've seen the customer portal recognize the format.
+ *
  * Cost-plus projects: sections + categories are disabled with a tooltip
  * (those modes require estimate sections, which cost-plus projects
- * don't have a meaningful concept of).
+ * don't have a meaningful concept of in v1).
  */
 
 import { Eye } from 'lucide-react';
@@ -23,21 +29,20 @@ import { useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { RichTextDisplay } from '@/components/ui/rich-text-display';
 import {
   availableModesFor,
   buildCustomerViewLineItems,
   type CustomerViewCategory,
   type CustomerViewCostLine,
   type CustomerViewCostPlusBreakdown,
+  type CustomerViewPreviewRow,
   type CustomerViewSection,
 } from '@/lib/invoices/customer-view-line-items';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 import type { CustomerViewMode } from '@/lib/validators/project-customer-view';
 import { applyCustomerViewToInvoiceAction } from '@/server/actions/invoices';
-
-function formatCad(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 const MODE_CHOICES: Array<{ value: CustomerViewMode; label: string; hint: string }> = [
   { value: 'lump_sum', label: 'Lump sum', hint: 'One total + scope summary.' },
@@ -83,8 +88,8 @@ export function InvoiceViewModePreview({
 
   const allowedModes = useMemo(() => availableModesFor(inputs.isCostPlus), [inputs.isCostPlus]);
 
-  const previewItems = useMemo(() => {
-    const { items } = buildCustomerViewLineItems({
+  const previewRows = useMemo(() => {
+    const { preview } = buildCustomerViewLineItems({
       mode,
       mgmtFeeInline,
       projectName: inputs.projectName,
@@ -98,16 +103,15 @@ export function InvoiceViewModePreview({
       costPlusBreakdown: inputs.costPlusBreakdown ?? undefined,
       asOfDate: new Date().toISOString().slice(0, 10),
     });
-    return items;
+    return preview;
   }, [mode, mgmtFeeInline, inputs]);
 
-  const subtotalCents = previewItems.reduce((s, i) => s + i.total_cents, 0);
+  const subtotalCents = previewRows.reduce((s, r) => s + r.total_cents, 0);
   const taxCents = Math.round(subtotalCents * taxRate);
   const totalCents = subtotalCents + taxCents;
 
   // mgmt toggle only changes shape in lump_sum (per helper semantics).
-  // Outside lump_sum it's a no-op — disable the toggle with a tooltip so
-  // the operator doesn't think it's broken.
+  // Disable outside lump_sum with a tooltip so the toggle doesn't look broken.
   const mgmtToggleActive = mode === 'lump_sum';
 
   function handleApply() {
@@ -215,35 +219,24 @@ export function InvoiceViewModePreview({
         </label>
 
         {/* Live preview */}
-        <div className="rounded-lg border bg-muted/30 p-4">
+        <div>
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Preview
           </div>
-          <ul className="divide-y">
-            {previewItems.map((li) => (
-              <li
-                key={`${li.description}-${li.total_cents}`}
-                className="flex items-start justify-between gap-4 py-2"
-              >
-                <span className="text-sm">{li.description}</span>
-                <span className="whitespace-nowrap text-sm tabular-nums">
-                  {formatCad(li.total_cents)}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-3 space-y-1 border-t pt-2 text-sm">
+          <PreviewRowsList rows={previewRows} />
+
+          <div className="mt-4 space-y-1 rounded-md bg-muted/40 p-3 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Subtotal</span>
-              <span className="tabular-nums">{formatCad(subtotalCents)}</span>
+              <span className="tabular-nums">{formatCurrency(subtotalCents)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">{taxLabel}</span>
-              <span className="tabular-nums">{formatCad(taxCents)}</span>
+              <span className="tabular-nums">{formatCurrency(taxCents)}</span>
             </div>
-            <div className="flex items-center justify-between border-t pt-1 font-semibold">
+            <div className="flex items-center justify-between border-t pt-1 text-base font-semibold">
               <span>Total</span>
-              <span className="tabular-nums">{formatCad(totalCents)}</span>
+              <span className="tabular-nums">{formatCurrency(totalCents)}</span>
             </div>
           </div>
         </div>
@@ -255,5 +248,46 @@ export function InvoiceViewModePreview({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function PreviewRowsList({ rows }: { rows: CustomerViewPreviewRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+        Nothing to preview — the project has no priced cost lines yet.
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      {rows.map((r) => (
+        <PreviewRowCard key={`${r.kind}-${r.title}-${r.total_cents}`} row={r} />
+      ))}
+    </div>
+  );
+}
+
+function PreviewRowCard({ row }: { row: CustomerViewPreviewRow }) {
+  const accent =
+    row.kind === 'prior_credit'
+      ? 'border-blue-200 bg-blue-50/40 dark:border-blue-900 dark:bg-blue-950/20'
+      : row.kind === 'mgmt_fee'
+        ? 'border-muted bg-muted/30'
+        : 'border-border bg-card';
+  return (
+    <div className={cn('rounded-lg border p-3', accent)}>
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-sm font-medium">{row.title}</span>
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums">
+          {formatCurrency(row.total_cents)}
+        </span>
+      </div>
+      {row.body_md ? (
+        <div className="mt-1 text-xs text-muted-foreground">
+          <RichTextDisplay markdown={row.body_md} />
+        </div>
+      ) : null}
+    </div>
   );
 }

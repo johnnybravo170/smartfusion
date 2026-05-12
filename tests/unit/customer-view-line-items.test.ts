@@ -393,6 +393,57 @@ describe('buildCustomerViewLineItems — cost-plus', () => {
   });
 });
 
+// ─── Preview meta (UI-facing rich rows) ─────────────────────────────────────
+
+describe('buildCustomerViewLineItems — preview meta', () => {
+  it('returns parallel preview rows of equal length to items, totals matching', () => {
+    const modes = ['lump_sum', 'sections', 'categories', 'detailed'] as const;
+    for (const mode of modes) {
+      const { items, preview } = buildCustomerViewLineItems(baseArgs({ mode }));
+      expect(preview).toHaveLength(items.length);
+      for (let i = 0; i < items.length; i++) {
+        expect(preview[i].total_cents).toBe(items[i].total_cents);
+      }
+    }
+  });
+
+  it('detailed mode: title is the cost line label, body_md is the notes', () => {
+    const { preview } = buildCustomerViewLineItems(baseArgs({ mode: 'detailed' }));
+    expect(preview[0]).toMatchObject({
+      title: 'Plumbing rough-in',
+      body_md: '3 fixtures',
+      kind: 'work',
+    });
+    expect(preview[1]).toMatchObject({ title: 'Bathroom fixtures', body_md: null });
+  });
+
+  it('categories mode: title is the category name, body_md is description_md', () => {
+    const { preview } = buildCustomerViewLineItems(baseArgs({ mode: 'categories' }));
+    expect(preview[0]).toMatchObject({ title: 'Plumbing', body_md: 'Rough-in + fixtures' });
+    expect(preview[1]).toMatchObject({ title: 'Tile', body_md: null });
+  });
+
+  it('sections mode: title is the section name, body_md is description_md', () => {
+    const { preview } = buildCustomerViewLineItems(baseArgs({ mode: 'sections' }));
+    expect(preview[0]).toMatchObject({ title: 'Bathroom', body_md: 'Main floor bath reno' });
+    expect(preview[1]).toMatchObject({ title: 'Kitchen', body_md: null });
+  });
+
+  it('mgmt-fee rows are tagged kind=mgmt_fee', () => {
+    const { preview } = buildCustomerViewLineItems(baseArgs({ mode: 'detailed' }));
+    const mgmt = preview.find((r) => r.kind === 'mgmt_fee');
+    expect(mgmt?.title).toMatch(/Management fee/);
+  });
+
+  it('prior-credit rows are tagged kind=prior_credit with negative total', () => {
+    const { preview } = buildCustomerViewLineItems(
+      baseArgs({ mode: 'lump_sum', priorBilledCents: 100000 }),
+    );
+    const prior = preview.find((r) => r.kind === 'prior_credit');
+    expect(prior?.total_cents).toBe(-100000);
+  });
+});
+
 // ─── Available modes ────────────────────────────────────────────────────────
 
 describe('availableModesFor', () => {
