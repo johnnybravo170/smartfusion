@@ -67,6 +67,46 @@ export type ProjectCostBasisRollup = {
 };
 
 /**
+ * Pure aggregator — same row semantics as `computeCostPlusBreakdown`'s
+ * inputs. Split out from the DB query so the math is unit-testable
+ * without mocking Supabase. The query function is just a thin wrapper
+ * that fetches the three tables and hands rows to this.
+ */
+export function summarizeCostBasisRows(rows: {
+  timeEntries: ReadonlyArray<CostBasisTimeEntry>;
+  expenseRows: ReadonlyArray<CostBasisExpenseRow>;
+  billRows: ReadonlyArray<CostBasisBillRow>;
+}): ProjectCostBasisRollup {
+  let labourCents = 0;
+  for (const t of rows.timeEntries) {
+    labourCents += Math.round(Number(t.hours) * (t.hourly_rate_cents ?? 0));
+  }
+
+  let expensesPreTaxCents = 0;
+  let expensesGrossCents = 0;
+  for (const e of rows.expenseRows) {
+    expensesPreTaxCents += e.pre_tax_amount_cents ?? e.amount_cents;
+    expensesGrossCents += e.amount_cents;
+  }
+
+  let billsCents = 0;
+  for (const b of rows.billRows) {
+    billsCents += b.amount_cents;
+  }
+
+  return {
+    timeEntries: rows.timeEntries as CostBasisTimeEntry[],
+    expenseRows: rows.expenseRows as CostBasisExpenseRow[],
+    billRows: rows.billRows as CostBasisBillRow[],
+    labourCents,
+    expensesPreTaxCents,
+    expensesGrossCents,
+    billsCents,
+    invoiceCostBasisCents: labourCents + expensesPreTaxCents + billsCents,
+  };
+}
+
+/**
  * Pull all cost rows for a project and return them alongside the
  * pre-tax cost-basis aggregate the cost-plus invoice math will produce.
  *
@@ -91,35 +131,9 @@ export async function getProjectCostBasisRollup(
     supabase.from('project_bills').select('amount_cents, gst_cents').eq('project_id', projectId),
   ]);
 
-  const timeEntries = (timeRes.data ?? []) as CostBasisTimeEntry[];
-  const expenseRows = (expenseRes.data ?? []) as CostBasisExpenseRow[];
-  const billRows = (billsRes.data ?? []) as CostBasisBillRow[];
-
-  let labourCents = 0;
-  for (const t of timeEntries) {
-    labourCents += Math.round(Number(t.hours) * (t.hourly_rate_cents ?? 0));
-  }
-
-  let expensesPreTaxCents = 0;
-  let expensesGrossCents = 0;
-  for (const e of expenseRows) {
-    expensesPreTaxCents += e.pre_tax_amount_cents ?? e.amount_cents;
-    expensesGrossCents += e.amount_cents;
-  }
-
-  let billsCents = 0;
-  for (const b of billRows) {
-    billsCents += b.amount_cents;
-  }
-
-  return {
-    timeEntries,
-    expenseRows,
-    billRows,
-    labourCents,
-    expensesPreTaxCents,
-    expensesGrossCents,
-    billsCents,
-    invoiceCostBasisCents: labourCents + expensesPreTaxCents + billsCents,
-  };
+  return summarizeCostBasisRows({
+    timeEntries: (timeRes.data ?? []) as CostBasisTimeEntry[],
+    expenseRows: (expenseRes.data ?? []) as CostBasisExpenseRow[],
+    billRows: (billsRes.data ?? []) as CostBasisBillRow[],
+  });
 }
