@@ -13,6 +13,7 @@ import { IntakeAccelerator } from '@/components/features/projects/intake-acceler
 import {
   ProjectForm,
   type ProjectFormCustomerOption,
+  type ProjectFormDefaults,
   type ProjectFormSuggestions,
 } from '@/components/features/projects/project-form';
 import type { ParsedIntake } from '@/lib/ai/intake-prompt';
@@ -22,9 +23,11 @@ import type { ProjectActionResult } from '@/server/actions/projects';
 export function NewProjectFormSurface({
   customers,
   action,
+  defaults,
 }: {
   customers: ProjectFormCustomerOption[];
   action: (input: ProjectInput & { id?: string }) => Promise<ProjectActionResult>;
+  defaults?: ProjectFormDefaults;
 }) {
   const [suggestions, setSuggestions] = useState<ProjectFormSuggestions | undefined>(undefined);
 
@@ -55,6 +58,7 @@ export function NewProjectFormSurface({
       <ProjectForm
         mode="create"
         customers={customers}
+        defaults={defaults}
         action={action}
         suggestions={suggestions}
         onUnmatchedCustomer={handleUnmatchedCustomer}
