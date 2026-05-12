@@ -202,6 +202,9 @@ export default async function PortalPage({
     has_draws: false,
     customer_contract_total_cents: 0,
     tax_label: '',
+    customer_view_mode: 'detailed',
+    customer_summary_md: null,
+    sections: [],
   };
 
   let galleryPhotos: PortalGalleryPhoto[] = [];

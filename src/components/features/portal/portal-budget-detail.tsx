@@ -1,18 +1,30 @@
 /**
- * Customer-facing per-bucket budget breakdown on the portal.
+ * Customer-facing budget breakdown on the portal.
  *
- * Server component — receives a pre-computed `PortalBudgetSummary` and
- * renders one card per visible bucket plus a project-level rollup at
- * the bottom. The rollup pairs "Spent so far" against "Paid by you" on
- * a shared scale so the contractor's out-of-pocket position is visually
- * obvious without needing a separate Payments section.
+ * Renders one of four layouts based on `summary.customer_view_mode`:
  *
- * Visibility-gating happens upstream in the page; this component just
- * renders. Operator opts in per-tenant (default off) with optional
- * per-project override. See `shouldShowPortalBudget`.
+ *   lump_sum  → headline contract total + (optional) scope summary.
+ *               No per-bucket list, no "spent so far" — variance is
+ *               suppressed (decision 73775c8e in ops).
+ *   sections  → customer-facing groupings (defined per-project). No
+ *               per-bucket variance. Falls back to `categories` mode
+ *               when no sections are defined.
+ *   categories → current per-bucket list with spent/total bars (the
+ *               operator's "show variance" default for cost-plus jobs).
+ *   detailed  → same as categories today; per-line breakdown is a
+ *               follow-up (schema already supports `description_md`
+ *               on cost lines).
+ *
+ * Visibility gating happens upstream via `shouldShowPortalBudget`. This
+ * component only renders; it doesn't decide whether to render.
  */
 
-import type { PortalBudgetSummary } from '@/lib/db/queries/portal-budget';
+import { RichTextDisplay } from '@/components/ui/rich-text-display';
+import type {
+  PortalBudgetCategory,
+  PortalBudgetSection,
+  PortalBudgetSummary,
+} from '@/lib/db/queries/portal-budget';
 
 const cadFormat = new Intl.NumberFormat('en-CA', {
   style: 'currency',
@@ -30,63 +42,116 @@ function pct(spent: number, total: number): number {
 }
 
 export function PortalBudgetDetail({ summary }: { summary: PortalBudgetSummary }) {
-  if (summary.categories.length === 0 && summary.project_total_cents === 0) {
-    return null;
-  }
+  const mode = summary.customer_view_mode;
+  const hasAnyData = summary.categories.length > 0 || summary.project_total_cents > 0;
+  if (!hasAnyData) return null;
+
+  // Fall back to `categories` when sections mode is selected but no
+  // sections have been defined yet — avoids an empty section list.
+  const effectiveMode = mode === 'sections' && summary.sections.length === 0 ? 'categories' : mode;
 
   return (
     <div className="mb-8">
       <h2 className="mb-3 text-sm font-semibold">Where the budget stands</h2>
 
-      {/* Project-level rollup first — gives the customer the headline
-          number before they scan the per-bucket details. */}
-      <ProjectRollup summary={summary} />
-
-      {summary.categories.length > 0 ? (
-        <div className="mt-3 space-y-2">
-          {summary.categories.map((cat) => {
-            const p = pct(cat.spent_cents, cat.total_cents);
-            const over = cat.spent_cents > cat.total_cents;
-            return (
-              <div key={cat.id} className="rounded-lg border p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium">{cat.name}</span>
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {formatCents(cat.spent_cents)} of {formatCents(cat.total_cents)}
-                  </span>
-                </div>
-                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                  <div
-                    className={`h-2 rounded-full transition-all ${
-                      over ? 'bg-amber-500' : 'bg-emerald-500'
-                    }`}
-                    style={{ width: `${Math.min(100, p)}%` }}
-                  />
-                </div>
-                <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>{p}% used</span>
-                  {over ? <span className="font-medium text-amber-700">Over budget</span> : null}
-                </div>
-              </div>
-            );
-          })}
+      {summary.customer_summary_md ? (
+        <div className="mb-4 rounded-lg border border-muted bg-muted/30 p-4">
+          <RichTextDisplay markdown={summary.customer_summary_md} />
         </div>
       ) : null}
+
+      {/* Project-level rollup — variance shown only in categories/detailed. */}
+      <ProjectRollup
+        summary={summary}
+        showVariance={effectiveMode === 'categories' || effectiveMode === 'detailed'}
+      />
+
+      {
+        effectiveMode === 'sections' ? (
+          <SectionsList sections={summary.sections} />
+        ) : effectiveMode === 'categories' || effectiveMode === 'detailed' ? (
+          <CategoriesList categories={summary.categories} />
+        ) : null /* lump_sum: nothing further */
+      }
+    </div>
+  );
+}
+
+function CategoriesList({ categories }: { categories: PortalBudgetCategory[] }) {
+  if (categories.length === 0) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      {categories.map((cat) => {
+        const p = pct(cat.spent_cents, cat.total_cents);
+        const over = cat.spent_cents > cat.total_cents;
+        return (
+          <div key={cat.id} className="rounded-lg border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium">{cat.name}</span>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {formatCents(cat.spent_cents)} of {formatCents(cat.total_cents)}
+              </span>
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+              <div
+                className={`h-2 rounded-full transition-all ${
+                  over ? 'bg-amber-500' : 'bg-emerald-500'
+                }`}
+                style={{ width: `${Math.min(100, p)}%` }}
+              />
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>{p}% used</span>
+              {over ? <span className="font-medium text-amber-700">Over budget</span> : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SectionsList({ sections }: { sections: PortalBudgetSection[] }) {
+  if (sections.length === 0) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      {sections.map((s) => (
+        <div key={s.id} className="rounded-lg border p-4">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold">{s.name}</span>
+            <span className="text-sm font-semibold tabular-nums">{formatCents(s.total_cents)}</span>
+          </div>
+          {s.description_md ? (
+            <div className="mt-2 text-muted-foreground">
+              <RichTextDisplay markdown={s.description_md} />
+            </div>
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }
 
 /**
- * Combined project-level view: spent-against-budget on top, paid-by-customer
- * on the same horizontal scale so the gap between them is visually obvious
- * without doing the math. Out-of-pocket sentence appears only when the
- * contractor has spent more than they've collected.
+ * Combined project-level rollup. When `showVariance`:
+ *   - Spent-against-budget bar on top
+ *   - Paid-by-customer bar on the same scale below
  *
- * Both bars share the project_total_cents budget as their full-width
- * reference, so the spent bar at 105% reads as visibly over and the paid
- * bar at 60% reads as visibly shorter.
+ * When variance is suppressed (lump_sum / sections):
+ *   - Headline contract total only (no "Spent so far")
+ *   - Paid bar still shown if there have been draws
+ *
+ * The customer-facing contract-total footnote (cost basis grossed up by
+ * mgmt fee + tax) always renders when it differs from the cost-basis
+ * total, since that's the number the homeowner actually pays.
  */
-function ProjectRollup({ summary }: { summary: PortalBudgetSummary }) {
+function ProjectRollup({
+  summary,
+  showVariance,
+}: {
+  summary: PortalBudgetSummary;
+  showVariance: boolean;
+}) {
   const total = summary.project_total_cents;
   const spent = summary.project_spent_cents;
   const paid = summary.draws_paid_cents;
@@ -95,37 +160,48 @@ function ProjectRollup({ summary }: { summary: PortalBudgetSummary }) {
   const paidPct = pct(paid, total);
   const spentOver = spent > total;
 
+  const showSpentBar = showVariance && total > 0;
+  const accent =
+    showSpentBar && spentOver ? 'border-amber-300 bg-amber-50' : 'border-primary/30 bg-primary/5';
+
   return (
-    <div
-      className={`rounded-lg border p-4 shadow-sm ${
-        spentOver ? 'border-amber-300 bg-amber-50' : 'border-primary/30 bg-primary/5'
-      }`}
-    >
-      {/* Spent bar */}
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-semibold">Spent so far</span>
-        <span className="text-sm font-semibold tabular-nums">
-          {formatCents(spent)} of {formatCents(total)}{' '}
-          <span className="text-xs font-normal text-muted-foreground">(incl. change orders)</span>
-        </span>
-      </div>
-      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-        <div
-          className={`h-2 rounded-full transition-all ${
-            spentOver ? 'bg-amber-500' : 'bg-emerald-500'
-          }`}
-          style={{ width: `${Math.min(100, spentPct)}%` }}
-        />
-      </div>
-      <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>{spentPct}% of budget</span>
-        {spentOver ? <span className="font-medium text-amber-700">Over budget</span> : null}
-      </div>
+    <div className={`rounded-lg border p-4 shadow-sm ${accent}`}>
+      {showSpentBar ? (
+        <>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold">Spent so far</span>
+            <span className="text-sm font-semibold tabular-nums">
+              {formatCents(spent)} of {formatCents(total)}{' '}
+              <span className="text-xs font-normal text-muted-foreground">
+                (incl. change orders)
+              </span>
+            </span>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div
+              className={`h-2 rounded-full transition-all ${
+                spentOver ? 'bg-amber-500' : 'bg-emerald-500'
+              }`}
+              style={{ width: `${Math.min(100, spentPct)}%` }}
+            />
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>{spentPct}% of budget</span>
+            {spentOver ? <span className="font-medium text-amber-700">Over budget</span> : null}
+          </div>
+        </>
+      ) : (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-semibold">Project total</span>
+          <span className="text-sm font-semibold tabular-nums">{formatCents(total)}</span>
+        </div>
+      )}
 
       {summary.has_draws ? (
         <>
-          {/* Paid bar — same scale as spent so the visual gap reads correctly. */}
-          <div className="mt-4 flex items-center justify-between gap-3">
+          <div
+            className={`${showSpentBar ? 'mt-4' : 'mt-3'} flex items-center justify-between gap-3`}
+          >
             <span className="text-sm font-semibold">What you’ve paid</span>
             <span className="text-sm font-semibold tabular-nums">{formatCents(paid)}</span>
           </div>
