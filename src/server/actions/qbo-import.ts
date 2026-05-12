@@ -131,3 +131,41 @@ export async function fetchImportJobAction(jobId: string): Promise<FetchImportJo
   }
   return { ok: true, job };
 }
+
+export type CancelImportJobResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Request cancellation of an in-flight import. The worker checks job
+ * status between pages and bails gracefully when it sees 'cancelled'.
+ * Already-imported rows stay in place — use the rollback flow if the
+ * user wants to undo as well.
+ */
+export async function cancelQboImportAction(jobId: string): Promise<CancelImportJobResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+
+  const job = await loadImportJob(jobId);
+  if (!job) return { ok: false, error: 'Import job not found.' };
+  if (job.tenant_id !== tenant.id) {
+    return { ok: false, error: 'Import job belongs to a different account.' };
+  }
+  if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+    return { ok: false, error: `Job is already ${job.status}.` };
+  }
+
+  const supabase = createAdminClient();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('qbo_import_jobs')
+    .update({
+      status: 'cancelled',
+      finished_at: now,
+      updated_at: now,
+    })
+    .eq('id', jobId);
+  if (error) return { ok: false, error: `Failed to cancel: ${error.message}` };
+
+  revalidatePath('/settings');
+  revalidatePath('/settings/qbo-history');
+  return { ok: true };
+}

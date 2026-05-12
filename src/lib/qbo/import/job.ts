@@ -227,6 +227,23 @@ export async function setBatchIdForEntity(
 }
 
 /**
+ * Cheap status poll. Used by the worker between pages to detect
+ * user-initiated cancellation. One-column read; expected latency
+ * sub-ms in practice — over a 240s import that's <100ms of DB time
+ * even at 1000 pages per second (we run at ~1 page per second).
+ */
+export async function getJobStatus(jobId: string): Promise<ImportJobRow['status'] | null> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from('qbo_import_jobs')
+    .select('status')
+    .eq('id', jobId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data.status as ImportJobRow['status'];
+}
+
+/**
  * Save the resume cursor for a specific entity. Called by the worker
  * after each page is processed so cron resume can skip already-done
  * pages.

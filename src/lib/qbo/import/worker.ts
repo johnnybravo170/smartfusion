@@ -39,6 +39,7 @@ import { importInvoicePage, loadInvoiceImportContext } from './invoices';
 import { importItemPage, loadItemImportContext } from './items';
 import {
   bumpJobProgress,
+  getJobStatus,
   loadImportJob,
   markJobCompleted,
   markJobFailed,
@@ -65,7 +66,7 @@ export type RunImportInput = {
 
 export type RunImportResult = {
   ok: boolean;
-  status: 'completed' | 'queued' | 'failed';
+  status: 'completed' | 'queued' | 'failed' | 'cancelled';
   error?: string;
 };
 
@@ -93,6 +94,24 @@ export async function runImport(input: RunImportInput): Promise<RunImportResult>
 
   await markJobRunning(jobId);
 
+  // Cancellation-aware shouldStop: returns true if the time budget
+  // expired OR the user flagged the job 'cancelled' via the UI.
+  // Cancellation polled lazily — we re-check at most once per
+  // POLL_CANCEL_INTERVAL_MS to avoid hammering the DB between
+  // tight-loop page fetches.
+  const POLL_CANCEL_INTERVAL_MS = 3_000;
+  let lastCancelCheck = 0;
+  let cancelObserved = false;
+  async function refreshCancelFlag(): Promise<void> {
+    if (cancelObserved) return;
+    const now = Date.now();
+    if (now - lastCancelCheck < POLL_CANCEL_INTERVAL_MS) return;
+    lastCancelCheck = now;
+    const status = await getJobStatus(jobId);
+    if (status === 'cancelled') cancelObserved = true;
+  }
+  const shouldStopOrCancel = (): boolean => cancelObserved || Date.now() >= deadline;
+
   try {
     // Resume from current_entity if set; otherwise start at the head
     // of requested_entities.
@@ -102,14 +121,29 @@ export async function runImport(input: RunImportInput): Promise<RunImportResult>
 
     for (let i = startIdx; i < input.requestedEntities.length; i++) {
       const entity = input.requestedEntities[i];
-      if (shouldStop()) {
+      await refreshCancelFlag();
+      if (cancelObserved) {
+        // User cancelled — leave the row in 'cancelled' (already set by the
+        // server action) and return without touching status.
+        return { ok: true, status: 'cancelled' };
+      }
+      if (Date.now() >= deadline) {
         await pauseJobForResume(jobId, entity);
         return { ok: true, status: 'queued' };
       }
       try {
         const cursor =
           (job.entity_cursors as Partial<Record<QboImportEntity, number>>)[entity] ?? 1;
-        const ranToCompletion = await runEntityImport(entity, input, cursor, shouldStop);
+        const ranToCompletion = await runEntityImport(
+          entity,
+          input,
+          cursor,
+          shouldStopOrCancel,
+          refreshCancelFlag,
+        );
+        if (cancelObserved) {
+          return { ok: true, status: 'cancelled' };
+        }
         if (!ranToCompletion) {
           // Budget exceeded mid-entity. Stay on this entity; cron resumes here.
           await pauseJobForResume(jobId, entity);
@@ -149,12 +183,13 @@ async function runEntityImport(
   input: RunImportInput,
   startPosition: number,
   shouldStop: () => boolean,
+  refreshCancel: () => Promise<void>,
 ): Promise<boolean> {
   const { tenantId, jobId, dateRangeFrom } = input;
 
   // Helper: every entity uses the same iterator wiring; only the
   // entity name + per-page processor differ. Returns true if we
-  // exhausted the entity, false if we bailed on budget.
+  // exhausted the entity, false if we bailed on budget or cancel.
   async function runEntity<T>(
     qboEntity: string,
     where: string | undefined,
@@ -180,6 +215,9 @@ async function runEntityImport(
       },
     })) {
       await processPage(page);
+      // Poll for cancellation between pages so a long entity (10k
+      // invoices) doesn't ignore the user clicking cancel.
+      await refreshCancel();
       if (shouldStop()) {
         bailed = true;
         break;

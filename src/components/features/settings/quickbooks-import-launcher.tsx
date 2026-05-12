@@ -11,7 +11,7 @@
  * for live progress while it's running.
  */
 
-import { Loader2, PlayCircle } from 'lucide-react';
+import { Loader2, PlayCircle, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -26,7 +26,11 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { fetchImportJobAction, startQboImportAction } from '@/server/actions/qbo-import';
+import {
+  cancelQboImportAction,
+  fetchImportJobAction,
+  startQboImportAction,
+} from '@/server/actions/qbo-import';
 
 type EntityCounters = {
   fetched: number;
@@ -76,10 +80,28 @@ function emptyCounters(): EntityCounters {
 
 export function QuickBooksImportLauncher() {
   const [isPending, startTransition] = useTransition();
+  const [isCancelling, startCancelTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [job, setJob] = useState<JobSnapshot | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function handleCancel() {
+    if (!activeJobId) return;
+    startCancelTransition(async () => {
+      const result = await cancelQboImportAction(activeJobId);
+      if (result.ok) {
+        toast.success('Import cancelled.');
+        // Refresh job snapshot so UI reflects the new state quickly;
+        // the worker may still be mid-page when we set 'cancelled',
+        // so the polling loop continues until the worker finishes.
+        const refreshed = await fetchImportJobAction(activeJobId);
+        if (refreshed.ok) setJob(refreshed.job as JobSnapshot);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
 
   const isRunning = job?.status === 'queued' || job?.status === 'running';
 
@@ -242,9 +264,27 @@ export function QuickBooksImportLauncher() {
                 'Cancelled'
               )}
             </span>
-            <span className="text-xs text-muted-foreground">
-              {job.api_calls_used} API call{job.api_calls_used === 1 ? '' : 's'}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">
+                {job.api_calls_used} API call{job.api_calls_used === 1 ? '' : 's'}
+              </span>
+              {(job.status === 'running' || job.status === 'queued') && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                  onClick={handleCancel}
+                  disabled={isCancelling}
+                >
+                  {isCancelling ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <XCircle className="size-3.5" />
+                  )}
+                  Cancel
+                </Button>
+              )}
+            </div>
           </div>
           <div className="mt-2 space-y-1 text-xs">
             {ENTITY_ORDER.map((key) => {
