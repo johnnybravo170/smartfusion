@@ -1,15 +1,17 @@
 /**
- * Per-line spend rollup. Reads time entries, expenses, bills, and PO
- * line items that have been attached to a specific cost_line_id, and
- * aggregates them into a small summary + the transaction list.
+ * Per-line spend rollup. Reads time entries, project costs, and PO line
+ * items attached to a specific cost_line_id, and aggregates them into a
+ * small summary + the transaction list.
  *
- * Migration 0166 added `cost_line_id` (nullable) to time_entries,
- * expenses, and project_bills. PO line items already had it. So the
- * data model now supports line-level drill on every spend type.
- *
- * Existing rows have NULL cost_line_id (only attached at the category
- * level). Going forward, operators can assign a line when categorising
- * a new bill/expense/time entry — the form-side UX is a separate card.
+ * As of the cost-unification rollout, expenses + project_bills are read
+ * from the unified `project_costs` table via the `source_type`
+ * discriminator. Variance math is intentionally **byte-identical** to
+ * the pre-unification implementation: receipts use the gross
+ * `amount_cents`, vendor bills use `pre_tax_amount_cents` (which the
+ * backfill copies verbatim from `project_bills.amount_cents`, the
+ * pre-GST subtotal). The legacy implementation mixed these semantics;
+ * unifying them is deferred to the UI-unification PR so this swap
+ * doesn't shift any existing variance numbers.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -45,26 +47,48 @@ const EMPTY: CostLineActualsSummary = {
   rows: [],
 };
 
+type CostRow = {
+  id: string;
+  source_type: 'receipt' | 'vendor_bill';
+  amount_cents: number;
+  pre_tax_amount_cents: number | null;
+  cost_date: string;
+  vendor: string | null;
+  description: string | null;
+  cost_line_id?: string;
+};
+
+/**
+ * Variance amount per row, matching pre-unification semantics:
+ * receipts = gross `amount_cents`; vendor bills = `pre_tax_amount_cents`
+ * (pre-GST) with a safe fallback to `amount_cents` for legacy rows that
+ * predate migration 0083's GST split.
+ */
+function effectiveAmount(
+  r: Pick<CostRow, 'source_type' | 'amount_cents' | 'pre_tax_amount_cents'>,
+): number {
+  if (r.source_type === 'vendor_bill') {
+    return r.pre_tax_amount_cents ?? r.amount_cents;
+  }
+  return r.amount_cents;
+}
+
 export async function getCostLineActuals(costLineId: string): Promise<CostLineActualsSummary> {
   if (!costLineId) return EMPTY;
   const admin = createAdminClient();
 
-  const [timeRes, expensesRes, billsRes, poItemsRes] = await Promise.all([
+  const [timeRes, costRes, poItemsRes] = await Promise.all([
     admin
       .from('time_entries')
       .select('id, hours, hourly_rate_cents, entry_date, notes, user_id')
       .eq('cost_line_id', costLineId)
       .order('entry_date', { ascending: false }),
     admin
-      .from('expenses')
-      .select('id, amount_cents, expense_date, vendor, description')
+      .from('project_costs')
+      .select('id, source_type, amount_cents, pre_tax_amount_cents, cost_date, vendor, description')
       .eq('cost_line_id', costLineId)
-      .order('expense_date', { ascending: false }),
-    admin
-      .from('project_bills')
-      .select('id, amount_cents, bill_date, vendor, notes')
-      .eq('cost_line_id', costLineId)
-      .order('bill_date', { ascending: false }),
+      .eq('status', 'active')
+      .order('cost_date', { ascending: false }),
     admin
       .from('purchase_order_items')
       .select(
@@ -82,20 +106,6 @@ export async function getCostLineActuals(costLineId: string): Promise<CostLineAc
     notes: string | null;
     user_id: string | null;
   };
-  type ExpenseRow = {
-    id: string;
-    amount_cents: number;
-    expense_date: string;
-    vendor: string | null;
-    description: string | null;
-  };
-  type BillRow = {
-    id: string;
-    amount_cents: number;
-    bill_date: string;
-    vendor: string | null;
-    notes: string | null;
-  };
   type PoItemRow = {
     id: string;
     label: string | null;
@@ -110,8 +120,7 @@ export async function getCostLineActuals(costLineId: string): Promise<CostLineAc
   };
 
   const timeRows = (timeRes.data ?? []) as TimeRow[];
-  const expenseRows = (expensesRes.data ?? []) as ExpenseRow[];
-  const billRows = (billsRes.data ?? []) as BillRow[];
+  const costRows = (costRes.data ?? []) as CostRow[];
   const poItemRows = (poItemsRes.data ?? []) as PoItemRow[];
 
   const rows: CostLineActualsRow[] = [];
@@ -133,29 +142,30 @@ export async function getCostLineActuals(costLineId: string): Promise<CostLineAc
   }
 
   let expensesCents = 0;
-  for (const e of expenseRows) {
-    expensesCents += e.amount_cents;
-    rows.push({
-      kind: 'expense',
-      id: e.id,
-      label: e.vendor ?? 'Expense',
-      sublabel: e.description ?? null,
-      amount_cents: e.amount_cents,
-      occurred_at: e.expense_date,
-    });
-  }
-
   let billsCents = 0;
-  for (const b of billRows) {
-    billsCents += b.amount_cents;
-    rows.push({
-      kind: 'bill',
-      id: b.id,
-      label: b.vendor ?? 'Bill',
-      sublabel: b.notes ?? null,
-      amount_cents: b.amount_cents,
-      occurred_at: b.bill_date,
-    });
+  for (const c of costRows) {
+    const amount = effectiveAmount(c);
+    if (c.source_type === 'vendor_bill') {
+      billsCents += amount;
+      rows.push({
+        kind: 'bill',
+        id: c.id,
+        label: c.vendor ?? 'Bill',
+        sublabel: c.description ?? null,
+        amount_cents: amount,
+        occurred_at: c.cost_date,
+      });
+    } else {
+      expensesCents += amount;
+      rows.push({
+        kind: 'expense',
+        id: c.id,
+        label: c.vendor ?? 'Expense',
+        sublabel: c.description ?? null,
+        amount_cents: amount,
+        occurred_at: c.cost_date,
+      });
+    }
   }
 
   let poCents = 0;
@@ -199,7 +209,7 @@ export async function getCostLineActualsByProject(
   if (!projectId) return result;
   const admin = createAdminClient();
 
-  const [timeRes, expensesRes, billsRes, poItemsRes] = await Promise.all([
+  const [timeRes, costRes, poItemsRes] = await Promise.all([
     admin
       .from('time_entries')
       .select('id, hours, hourly_rate_cents, entry_date, notes, cost_line_id')
@@ -207,17 +217,14 @@ export async function getCostLineActualsByProject(
       .not('cost_line_id', 'is', null)
       .order('entry_date', { ascending: false }),
     admin
-      .from('expenses')
-      .select('id, amount_cents, expense_date, vendor, description, cost_line_id')
+      .from('project_costs')
+      .select(
+        'id, source_type, amount_cents, pre_tax_amount_cents, cost_date, vendor, description, cost_line_id',
+      )
       .eq('project_id', projectId)
+      .eq('status', 'active')
       .not('cost_line_id', 'is', null)
-      .order('expense_date', { ascending: false }),
-    admin
-      .from('project_bills')
-      .select('id, amount_cents, bill_date, vendor, notes, cost_line_id')
-      .eq('project_id', projectId)
-      .not('cost_line_id', 'is', null)
-      .order('bill_date', { ascending: false }),
+      .order('cost_date', { ascending: false }),
     admin
       .from('purchase_order_items')
       .select(
@@ -269,46 +276,32 @@ export async function getCostLineActualsByProject(
     });
   }
 
-  for (const e of (expensesRes.data ?? []) as Array<{
-    id: string;
-    amount_cents: number;
-    expense_date: string;
-    vendor: string | null;
-    description: string | null;
-    cost_line_id: string;
-  }>) {
-    const s = bucket(e.cost_line_id);
-    s.expenses_cents += e.amount_cents;
-    s.total_cents += e.amount_cents;
-    s.rows.push({
-      kind: 'expense',
-      id: e.id,
-      label: e.vendor ?? 'Expense',
-      sublabel: e.description ?? null,
-      amount_cents: e.amount_cents,
-      occurred_at: e.expense_date,
-    });
-  }
-
-  for (const b of (billsRes.data ?? []) as Array<{
-    id: string;
-    amount_cents: number;
-    bill_date: string;
-    vendor: string | null;
-    notes: string | null;
-    cost_line_id: string;
-  }>) {
-    const s = bucket(b.cost_line_id);
-    s.bills_cents += b.amount_cents;
-    s.total_cents += b.amount_cents;
-    s.rows.push({
-      kind: 'bill',
-      id: b.id,
-      label: b.vendor ?? 'Bill',
-      sublabel: b.notes ?? null,
-      amount_cents: b.amount_cents,
-      occurred_at: b.bill_date,
-    });
+  for (const c of (costRes.data ?? []) as Array<CostRow & { cost_line_id: string }>) {
+    const s = bucket(c.cost_line_id);
+    const amount = effectiveAmount(c);
+    if (c.source_type === 'vendor_bill') {
+      s.bills_cents += amount;
+      s.total_cents += amount;
+      s.rows.push({
+        kind: 'bill',
+        id: c.id,
+        label: c.vendor ?? 'Bill',
+        sublabel: c.description ?? null,
+        amount_cents: amount,
+        occurred_at: c.cost_date,
+      });
+    } else {
+      s.expenses_cents += amount;
+      s.total_cents += amount;
+      s.rows.push({
+        kind: 'expense',
+        id: c.id,
+        label: c.vendor ?? 'Expense',
+        sublabel: c.description ?? null,
+        amount_cents: amount,
+        occurred_at: c.cost_date,
+      });
+    }
   }
 
   for (const p of (poItemsRes.data ?? []) as Array<{
