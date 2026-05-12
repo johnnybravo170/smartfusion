@@ -93,7 +93,7 @@ async function tryMintOpenAI(
           audio: {
             input: {
               format: { type: 'audio/pcm', rate: 24000 },
-              transcription: { model: 'gpt-4o-transcribe' },
+              transcription: { model: 'gpt-4o-transcribe', language: 'en' },
               turn_detection: {
                 type: 'server_vad',
                 threshold: 0.5,
