@@ -62,8 +62,7 @@ export async function getPortalBudgetSummary(
   const [
     { data: categories },
     { data: timeData },
-    { data: expenseData },
-    { data: billData },
+    { data: costData },
     { data: costLineData },
     { data: cos },
     drawsResult,
@@ -79,11 +78,17 @@ export async function getPortalBudgetSummary(
       .from('time_entries')
       .select('budget_category_id, hours, hourly_rate_cents')
       .eq('project_id', projectId),
-    admin.from('expenses').select('budget_category_id, amount_cents').eq('project_id', projectId),
+    // Receipts + bills come from project_costs (cost-unification rollout).
+    // Variance math is preserved byte-identical: receipts use the gross
+    // amount_cents, vendor bills use pre_tax_amount_cents (the backfill
+    // copied it verbatim from the legacy project_bills.amount_cents
+    // pre-GST subtotal). Settling on a single convention is deferred to
+    // the UI-unification PR so portal numbers don't shift here.
     admin
-      .from('project_bills')
-      .select('budget_category_id, amount_cents')
-      .eq('project_id', projectId),
+      .from('project_costs')
+      .select('budget_category_id, source_type, amount_cents, pre_tax_amount_cents')
+      .eq('project_id', projectId)
+      .eq('status', 'active'),
     admin
       .from('project_cost_lines')
       .select('budget_category_id, line_price_cents')
@@ -125,8 +130,17 @@ export async function getPortalBudgetSummary(
     const rate = (r.hourly_rate_cents as number) ?? 0;
     return Math.round(hours * rate);
   });
-  const expense = sumByCategory(expenseData, (r) => (r.amount_cents as number) ?? 0);
-  const bills = sumByCategory(billData, (r) => (r.amount_cents as number) ?? 0);
+  // Split project_costs into receipts (gross) and vendor bills
+  // (pre-GST) so per-bucket variance numbers match the legacy
+  // implementation byte-for-byte (see query comment above).
+  const expense = sumByCategory(
+    (costData ?? []).filter((r) => (r as { source_type?: string }).source_type !== 'vendor_bill'),
+    (r) => (r.amount_cents as number) ?? 0,
+  );
+  const bills = sumByCategory(
+    (costData ?? []).filter((r) => (r as { source_type?: string }).source_type === 'vendor_bill'),
+    (r) => (r.pre_tax_amount_cents as number | null) ?? (r.amount_cents as number) ?? 0,
+  );
   const lines = sumByCategory(costLineData, (r) => (r.line_price_cents as number) ?? 0);
 
   // Approved CO impact, both per-bucket (when cost_breakdown references a
