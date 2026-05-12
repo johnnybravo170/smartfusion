@@ -145,7 +145,7 @@ describe('buildCustomerViewLineItems — fixed-price detailed mode', () => {
       total_cents: 150000,
     });
     expect(items[6]).toEqual({
-      description: 'Management fee (12%)',
+      description: 'Management Fee (12%)',
       quantity: 1,
       unit_price_cents: MGMT_FEE,
       total_cents: MGMT_FEE,
@@ -166,7 +166,7 @@ describe('buildCustomerViewLineItems — fixed-price lump_sum mode', () => {
       unit_price_cents: TOTAL_COST_LINES,
       total_cents: TOTAL_COST_LINES,
     });
-    expect(items[1].description).toBe('Management fee (12%)');
+    expect(items[1].description).toBe('Management Fee (12%)');
     expect(sumTotals(items)).toBe(GRAND_SUBTOTAL);
   });
 
@@ -207,7 +207,7 @@ describe('buildCustomerViewLineItems — fixed-price sections mode', () => {
     expect(descriptions[0]).toMatch(/^Bathroom/);
     expect(descriptions[1]).toBe('Kitchen');
     expect(descriptions[2]).toBe('Other work');
-    expect(descriptions[3]).toBe('Management fee (12%)');
+    expect(descriptions[3]).toBe('Management Fee (12%)');
 
     // Bathroom: plumbing roughin + fixtures + tile = 250 + 150 + 320 = 720k
     expect(items[0].total_cents).toBe(250000 + 150000 + 320000);
@@ -254,7 +254,7 @@ describe('buildCustomerViewLineItems — fixed-price categories mode', () => {
     expect(items[3]).toMatchObject({ description: 'Extras', total_cents: 30000 });
     // 80k line has no budget_category_id → rolls into Other work
     expect(items[4]).toMatchObject({ description: 'Other work', total_cents: 80000 });
-    expect(items[5].description).toBe('Management fee (12%)');
+    expect(items[5].description).toBe('Management Fee (12%)');
 
     expect(sumTotals(items)).toBe(GRAND_SUBTOTAL);
   });
@@ -394,6 +394,94 @@ describe('buildCustomerViewLineItems — cost-plus', () => {
   });
 });
 
+// ─── Cost-plus per-entry detailed mode ──────────────────────────────────────
+
+describe('buildCustomerViewLineItems — cost-plus detailed entries', () => {
+  const CP_LABOUR = 60000 + 80000; // 6h × $100 + 8h × $100
+  const CP_MATERIALS = 18900 + 32000; // two receipts
+  const CP_MGMT = Math.round((CP_LABOUR + CP_MATERIALS) * 0.18);
+  const CP_GRAND = CP_LABOUR + CP_MATERIALS + CP_MGMT;
+
+  const COST_PLUS_ENTRIES = baseArgs({
+    isCostPlus: true,
+    costLines: [],
+    mgmtRate: 0.18,
+    costPlusBreakdown: {
+      labourCents: CP_LABOUR,
+      materialsCents: CP_MATERIALS,
+      mgmtFeeCents: CP_MGMT,
+      detailedEntries: [
+        {
+          kind: 'labour',
+          title: 'Labour — Mar 11, 2026',
+          body_md: '6h × $100.00/hr · Demo prep',
+          total_cents: 60000,
+          date: '2026-03-11',
+        },
+        {
+          kind: 'material',
+          title: 'Home Depot',
+          body_md: 'Demo supplies · Mar 13, 2026',
+          total_cents: 18900,
+          date: '2026-03-13',
+        },
+        {
+          kind: 'labour',
+          title: 'Labour — Mar 15, 2026',
+          body_md: '8h × $100.00/hr',
+          total_cents: 80000,
+          date: '2026-03-15',
+        },
+        {
+          kind: 'material',
+          title: 'Roof Centre',
+          body_md: 'Shingles · Mar 21, 2026',
+          total_cents: 32000,
+          date: '2026-03-21',
+        },
+      ],
+    },
+  });
+
+  it('detailed mode lists every entry, preserving caller-supplied order', () => {
+    const { preview } = buildCustomerViewLineItems({ ...COST_PLUS_ENTRIES, mode: 'detailed' });
+    // 4 entries + 1 mgmt fee row
+    expect(preview).toHaveLength(5);
+    expect(preview[0].title).toBe('Labour — Mar 11, 2026');
+    expect(preview[1].title).toBe('Home Depot');
+    expect(preview[2].title).toBe('Labour — Mar 15, 2026');
+    expect(preview[3].title).toBe('Roof Centre');
+    expect(preview[4].kind).toBe('mgmt_fee');
+    expect(
+      sumTotals(buildCustomerViewLineItems({ ...COST_PLUS_ENTRIES, mode: 'detailed' }).items),
+    ).toBe(CP_GRAND);
+  });
+
+  it('detailed mode renders entry body_md as the row body', () => {
+    const { preview } = buildCustomerViewLineItems({ ...COST_PLUS_ENTRIES, mode: 'detailed' });
+    expect(preview[0].body_md).toBe('6h × $100.00/hr · Demo prep');
+    expect(preview[1].body_md).toBe('Demo supplies · Mar 13, 2026');
+  });
+
+  it('falls back to lumped Labour / Materials / Mgmt when detailedEntries is empty', () => {
+    const { preview } = buildCustomerViewLineItems({
+      ...COST_PLUS_ENTRIES,
+      mode: 'detailed',
+      costPlusBreakdown: {
+        labourCents: CP_LABOUR,
+        materialsCents: CP_MATERIALS,
+        mgmtFeeCents: CP_MGMT,
+        detailedEntries: [],
+      },
+    });
+    expect(preview.map((r) => r.title)).toEqual([
+      'Labour',
+      'Materials & Expenses',
+      'Management Fee (18%)',
+    ]);
+  });
+});
+
 // ─── Cost-plus sections / categories ────────────────────────────────────────
 
 describe('buildCustomerViewLineItems — cost-plus per-category modes', () => {
@@ -496,7 +584,7 @@ describe('buildCustomerViewLineItems — preview meta', () => {
   it('mgmt-fee rows are tagged kind=mgmt_fee', () => {
     const { preview } = buildCustomerViewLineItems(baseArgs({ mode: 'detailed' }));
     const mgmt = preview.find((r) => r.kind === 'mgmt_fee');
-    expect(mgmt?.title).toMatch(/Management fee/);
+    expect(mgmt?.title).toMatch(/Management Fee/);
   });
 
   it('prior-credit rows are tagged kind=prior_credit with negative total', () => {
