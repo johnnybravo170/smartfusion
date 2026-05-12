@@ -30,6 +30,7 @@ export type InvoiceRow = {
   id: string;
   tenant_id: string;
   job_id: string;
+  project_id: string | null;
   customer_id: string;
   status: InvoiceStatus;
   amount_cents: number;
@@ -71,7 +72,7 @@ export type InvoiceListFilters = {
 };
 
 const INVOICE_COLUMNS =
-  'id, tenant_id, job_id, customer_id, status, amount_cents, tax_cents, tax_inclusive, doc_type, stripe_invoice_id, stripe_payment_intent_id, pdf_url, sent_at, paid_at, payment_method, payment_reference, payment_notes, payment_receipt_paths, customer_note, line_items, payment_instructions_override, terms_override, policies_override, created_at, updated_at, deleted_at';
+  'id, tenant_id, job_id, project_id, customer_id, status, amount_cents, tax_cents, tax_inclusive, doc_type, stripe_invoice_id, stripe_payment_intent_id, pdf_url, sent_at, paid_at, payment_method, payment_reference, payment_notes, payment_receipt_paths, customer_note, line_items, payment_instructions_override, terms_override, policies_override, created_at, updated_at, deleted_at';
 
 /**
  * Re-export of the pure `invoiceTotalCents` helper.

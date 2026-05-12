@@ -1291,28 +1291,15 @@ export async function generateFinalInvoiceAction(input: {
   // operator intent explicit. Migration 0209 backfills existing rows
   // to TRUE (matches Jonathan's all-cost-plus reality).
   const { getVarianceReport } = await import('@/lib/db/queries/cost-lines');
+  const { getProjectCostBasisRollup } = await import('@/lib/db/queries/project-cost-basis');
 
-  const [variance, timeRes, expenseRes, billsRes, priorInvoicesRes] = await Promise.all([
+  const [variance, rollup, priorInvoicesRes] = await Promise.all([
     getVarianceReport(input.projectId),
-    supabase
-      .from('time_entries')
-      .select('hours, hourly_rate_cents')
-      .eq('project_id', input.projectId),
-    supabase
-      .from('expenses')
-      .select('amount_cents, pre_tax_amount_cents')
-      .eq('project_id', input.projectId),
-    // project_bills (vendor/sub invoices, OCR'd from inbound-email or manual
-    // entry) are a separate cost-entry path from `expenses` but feed the same
-    // budget rollup. Cost-plus must bill them too, or sub-heavy renovations
-    // silently lose the mgmt fee on $10–100K of subcontractor cost.
-    // `amount_cents` here is pre-GST (migration 0083); GST is tracked
-    // separately and reclaimed as an ITC, so it's not part of the cost basis.
-    // No status filter: enum is pending|approved|paid with no void state.
-    supabase
-      .from('project_bills')
-      .select('amount_cents, gst_cents')
-      .eq('project_id', input.projectId),
+    // Centralized cost-basis rollup: queries time_entries, expenses, and
+    // project_bills. When a new cost source is added later, wire it in
+    // here once — both the action below and the drift banner on the
+    // draft-invoice page read from this single helper.
+    getProjectCostBasisRollup(input.projectId),
     supabase
       .from('invoices')
       .select('amount_cents')
@@ -1321,21 +1308,12 @@ export async function generateFinalInvoiceAction(input: {
       .is('deleted_at', null),
   ]);
 
-  const timeEntries = (timeRes.data ?? []) as { hours: number; hourly_rate_cents: number | null }[];
-  const expenseRows = (expenseRes.data ?? []) as {
-    amount_cents: number;
-    pre_tax_amount_cents: number | null;
-  }[];
-  const billRows = (billsRes.data ?? []) as {
-    amount_cents: number;
-    gst_cents: number;
-  }[];
   // Bills' amount_cents is pre-GST, so map straight into pre_tax_amount_cents;
   // the gross is amount_cents + gst_cents (only consulted by the legacy null-
   // pre_tax fallback in computeCostPlusBreakdown, which won't fire for bills).
   const expenses = [
-    ...expenseRows,
-    ...billRows.map((b) => ({
+    ...rollup.expenseRows,
+    ...rollup.billRows.map((b) => ({
       amount_cents: b.amount_cents + b.gst_cents,
       pre_tax_amount_cents: b.amount_cents,
     })),
@@ -1357,6 +1335,7 @@ export async function generateFinalInvoiceAction(input: {
   }
 
   const lineItems: InvoiceLineItem[] = [];
+  let driftWarning: string | undefined;
 
   if (!isCostPlus) {
     // Fixed-price job: itemize the priced cost lines + mgmt fee, then
@@ -1413,11 +1392,26 @@ export async function generateFinalInvoiceAction(input: {
     // the full subtotal — preventing the GST-on-GST trap.
     // See `computeCostPlusBreakdown` for the math + Mike's worked example.
     const breakdown = computeCostPlusBreakdown({
-      timeEntries,
+      timeEntries: rollup.timeEntries,
       expenses,
       priorInvoices,
       mgmtRate,
     });
+
+    // Reconciliation guardrail: the helper's view of the cost basis
+    // (read straight from time_entries + expenses + project_bills)
+    // should byte-match what `computeCostPlusBreakdown` produces for
+    // `labour + materials`. If they ever diverge it means the
+    // breakdown's math has drifted from the helper's queries (or
+    // vice versa) — surface a warning so the operator can spot-
+    // check before sending. Threshold is $1 to absorb any rounding
+    // we don't control. See c617fad for the kind of silent miss
+    // this is meant to make loud.
+    const breakdownCostBasis = breakdown.labourCents + breakdown.materialsCents;
+    const drift = breakdownCostBasis - rollup.invoiceCostBasisCents;
+    if (Math.abs(drift) > 100) {
+      driftWarning = `Cost-basis check: invoice billing $${(breakdownCostBasis / 100).toFixed(2)} but raw cost rollup shows $${(rollup.invoiceCostBasisCents / 100).toFixed(2)} (Δ $${(Math.abs(drift) / 100).toFixed(2)}). Possible missing cost source or math drift — review the draft before sending.`;
+    }
 
     if (breakdown.labourCents > 0) {
       lineItems.push({
@@ -1501,7 +1495,7 @@ export async function generateFinalInvoiceAction(input: {
 
   revalidatePath(`/projects/${input.projectId}`);
   revalidatePath('/invoices');
-  return { ok: true, id: data.id as string };
+  return { ok: true, id: data.id as string, warning: driftWarning };
 }
 
 /**
