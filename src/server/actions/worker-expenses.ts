@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { requireWorker } from '@/lib/auth/helpers';
+import { safeMirrorExpense, safeUnmirrorCost } from '@/lib/db/project-costs-shim';
 import { getDefaultPaymentSourceId } from '@/lib/db/queries/payment-sources';
 import { isWorkerAssignedToProject } from '@/lib/db/queries/project-assignments';
 import { getOrCreateWorkerProfile } from '@/lib/db/queries/worker-profiles';
@@ -137,6 +138,8 @@ export async function logWorkerExpenseAction(formData: FormData): Promise<Worker
     return { ok: false, error: error?.message ?? 'Failed to log expense.' };
   }
 
+  await safeMirrorExpense(admin, data.id);
+
   revalidatePath('/w/expenses');
   revalidatePath('/w');
   revalidatePath(`/projects/${parsed.data.project_id}`);
@@ -166,6 +169,8 @@ export async function deleteWorkerExpenseAction(id: string): Promise<WorkerExpen
 
   const { error } = await admin.from('expenses').delete().eq('id', id);
   if (error) return { ok: false, error: error.message };
+
+  await safeUnmirrorCost(admin, id);
 
   if (row.receipt_storage_path) {
     await admin.storage.from(RECEIPTS_BUCKET).remove([row.receipt_storage_path as string]);

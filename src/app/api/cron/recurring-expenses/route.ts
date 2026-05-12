@@ -14,6 +14,7 @@
  * prevents double-creation if the cron runs twice on the same day.
  */
 
+import { safeMirrorExpense } from '@/lib/db/project-costs-shim';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -109,24 +110,29 @@ export async function GET() {
     }
     if (!userId) continue; // defensive — nobody to attribute to
 
-    const { error: insErr } = await admin.from('expenses').insert({
-      tenant_id: tenantId,
-      user_id: userId,
-      project_id: null,
-      budget_category_id: null,
-      job_id: null,
-      category_id: rule.category_id as string | null,
-      recurring_rule_id: rule.id as string,
-      amount_cents: rule.amount_cents as number,
-      tax_cents: (rule.tax_cents as number) ?? 0,
-      vendor: (rule.vendor as string | null) ?? null,
-      description: (rule.description as string | null) ?? null,
-      expense_date: runDate,
-    });
-    if (insErr) {
+    const { data: insertedRecurring, error: insErr } = await admin
+      .from('expenses')
+      .insert({
+        tenant_id: tenantId,
+        user_id: userId,
+        project_id: null,
+        budget_category_id: null,
+        job_id: null,
+        category_id: rule.category_id as string | null,
+        recurring_rule_id: rule.id as string,
+        amount_cents: rule.amount_cents as number,
+        tax_cents: (rule.tax_cents as number) ?? 0,
+        vendor: (rule.vendor as string | null) ?? null,
+        description: (rule.description as string | null) ?? null,
+        expense_date: runDate,
+      })
+      .select('id')
+      .single();
+    if (insErr || !insertedRecurring) {
       // Don't advance on error — we want to retry tomorrow.
       continue;
     }
+    await safeMirrorExpense(admin, insertedRecurring.id as string);
     created++;
 
     await admin

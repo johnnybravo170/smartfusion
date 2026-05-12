@@ -22,6 +22,12 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
+import {
+  safeMirrorExpense,
+  safeMirrorExpenses,
+  safeUnmirrorCost,
+  safeUnmirrorCosts,
+} from '@/lib/db/project-costs-shim';
 import { listPaymentSources, type PaymentSourceNetwork } from '@/lib/db/queries/payment-sources';
 import { createAdminClient } from '@/lib/supabase/admin';
 
@@ -289,6 +295,8 @@ export async function logOverheadExpenseAction(formData: FormData): Promise<Over
     }
     return { ok: false, error: error?.message ?? 'Failed to log expense.' };
   }
+
+  await safeMirrorExpense(admin, data.id as string);
 
   revalidatePath('/expenses');
   return { ok: true, id: data.id as string };
@@ -735,6 +743,8 @@ export async function updateOverheadExpenseAction(
   const { error: updErr } = await admin.from('expenses').update(patch).eq('id', id);
   if (updErr) return { ok: false, error: updErr.message };
 
+  await safeMirrorExpense(admin, id);
+
   // Clean up the old receipt file if we replaced or removed it. Best-
   // effort — if the delete fails we still return success; orphaned files
   // can be swept later.
@@ -826,6 +836,8 @@ export async function bulkRecategorizeExpensesAction(input: {
     .in('id', allowedIds);
   if (error) return { ok: false, error: error.message };
 
+  await safeMirrorExpenses(admin, allowedIds);
+
   revalidatePath('/expenses');
   revalidatePath('/bk/expenses');
   return { ok: true, updated: allowedIds.length };
@@ -906,6 +918,8 @@ export async function bulkSetPaymentSourceAction(input: {
     .in('id', ids);
   if (error) return { ok: false, error: error.message };
 
+  await safeMirrorExpenses(admin, ids);
+
   revalidatePath('/expenses');
   revalidatePath('/bk/expenses');
   return { ok: true, updated: ids.length };
@@ -957,6 +971,8 @@ export async function bulkDeleteExpensesAction(input: {
   const { error } = await admin.from('expenses').delete().in('id', idsToDelete);
   if (error) return { ok: false, error: error.message };
 
+  await safeUnmirrorCosts(admin, idsToDelete);
+
   if (receiptPaths.length > 0) {
     await admin.storage
       .from(RECEIPTS_BUCKET)
@@ -992,6 +1008,8 @@ export async function deleteOverheadExpenseAction(
 
   const { error } = await admin.from('expenses').delete().eq('id', id);
   if (error) return { ok: false, error: error.message };
+
+  await safeUnmirrorCost(admin, id);
 
   if (data.receipt_storage_path) {
     await admin.storage
