@@ -87,28 +87,36 @@ export function QuickBooksImportLauncher() {
 
   const handleStart = useCallback(() => {
     startTransition(async () => {
-      const result = await startQboImportAction({ entities: ['Customer'] });
+      // Customer must precede Invoice so invoice import can resolve
+      // customer_id from the just-imported round-trip map. Items are
+      // independent and can run in any position.
+      const result = await startQboImportAction({
+        entities: ['Customer', 'Item', 'Invoice'],
+      });
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
       setActiveJobId(result.jobId);
-      // The action ran synchronously to completion; pull final state.
       const final = await fetchImportJobAction(result.jobId);
       if (final.ok) {
         setJob(final.job as JobSnapshot);
-        const customer =
-          (final.job.entity_counters as Record<string, EntityCounters | undefined>)?.Customer ??
-          emptyCounters();
+        const counters =
+          (final.job.entity_counters as Record<string, EntityCounters | undefined>) ?? {};
+        const totalImported =
+          (counters.Customer?.imported ?? 0) +
+          (counters.Item?.imported ?? 0) +
+          (counters.Invoice?.imported ?? 0);
+        const totalReview = (final.job.review_queue as unknown[] | undefined)?.length ?? 0;
         if (final.job.status === 'completed') {
-          if (customer.imported > 0) {
+          if (totalImported > 0) {
             toast.success(
-              `Imported ${customer.imported} customer${customer.imported === 1 ? '' : 's'}${
-                customer.skipped > 0 ? ` · ${customer.skipped} need review` : ''
+              `Imported ${totalImported} record${totalImported === 1 ? '' : 's'}${
+                totalReview > 0 ? ` · ${totalReview} need review` : ''
               }.`,
             );
           } else {
-            toast.info('No new customers to import.');
+            toast.info('Nothing new to import.');
           }
         } else if (final.job.status === 'failed') {
           toast.error(final.job.error_message ?? 'Import failed.');
@@ -119,6 +127,9 @@ export function QuickBooksImportLauncher() {
 
   const customerCounts =
     (job?.entity_counters?.Customer as EntityCounters | undefined) ?? emptyCounters();
+  const itemCounts = (job?.entity_counters?.Item as EntityCounters | undefined) ?? emptyCounters();
+  const invoiceCounts =
+    (job?.entity_counters?.Invoice as EntityCounters | undefined) ?? emptyCounters();
   const reviewCount = job?.review_queue?.length ?? 0;
 
   return (
@@ -139,9 +150,10 @@ export function QuickBooksImportLauncher() {
           <DialogHeader>
             <DialogTitle>Import from QuickBooks</DialogTitle>
             <DialogDescription>
-              Phase 1: customers. We&rsquo;ll pull every customer from your QuickBooks company and
-              match them against contacts you already have in HeyHenry. Strong matches (same email
-              or phone) auto-merge; weaker matches go to a review queue for you to confirm.
+              We&rsquo;ll pull customers, pricebook items, and invoices from your QuickBooks
+              company. Strong customer matches (same email or phone) auto-merge with your existing
+              HH contacts; weaker matches go to a review queue. Item and invoice de-dup is keyed on
+              the QBO id, so re-running is safe.
             </DialogDescription>
           </DialogHeader>
 
@@ -149,9 +161,13 @@ export function QuickBooksImportLauncher() {
             <Label className="font-medium">What gets imported in this pass</Label>
             <ul className="space-y-1 pl-4 text-muted-foreground">
               <li>• Customers (name, email, phone, billing address)</li>
+              <li>• Pricebook items (services, parts, T&amp;M placeholders)</li>
+              <li>
+                • Invoices (header + line items, status, amount, tax) — historical money math stays
+                frozen at the QBO value
+              </li>
               <li className="text-xs">
-                Vendors, items, invoices, payments, estimates, bills, and expenses land in follow-up
-                releases.
+                Vendors, payments, estimates, bills, and expenses land in follow-up releases.
               </li>
             </ul>
           </div>
@@ -195,28 +211,22 @@ export function QuickBooksImportLauncher() {
               {job.api_calls_used} API call{job.api_calls_used === 1 ? '' : 's'}
             </span>
           </div>
-          <dl className="mt-2 grid grid-cols-4 gap-2 text-xs">
-            <div className="flex flex-col rounded bg-background p-2">
-              <dt className="text-muted-foreground">Fetched</dt>
-              <dd className="font-mono">{customerCounts.fetched}</dd>
-            </div>
-            <div className="flex flex-col rounded bg-background p-2">
-              <dt className="text-muted-foreground">Imported</dt>
-              <dd className="font-mono">{customerCounts.imported}</dd>
-            </div>
-            <div className="flex flex-col rounded bg-background p-2">
-              <dt className="text-muted-foreground">To review</dt>
-              <dd className="font-mono">{customerCounts.skipped}</dd>
-            </div>
-            <div className="flex flex-col rounded bg-background p-2">
-              <dt className="text-muted-foreground">Failed</dt>
-              <dd className="font-mono">{customerCounts.failed}</dd>
-            </div>
-          </dl>
+          <div className="mt-2 space-y-1 text-xs">
+            <EntityRow label="Customers" counts={customerCounts} />
+            <EntityRow label="Items" counts={itemCounts} />
+            <EntityRow label="Invoices" counts={invoiceCounts} />
+          </div>
           {reviewCount > 0 && job.status === 'completed' && (
             <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
               {reviewCount} customer{reviewCount === 1 ? '' : 's'} need
               {reviewCount === 1 ? 's' : ''} your review — resolution UI lands in the next release.
+            </p>
+          )}
+          {invoiceCounts.skipped > 0 && job.status === 'completed' && (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+              {invoiceCounts.skipped} invoice{invoiceCounts.skipped === 1 ? '' : 's'} skipped —
+              their QBO customer wasn&rsquo;t imported. Resolve customers in the review queue, then
+              re-run the import.
             </p>
           )}
           {job.error_message && (
@@ -226,6 +236,32 @@ export function QuickBooksImportLauncher() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function EntityRow({ label, counts }: { label: string; counts: EntityCounters }) {
+  return (
+    <div className="grid grid-cols-[1fr_repeat(4,minmax(0,50px))] items-baseline gap-2 rounded bg-background px-2 py-1.5 tabular-nums">
+      <span className="font-medium">{label}</span>
+      <span className="text-right text-muted-foreground" title="Fetched">
+        {counts.fetched}
+      </span>
+      <span className="text-right" title="Imported">
+        {counts.imported}
+      </span>
+      <span
+        className={`text-right ${counts.skipped > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
+        title="Skipped / needs review"
+      >
+        {counts.skipped}
+      </span>
+      <span
+        className={`text-right ${counts.failed > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
+        title="Failed"
+      >
+        {counts.failed}
+      </span>
     </div>
   );
 }

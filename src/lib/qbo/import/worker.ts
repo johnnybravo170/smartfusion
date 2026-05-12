@@ -12,8 +12,10 @@
 
 import { qboQueryAll } from '@/lib/qbo/client';
 import { loadConnection } from '@/lib/qbo/tokens';
-import type { QboCustomer } from '@/lib/qbo/types';
+import type { QboCustomer, QboInvoice, QboItem } from '@/lib/qbo/types';
 import { importCustomerPage, loadCustomerImportContext } from './customers';
+import { importInvoicePage, loadInvoiceImportContext } from './invoices';
+import { importItemPage, loadItemImportContext } from './items';
 import {
   bumpJobProgress,
   markJobCompleted,
@@ -81,7 +83,6 @@ async function runEntityImport(entity: QboImportEntity, input: RunImportInput): 
     case 'Customer': {
       const ctx = await loadCustomerImportContext(tenantId, jobId);
       let apiCalls = 0;
-      // Optional date filter — QBO's WHERE syntax: MetaData.LastUpdatedTime >= 'ISO'.
       const where = dateRangeFrom
         ? `MetaData.LastUpdatedTime >= '${new Date(dateRangeFrom).toISOString()}'`
         : undefined;
@@ -93,15 +94,46 @@ async function runEntityImport(entity: QboImportEntity, input: RunImportInput): 
       })) {
         await importCustomerPage(ctx, page);
       }
-      // Bump api_calls_used once at the end of the entity rather than
-      // per page to keep update chatter low.
-      if (apiCalls > 0) {
-        await bumpJobProgress(jobId, entity, {}, apiCalls);
-      }
+      if (apiCalls > 0) await bumpJobProgress(jobId, entity, {}, apiCalls);
       return;
     }
-    // Vendor / Item / Invoice / Payment / Estimate / Bill / Purchase
-    // land in follow-up PRs.
+
+    case 'Item': {
+      const ctx = await loadItemImportContext(tenantId, jobId);
+      let apiCalls = 0;
+      // No date filter for items — pricebook is small and infrequently
+      // touched; pulling them all every time is cheap.
+      for await (const page of qboQueryAll<QboItem>(tenantId, 'Item', {
+        onApiCall: () => {
+          apiCalls += 1;
+        },
+      })) {
+        await importItemPage(ctx, page);
+      }
+      if (apiCalls > 0) await bumpJobProgress(jobId, entity, {}, apiCalls);
+      return;
+    }
+
+    case 'Invoice': {
+      const ctx = await loadInvoiceImportContext(tenantId, jobId);
+      let apiCalls = 0;
+      // Date filter on TxnDate (transaction date) — what the user
+      // actually means by "last 2 years" is the invoice date, not the
+      // last-touched timestamp.
+      const where = dateRangeFrom ? `TxnDate >= '${dateRangeFrom}'` : undefined;
+      for await (const page of qboQueryAll<QboInvoice>(tenantId, 'Invoice', {
+        where,
+        onApiCall: () => {
+          apiCalls += 1;
+        },
+      })) {
+        await importInvoicePage(ctx, page);
+      }
+      if (apiCalls > 0) await bumpJobProgress(jobId, entity, {}, apiCalls);
+      return;
+    }
+
+    // Vendor / Payment / Estimate / Bill / Purchase land in 4c.
     default:
       throw new Error(`Entity import not implemented yet: ${entity}`);
   }
