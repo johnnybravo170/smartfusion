@@ -372,7 +372,8 @@ describe('buildCustomerViewLineItems — cost-plus', () => {
     expect(sumTotals(items)).toBe(CP_TOTAL);
   });
 
-  it('sections/categories silently fall back to detailed for cost-plus', () => {
+  it('sections/categories silently fall back to detailed when byCategoryCents is empty', () => {
+    // No byCategoryCents on the breakdown → fall back to detailed shape.
     const detailedTotal = sumTotals(
       buildCustomerViewLineItems({ ...COST_PLUS, mode: 'detailed' }).items,
     );
@@ -390,6 +391,69 @@ describe('buildCustomerViewLineItems — cost-plus', () => {
     expect(() =>
       buildCustomerViewLineItems({ ...COST_PLUS, costPlusBreakdown: undefined, mode: 'lump_sum' }),
     ).toThrow(/costPlusBreakdown is required/);
+  });
+});
+
+// ─── Cost-plus sections / categories ────────────────────────────────────────
+
+describe('buildCustomerViewLineItems — cost-plus per-category modes', () => {
+  // Same labour+materials total as the lumped breakdown, but split across
+  // categories: Plumbing $300k, Tile $150k, Cabinets $200k, uncategorized $80k.
+  // Mgmt fee at 12% = round((300+150+200+80)k × 0.12) = 87600.
+  const CP_LABOUR_PLUS_MATERIALS = 300000 + 150000 + 200000 + 80000;
+  const CP_MGMT = Math.round(CP_LABOUR_PLUS_MATERIALS * 0.12);
+  const CP_GRAND = CP_LABOUR_PLUS_MATERIALS + CP_MGMT;
+
+  const COST_PLUS_BY_CAT = baseArgs({
+    isCostPlus: true,
+    costLines: [],
+    costPlusBreakdown: {
+      labourCents: 300000 + 150000, // doesn't matter for sections/categories — only the map is used
+      materialsCents: 200000 + 80000,
+      mgmtFeeCents: CP_MGMT,
+      byCategoryCents: {
+        'cat-plumbing': 300000,
+        'cat-tile': 150000,
+        'cat-cabinets': 200000,
+        '': 80000, // uncategorized
+      },
+    },
+    asOfDate: '2026-05-12',
+  });
+
+  it('categories mode produces one row per priced category + Other + mgmt fee', () => {
+    const { preview } = buildCustomerViewLineItems({ ...COST_PLUS_BY_CAT, mode: 'categories' });
+    expect(preview[0]).toMatchObject({ title: 'Plumbing', total_cents: 300000 });
+    expect(preview[1]).toMatchObject({ title: 'Tile', total_cents: 150000 });
+    expect(preview[2]).toMatchObject({ title: 'Cabinets', total_cents: 200000 });
+    expect(preview[3]).toMatchObject({ title: 'Other work', total_cents: 80000 });
+    expect(preview[4]).toMatchObject({ kind: 'mgmt_fee' });
+    expect(
+      sumTotals(buildCustomerViewLineItems({ ...COST_PLUS_BY_CAT, mode: 'categories' }).items),
+    ).toBe(CP_GRAND);
+  });
+
+  it('sections mode groups categories by their customer_section_id + mgmt fee', () => {
+    const { preview } = buildCustomerViewLineItems({ ...COST_PLUS_BY_CAT, mode: 'sections' });
+    // Bathroom = Plumbing 300k + Tile 150k = 450k
+    expect(preview[0]).toMatchObject({ title: 'Bathroom', total_cents: 450000 });
+    // Kitchen = Cabinets 200k
+    expect(preview[1]).toMatchObject({ title: 'Kitchen', total_cents: 200000 });
+    // Other = uncategorized 80k
+    expect(preview[2]).toMatchObject({ title: 'Other work', total_cents: 80000 });
+    // Mgmt fee row last
+    expect(preview[3]).toMatchObject({ kind: 'mgmt_fee' });
+    expect(
+      sumTotals(buildCustomerViewLineItems({ ...COST_PLUS_BY_CAT, mode: 'sections' }).items),
+    ).toBe(CP_GRAND);
+  });
+
+  it('subtotal stays invariant across all four cost-plus modes when byCategoryCents is set', () => {
+    const modes = ['lump_sum', 'sections', 'categories', 'detailed'] as const;
+    for (const mode of modes) {
+      const total = sumTotals(buildCustomerViewLineItems({ ...COST_PLUS_BY_CAT, mode }).items);
+      expect(total).toBe(CP_GRAND);
+    }
   });
 });
 
@@ -451,7 +515,7 @@ describe('availableModesFor', () => {
     expect(availableModesFor(false)).toEqual(['lump_sum', 'sections', 'categories', 'detailed']);
   });
 
-  it('returns only lump_sum + detailed for cost-plus', () => {
-    expect(availableModesFor(true)).toEqual(['lump_sum', 'detailed']);
+  it('returns all four modes for cost-plus too (helper handles empty-data fallback)', () => {
+    expect(availableModesFor(true)).toEqual(['lump_sum', 'sections', 'categories', 'detailed']);
   });
 });

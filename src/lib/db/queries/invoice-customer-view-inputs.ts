@@ -116,10 +116,53 @@ export async function loadInvoiceCustomerViewInputs(
       priorInvoices: [],
       mgmtRate,
     });
+
+    // Per-category aggregation for sections / categories modes. Sums to
+    // labour + materials (mgmt fee stays as a separate row, not distributed).
+    // Empty-string key is the uncategorized bucket — both for time entries
+    // and cost rows with null budget_category_id.
+    const byCategoryCents: Record<string, number> = {};
+    const [timeCatRes, costCatRes] = await Promise.all([
+      supabase
+        .from('time_entries')
+        .select('budget_category_id, hours, hourly_rate_cents')
+        .eq('project_id', projectId),
+      supabase
+        .from('project_costs')
+        .select('budget_category_id, source_type, amount_cents, pre_tax_amount_cents')
+        .eq('project_id', projectId)
+        .eq('status', 'active'),
+    ]);
+    for (const t of (timeCatRes.data ?? []) as {
+      budget_category_id: string | null;
+      hours: number;
+      hourly_rate_cents: number | null;
+    }[]) {
+      const cents = Math.round(Number(t.hours) * (t.hourly_rate_cents ?? 0));
+      if (cents <= 0) continue;
+      const key = t.budget_category_id ?? '';
+      byCategoryCents[key] = (byCategoryCents[key] ?? 0) + cents;
+    }
+    for (const c of (costCatRes.data ?? []) as {
+      budget_category_id: string | null;
+      source_type: 'receipt' | 'vendor_bill';
+      amount_cents: number;
+      pre_tax_amount_cents: number | null;
+    }[]) {
+      // Pre-tax cost basis for both receipts and bills. Mirrors how
+      // computeCostPlusBreakdown bills materials — see cost-plus-markup.ts
+      // for the ITC / GST-on-GST rationale.
+      const cents = c.pre_tax_amount_cents ?? c.amount_cents;
+      if (cents <= 0) continue;
+      const key = c.budget_category_id ?? '';
+      byCategoryCents[key] = (byCategoryCents[key] ?? 0) + cents;
+    }
+
     costPlusBreakdown = {
       labourCents: breakdown.labourCents,
       materialsCents: breakdown.materialsCents,
       mgmtFeeCents: breakdown.mgmtFeeCents,
+      byCategoryCents,
     };
   }
 
