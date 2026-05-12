@@ -47,6 +47,28 @@ type JobSnapshot = {
 
 const POLL_INTERVAL_MS = 1500;
 
+const ENTITY_ORDER = [
+  'Customer',
+  'Vendor',
+  'Item',
+  'Invoice',
+  'Estimate',
+  'Payment',
+  'Bill',
+  'Purchase',
+] as const;
+
+const ENTITY_LABEL: Record<(typeof ENTITY_ORDER)[number], string> = {
+  Customer: 'Customers',
+  Vendor: 'Vendors',
+  Item: 'Items',
+  Invoice: 'Invoices',
+  Estimate: 'Estimates',
+  Payment: 'Payments',
+  Bill: 'Bills',
+  Purchase: 'Expenses',
+};
+
 function emptyCounters(): EntityCounters {
   return { fetched: 0, imported: 0, skipped: 0, failed: 0 };
 }
@@ -87,11 +109,22 @@ export function QuickBooksImportLauncher() {
 
   const handleStart = useCallback(() => {
     startTransition(async () => {
-      // Customer must precede Invoice so invoice import can resolve
-      // customer_id from the just-imported round-trip map. Items are
-      // independent and can run in any position.
+      // Ordering matters for FK resolution:
+      //   Customer + Vendor must precede Invoice/Estimate/Payment/Bill.
+      //   Invoice must precede Payment (payment.invoice_id FK).
+      //   Item is independent.
+      //   Purchase is independent.
       const result = await startQboImportAction({
-        entities: ['Customer', 'Item', 'Invoice'],
+        entities: [
+          'Customer',
+          'Vendor',
+          'Item',
+          'Invoice',
+          'Estimate',
+          'Payment',
+          'Bill',
+          'Purchase',
+        ],
       });
       if (!result.ok) {
         toast.error(result.error);
@@ -103,10 +136,10 @@ export function QuickBooksImportLauncher() {
         setJob(final.job as JobSnapshot);
         const counters =
           (final.job.entity_counters as Record<string, EntityCounters | undefined>) ?? {};
-        const totalImported =
-          (counters.Customer?.imported ?? 0) +
-          (counters.Item?.imported ?? 0) +
-          (counters.Invoice?.imported ?? 0);
+        const totalImported = ENTITY_ORDER.reduce(
+          (acc, k) => acc + (counters[k]?.imported ?? 0),
+          0,
+        );
         const totalReview = (final.job.review_queue as unknown[] | undefined)?.length ?? 0;
         if (final.job.status === 'completed') {
           if (totalImported > 0) {
@@ -125,11 +158,6 @@ export function QuickBooksImportLauncher() {
     });
   }, []);
 
-  const customerCounts =
-    (job?.entity_counters?.Customer as EntityCounters | undefined) ?? emptyCounters();
-  const itemCounts = (job?.entity_counters?.Item as EntityCounters | undefined) ?? emptyCounters();
-  const invoiceCounts =
-    (job?.entity_counters?.Invoice as EntityCounters | undefined) ?? emptyCounters();
   const reviewCount = job?.review_queue?.length ?? 0;
 
   return (
@@ -158,17 +186,15 @@ export function QuickBooksImportLauncher() {
           </DialogHeader>
 
           <div className="space-y-3 py-2 text-sm">
-            <Label className="font-medium">What gets imported in this pass</Label>
+            <Label className="font-medium">What gets imported</Label>
             <ul className="space-y-1 pl-4 text-muted-foreground">
-              <li>• Customers (name, email, phone, billing address)</li>
+              <li>• Customers + Vendors (name, email, phone, billing address)</li>
               <li>• Pricebook items (services, parts, T&amp;M placeholders)</li>
-              <li>
-                • Invoices (header + line items, status, amount, tax) — historical money math stays
-                frozen at the QBO value
-              </li>
-              <li className="text-xs">
-                Vendors, payments, estimates, bills, and expenses land in follow-up releases.
-              </li>
+              <li>• Invoices + Estimates (header + line items, frozen money math)</li>
+              <li>• Payments (linked to invoices)</li>
+              <li>• Bills + Bill line items (read-only AP from QBO)</li>
+              <li>• Purchases (one-off expenses)</li>
+              <li className="text-xs">Re-running is safe — every record is keyed on its QBO id.</li>
             </ul>
           </div>
 
@@ -212,9 +238,16 @@ export function QuickBooksImportLauncher() {
             </span>
           </div>
           <div className="mt-2 space-y-1 text-xs">
-            <EntityRow label="Customers" counts={customerCounts} />
-            <EntityRow label="Items" counts={itemCounts} />
-            <EntityRow label="Invoices" counts={invoiceCounts} />
+            {ENTITY_ORDER.map((key) => {
+              const counts =
+                (job.entity_counters?.[key] as EntityCounters | undefined) ?? emptyCounters();
+              // Hide rows that never got fetched (e.g. user picked a
+              // subset of entities someday, or QBO returned 0).
+              if (counts.fetched === 0 && counts.imported === 0 && counts.failed === 0) {
+                return null;
+              }
+              return <EntityRow key={key} label={ENTITY_LABEL[key]} counts={counts} />;
+            })}
           </div>
           {reviewCount > 0 && job.status === 'completed' && (
             <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
@@ -222,13 +255,22 @@ export function QuickBooksImportLauncher() {
               {reviewCount === 1 ? 's' : ''} your review — resolution UI lands in the next release.
             </p>
           )}
-          {invoiceCounts.skipped > 0 && job.status === 'completed' && (
-            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-              {invoiceCounts.skipped} invoice{invoiceCounts.skipped === 1 ? '' : 's'} skipped —
-              their QBO customer wasn&rsquo;t imported. Resolve customers in the review queue, then
-              re-run the import.
-            </p>
-          )}
+          {(() => {
+            const counters =
+              (job.entity_counters as Record<string, EntityCounters | undefined>) ?? {};
+            const fkSkipped =
+              (counters.Invoice?.skipped ?? 0) +
+              (counters.Estimate?.skipped ?? 0) +
+              (counters.Payment?.skipped ?? 0) +
+              (counters.Bill?.skipped ?? 0);
+            if (fkSkipped === 0 || job.status !== 'completed') return null;
+            return (
+              <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                {fkSkipped} record{fkSkipped === 1 ? '' : 's'} skipped — a parent (customer or
+                vendor) wasn&rsquo;t imported. Resolve the review queue, then re-run.
+              </p>
+            );
+          })()}
           {job.error_message && (
             <p className="mt-2 break-words font-mono text-xs text-destructive">
               {job.error_message}
