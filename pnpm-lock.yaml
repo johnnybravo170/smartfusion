@@ -89,6 +89,9 @@ importers:
       react-hook-form:
         specifier: ^7.72.1
         version: 7.72.1(react@19.2.4)
+      react-markdown:
+        specifier: ^10.1.0
+        version: 10.1.0(@types/react@19.2.14)(react@19.2.4)
       recharts:
         specifier: ^3.8.1
         version: 3.8.1(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react-is@17.0.2)(react@19.2.4)(redux@5.0.1)
@@ -3110,6 +3113,7 @@ packages:
 
   '@ungap/structured-clone@1.3.0':
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
+    deprecated: Potential CWE-502 - Update to 1.3.1 or higher
 
   '@vercel/functions@3.5.0':
     resolution: {integrity: sha512-+RokZ+4gkYyOsKBuJ29cQ8iSZG123LLJbZfPry20kkTgrN9U0277La4feP4DnWVo3sGoYa4plCEKY9XKUYoX9g==}

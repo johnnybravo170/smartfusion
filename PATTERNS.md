@@ -537,3 +537,28 @@ Adjacent gotchas the lint rule does **not** catch:
 For AI tool handlers, the `setToolTimezone(tenant.timezone)` hook in `src/app/api/henry/tool/route.ts` already fans out to dashboard, invoice, and the shared `lib/ai/format.ts` formatters. New AI tool formatters that go through `setToolTimezone` are tz-correct by default.
 
 For Home Records, the snapshot freezes `timezone` at generation time (`HomeRecordSnapshotV1.timezone`). The PDF / ZIP / public web view all prefer the snapshot's frozen tz — the document is a permanent artifact, so dates render in the tz the work was actually done in even if the contractor relocates the business later.
+
+---
+
+## 24. Rich-text fields (markdown editor + safe render)
+
+Any description field that benefits from formatting (bold, italic, bullet/numbered lists, h3/h4) uses the shared **`RichTextEditor`** for writing and **`RichTextDisplay`** for reading. Storage is **plain markdown text** in a `*_md` column on the row — portable, easy to migrate, easy to grep.
+
+The editor is intentionally NOT a WYSIWYG. It's a textarea + toolbar — the operator sees raw `**bold**` while typing, the toolbar inserts the syntax at the cursor (and `Ctrl+B` / `Ctrl+I` shortcuts work). GitHub-style edit box. Predictable, zero ProseMirror/TipTap dependency, ~zero bundle hit.
+
+The display is `react-markdown` with default settings — **raw HTML is escaped, not rendered**. We do NOT use `rehype-raw`. Custom `<a>` renderer forces `target="_blank" rel="noopener noreferrer nofollow"` and the sanitization test (`tests/unit/rich-text-sanitization.test.tsx`) is the regression guard. If you change the display to allow HTML pass-through, that test MUST fail until you wire in `rehype-sanitize` with a strict allowlist.
+
+Supported markdown surface (intentionally narrow): `**bold**`, `*italic*`, `` `inline code` ``, `- bullet`, `1. numbered`, `### h3`, `#### h4`, `> blockquote`, `[link](url)`. No images, tables, raw HTML, or fenced code blocks.
+
+Files in this family:
+
+- `src/components/ui/rich-text-editor.tsx` — the editor (toolbar + textarea). Controlled (`value` / `onChange` + optional `onBlur`).
+- `src/components/ui/rich-text-display.tsx` — read-side renderer. Pairs with the editor.
+- `tests/unit/rich-text-sanitization.test.tsx` — XSS regression guard.
+
+Sibling instances to keep aligned when this pattern changes:
+
+- `src/components/features/projects/customer-sections-manager.tsx` — section description (`description_md` on `project_customer_sections`).
+
+When you add a new `*_md` column, store and edit with this pair. Do NOT introduce a parallel rich-text component — the security surface needs to stay singular. If you need more formatting (tables, images), extend the existing pair AND extend the sanitization test in the same change.
+
