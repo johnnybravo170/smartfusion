@@ -18,6 +18,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import type { MatchCandidate } from '@/lib/bank-recon/matcher';
+import { safeMirrorBills } from '@/lib/db/project-costs-shim';
 import { createClient } from '@/lib/supabase/server';
 
 export type ConfirmBankMatchesResult =
@@ -142,15 +143,14 @@ export async function confirmBankMatchesAction(
 
   // 3b. Bills → status='paid'.
   if (billUpdates.length > 0) {
+    const billIds = billUpdates.map((u) => u.candidate.id);
     const { error } = await supabase
       .from('project_bills')
       .update({ status: 'paid', updated_at: new Date().toISOString() })
-      .in(
-        'id',
-        billUpdates.map((u) => u.candidate.id),
-      )
+      .in('id', billIds)
       .in('status', ['pending', 'approved']);
     if (error) return { ok: false, error: `Bill update failed: ${error.message}` };
+    await safeMirrorBills(supabase, billIds);
   }
 
   // 3c. Expenses don't have a status; just the bank_tx linkage below.

@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import sharp from 'sharp';
 import { z } from 'zod';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
+import { safeMirrorBill, safeUnmirrorCost } from '@/lib/db/project-costs-shim';
 import { uploadToStorage } from '@/lib/storage/photos';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -265,6 +266,7 @@ export async function upsertBillWithAttachmentAction(
   if (id) {
     const { error } = await supabase.from('project_bills').update(row).eq('id', id);
     if (error) return { ok: false, error: error.message };
+    await safeMirrorBill(supabase, id);
     revalidatePath(`/projects/${project_id}`);
     return { ok: true, id };
   }
@@ -272,6 +274,7 @@ export async function upsertBillWithAttachmentAction(
   row.tenant_id = tenant.id;
   const { data, error } = await supabase.from('project_bills').insert(row).select('id').single();
   if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create bill.' };
+  await safeMirrorBill(supabase, data.id as string);
   revalidatePath(`/projects/${project_id}`);
   return { ok: true, id: data.id as string };
 }
@@ -308,6 +311,7 @@ export async function upsertBillAction(input: unknown): Promise<CostControlResul
   if (id) {
     const { error } = await supabase.from('project_bills').update(row).eq('id', id);
     if (error) return { ok: false, error: error.message };
+    await safeMirrorBill(supabase, id);
     revalidatePath(`/projects/${fields.project_id}`);
     return { ok: true, id };
   }
@@ -317,6 +321,7 @@ export async function upsertBillAction(input: unknown): Promise<CostControlResul
     .select('id')
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create bill.' };
+  await safeMirrorBill(supabase, data.id as string);
   revalidatePath(`/projects/${fields.project_id}`);
   return { ok: true, id: data.id as string };
 }
@@ -327,6 +332,7 @@ export async function deleteBillAction(id: string, projectId: string): Promise<C
   const supabase = await createClient();
   const { error } = await supabase.from('project_bills').delete().eq('id', id);
   if (error) return { ok: false, error: error.message };
+  await safeUnmirrorCost(supabase, id);
   revalidatePath(`/projects/${projectId}`);
   return { ok: true, id };
 }

@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
+import { safeMirrorExpense, safeUnmirrorCost } from '@/lib/db/project-costs-shim';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -203,6 +204,8 @@ export async function logExpenseAction(input: {
     return { ok: false, error: error?.message ?? 'Failed to log expense.' };
   }
 
+  await safeMirrorExpense(supabase, data.id);
+
   if (projectId) revalidatePath(`/projects/${projectId}`);
   if (jobId) revalidatePath(`/jobs/${jobId}`);
   return { ok: true, id: data.id };
@@ -305,6 +308,8 @@ export async function logExpenseWithReceiptAction(
     return { ok: false, error: error?.message ?? 'Failed to log expense.' };
   }
 
+  await safeMirrorExpense(admin, data.id);
+
   revalidatePath(`/projects/${parsed.data.project_id}`);
   return { ok: true, id: data.id };
 }
@@ -372,6 +377,8 @@ export async function updateExpenseAction(input: {
     return { ok: false, error: error?.message ?? 'Failed to update expense.' };
   }
 
+  await safeMirrorExpense(supabase, data.id);
+
   if (data.project_id) revalidatePath(`/projects/${data.project_id}`);
   if (data.job_id) revalidatePath(`/jobs/${data.job_id}`);
   return { ok: true, id: data.id };
@@ -386,6 +393,8 @@ export async function deleteExpenseAction(id: string): Promise<ExpenseActionResu
   if (error) {
     return { ok: false, error: error.message };
   }
+
+  await safeUnmirrorCost(supabase, id);
 
   return { ok: true, id };
 }

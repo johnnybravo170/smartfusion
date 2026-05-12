@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { safeMirrorBill } from '@/lib/db/project-costs-shim';
 import { createClient } from '@/lib/supabase/server';
 
 export type InboundEmailResult = { ok: true; id: string } | { ok: false; error: string };
@@ -70,6 +71,8 @@ export async function confirmStagedBillAction(
   if (billErr || !bill) {
     return { ok: false, error: billErr?.message ?? 'Failed to create bill.' };
   }
+
+  await safeMirrorBill(supabase, bill.id as string);
 
   await supabase
     .from('inbound_emails')

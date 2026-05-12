@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getCurrentTenant, requireWorker } from '@/lib/auth/helpers';
+import { safeMirrorExpenses } from '@/lib/db/project-costs-shim';
 import { previewUnbilledForWorker } from '@/lib/db/queries/worker-invoices';
 import { getOrCreateWorkerProfile } from '@/lib/db/queries/worker-profiles';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -128,6 +129,7 @@ export async function submitWorkerInvoiceAction(input: {
       await admin.from('worker_invoices').delete().eq('id', invoiceId);
       return { ok: false, error: error.message };
     }
+    await safeMirrorExpenses(admin, expIds);
   }
 
   revalidatePath('/w/invoices');
@@ -157,7 +159,15 @@ export async function deleteWorkerInvoiceAction(id: string): Promise<PlainResult
 
   // Clear stamps first so rows can be invoiced again.
   await admin.from('time_entries').update({ worker_invoice_id: null }).eq('worker_invoice_id', id);
-  await admin.from('expenses').update({ worker_invoice_id: null }).eq('worker_invoice_id', id);
+  const { data: clearedExpenses } = await admin
+    .from('expenses')
+    .update({ worker_invoice_id: null })
+    .eq('worker_invoice_id', id)
+    .select('id');
+  await safeMirrorExpenses(
+    admin,
+    (clearedExpenses ?? []).map((r) => r.id as string),
+  );
 
   const { error } = await admin.from('worker_invoices').delete().eq('id', id);
   if (error) return { ok: false, error: error.message };
@@ -250,10 +260,15 @@ export async function rejectWorkerInvoiceAction(input: {
     .from('time_entries')
     .update({ worker_invoice_id: null })
     .eq('worker_invoice_id', parsed.data.id);
-  await admin
+  const { data: rejectClearedExpenses } = await admin
     .from('expenses')
     .update({ worker_invoice_id: null })
-    .eq('worker_invoice_id', parsed.data.id);
+    .eq('worker_invoice_id', parsed.data.id)
+    .select('id');
+  await safeMirrorExpenses(
+    admin,
+    (rejectClearedExpenses ?? []).map((r) => r.id as string),
+  );
 
   const { error } = await admin
     .from('worker_invoices')

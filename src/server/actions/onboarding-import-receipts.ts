@@ -32,6 +32,7 @@
 import { randomUUID } from 'node:crypto';
 import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
+import { safeMirrorExpenses, safeUnmirrorCosts } from '@/lib/db/project-costs-shim';
 import {
   buildCategoryTree,
   buildPickerOptions,
@@ -588,13 +589,20 @@ export async function commitReceiptImportAction(input: {
       payment_source_id: r.paymentSourceId ?? fallbackDefaultId,
       card_last4: r.cardLast4,
     }));
-    const { error: insErr } = await supabase.from('expenses').insert(expenseRows);
+    const { data: inserted, error: insErr } = await supabase
+      .from('expenses')
+      .insert(expenseRows)
+      .select('id');
     if (insErr) {
       // Best-effort cleanup: drop the batch so it doesn't dangle. Don't
       // remove storage objects here — the operator may want to retry.
       await supabase.from('import_batches').delete().eq('id', batchId);
       return { ok: false, error: insErr.message };
     }
+    await safeMirrorExpenses(
+      supabase,
+      (inserted ?? []).map((r) => r.id as string),
+    );
   }
 
   return { ok: true, batchId, created: toCreate.length, merged, skipped };
@@ -639,6 +647,11 @@ export async function rollbackReceiptImportAction(
     .eq('import_batch_id', batchId)
     .select('id');
   if (delErr) return { ok: false, error: delErr.message };
+
+  await safeUnmirrorCosts(
+    supabase,
+    (deletedRows ?? []).map((r) => r.id as string),
+  );
 
   const { error: markErr } = await supabase
     .from('import_batches')
