@@ -415,16 +415,16 @@ export function BudgetCategoriesTable({
         <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
-            onClick={() => setAddCategoryMode((m) => (m === 'category' ? 'closed' : 'category'))}
-          >
-            {addCategoryMode === 'category' ? 'Cancel' : '+ Add category'}
-          </Button>
-          <Button
-            size="sm"
             variant="outline"
             onClick={() => setAddCategoryMode((m) => (m === 'section' ? 'closed' : 'section'))}
           >
             {addCategoryMode === 'section' ? 'Cancel' : '+ New section'}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setAddCategoryMode((m) => (m === 'category' ? 'closed' : 'category'))}
+          >
+            {addCategoryMode === 'category' ? 'Cancel' : '+ Add category'}
           </Button>
           {headerActions}
         </div>
