@@ -36,10 +36,12 @@ export async function createRecurringFromExpenseAction(input: {
   if (!parsed.success) return { ok: false, error: 'Invalid input.' };
 
   const admin = createAdminClient();
+  // Source expense for the recurring rule template — receipts only.
   const { data: source } = await admin
-    .from('expenses')
-    .select('category_id, vendor, description, amount_cents, tax_cents, tenant_id, project_id')
+    .from('project_costs')
+    .select('category_id, vendor, description, amount_cents, gst_cents, tenant_id, project_id')
     .eq('id', parsed.data.source_expense_id)
+    .eq('source_type', 'receipt')
     .single();
   if (!source || source.tenant_id !== tenant.id) {
     return { ok: false, error: 'Source expense not found.' };
@@ -71,7 +73,7 @@ export async function createRecurringFromExpenseAction(input: {
       vendor: source.vendor,
       description: source.description,
       amount_cents: source.amount_cents,
-      tax_cents: source.tax_cents ?? 0,
+      tax_cents: (source as { gst_cents?: number }).gst_cents ?? 0,
       frequency: 'monthly',
       day_of_month: dom,
       next_run_at: nextRunIso,

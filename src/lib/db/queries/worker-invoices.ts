@@ -189,7 +189,6 @@ export async function getInvoiceLines(
       project_name: p?.name ?? null,
       receipt_storage_path:
         (row.attachment_storage_path as string | null | undefined) ??
-        null ??
         (row.receipt_storage_path as string | null | undefined) ??
         null,
     };
@@ -269,7 +268,6 @@ export async function previewUnbilledForWorker(args: {
       project_name: p?.name ?? null,
       receipt_storage_path:
         (row.attachment_storage_path as string | null | undefined) ??
-        null ??
         (row.receipt_storage_path as string | null | undefined) ??
         null,
     };

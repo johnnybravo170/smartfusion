@@ -32,11 +32,12 @@ export default async function EditOverheadExpensePage({
   // overhead row (project_id null). Project expenses have their own
   // edit flow on the project page.
   const { data: expense } = await admin
-    .from('expenses')
+    .from('project_costs')
     .select(
-      'id, tenant_id, project_id, category_id, amount_cents, tax_cents, vendor, vendor_gst_number, description, expense_date, receipt_storage_path, payment_source_id, card_last4',
+      'id, tenant_id, project_id, category_id, amount_cents, gst_cents, vendor, vendor_gst_number, description, cost_date, attachment_storage_path, payment_source_id, card_last4',
     )
     .eq('id', id)
+    .eq('source_type', 'receipt')
     .maybeSingle();
   if (!expense || expense.tenant_id !== tenant.id) notFound();
   if (expense.project_id !== null) {
@@ -53,11 +54,13 @@ export default async function EditOverheadExpensePage({
   const paymentSources = toLite(sourceRows);
 
   // Sign the receipt so the form can link to it for review/download.
+  const attachmentPath = (expense as { attachment_storage_path?: string | null })
+    .attachment_storage_path as string | null;
   let receiptUrl: string | null = null;
-  if (expense.receipt_storage_path) {
+  if (attachmentPath) {
     const { data: signed } = await admin.storage
       .from('receipts')
-      .createSignedUrl(expense.receipt_storage_path as string, 3600);
+      .createSignedUrl(attachmentPath, 3600);
     receiptUrl = signed?.signedUrl ?? null;
   }
 
@@ -92,12 +95,12 @@ export default async function EditOverheadExpensePage({
           id: expense.id as string,
           categoryId: (expense.category_id as string | null) ?? null,
           amountCents: expense.amount_cents as number,
-          taxCents: (expense.tax_cents as number) ?? 0,
+          taxCents: ((expense as { gst_cents?: number }).gst_cents as number) ?? 0,
           vendor: (expense.vendor as string | null) ?? null,
           vendorGstNumber: (expense.vendor_gst_number as string | null) ?? null,
           description: (expense.description as string | null) ?? null,
-          expenseDate: expense.expense_date as string,
-          existingReceiptPath: (expense.receipt_storage_path as string | null) ?? null,
+          expenseDate: (expense as { cost_date: string }).cost_date,
+          existingReceiptPath: attachmentPath,
           existingReceiptUrl: receiptUrl,
           paymentSourceId: (expense.payment_source_id as string | null) ?? null,
           cardLast4: (expense.card_last4 as string | null) ?? null,
