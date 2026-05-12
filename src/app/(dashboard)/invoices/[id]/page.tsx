@@ -8,12 +8,14 @@ import { InvoiceLineItems } from '@/components/features/invoices/invoice-line-it
 import { InvoiceNote } from '@/components/features/invoices/invoice-note';
 import { InvoiceOverridesEditor } from '@/components/features/invoices/invoice-overrides-editor';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
+import { InvoiceViewModePreview } from '@/components/features/invoices/invoice-view-mode-preview';
 import { MissingGstNotice } from '@/components/features/invoices/missing-gst-notice';
 import { PrintButton } from '@/components/features/shared/print-button';
 import { DetailPageNav } from '@/components/layout/detail-page-nav';
 import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime } from '@/lib/date/format';
+import { loadInvoiceCustomerViewInputs } from '@/lib/db/queries/invoice-customer-view-inputs';
 import { getInvoice } from '@/lib/db/queries/invoices';
 import { getProjectCostBasisRollup } from '@/lib/db/queries/project-cost-basis';
 import { canadianTax } from '@/lib/providers/tax/canadian';
@@ -128,6 +130,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     }
   }
 
+  // Customer-view preview — only for draft, tax-exclusive invoices with a
+  // project. Tax-inclusive drafts encode customer total in amount_cents
+  // (different line_items semantics); the preview helper assumes
+  // tax-exclusive shape and would silently produce wrong totals.
+  const showViewPreview = isDraft && !taxInclusive && Boolean(invoice.project_id);
+  const viewPreviewInputs = showViewPreview
+    ? await loadInvoiceCustomerViewInputs(invoice.id)
+    : null;
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <DetailPageNav homeHref="/invoices" homeLabel="All invoices" />
@@ -148,6 +159,29 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <DuplicateInvoiceButton invoiceId={invoice.id} />
         )}
       </header>
+
+      {/* Customer-view preview — drafts only */}
+      {viewPreviewInputs ? (
+        <InvoiceViewModePreview
+          invoiceId={invoice.id}
+          initialMode={invoice.customer_view_mode ?? viewPreviewInputs.projectDefaultMode}
+          initialMgmtFeeInline={invoice.customer_view_mgmt_fee_inline ?? false}
+          projectDefaultMode={viewPreviewInputs.projectDefaultMode}
+          inputs={{
+            projectName: viewPreviewInputs.projectName,
+            customerSummaryMd: viewPreviewInputs.customerSummaryMd,
+            costLines: viewPreviewInputs.costLines,
+            categories: viewPreviewInputs.categories,
+            sections: viewPreviewInputs.sections,
+            priorBilledCents: viewPreviewInputs.priorBilledCents,
+            mgmtRate: viewPreviewInputs.mgmtRate,
+            isCostPlus: viewPreviewInputs.isCostPlus,
+            costPlusBreakdown: viewPreviewInputs.costPlusBreakdown,
+          }}
+          taxRate={taxCtx ? taxCtx.totalRate : 0.05}
+          taxLabel={taxLabel}
+        />
+      ) : null}
 
       {/* Amount breakdown */}
       <section className="rounded-xl border bg-card p-5">

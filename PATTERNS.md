@@ -563,3 +563,37 @@ Sibling instances to keep aligned when this pattern changes:
 
 When you add a new `*_md` column, store and edit with this pair. Do NOT introduce a parallel rich-text component — the security surface needs to stay singular. If you need more formatting (tables, images), extend the existing pair AND extend the sanitization test in the same change.
 
+---
+
+## 25. Live preview with toggles (operator-facing "what will the customer see")
+
+Surfaces where the operator picks a presentation mode and needs to *see the result* before applying. Solves the "abstract setting is opaque" problem — the operator toggles, the preview rebuilds in real time, then they hit Apply to materialize.
+
+Architecture, in three layers:
+
+1. **Pure helper** (`*-line-items.ts` / `*-rollup.ts` style). Takes all inputs as plain data, returns the computed shape. No DB access, no React, no side effects. Testable as a pure function. The helper is the single source of truth — both the client preview and the server-side Apply action run the same function with the same inputs.
+2. **Server-side loader query** (`load*Inputs(id)`). Fetches the underlying project data + resolves "what is the current default" once on page load. Page passes the loaded inputs as props to the client component.
+3. **Client preview component** (`'use client'`). Holds toggle state in `useState`, calls the helper via `useMemo` on every render, displays the result. Apply button invokes a server action with **just the toggle values** — the action re-fetches inputs server-side via the same loader and re-runs the helper. We never trust client-sent computed line items into the DB.
+
+Why this shape:
+
+- **Subtotal/total invariance is testable**. Unit tests on the helper assert that switching modes doesn't change the customer's total — a regression guarantee the operator can rely on.
+- **Apply is destructive but obvious**. The materialized shape replaces the persisted one; there's no surprise because the operator already saw what would land.
+- **Manual edits still work**. After Apply, the existing add/remove line-item actions mutate the persisted `line_items` JSONB. The preview is for the macro shape; manual edits handle the fiddly bits.
+
+Refused complexity:
+
+- **Compute on read, never persist.** Tempting but breaks PDF renderers, public customer view, and manual edits. Materialize on Apply.
+- **Per-line hide toggles.** Add/remove actions already exist. Don't double-cover.
+
+Files in this family:
+
+- `src/lib/invoices/customer-view-line-items.ts` — pure helper (the canonical example of this pattern).
+- `src/lib/db/queries/invoice-customer-view-inputs.ts` — server-side loader.
+- `src/components/features/invoices/invoice-view-mode-preview.tsx` — client preview component.
+- `src/server/actions/invoices.ts` → `applyCustomerViewToInvoiceAction` — Apply action.
+- `tests/unit/customer-view-line-items.test.ts` — subtotal-invariance regression guard.
+
+Persistence convention: store the **toggle values** on the parent row (`*_view_mode`, `*_view_*_inline`), nullable, where null = "inherit from a parent default" (e.g. project's `customer_view_mode`). The materialized shape lives in its own JSONB column (`line_items`). Both are written together on Apply.
+
+When adding a new live-preview surface, mirror these five files. Don't invent a new layering — keep the three-layer separation (helper / loader / client) so the helper stays testable as a pure function.
