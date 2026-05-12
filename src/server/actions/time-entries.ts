@@ -18,7 +18,13 @@ const timeEntrySchema = z.object({
   job_id: z.string().uuid().optional().or(z.literal('')),
   budget_category_id: z.string().uuid().optional().or(z.literal('')),
   hours: z.coerce.number().positive({ message: 'Hours must be greater than 0.' }),
-  hourly_rate_cents: z.coerce.number().int().optional(),
+  // Required: without a rate the entry contributes $0 to the Budget tab's
+  // "Spent by source" rollup, so it looks like no labour was logged at all.
+  // Operators who want to track unbilled hours can set rate to 0 explicitly.
+  hourly_rate_cents: z.coerce
+    .number()
+    .int({ message: 'Rate must be a whole number of cents.' })
+    .min(0, { message: 'Rate cannot be negative.' }),
   notes: z.string().trim().max(2000).optional().or(z.literal('')),
   entry_date: z.string().min(1, { message: 'Date is required.' }),
   confirm_empty: z.boolean().optional(),
@@ -42,7 +48,7 @@ export async function logTimeAction(input: {
   job_id?: string;
   budget_category_id?: string;
   hours: number;
-  hourly_rate_cents?: number;
+  hourly_rate_cents: number;
   notes?: string;
   entry_date: string;
   confirm_empty?: boolean;
@@ -82,7 +88,7 @@ export async function logTimeAction(input: {
       job_id: jobId,
       budget_category_id: parsed.data.budget_category_id || null,
       hours: parsed.data.hours,
-      hourly_rate_cents: parsed.data.hourly_rate_cents ?? null,
+      hourly_rate_cents: parsed.data.hourly_rate_cents,
       notes: parsed.data.notes?.trim() || null,
       entry_date: parsed.data.entry_date,
     })
@@ -104,7 +110,7 @@ export async function updateTimeEntryAction(input: {
   job_id?: string;
   budget_category_id?: string;
   hours: number;
-  hourly_rate_cents?: number;
+  hourly_rate_cents: number;
   notes?: string;
   entry_date: string;
   confirm_empty?: boolean;
@@ -130,7 +136,7 @@ export async function updateTimeEntryAction(input: {
       job_id: parsed.data.job_id || null,
       budget_category_id: parsed.data.budget_category_id || null,
       hours: parsed.data.hours,
-      hourly_rate_cents: parsed.data.hourly_rate_cents ?? null,
+      hourly_rate_cents: parsed.data.hourly_rate_cents,
       notes: parsed.data.notes?.trim() || null,
       entry_date: parsed.data.entry_date,
       updated_at: new Date().toISOString(),

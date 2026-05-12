@@ -76,7 +76,11 @@ function TimeForm({
     }
     setError('');
     startTransition(async () => {
-      const rateCents = rate ? Math.round(parseFloat(rate) * 100) : undefined;
+      const rateCents = rate ? Math.round(parseFloat(rate) * 100) : Number.NaN;
+      if (!Number.isFinite(rateCents) || rateCents < 0) {
+        setError('Rate is required so labour rolls up into the budget. Use 0 for unbilled hours.');
+        return;
+      }
       const res = await logTimeAction({
         project_id: projectId,
         entry_date: date,
@@ -116,7 +120,8 @@ function TimeForm({
         </div>
         <div>
           <span className="mb-1 block text-xs font-medium">
-            Rate ($/h) <span className="font-normal text-muted-foreground">optional</span>
+            Rate ($/h){' '}
+            <span className="font-normal text-muted-foreground">use 0 for unbilled hours</span>
           </span>
           <Input
             type="number"
@@ -125,6 +130,7 @@ function TimeForm({
             value={rate}
             onChange={(e) => setRate(e.target.value)}
             placeholder="e.g. 75"
+            required
           />
         </div>
         {categories.length > 0 && (
