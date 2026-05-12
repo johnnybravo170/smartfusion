@@ -25,7 +25,7 @@
 
 import { Eye } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState, useTransition } from 'react';
+import { type ReactNode, useMemo, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,7 +37,6 @@ import {
   type CustomerViewCostLine,
   type CustomerViewCostPlusBreakdown,
   type CustomerViewPreviewRow,
-  type CustomerViewSection,
 } from '@/lib/invoices/customer-view-line-items';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
@@ -61,7 +60,6 @@ type Props = {
     customerSummaryMd: string | null;
     costLines: CustomerViewCostLine[];
     categories: CustomerViewCategory[];
-    sections: CustomerViewSection[];
     priorBilledCents: number;
     mgmtRate: number;
     isCostPlus: boolean;
@@ -96,7 +94,6 @@ export function InvoiceViewModePreview({
       customerSummaryMd: inputs.customerSummaryMd,
       costLines: inputs.costLines,
       categories: inputs.categories,
-      sections: inputs.sections,
       priorBilledCents: inputs.priorBilledCents,
       mgmtRate: inputs.mgmtRate,
       isCostPlus: inputs.isCostPlus,
@@ -106,14 +103,19 @@ export function InvoiceViewModePreview({
     return preview;
   }, [mode, mgmtFeeInline, inputs]);
 
-  const subtotalCents = previewRows.reduce((s, r) => s + r.total_cents, 0);
+  // Customer total is the sum of LEAF row totals only — group headers
+  // carry subtotals that would double-count.
+  const subtotalCents = previewRows
+    .filter((r) => r.kind !== 'group_header')
+    .reduce((s, r) => s + r.total_cents, 0);
   const taxCents = Math.round(subtotalCents * taxRate);
   const totalCents = subtotalCents + taxCents;
 
-  // Sections mode produces a single "Other work" rollup when no
-  // customer-facing sections are defined on the project. Tell the
-  // operator how to fix it instead of silently producing a useless view.
-  const sectionsModeNeedsSetup = mode === 'sections' && inputs.sections.length === 0;
+  // Sections mode without any section labels populated falls back to a
+  // per-category view inside the helper. Tell the operator that's what
+  // happened, with a pointer to where they'd set up sections.
+  const anySectionLabel = inputs.categories.some((c) => (c.section ?? '').trim() !== '');
+  const sectionsModeNeedsSetup = mode === 'sections' && !anySectionLabel;
 
   // mgmt toggle only changes shape in lump_sum (per helper semantics).
   // Disable outside lump_sum with a tooltip so the toggle doesn't look broken.
@@ -223,16 +225,17 @@ export function InvoiceViewModePreview({
           </div>
         </label>
 
-        {/* Sections-mode empty state — no customer-facing sections
-         *  defined yet means everything rolls into "Other work". Tell the
-         *  operator how to fix that. */}
+        {/* Sections-mode empty state — no `section` labels on any
+         *  category means Sections mode falls back to a per-category
+         *  view inside the helper. Surface that for clarity. */}
         {sectionsModeNeedsSetup ? (
           <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-            <p className="font-medium">Sections mode needs setup.</p>
+            <p className="font-medium">No section labels on this project.</p>
             <p className="mt-0.5">
-              This project has no customer-facing sections defined, so everything rolls into a
-              single &quot;Other work&quot; line. Set them up on the project&apos;s Portal tab
-              (Customer view card), then come back here.
+              Sections mode groups categories by their <em>Section</em> label on the Budget tab
+              (e.g. &quot;Master suite addition&quot;, &quot;Pizza Oven&quot;). None are set on this
+              project yet, so Sections falls back to the per-category view below. Add section labels
+              in the Budget tab to group multiple categories together.
             </p>
           </div>
         ) : null}
@@ -278,11 +281,77 @@ function PreviewRowsList({ rows }: { rows: CustomerViewPreviewRow[] }) {
       </p>
     );
   }
+  // Walk rows; group_headers create a visual section that contains the
+  // subsequent leaf rows up to the next header or non-work row.
+  const elements: ReactNode[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    const r = rows[i];
+    if (r.kind === 'group_header') {
+      const children: CustomerViewPreviewRow[] = [];
+      let j = i + 1;
+      while (j < rows.length && rows[j].kind === 'work') {
+        children.push(rows[j]);
+        j++;
+      }
+      elements.push(
+        <PreviewGroup key={`g-${r.title}-${r.total_cents}-${i}`} header={r} rows={children} />,
+      );
+      i = j;
+    } else {
+      elements.push(
+        <PreviewRowCard key={`r-${r.kind}-${r.title}-${r.total_cents}-${i}`} row={r} />,
+      );
+      i++;
+    }
+  }
+  return <div className="space-y-2">{elements}</div>;
+}
+
+function PreviewGroup({
+  header,
+  rows,
+}: {
+  header: CustomerViewPreviewRow;
+  rows: CustomerViewPreviewRow[];
+}) {
   return (
-    <div className="space-y-2">
-      {rows.map((r) => (
-        <PreviewRowCard key={`${r.kind}-${r.title}-${r.total_cents}`} row={r} />
-      ))}
+    <div className="rounded-lg border bg-card">
+      <div className="flex items-start justify-between gap-3 border-b bg-muted/30 px-3 py-2">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{header.title}</div>
+          {header.body_md ? (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              <RichTextDisplay markdown={header.body_md} />
+            </div>
+          ) : null}
+        </div>
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums">
+          {formatCurrency(header.total_cents)}
+        </span>
+      </div>
+      {rows.length > 0 ? (
+        <ul className="divide-y">
+          {rows.map((r) => (
+            <li
+              key={`${r.title}-${r.total_cents}`}
+              className="flex items-start justify-between gap-3 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="text-sm">{r.title}</div>
+                {r.body_md ? (
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    <RichTextDisplay markdown={r.body_md} />
+                  </div>
+                ) : null}
+              </div>
+              <span className="whitespace-nowrap text-sm tabular-nums">
+                {formatCurrency(r.total_cents)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

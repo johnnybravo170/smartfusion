@@ -1569,7 +1569,6 @@ export async function applyCustomerViewToInvoiceAction(input: {
     customerSummaryMd: inputs.customerSummaryMd,
     costLines: inputs.costLines,
     categories: inputs.categories,
-    sections: inputs.sections,
     priorBilledCents: inputs.priorBilledCents,
     mgmtRate: inputs.mgmtRate,
     isCostPlus: inputs.isCostPlus,
