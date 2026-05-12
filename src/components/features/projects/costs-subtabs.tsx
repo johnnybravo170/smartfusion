@@ -2,12 +2,17 @@
 
 /**
  * Secondary sub-tabs inside the project Costs tab — Vendor quotes / POs /
- * Bills. Without this, the three sections stack vertically and the page
+ * Costs. Without this, the three sections stack vertically and the page
  * gets unwieldy once any of them has real volume.
  *
- * URL-param driven (`?sub=quotes|pos|bills`), `router.replace()` to avoid
- * history pollution, native `<select>` on mobile. Matches the tabs
- * pattern in PATTERNS.md §8.
+ * "Costs" is the post-unification combined surface: receipts + vendor
+ * bills in one list with status badges. The legacy split into Bills +
+ * Expenses sub-tabs is gone — Mike thinks "labour + materials", not
+ * "bills + receipts", and the rollups always merged them anyway.
+ *
+ * URL-param driven (`?sub=quotes|pos|costs`), `router.replace()` to
+ * avoid history pollution, native `<select>` on mobile. Matches the
+ * tabs pattern in PATTERNS.md §9.
  */
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -17,8 +22,7 @@ import { cn } from '@/lib/utils';
 const TABS = [
   { key: 'quotes', label: 'Vendor quotes' },
   { key: 'pos', label: 'POs' },
-  { key: 'bills', label: 'Bills' },
-  { key: 'expenses', label: 'Expenses' },
+  { key: 'costs', label: 'Costs' },
 ] as const;
 
 export type CostsSubtabKey = (typeof TABS)[number]['key'];
@@ -81,8 +85,13 @@ export function CostsSubtabs({ counts }: { counts: Record<CostsSubtabKey, number
  * Server-component helper: parse the current subtab from the page's
  * searchParams. Keeps the tab selection consistent between server
  * rendering and the client subtabs component.
+ *
+ * Legacy `?sub=bills` and `?sub=expenses` query strings (deep-linked
+ * pre-unification) redirect implicitly to the unified Costs subtab so
+ * old links don't 404 into an empty Quotes tab.
  */
 export function parseCostsSubtab(value: string | string[] | undefined): CostsSubtabKey {
-  if (value === 'pos' || value === 'bills') return value;
+  if (value === 'pos' || value === 'costs') return value;
+  if (value === 'bills' || value === 'expenses') return 'costs';
   return 'quotes';
 }

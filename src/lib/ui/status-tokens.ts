@@ -102,6 +102,22 @@ export const invoiceStatusTone = {
   void: 'neutral',
 } as const satisfies Record<string, StatusTone>;
 
+/**
+ * Project cost lifecycle. The unified Costs surface displays both
+ * receipts (implicitly paid at entry time) and vendor bills (with
+ * their own paid / unpaid lifecycle). One tone per row state so
+ * filter chips read the same color the row badge does.
+ *
+ *   paid_receipt — receipts; always paid; emerald.
+ *   bill_unpaid  — vendor bills awaiting payment; amber.
+ *   bill_paid    — vendor bills marked paid; emerald.
+ */
+export const projectCostStatusTone = {
+  paid_receipt: 'success',
+  bill_unpaid: 'warning',
+  bill_paid: 'success',
+} as const satisfies Record<string, StatusTone>;
+
 /** Worker-facing invoice (time / expense submission from crew). */
 export const workerInvoiceStatusTone = {
   draft: 'neutral',

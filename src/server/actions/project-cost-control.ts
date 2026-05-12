@@ -337,6 +337,32 @@ export async function deleteBillAction(id: string, projectId: string): Promise<C
   return { ok: true, id };
 }
 
+/**
+ * Mark a vendor bill paid from the unified Costs UI. Mirrors the
+ * bank-confirm path's status flip — `project_bills.status = 'paid'`,
+ * mirror upserted via the dual-write shim so `project_costs.payment_status`
+ * stays in lockstep. Bills already paid are no-ops (guarded by the
+ * `IN ('pending','approved')` filter so a second click can't unflip
+ * something else).
+ */
+export async function markBillPaidAction(
+  id: string,
+  projectId: string,
+): Promise<CostControlResult> {
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in.' };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('project_bills')
+    .update({ status: 'paid', updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .in('status', ['pending', 'approved']);
+  if (error) return { ok: false, error: error.message };
+  await safeMirrorBill(supabase, id);
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true, id };
+}
+
 // ─── Cost line photos ─────────────────────────────────────────────────────────
 
 export async function attachCostLinePhotoAction(formData: FormData): Promise<CostControlResult> {
