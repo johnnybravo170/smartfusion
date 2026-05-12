@@ -1,6 +1,6 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -45,14 +45,18 @@ type Expense = {
   receipt_url: string | null;
 };
 
+type CostLineSummary = { id: string; label: string; budget_category_id: string | null };
+
 function TimeForm({
   projectId,
   categories,
+  costLines,
   defaultRateCents,
   onDone,
 }: {
   projectId: string;
   categories: BudgetCategorySummary[];
+  costLines: CostLineSummary[];
   defaultRateCents?: number | null;
   onDone: () => void;
 }) {
@@ -63,9 +67,14 @@ function TimeForm({
   const [rate, setRate] = useState(defaultRateCents ? String(defaultRateCents / 100) : '');
   const [notes, setNotes] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [costLineId, setCostLineId] = useState('');
   const [needsEmptyConfirm, setNeedsEmptyConfirm] = useState(false);
 
   const isEmptyContext = !categoryId && !notes.trim();
+  // Cost lines under the selected category (empty when no category picked).
+  const linesForCategory = categoryId
+    ? costLines.filter((l) => l.budget_category_id === categoryId)
+    : [];
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -87,12 +96,14 @@ function TimeForm({
         hours: parseFloat(hours),
         hourly_rate_cents: rateCents,
         budget_category_id: categoryId || undefined,
+        cost_line_id: costLineId || undefined,
         notes: notes || undefined,
         confirm_empty: needsEmptyConfirm || undefined,
       });
       if (res.ok) {
         setHours('');
         setNotes('');
+        setCostLineId('');
         setNeedsEmptyConfirm(false);
         onDone();
       } else setError(res.error);
@@ -140,6 +151,8 @@ function TimeForm({
               value={categoryId}
               onChange={(e) => {
                 setCategoryId(e.target.value);
+                // Switching category invalidates any prior cost-line pick.
+                setCostLineId('');
                 if (e.target.value) setNeedsEmptyConfirm(false);
               }}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -153,6 +166,32 @@ function TimeForm({
             </select>
           </div>
         )}
+        {/* Cost-line picker — appears only when a category with priced
+         *  lines is selected. Optional: tag time to a specific line so the
+         *  Budget tab's per-line Spent column reflects the labour, not
+         *  just the category total. */}
+        {linesForCategory.length > 0 ? (
+          <div className="sm:col-span-4">
+            <span className="mb-1 block text-xs font-medium">
+              Line item{' '}
+              <span className="font-normal text-muted-foreground">
+                — optional, tags labour to this specific line
+              </span>
+            </span>
+            <select
+              value={costLineId}
+              onChange={(e) => setCostLineId(e.target.value)}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            >
+              <option value="">— category only —</option>
+              {linesForCategory.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="sm:col-span-4">
           <span className="mb-1 block text-xs font-medium">
             Scope notes{' '}
@@ -446,6 +485,7 @@ function EditExpenseDialog({
 export function TimeExpenseTab({
   projectId,
   categories,
+  costLines = [],
   timeEntries,
   expenses,
   ownerRateCents,
@@ -453,6 +493,10 @@ export function TimeExpenseTab({
 }: {
   projectId: string;
   categories: BudgetCategorySummary[];
+  /** Cost lines for the project; feeds the optional cost-line picker on
+   *  the time-entry form so labour rolls into per-line Spent on the
+   *  Budget tab, not just the category total. */
+  costLines?: CostLineSummary[];
   timeEntries: TimeEntry[];
   expenses: Expense[];
   ownerRateCents?: number | null;
@@ -460,6 +504,7 @@ export function TimeExpenseTab({
    * the Costs tab as of 2026-04-24 — the Time tab now shows time only. */
   showExpenses?: boolean;
 }) {
+  const router = useRouter();
   const [showTimeForm, setShowTimeForm] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -497,14 +542,16 @@ export function TimeExpenseTab({
   function deleteTime(id: string) {
     if (!confirm('Delete this time entry?')) return;
     startTransition(async () => {
-      await deleteTimeEntryAction(id);
+      const res = await deleteTimeEntryAction(id);
+      if (res.ok) router.refresh();
     });
   }
 
   function deleteExpense(id: string) {
     if (!confirm('Delete this expense?')) return;
     startTransition(async () => {
-      await deleteExpenseAction(id);
+      const res = await deleteExpenseAction(id);
+      if (res.ok) router.refresh();
     });
   }
 
@@ -558,6 +605,7 @@ export function TimeExpenseTab({
             <TimeForm
               projectId={projectId}
               categories={categories}
+              costLines={costLines}
               defaultRateCents={ownerRateCents}
               onDone={() => setShowTimeForm(false)}
             />

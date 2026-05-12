@@ -392,6 +392,18 @@ export async function deleteExpenseAction(id: string): Promise<ExpenseActionResu
   if (!id) return { ok: false, error: 'Missing expense id.' };
 
   const supabase = await createClient();
+
+  // Fetch the row's project/job before deleting so we can revalidate
+  // surfaces that show this expense. Without revalidatePath the Budget
+  // tab's "Spent by source" rollup stays stale and the row stays
+  // on-screen until the operator navigates away.
+  const { data: existing } = await supabase
+    .from('project_costs')
+    .select('project_id, job_id')
+    .eq('id', id)
+    .eq('source_type', 'receipt')
+    .maybeSingle();
+
   const { error } = await supabase
     .from('project_costs')
     .delete()
@@ -402,5 +414,7 @@ export async function deleteExpenseAction(id: string): Promise<ExpenseActionResu
     return { ok: false, error: error.message };
   }
 
+  if (existing?.project_id) revalidatePath(`/projects/${existing.project_id}`);
+  if (existing?.job_id) revalidatePath(`/jobs/${existing.job_id}`);
   return { ok: true, id };
 }
