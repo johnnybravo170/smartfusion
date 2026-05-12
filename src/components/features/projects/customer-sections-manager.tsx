@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import {
   assignCategoryToSectionAction,
   createCustomerSectionAction,
@@ -15,6 +15,28 @@ import {
   reorderCustomerSectionsAction,
   updateCustomerSectionAction,
 } from '@/server/actions/project-customer-view';
+
+function SectionDescriptionEditor({
+  initial,
+  disabled,
+  onSave,
+}: {
+  initial: string;
+  disabled: boolean;
+  onSave: (next: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  return (
+    <RichTextEditor
+      value={value}
+      onChange={setValue}
+      onBlur={() => onSave(value)}
+      placeholder="What's included in this section (shown to customer in Sections mode). Supports **bold**, *italic*, lists."
+      rows={2}
+      disabled={disabled}
+    />
+  );
+}
 
 type Section = {
   id: string;
@@ -228,18 +250,15 @@ export function CustomerSectionsManager({
                         className="font-medium"
                         disabled={pending}
                       />
-                      <Textarea
-                        placeholder="What's included in this section (shown to customer in Sections mode)"
-                        defaultValue={section.description_md ?? ''}
-                        onBlur={(e) => {
-                          const next = e.target.value;
+                      <SectionDescriptionEditor
+                        initial={section.description_md ?? ''}
+                        disabled={pending}
+                        onSave={(next) => {
                           const prev = section.description_md ?? '';
                           if (next !== prev) {
                             handleUpdate(section.id, { descriptionMd: next || null });
                           }
                         }}
-                        rows={2}
-                        disabled={pending}
                       />
                       <div className="space-y-1.5">
                         <Label className="text-xs text-muted-foreground">
