@@ -97,7 +97,7 @@ export function QuickLogExpenseButton({ tenantTaxRate }: Props) {
           <span className="hidden sm:inline">Log Expense</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Log expense</DialogTitle>
         </DialogHeader>
