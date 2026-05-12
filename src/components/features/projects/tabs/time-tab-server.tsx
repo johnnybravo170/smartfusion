@@ -79,15 +79,19 @@ export default async function TimeTabServer({ projectId }: { projectId: string }
           const cat = e.budget_category_id
             ? project.budget_categories.find((b) => b.id === e.budget_category_id)
             : null;
+          const line = e.cost_line_id ? costLines.find((l) => l.id === e.cost_line_id) : null;
           return {
             id: e.id,
             entry_date: e.entry_date,
             hours: Number(e.hours),
+            hourly_rate_cents: e.hourly_rate_cents ?? null,
             notes: e.notes ?? null,
             worker_profile_id: e.worker_profile_id ?? null,
             worker_name: posterName,
             budget_category_id: e.budget_category_id ?? null,
             budget_category_name: cat?.name ?? null,
+            cost_line_id: e.cost_line_id ?? null,
+            cost_line_label: line?.label ?? null,
           };
         })}
       />

@@ -21,17 +21,24 @@ import {
   logExpenseWithReceiptAction,
   updateExpenseAction,
 } from '@/server/actions/expenses';
-import { deleteTimeEntryAction, logTimeAction } from '@/server/actions/time-entries';
+import {
+  deleteTimeEntryAction,
+  logTimeAction,
+  updateTimeEntryAction,
+} from '@/server/actions/time-entries';
 
 type TimeEntry = {
   id: string;
   entry_date: string;
   hours: number;
+  hourly_rate_cents: number | null;
   notes: string | null;
   worker_profile_id: string | null;
   worker_name: string | null;
   budget_category_id: string | null;
   budget_category_name: string | null;
+  cost_line_id: string | null;
+  cost_line_label: string | null;
 };
 type Expense = {
   id: string;
@@ -52,22 +59,31 @@ function TimeForm({
   categories,
   costLines,
   defaultRateCents,
+  editing,
   onDone,
 }: {
   projectId: string;
   categories: BudgetCategorySummary[];
   costLines: CostLineSummary[];
   defaultRateCents?: number | null;
+  /** When set, the form runs in edit mode and updates the entry on submit. */
+  editing?: TimeEntry | null;
   onDone: () => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [hours, setHours] = useState('');
-  const [rate, setRate] = useState(defaultRateCents ? String(defaultRateCents / 100) : '');
-  const [notes, setNotes] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [costLineId, setCostLineId] = useState('');
+  const [date, setDate] = useState(editing?.entry_date ?? new Date().toISOString().slice(0, 10));
+  const [hours, setHours] = useState(editing ? String(editing.hours) : '');
+  const [rate, setRate] = useState(
+    editing?.hourly_rate_cents != null
+      ? String(editing.hourly_rate_cents / 100)
+      : defaultRateCents
+        ? String(defaultRateCents / 100)
+        : '',
+  );
+  const [notes, setNotes] = useState(editing?.notes ?? '');
+  const [categoryId, setCategoryId] = useState(editing?.budget_category_id ?? '');
+  const [costLineId, setCostLineId] = useState(editing?.cost_line_id ?? '');
   const [needsEmptyConfirm, setNeedsEmptyConfirm] = useState(false);
 
   const isEmptyContext = !categoryId && !notes.trim();
@@ -90,7 +106,7 @@ function TimeForm({
         setError('Rate is required so labour rolls up into the budget. Use 0 for unbilled hours.');
         return;
       }
-      const res = await logTimeAction({
+      const payload = {
         project_id: projectId,
         entry_date: date,
         hours: parseFloat(hours),
@@ -99,11 +115,16 @@ function TimeForm({
         cost_line_id: costLineId || undefined,
         notes: notes || undefined,
         confirm_empty: needsEmptyConfirm || undefined,
-      });
+      };
+      const res = editing
+        ? await updateTimeEntryAction({ id: editing.id, ...payload })
+        : await logTimeAction(payload);
       if (res.ok) {
-        setHours('');
-        setNotes('');
-        setCostLineId('');
+        if (!editing) {
+          setHours('');
+          setNotes('');
+          setCostLineId('');
+        }
         setNeedsEmptyConfirm(false);
         onDone();
       } else setError(res.error);
@@ -217,7 +238,13 @@ function TimeForm({
       )}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={pending}>
-          {pending ? 'Saving…' : needsEmptyConfirm ? 'Save anyway' : 'Log time'}
+          {pending
+            ? 'Saving…'
+            : needsEmptyConfirm
+              ? 'Save anyway'
+              : editing
+                ? 'Save changes'
+                : 'Log time'}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>
           Cancel
@@ -506,6 +533,7 @@ export function TimeExpenseTab({
 }) {
   const router = useRouter();
   const [showTimeForm, setShowTimeForm] = useState(false);
+  const [editingTime, setEditingTime] = useState<TimeEntry | null>(null);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [workerFilter, setWorkerFilter] = useState<string>('all');
@@ -537,6 +565,12 @@ export function TimeExpenseTab({
     : workerFiltered;
 
   const totalHours = filteredTime.reduce((s, e) => s + Number(e.hours), 0);
+  // Billed total reflects only entries that have a rate set. Entries with
+  // a null rate (legacy data, pre-required-rate) contribute nothing.
+  const totalBilledCents = filteredTime.reduce(
+    (s, e) => s + Math.round(Number(e.hours) * (e.hourly_rate_cents ?? 0)),
+    0,
+  );
   const totalExpenses = expenses.reduce((s, e) => s + e.amount_cents, 0);
 
   function deleteTime(id: string) {
@@ -574,7 +608,10 @@ export function TimeExpenseTab({
           <h3 className="text-sm font-semibold">
             Time Entries{' '}
             {totalHours > 0 && (
-              <span className="ml-1 text-muted-foreground font-normal">({totalHours}h total)</span>
+              <span className="ml-1 font-normal text-muted-foreground">
+                ({totalHours}h
+                {totalBilledCents > 0 ? ` · ${formatCurrency(totalBilledCents)} billed` : ''})
+              </span>
             )}
           </h3>
           <div className="flex items-center gap-2">
@@ -600,14 +637,19 @@ export function TimeExpenseTab({
             )}
           </div>
         </div>
-        {showTimeForm && (
+        {(showTimeForm || editingTime) && (
           <div className="mb-4">
             <TimeForm
               projectId={projectId}
               categories={categories}
               costLines={costLines}
               defaultRateCents={ownerRateCents}
-              onDone={() => setShowTimeForm(false)}
+              editing={editingTime}
+              onDone={() => {
+                setShowTimeForm(false);
+                setEditingTime(null);
+                router.refresh();
+              }}
             />
           </div>
         )}
@@ -620,36 +662,65 @@ export function TimeExpenseTab({
                 <tr className="border-b bg-muted/50">
                   <th className="px-3 py-2 text-left font-medium">Date</th>
                   <th className="px-3 py-2 text-left font-medium">Worker</th>
-                  <th className="px-3 py-2 text-left font-medium">Category</th>
+                  <th className="px-3 py-2 text-left font-medium">Allocation</th>
                   <th className="px-3 py-2 text-right font-medium">Hours</th>
+                  <th className="px-3 py-2 text-right font-medium">Rate</th>
+                  <th className="px-3 py-2 text-right font-medium">Billed</th>
                   <th className="px-3 py-2 text-left font-medium">Notes</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
-                {filteredTime.map((entry) => (
-                  <tr key={entry.id} className="border-b last:border-0">
-                    <td className="px-3 py-2">{entry.entry_date}</td>
-                    <td className="px-3 py-2">{entry.worker_name ?? 'Owner/admin'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {entry.budget_category_name ?? <span className="italic">unallocated</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right">{Number(entry.hours)}h</td>
-                    <td className="px-3 py-2 whitespace-pre-wrap text-muted-foreground">
-                      {entry.notes || '—'}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => deleteTime(entry.id)}
-                      >
-                        Del
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {filteredTime.map((entry) => {
+                  // Show the deepest available allocation: line item if
+                  // tagged, otherwise category. Implicit hierarchy — a
+                  // tagged line item already belongs to a category, so
+                  // showing the line alone is informative.
+                  const allocation = entry.cost_line_label ?? entry.budget_category_name ?? null;
+                  const rateCents = entry.hourly_rate_cents;
+                  const billedCents = Math.round(Number(entry.hours) * (rateCents ?? 0));
+                  return (
+                    <tr key={entry.id} className="border-b last:border-0">
+                      <td className="px-3 py-2">{entry.entry_date}</td>
+                      <td className="px-3 py-2">{entry.worker_name ?? 'Owner/admin'}</td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {allocation ?? <span className="italic">unallocated</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right">{Number(entry.hours)}h</td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">
+                        {rateCents != null ? formatCurrency(rateCents) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {billedCents > 0 ? formatCurrency(billedCents) : '—'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-pre-wrap text-muted-foreground">
+                        {entry.notes || '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => {
+                              setEditingTime(entry);
+                              setShowTimeForm(false);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => deleteTime(entry.id)}
+                          >
+                            Del
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
