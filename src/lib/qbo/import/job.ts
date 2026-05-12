@@ -59,6 +59,10 @@ export type ImportJobRow = {
   api_calls_used: number;
   batch_ids: Partial<Record<string, string>>;
   review_queue: ReviewQueueEntry[];
+  /** Entity to resume from on next worker invocation. NULL when not chunked. */
+  current_entity: QboImportEntity | null;
+  /** Per-entity STARTPOSITION cursor (1-based). */
+  entity_cursors: Partial<Record<QboImportEntity, number>>;
   error_message: string | null;
   started_at: string | null;
   finished_at: string | null;
@@ -220,6 +224,69 @@ export async function setBatchIdForEntity(
     .update({ batch_ids: batchIds, updated_at: new Date().toISOString() })
     .eq('id', jobId);
   if (updErr) throw new Error(`Failed to attach batch_id: ${updErr.message}`);
+}
+
+/**
+ * Save the resume cursor for a specific entity. Called by the worker
+ * after each page is processed so cron resume can skip already-done
+ * pages.
+ */
+export async function setEntityCursor(
+  jobId: string,
+  entity: QboImportEntity,
+  startPosition: number,
+): Promise<void> {
+  const supabase = createAdminClient();
+  const { data, error: loadErr } = await supabase
+    .from('qbo_import_jobs')
+    .select('entity_cursors')
+    .eq('id', jobId)
+    .single();
+  if (loadErr || !data) {
+    throw new Error(`Failed to load entity_cursors: ${loadErr?.message ?? 'unknown'}`);
+  }
+  const cursors = (data.entity_cursors ?? {}) as Partial<Record<QboImportEntity, number>>;
+  cursors[entity] = startPosition;
+  const { error: updErr } = await supabase
+    .from('qbo_import_jobs')
+    .update({ entity_cursors: cursors, updated_at: new Date().toISOString() })
+    .eq('id', jobId);
+  if (updErr) throw new Error(`Failed to save entity cursor: ${updErr.message}`);
+}
+
+/**
+ * Mark the job as paused mid-import. Sets status='queued', records
+ * which entity to resume on, and (optionally) saves a current cursor
+ * for that entity. The cron picks queued jobs back up.
+ */
+export async function pauseJobForResume(jobId: string, entity: QboImportEntity): Promise<void> {
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from('qbo_import_jobs')
+    .update({
+      status: 'queued',
+      current_entity: entity,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', jobId);
+  if (error) throw new Error(`Failed to pause job: ${error.message}`);
+}
+
+/**
+ * Find queued jobs that are ready for cron resume (status='queued',
+ * current_entity set). Caller is the cron route handler.
+ */
+export async function listResumableJobs(limit = 5): Promise<ImportJobRow[]> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from('qbo_import_jobs')
+    .select('*')
+    .eq('status', 'queued')
+    .not('current_entity', 'is', null)
+    .order('created_at', { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(`Failed to list resumable jobs: ${error.message}`);
+  return (data ?? []) as ImportJobRow[];
 }
 
 /**

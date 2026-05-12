@@ -152,6 +152,9 @@ export function QuickBooksImportLauncher() {
           } else {
             toast.info('Nothing new to import.');
           }
+        } else if (final.job.status === 'queued') {
+          // Worker hit its time budget; cron will resume.
+          toast.info(`Import continuing in the background (${totalImported} so far).`);
         } else if (final.job.status === 'failed') {
           toast.error(final.job.error_message ?? 'Import failed.');
         }
@@ -221,10 +224,15 @@ export function QuickBooksImportLauncher() {
         <div className="rounded-lg border bg-muted/30 p-3 text-sm">
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium">
-              {job.status === 'running' || job.status === 'queued' ? (
+              {job.status === 'running' ? (
                 <span className="inline-flex items-center gap-1">
                   <Loader2 className="size-3.5 animate-spin" />
                   Importing&hellip;
+                </span>
+              ) : job.status === 'queued' ? (
+                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Continuing in background&hellip;
                 </span>
               ) : job.status === 'completed' ? (
                 'Import complete'
