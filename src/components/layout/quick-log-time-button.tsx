@@ -75,7 +75,11 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
     }
     setError('');
     startTransition(async () => {
-      const rateCents = rate ? Math.round(parseFloat(rate) * 100) : undefined;
+      const rateCents = rate ? Math.round(parseFloat(rate) * 100) : Number.NaN;
+      if (!Number.isFinite(rateCents) || rateCents < 0) {
+        setError('Rate is required so labour rolls up into the budget. Use 0 for unbilled hours.');
+        return;
+      }
       const res = await logTimeAction({
         project_id: projectId,
         budget_category_id: categoryId || undefined,
@@ -187,7 +191,8 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
           </div>
           <div>
             <Label htmlFor="ql-rate" className="mb-1.5 block text-sm">
-              Rate ($/h) <span className="font-normal text-muted-foreground">optional</span>
+              Rate ($/h){' '}
+              <span className="font-normal text-muted-foreground">use 0 for unbilled hours</span>
             </Label>
             <Input
               id="ql-rate"
@@ -197,6 +202,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
               value={rate}
               onChange={(e) => setRate(e.target.value)}
               placeholder="e.g. 75"
+              required
               className="max-w-[160px]"
             />
           </div>
