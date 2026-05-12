@@ -1,6 +1,7 @@
 import { Briefcase, Copy, User } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { CostBasisDriftBanner } from '@/components/features/invoices/cost-basis-drift-banner';
 import { InvoiceActions } from '@/components/features/invoices/invoice-actions';
 import { InvoiceDefaultsSetupBanner } from '@/components/features/invoices/invoice-defaults-setup-banner';
 import { InvoiceLineItems } from '@/components/features/invoices/invoice-line-items';
@@ -14,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime } from '@/lib/date/format';
 import { getInvoice } from '@/lib/db/queries/invoices';
+import { getProjectCostBasisRollup } from '@/lib/db/queries/project-cost-basis';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { getSignedUrls } from '@/lib/storage/photos';
 import { createClient } from '@/lib/supabase/server';
@@ -90,6 +92,41 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const ratePct = taxCtx ? Math.round(taxCtx.totalRate * 100) : 5;
   const taxLabel = taxInclusive ? `GST (${ratePct}%, included)` : `GST (${ratePct}%)`;
   const isDraft = invoice.status === 'draft';
+
+  // Cost-basis drift check (cost-plus drafts only). The action freezes
+  // labour + materials into line_items at creation; we re-roll the same
+  // numbers now and compare. A non-zero delta usually means either new
+  // time/expenses logged since this draft (operator should regenerate),
+  // or — much rarer, and the reason this banner exists — a cost source
+  // wasn't picked up by the action.
+  let driftBanner: {
+    projectId: string;
+    billedCostBasisCents: number;
+    currentCostBasisCents: number;
+  } | null = null;
+  if (isDraft && invoice.project_id) {
+    const { data: projectRow } = await supabase
+      .from('projects')
+      .select('is_cost_plus')
+      .eq('id', invoice.project_id)
+      .maybeSingle();
+    const isCostPlusProject = (projectRow?.is_cost_plus as boolean | null) !== false;
+    if (isCostPlusProject) {
+      const billed = lineItems
+        .filter((li) => li.description === 'Labour' || li.description === 'Materials & Expenses')
+        .reduce((s, li) => s + li.total_cents, 0);
+      if (billed > 0) {
+        const rollup = await getProjectCostBasisRollup(invoice.project_id);
+        if (Math.abs(rollup.invoiceCostBasisCents - billed) > 100) {
+          driftBanner = {
+            projectId: invoice.project_id,
+            billedCostBasisCents: billed,
+            currentCostBasisCents: rollup.invoiceCostBasisCents,
+          };
+        }
+      }
+    }
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
@@ -203,6 +240,18 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </p>
         </section>
       )}
+
+      {/* Cost-basis drift warning — cost-plus drafts where the frozen
+       *  Labour + Materials lines no longer match the project's live
+       *  cost rollup. Catches both stale drafts and a future missing-
+       *  source bug like c617fad. */}
+      {driftBanner ? (
+        <CostBasisDriftBanner
+          projectId={driftBanner.projectId}
+          billedCostBasisCents={driftBanner.billedCostBasisCents}
+          currentCostBasisCents={driftBanner.currentCostBasisCents}
+        />
+      ) : null}
 
       {/* Defense-in-depth GST# warning — gate at send time should make
        *  this impossible, but if a draft predates the gate or the field
