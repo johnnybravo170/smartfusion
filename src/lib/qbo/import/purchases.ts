@@ -31,11 +31,24 @@ function summarizeLines(lines: QboBillLine[] | undefined): string {
     .join(' · ');
 }
 
+function firstClassRef(qbo: QboPurchase): { id: string; name: string } | null {
+  for (const line of qbo.Line ?? []) {
+    const cls =
+      line.AccountBasedExpenseLineDetail?.ClassRef ?? line.ItemBasedExpenseLineDetail?.ClassRef;
+    if (cls?.value) {
+      return { id: cls.value, name: cls.name?.trim() || cls.value };
+    }
+  }
+  return null;
+}
+
 export function mapQboPurchaseToRow(qbo: QboPurchase): {
   amount_cents: number;
   vendor: string | null;
   description: string | null;
   expense_date: string;
+  qbo_class_id: string | null;
+  qbo_class_name: string | null;
 } | null {
   const amountCents = Math.round((qbo.TotalAmt ?? 0) * 100);
   if (amountCents <= 0) return null;
@@ -43,12 +56,15 @@ export function mapQboPurchaseToRow(qbo: QboPurchase): {
   const lineSummary = summarizeLines(qbo.Line);
   const note = qbo.PrivateNote?.trim() || '';
   const description = [lineSummary, note].filter(Boolean).join(' · ') || null;
+  const cls = firstClassRef(qbo);
 
   return {
     amount_cents: amountCents,
     vendor: qbo.EntityRef?.name?.trim() || qbo.AccountRef?.name?.trim() || null,
     description,
     expense_date: qbo.TxnDate ?? new Date().toISOString().slice(0, 10),
+    qbo_class_id: cls?.id ?? null,
+    qbo_class_name: cls?.name ?? null,
   };
 }
 
@@ -136,6 +152,8 @@ export async function importPurchasePage(
       qbo_sync_token: r.qbo_sync_token,
       qbo_sync_status: 'synced',
       qbo_synced_at: now,
+      qbo_class_id: r.row.qbo_class_id,
+      qbo_class_name: r.row.qbo_class_name,
       import_batch_id: batchId,
       created_at: now,
       updated_at: now,
@@ -163,6 +181,8 @@ export async function importPurchasePage(
         vendor: u.row.vendor,
         description: u.row.description,
         expense_date: u.row.expense_date,
+        qbo_class_id: u.row.qbo_class_id,
+        qbo_class_name: u.row.qbo_class_name,
         qbo_sync_token: u.qbo.SyncToken,
         qbo_sync_status: 'synced',
         qbo_synced_at: now,
