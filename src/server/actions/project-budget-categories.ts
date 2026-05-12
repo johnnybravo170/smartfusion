@@ -16,6 +16,7 @@ export async function updateBudgetCategoryAction(input: {
   name?: string;
   estimate_cents?: number;
   description?: string;
+  description_md?: string | null;
   is_visible_in_report?: boolean;
 }): Promise<BudgetCategoryActionResult> {
   const supabase = await createClient();
@@ -47,6 +48,10 @@ export async function updateBudgetCategoryAction(input: {
     updates.estimate_cents = input.estimate_cents;
   }
   if (input.description !== undefined) updates.description = input.description || null;
+  if (input.description_md !== undefined) {
+    const trimmed = input.description_md?.trim();
+    updates.description_md = trimmed ? trimmed : null;
+  }
   if (input.is_visible_in_report !== undefined)
     updates.is_visible_in_report = input.is_visible_in_report;
 
