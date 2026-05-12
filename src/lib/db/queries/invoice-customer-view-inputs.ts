@@ -10,6 +10,7 @@
 
 import { computeCostPlusBreakdown } from '@/lib/invoices/cost-plus-markup';
 import type {
+  CostPlusDetailedEntry,
   CustomerViewCategory,
   CustomerViewCostLine,
   CustomerViewCostPlusBreakdown,
@@ -17,6 +18,37 @@ import type {
 } from '@/lib/invoices/customer-view-line-items';
 import { createClient } from '@/lib/supabase/server';
 import type { CustomerViewMode } from '@/lib/validators/project-customer-view';
+
+/** Format YYYY-MM-DD or ISO timestamp date string into "Mar 15, 2026"
+ *  for customer-facing surfaces. The column is a DATE so no tz conversion
+ *  is needed — just parse and format the date verbatim. */
+function formatEntryDate(raw: string | null): string | null {
+  if (!raw) return null;
+  // Postgres returns DATE as "YYYY-MM-DD" or "YYYY-MM-DDT00:00:00.000Z";
+  // either way the first 10 chars are the date.
+  const ymd = raw.slice(0, 10);
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!y || !m || !d) return ymd;
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return `${months[m - 1]} ${d}, ${y}`;
+}
+
+function formatCadShort(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
 
 export type InvoiceCustomerViewInputs = {
   projectId: string;
@@ -117,37 +149,60 @@ export async function loadInvoiceCustomerViewInputs(
       mgmtRate,
     });
 
-    // Per-category aggregation for sections / categories modes. Sums to
-    // labour + materials (mgmt fee stays as a separate row, not distributed).
-    // Empty-string key is the uncategorized bucket — both for time entries
-    // and cost rows with null budget_category_id.
+    // Per-category aggregation for sections / categories modes + per-entry
+    // detail for Detailed mode. Both sum to labour + materials (mgmt fee
+    // stays as a separate row in the helper, not distributed across rows).
+    // Empty-string key in the category map is the uncategorized bucket.
     const byCategoryCents: Record<string, number> = {};
+    const detailedEntries: CostPlusDetailedEntry[] = [];
+
     const [timeCatRes, costCatRes] = await Promise.all([
       supabase
         .from('time_entries')
-        .select('budget_category_id, hours, hourly_rate_cents')
+        .select('budget_category_id, hours, hourly_rate_cents, notes, entry_date')
         .eq('project_id', projectId),
       supabase
         .from('project_costs')
-        .select('budget_category_id, source_type, amount_cents, pre_tax_amount_cents')
+        .select(
+          'budget_category_id, source_type, amount_cents, pre_tax_amount_cents, vendor, description, cost_date',
+        )
         .eq('project_id', projectId)
         .eq('status', 'active'),
     ]);
+
     for (const t of (timeCatRes.data ?? []) as {
       budget_category_id: string | null;
       hours: number;
       hourly_rate_cents: number | null;
+      notes: string | null;
+      entry_date: string | null;
     }[]) {
-      const cents = Math.round(Number(t.hours) * (t.hourly_rate_cents ?? 0));
+      const rate = t.hourly_rate_cents ?? 0;
+      const hours = Number(t.hours);
+      const cents = Math.round(hours * rate);
       if (cents <= 0) continue;
       const key = t.budget_category_id ?? '';
       byCategoryCents[key] = (byCategoryCents[key] ?? 0) + cents;
+
+      const dateLabel = formatEntryDate(t.entry_date) ?? '';
+      const rateLabel = `${hours}h × ${formatCadShort(rate)}/hr`;
+      detailedEntries.push({
+        kind: 'labour',
+        title: dateLabel ? `Labour — ${dateLabel}` : 'Labour',
+        body_md: t.notes ? `${rateLabel} · ${t.notes}` : rateLabel,
+        total_cents: cents,
+        date: t.entry_date ? t.entry_date.slice(0, 10) : null,
+      });
     }
+
     for (const c of (costCatRes.data ?? []) as {
       budget_category_id: string | null;
       source_type: 'receipt' | 'vendor_bill';
       amount_cents: number;
       pre_tax_amount_cents: number | null;
+      vendor: string | null;
+      description: string | null;
+      cost_date: string | null;
     }[]) {
       // Pre-tax cost basis for both receipts and bills. Mirrors how
       // computeCostPlusBreakdown bills materials — see cost-plus-markup.ts
@@ -156,13 +211,36 @@ export async function loadInvoiceCustomerViewInputs(
       if (cents <= 0) continue;
       const key = c.budget_category_id ?? '';
       byCategoryCents[key] = (byCategoryCents[key] ?? 0) + cents;
+
+      const dateLabel = formatEntryDate(c.cost_date);
+      const headline = c.vendor?.trim() || c.description?.trim() || 'Materials';
+      const bodyParts: string[] = [];
+      if (c.vendor && c.description) bodyParts.push(c.description);
+      if (dateLabel) bodyParts.push(dateLabel);
+      detailedEntries.push({
+        kind: 'material',
+        title: headline,
+        body_md: bodyParts.length > 0 ? bodyParts.join(' · ') : null,
+        total_cents: cents,
+        date: c.cost_date ? c.cost_date.slice(0, 10) : null,
+      });
     }
+
+    // Chronological order — customer reads the invoice as a project timeline.
+    // Entries without dates sort to the end.
+    detailedEntries.sort((a, b) => {
+      if (a.date && b.date) return a.date.localeCompare(b.date);
+      if (a.date) return -1;
+      if (b.date) return 1;
+      return 0;
+    });
 
     costPlusBreakdown = {
       labourCents: breakdown.labourCents,
       materialsCents: breakdown.materialsCents,
       mgmtFeeCents: breakdown.mgmtFeeCents,
       byCategoryCents,
+      detailedEntries,
     };
   }
 

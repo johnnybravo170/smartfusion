@@ -70,10 +70,21 @@ export type CustomerViewSection = {
   description_md: string | null;
 };
 
+/** A single labour or material entry in cost-plus Detailed mode. Sums
+ *  across all `detailedEntries` equal `labourCents + materialsCents`. */
+export type CostPlusDetailedEntry = {
+  kind: 'labour' | 'material';
+  title: string;
+  body_md: string | null;
+  total_cents: number;
+  /** ISO date (YYYY-MM-DD). Used for chronological ordering in the preview. */
+  date: string | null;
+};
+
 /** Cost-plus breakdown — used when isCostPlus=true. Shape mirrors
- *  `computeCostPlusBreakdown`'s output, plus an optional per-category
- *  breakdown of the same labour + materials total so the helper can
- *  produce sections/categories rows. */
+ *  `computeCostPlusBreakdown`'s output, plus optional per-category and
+ *  per-entry breakdowns of the same labour + materials total so the
+ *  helper can produce sections/categories and per-entry detailed rows. */
 export type CustomerViewCostPlusBreakdown = {
   labourCents: number;
   materialsCents: number;
@@ -87,6 +98,13 @@ export type CustomerViewCostPlusBreakdown = {
    * modes the helper falls back to the detailed shape.
    */
   byCategoryCents?: Record<string, number>;
+  /**
+   * Per-time-entry + per-project-cost rows for cost-plus Detailed mode.
+   * Sums to labour + materials (mgmt fee is appended as a separate row
+   * in the helper). Optional; when missing or empty the Detailed mode
+   * falls back to the lumped Labour / Materials / Mgmt rollup.
+   */
+  detailedEntries?: ReadonlyArray<CostPlusDetailedEntry>;
 };
 
 export type BuildCustomerViewArgs = {
@@ -330,7 +348,7 @@ function buildSectionsRows(args: BuildCustomerViewArgs): Row[] {
 
 function mgmtFeeRow(mgmtRate: number, mgmtFeeCents: number): Row {
   return {
-    title: `Management fee (${Math.round(mgmtRate * 100)}%)`,
+    title: `Management Fee (${Math.round(mgmtRate * 100)}%)`,
     body_md: null,
     quantity: 1,
     unit_price_cents: mgmtFeeCents,
@@ -393,49 +411,51 @@ function buildCostPlus(args: BuildCustomerViewArgs): Row[] {
       },
     ];
     if (!args.mgmtFeeInline && breakdown.mgmtFeeCents > 0) {
-      rows.push({
-        title: `Management Fee (${Math.round(args.mgmtRate * 100)}%)`,
-        body_md: null,
-        quantity: 1,
-        unit_price_cents: breakdown.mgmtFeeCents,
-        total_cents: breakdown.mgmtFeeCents,
-        kind: 'mgmt_fee',
-      });
+      rows.push(mgmtFeeRow(args.mgmtRate, breakdown.mgmtFeeCents));
     }
     return rows;
   }
 
-  // detailed — Labour / Materials / Mgmt rows.
+  // detailed — per-entry rows when the loader supplied them, else the
+  // lumped Labour / Materials rollup. Mgmt fee always appended last as a
+  // separate row.
   const rows: Row[] = [];
-  if (breakdown.labourCents > 0) {
-    rows.push({
-      title: 'Labour',
-      body_md: null,
-      quantity: 1,
-      unit_price_cents: breakdown.labourCents,
-      total_cents: breakdown.labourCents,
-      kind: 'work',
-    });
-  }
-  if (breakdown.materialsCents > 0) {
-    rows.push({
-      title: 'Materials & Expenses',
-      body_md: null,
-      quantity: 1,
-      unit_price_cents: breakdown.materialsCents,
-      total_cents: breakdown.materialsCents,
-      kind: 'work',
-    });
+  const entries = breakdown.detailedEntries ?? [];
+  if (entries.length > 0) {
+    for (const e of entries) {
+      rows.push({
+        title: e.title,
+        body_md: e.body_md,
+        quantity: 1,
+        unit_price_cents: e.total_cents,
+        total_cents: e.total_cents,
+        kind: 'work',
+      });
+    }
+  } else {
+    if (breakdown.labourCents > 0) {
+      rows.push({
+        title: 'Labour',
+        body_md: null,
+        quantity: 1,
+        unit_price_cents: breakdown.labourCents,
+        total_cents: breakdown.labourCents,
+        kind: 'work',
+      });
+    }
+    if (breakdown.materialsCents > 0) {
+      rows.push({
+        title: 'Materials & Expenses',
+        body_md: null,
+        quantity: 1,
+        unit_price_cents: breakdown.materialsCents,
+        total_cents: breakdown.materialsCents,
+        kind: 'work',
+      });
+    }
   }
   if (breakdown.mgmtFeeCents > 0) {
-    rows.push({
-      title: `Management Fee (${Math.round(args.mgmtRate * 100)}%)`,
-      body_md: null,
-      quantity: 1,
-      unit_price_cents: breakdown.mgmtFeeCents,
-      total_cents: breakdown.mgmtFeeCents,
-      kind: 'mgmt_fee',
-    });
+    rows.push(mgmtFeeRow(args.mgmtRate, breakdown.mgmtFeeCents));
   }
   return rows;
 }

@@ -110,6 +110,11 @@ export function InvoiceViewModePreview({
   const taxCents = Math.round(subtotalCents * taxRate);
   const totalCents = subtotalCents + taxCents;
 
+  // Sections mode produces a single "Other work" rollup when no
+  // customer-facing sections are defined on the project. Tell the
+  // operator how to fix it instead of silently producing a useless view.
+  const sectionsModeNeedsSetup = mode === 'sections' && inputs.sections.length === 0;
+
   // mgmt toggle only changes shape in lump_sum (per helper semantics).
   // Disable outside lump_sum with a tooltip so the toggle doesn't look broken.
   const mgmtToggleActive = mode === 'lump_sum';
@@ -217,6 +222,20 @@ export function InvoiceViewModePreview({
             </div>
           </div>
         </label>
+
+        {/* Sections-mode empty state — no customer-facing sections
+         *  defined yet means everything rolls into "Other work". Tell the
+         *  operator how to fix that. */}
+        {sectionsModeNeedsSetup ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+            <p className="font-medium">Sections mode needs setup.</p>
+            <p className="mt-0.5">
+              This project has no customer-facing sections defined, so everything rolls into a
+              single &quot;Other work&quot; line. Set them up on the project&apos;s Portal tab
+              (Customer view card), then come back here.
+            </p>
+          </div>
+        ) : null}
 
         {/* Live preview */}
         <div>
