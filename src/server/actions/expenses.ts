@@ -8,7 +8,6 @@ import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
-import { safeMirrorExpense, safeUnmirrorCost } from '@/lib/db/project-costs-shim';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -179,7 +178,7 @@ export async function logExpenseAction(input: {
 
   const supabase = await createClient();
   const { data, error } = await supabase
-    .from('expenses')
+    .from('project_costs')
     .insert({
       tenant_id: tenant.id,
       user_id: user.id,
@@ -189,13 +188,16 @@ export async function logExpenseAction(input: {
       cost_line_id: parsed.data.cost_line_id || null,
       amount_cents: parsed.data.amount_cents,
       pre_tax_amount_cents: parsed.data.pre_tax_amount_cents ?? null,
-      // tax_cents has DEFAULT 0 NOT NULL; only override when OCR gave us a value.
-      ...(parsed.data.tax_cents !== undefined ? { tax_cents: parsed.data.tax_cents } : {}),
+      gst_cents: parsed.data.tax_cents ?? 0,
       vendor: parsed.data.vendor?.trim() || null,
       vendor_gst_number: parsed.data.vendor_gst_number?.trim() || null,
       description: parsed.data.description?.trim() || null,
       receipt_url: parsed.data.receipt_url || null,
-      expense_date: parsed.data.expense_date,
+      cost_date: parsed.data.expense_date,
+      source_type: 'receipt',
+      payment_status: 'paid',
+      paid_at: new Date().toISOString(),
+      status: 'active',
     })
     .select('id')
     .single();
@@ -203,8 +205,6 @@ export async function logExpenseAction(input: {
   if (error || !data) {
     return { ok: false, error: error?.message ?? 'Failed to log expense.' };
   }
-
-  await safeMirrorExpense(supabase, data.id);
 
   if (projectId) revalidatePath(`/projects/${projectId}`);
   if (jobId) revalidatePath(`/jobs/${jobId}`);
@@ -280,7 +280,7 @@ export async function logExpenseWithReceiptAction(
     parsed.data.payment_source_id?.trim() || (await getDefaultPaymentSourceId());
 
   const { data, error } = await admin
-    .from('expenses')
+    .from('project_costs')
     .insert({
       tenant_id: tenant.id,
       user_id: user.id,
@@ -289,14 +289,18 @@ export async function logExpenseWithReceiptAction(
       cost_line_id: parsed.data.cost_line_id || null,
       amount_cents: parsed.data.amount_cents,
       pre_tax_amount_cents: parsed.data.pre_tax_amount_cents ?? null,
-      ...(parsed.data.tax_cents !== undefined ? { tax_cents: parsed.data.tax_cents } : {}),
+      gst_cents: parsed.data.tax_cents ?? 0,
       vendor: parsed.data.vendor?.trim() || null,
       vendor_gst_number: parsed.data.vendor_gst_number?.trim() || null,
       description: parsed.data.description?.trim() || null,
-      receipt_storage_path: receiptStoragePath,
-      expense_date: parsed.data.expense_date,
+      attachment_storage_path: receiptStoragePath,
+      cost_date: parsed.data.expense_date,
       payment_source_id: paymentSourceId,
       card_last4: parsed.data.card_last4?.trim() || null,
+      source_type: 'receipt',
+      payment_status: 'paid',
+      paid_at: new Date().toISOString(),
+      status: 'active',
     })
     .select('id')
     .single();
@@ -307,8 +311,6 @@ export async function logExpenseWithReceiptAction(
     }
     return { ok: false, error: error?.message ?? 'Failed to log expense.' };
   }
-
-  await safeMirrorExpense(admin, data.id);
 
   revalidatePath(`/projects/${parsed.data.project_id}`);
   return { ok: true, id: data.id };
@@ -353,8 +355,9 @@ export async function updateExpenseAction(input: {
   if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
 
   // Build the update object with only the fields that were provided.
+  // Form-side names map to project_costs columns: expense_date → cost_date.
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (rest.expense_date !== undefined) patch.expense_date = rest.expense_date;
+  if (rest.expense_date !== undefined) patch.cost_date = rest.expense_date;
   if (rest.amount_cents !== undefined) patch.amount_cents = rest.amount_cents;
   if (rest.vendor !== undefined) patch.vendor = rest.vendor?.trim() || null;
   if (rest.description !== undefined) patch.description = rest.description?.trim() || null;
@@ -365,19 +368,20 @@ export async function updateExpenseAction(input: {
   const supabase = await createClient();
   // RLS scopes this to the caller's tenant; no manual tenant_id filter needed
   // but we add one anyway as a belt-and-suspenders guard.
+  // Scope to receipts so a vendor_bill id can't be hijacked through this
+  // action (legacy `expenses` only ever stored receipts).
   const { data, error } = await supabase
-    .from('expenses')
+    .from('project_costs')
     .update(patch)
     .eq('id', id)
     .eq('tenant_id', tenant.id)
+    .eq('source_type', 'receipt')
     .select('id, project_id, job_id')
     .single();
 
   if (error || !data) {
     return { ok: false, error: error?.message ?? 'Failed to update expense.' };
   }
-
-  await safeMirrorExpense(supabase, data.id);
 
   if (data.project_id) revalidatePath(`/projects/${data.project_id}`);
   if (data.job_id) revalidatePath(`/jobs/${data.job_id}`);
@@ -388,13 +392,15 @@ export async function deleteExpenseAction(id: string): Promise<ExpenseActionResu
   if (!id) return { ok: false, error: 'Missing expense id.' };
 
   const supabase = await createClient();
-  const { error } = await supabase.from('expenses').delete().eq('id', id);
+  const { error } = await supabase
+    .from('project_costs')
+    .delete()
+    .eq('id', id)
+    .eq('source_type', 'receipt');
 
   if (error) {
     return { ok: false, error: error.message };
   }
-
-  await safeUnmirrorCost(supabase, id);
 
   return { ok: true, id };
 }

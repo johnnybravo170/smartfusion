@@ -5,7 +5,6 @@ import { revalidatePath } from 'next/cache';
 import sharp from 'sharp';
 import { z } from 'zod';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
-import { safeMirrorBill, safeUnmirrorCost } from '@/lib/db/project-costs-shim';
 import { uploadToStorage } from '@/lib/storage/photos';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -247,34 +246,43 @@ export async function upsertBillWithAttachmentAction(
   }
 
   const supabase = await createClient();
+  // Form-side `amount_cents` is the pre-GST subtotal; project_costs
+  // amount_cents is gross. Compute both + preserve pre_tax for the
+  // cost-plus markup basis. Update path leaves payment_status alone
+  // (markBillPaidAction is the canonical way to flip it).
   const row: Record<string, unknown> = {
     project_id,
     vendor,
-    bill_date,
+    cost_date: bill_date,
     description,
-    amount_cents,
+    amount_cents: amount_cents + gst_cents,
+    pre_tax_amount_cents: amount_cents,
     gst_cents,
     budget_category_id: budget_category_id || null,
     cost_line_id: cost_line_id || null,
-    cost_code,
+    external_ref: cost_code,
     vendor_gst_number,
-    status: 'pending',
     updated_at: new Date().toISOString(),
   };
   if (attachment_storage_path) row.attachment_storage_path = attachment_storage_path;
 
   if (id) {
-    const { error } = await supabase.from('project_bills').update(row).eq('id', id);
+    const { error } = await supabase
+      .from('project_costs')
+      .update(row)
+      .eq('id', id)
+      .eq('source_type', 'vendor_bill');
     if (error) return { ok: false, error: error.message };
-    await safeMirrorBill(supabase, id);
     revalidatePath(`/projects/${project_id}`);
     return { ok: true, id };
   }
 
   row.tenant_id = tenant.id;
-  const { data, error } = await supabase.from('project_bills').insert(row).select('id').single();
+  row.source_type = 'vendor_bill';
+  row.payment_status = 'unpaid';
+  row.status = 'active';
+  const { data, error } = await supabase.from('project_costs').insert(row).select('id').single();
   if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create bill.' };
-  await safeMirrorBill(supabase, data.id as string);
   revalidatePath(`/projects/${project_id}`);
   return { ok: true, id: data.id as string };
 }
@@ -300,28 +308,51 @@ export async function upsertBillAction(input: unknown): Promise<CostControlResul
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
   const supabase = await createClient();
-  const { id, description, cost_code, vendor_gst_number, ...fields } = parsed.data;
-  const row = {
-    ...fields,
+  const {
+    id,
+    description,
+    cost_code,
+    vendor_gst_number,
+    status,
+    bill_date,
+    amount_cents,
+    ...fields
+  } = parsed.data;
+  // Legacy upsertBillAction takes a pre-GST `amount_cents` with no
+  // GST field. project_costs needs the gross + pre_tax breakdown, so
+  // gst_cents=0 (caller never supplied it) and gross = pre-tax.
+  const now = new Date().toISOString();
+  const payment_status = status === 'paid' ? 'paid' : 'unpaid';
+  const row: Record<string, unknown> = {
+    project_id: fields.project_id,
+    vendor: fields.vendor,
+    cost_date: bill_date,
+    amount_cents,
+    pre_tax_amount_cents: amount_cents,
+    gst_cents: 0,
     description: description || null,
-    cost_code: cost_code || null,
+    external_ref: cost_code || null,
     vendor_gst_number: vendor_gst_number?.trim() || null,
-    updated_at: new Date().toISOString(),
+    payment_status,
+    paid_at: payment_status === 'paid' ? now : null,
+    updated_at: now,
   };
   if (id) {
-    const { error } = await supabase.from('project_bills').update(row).eq('id', id);
+    const { error } = await supabase
+      .from('project_costs')
+      .update(row)
+      .eq('id', id)
+      .eq('source_type', 'vendor_bill');
     if (error) return { ok: false, error: error.message };
-    await safeMirrorBill(supabase, id);
     revalidatePath(`/projects/${fields.project_id}`);
     return { ok: true, id };
   }
   const { data, error } = await supabase
-    .from('project_bills')
-    .insert({ ...row, tenant_id: tenant.id })
+    .from('project_costs')
+    .insert({ ...row, tenant_id: tenant.id, source_type: 'vendor_bill', status: 'active' })
     .select('id')
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? 'Failed to create bill.' };
-  await safeMirrorBill(supabase, data.id as string);
   revalidatePath(`/projects/${fields.project_id}`);
   return { ok: true, id: data.id as string };
 }
@@ -330,20 +361,21 @@ export async function deleteBillAction(id: string, projectId: string): Promise<C
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
   const supabase = await createClient();
-  const { error } = await supabase.from('project_bills').delete().eq('id', id);
+  const { error } = await supabase
+    .from('project_costs')
+    .delete()
+    .eq('id', id)
+    .eq('source_type', 'vendor_bill');
   if (error) return { ok: false, error: error.message };
-  await safeUnmirrorCost(supabase, id);
   revalidatePath(`/projects/${projectId}`);
   return { ok: true, id };
 }
 
 /**
- * Mark a vendor bill paid from the unified Costs UI. Mirrors the
- * bank-confirm path's status flip — `project_bills.status = 'paid'`,
- * mirror upserted via the dual-write shim so `project_costs.payment_status`
- * stays in lockstep. Bills already paid are no-ops (guarded by the
- * `IN ('pending','approved')` filter so a second click can't unflip
- * something else).
+ * Mark a vendor bill paid from the unified Costs UI. Flips
+ * `project_costs.payment_status` to 'paid' and stamps paid_at. Bills
+ * already paid are no-ops (guarded by the `payment_status='unpaid'`
+ * filter so a second click can't unflip something else).
  */
 export async function markBillPaidAction(
   id: string,
@@ -352,13 +384,14 @@ export async function markBillPaidAction(
   const tenant = await getCurrentTenant();
   if (!tenant) return { ok: false, error: 'Not signed in.' };
   const supabase = await createClient();
+  const now = new Date().toISOString();
   const { error } = await supabase
-    .from('project_bills')
-    .update({ status: 'paid', updated_at: new Date().toISOString() })
+    .from('project_costs')
+    .update({ payment_status: 'paid', paid_at: now, updated_at: now })
     .eq('id', id)
-    .in('status', ['pending', 'approved']);
+    .eq('source_type', 'vendor_bill')
+    .eq('payment_status', 'unpaid');
   if (error) return { ok: false, error: error.message };
-  await safeMirrorBill(supabase, id);
   revalidatePath(`/projects/${projectId}`);
   return { ok: true, id };
 }
