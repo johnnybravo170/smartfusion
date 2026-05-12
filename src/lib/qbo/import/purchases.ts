@@ -147,7 +147,7 @@ export async function importPurchasePage(
       amount_cents: r.row.amount_cents,
       vendor: r.row.vendor,
       description: r.row.description,
-      expense_date: r.row.expense_date,
+      cost_date: r.row.expense_date,
       qbo_purchase_id: r.qbo_purchase_id,
       qbo_sync_token: r.qbo_sync_token,
       qbo_sync_status: 'synced',
@@ -157,13 +157,17 @@ export async function importPurchasePage(
       import_batch_id: batchId,
       created_at: now,
       updated_at: now,
+      source_type: 'receipt',
+      payment_status: 'paid',
+      paid_at: now,
+      status: 'active',
     }));
     const { data: inserted, error } = await supabase
-      .from('expenses')
+      .from('project_costs')
       .insert(rows)
       .select('id, qbo_purchase_id');
     if (error) {
-      throw new Error(`Failed to insert expenses page: ${error.message}`);
+      throw new Error(`Failed to insert project_costs page: ${error.message}`);
     }
     for (const r of inserted ?? []) {
       const id = (r as { id: string }).id;
@@ -175,12 +179,12 @@ export async function importPurchasePage(
   for (const u of toUpdate) {
     const now = new Date().toISOString();
     const { error } = await supabase
-      .from('expenses')
+      .from('project_costs')
       .update({
         amount_cents: u.row.amount_cents,
         vendor: u.row.vendor,
         description: u.row.description,
-        expense_date: u.row.expense_date,
+        cost_date: u.row.expense_date,
         qbo_class_id: u.row.qbo_class_id,
         qbo_class_name: u.row.qbo_class_name,
         qbo_sync_token: u.qbo.SyncToken,
@@ -188,9 +192,10 @@ export async function importPurchasePage(
         qbo_synced_at: now,
         updated_at: now,
       })
-      .eq('id', u.id);
+      .eq('id', u.id)
+      .eq('source_type', 'receipt');
     if (error) {
-      throw new Error(`Failed to update expense ${u.id}: ${error.message}`);
+      throw new Error(`Failed to update project_cost ${u.id}: ${error.message}`);
     }
   }
 
@@ -208,9 +213,10 @@ export async function loadPurchaseImportContext(
 ): Promise<PurchaseImportContext> {
   const supabase = createAdminClient();
   const { data, error } = await supabase
-    .from('expenses')
+    .from('project_costs')
     .select('id, qbo_purchase_id')
     .eq('tenant_id', tenantId)
+    .eq('source_type', 'receipt')
     .not('qbo_purchase_id', 'is', null);
 
   if (error) {

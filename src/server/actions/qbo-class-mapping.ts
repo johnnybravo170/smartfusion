@@ -49,9 +49,10 @@ export async function listClassMappingsAction(): Promise<ListClassMappingsResult
       .eq('tenant_id', tenant.id)
       .not('qbo_class_name', 'is', null),
     supabase
-      .from('expenses')
+      .from('project_costs')
       .select('qbo_class_name, project_id, amount_cents')
       .eq('tenant_id', tenant.id)
+      .eq('source_type', 'receipt')
       .not('qbo_class_name', 'is', null),
     supabase
       .from('projects')
@@ -199,9 +200,10 @@ export async function applyClassMappingAction(
   if (billsRes.error) return { ok: false, error: `Bills update failed: ${billsRes.error.message}` };
 
   let expensesQuery = supabase
-    .from('expenses')
+    .from('project_costs')
     .update({ project_id: projectId, updated_at: now }, { count: 'exact' })
     .eq('tenant_id', tenant.id)
+    .eq('source_type', 'receipt')
     .eq('qbo_class_name', qboClassName);
   if (preserveExisting) {
     expensesQuery = expensesQuery.is('project_id', null);
