@@ -78,6 +78,7 @@ export async function updateCustomerViewModeAction(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/projects/${parsed.data.projectId}`);
+  revalidatePath(`/projects/${parsed.data.projectId}/estimate/preview`);
   return { ok: true };
 }
 
