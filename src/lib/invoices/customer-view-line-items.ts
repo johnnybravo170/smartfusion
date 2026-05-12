@@ -49,6 +49,10 @@ import type { InvoiceLineItem } from '@/lib/db/queries/invoices';
 import type { CustomerViewMode } from '@/lib/validators/project-customer-view';
 
 export type CustomerViewCostLine = {
+  /** Project_cost_lines.id. Optional for fixed-price (which keys by
+   *  budget_category_id and uses line_price_cents directly), required
+   *  for cost-plus Detailed (which keys actual spend by cost_line_id). */
+  id?: string;
   label: string;
   qty: number;
   unit_price_cents: number;
@@ -70,21 +74,10 @@ export type CustomerViewSection = {
   description_md: string | null;
 };
 
-/** A single labour or material entry in cost-plus Detailed mode. Sums
- *  across all `detailedEntries` equal `labourCents + materialsCents`. */
-export type CostPlusDetailedEntry = {
-  kind: 'labour' | 'material';
-  title: string;
-  body_md: string | null;
-  total_cents: number;
-  /** ISO date (YYYY-MM-DD). Used for chronological ordering in the preview. */
-  date: string | null;
-};
-
 /** Cost-plus breakdown — used when isCostPlus=true. Shape mirrors
  *  `computeCostPlusBreakdown`'s output, plus optional per-category and
- *  per-entry breakdowns of the same labour + materials total so the
- *  helper can produce sections/categories and per-entry detailed rows. */
+ *  per-cost-line breakdowns of the same labour + materials total so the
+ *  helper can produce sections/categories and detailed rows. */
 export type CustomerViewCostPlusBreakdown = {
   labourCents: number;
   materialsCents: number;
@@ -99,12 +92,14 @@ export type CustomerViewCostPlusBreakdown = {
    */
   byCategoryCents?: Record<string, number>;
   /**
-   * Per-time-entry + per-project-cost rows for cost-plus Detailed mode.
-   * Sums to labour + materials (mgmt fee is appended as a separate row
-   * in the helper). Optional; when missing or empty the Detailed mode
-   * falls back to the lumped Labour / Materials / Mgmt rollup.
+   * Pre-tax cost basis grouped by `cost_line_id` on the project's
+   * `project_cost_lines`. Sums to labour + materials. Key `''` (empty
+   * string) collects spend not tagged to a specific cost line (rare —
+   * shows as "Other work" in Detailed mode). Drives cost-plus Detailed:
+   * the customer sees their project's budget cost lines with actual
+   * spend per line, NOT individual receipts or time entries.
    */
-  detailedEntries?: ReadonlyArray<CostPlusDetailedEntry>;
+  byCostLineCents?: Record<string, number>;
 };
 
 export type BuildCustomerViewArgs = {
@@ -416,23 +411,40 @@ function buildCostPlus(args: BuildCustomerViewArgs): Row[] {
     return rows;
   }
 
-  // detailed — per-entry rows when the loader supplied them, else the
-  // lumped Labour / Materials rollup. Mgmt fee always appended last as a
-  // separate row.
+  // detailed — one row per project_cost_line with actual spend tagged
+  // to that line via cost_line_id. NO receipt-level or time-entry-level
+  // info; the customer sees scope items, not operational data. Lines
+  // with $0 spend (planned-but-untouched) are hidden. Spend not tagged
+  // to any cost line rolls into "Other work". Mgmt fee appended last.
   const rows: Row[] = [];
-  const entries = breakdown.detailedEntries ?? [];
-  if (entries.length > 0) {
-    for (const e of entries) {
+  const byLine = breakdown.byCostLineCents ?? {};
+  const hasLineData = Object.values(byLine).some((v) => v > 0);
+  if (hasLineData) {
+    for (const line of args.costLines) {
+      const total = byLine[line.id ?? ''] ?? 0;
+      if (total <= 0) continue;
       rows.push({
-        title: e.title,
-        body_md: e.body_md,
+        title: line.label,
+        body_md: line.notes,
         quantity: 1,
-        unit_price_cents: e.total_cents,
-        total_cents: e.total_cents,
+        unit_price_cents: total,
+        total_cents: total,
+        kind: 'work',
+      });
+    }
+    const otherCents = byLine[''] ?? 0;
+    if (otherCents > 0) {
+      rows.push({
+        title: 'Other work',
+        body_md: null,
+        quantity: 1,
+        unit_price_cents: otherCents,
+        total_cents: otherCents,
         kind: 'work',
       });
     }
   } else {
+    // No per-line data — fall back to lumped Labour / Materials.
     if (breakdown.labourCents > 0) {
       rows.push({
         title: 'Labour',

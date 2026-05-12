@@ -394,84 +394,113 @@ describe('buildCustomerViewLineItems — cost-plus', () => {
   });
 });
 
-// ─── Cost-plus per-entry detailed mode ──────────────────────────────────────
+// ─── Cost-plus Detailed: per-cost-line (budget scope items) ────────────────
 
-describe('buildCustomerViewLineItems — cost-plus detailed entries', () => {
-  const CP_LABOUR = 60000 + 80000; // 6h × $100 + 8h × $100
-  const CP_MATERIALS = 18900 + 32000; // two receipts
-  const CP_MGMT = Math.round((CP_LABOUR + CP_MATERIALS) * 0.18);
-  const CP_GRAND = CP_LABOUR + CP_MATERIALS + CP_MGMT;
+describe('buildCustomerViewLineItems — cost-plus detailed (per cost line)', () => {
+  // Cost lines under categories. Cost-plus aggregates actual spend
+  // (time_entries + project_costs) by cost_line_id; the helper renders one
+  // row per line with its actual amount, NOT the planned line_price_cents.
+  const LINE_TILE_PACKAGE = {
+    id: 'line-tile-package',
+    label: 'Tile package',
+    qty: 1,
+    unit_price_cents: 735000,
+    line_price_cents: 735000,
+    notes: 'Marble-look porcelain, 12×24',
+    budget_category_id: 'cat-ensuite',
+  };
+  const LINE_TILE_INSTALL = {
+    id: 'line-tile-install',
+    label: 'Tile install + waterproofing',
+    qty: 1,
+    unit_price_cents: 625000,
+    line_price_cents: 625000,
+    notes: null,
+    budget_category_id: 'cat-ensuite',
+  };
+  const LINE_TUB = {
+    id: 'line-tub',
+    label: 'Freestanding tub + filler',
+    qty: 1,
+    unit_price_cents: 340000,
+    line_price_cents: 340000,
+    notes: null,
+    budget_category_id: 'cat-ensuite',
+  };
+  const LINE_UNTOUCHED = {
+    id: 'line-untouched',
+    label: 'Planned but no spend yet',
+    qty: 1,
+    unit_price_cents: 100000,
+    line_price_cents: 100000,
+    notes: null,
+    budget_category_id: 'cat-ensuite',
+  };
 
-  const COST_PLUS_ENTRIES = baseArgs({
+  // Actual cost-plus spend by cost_line_id (sums to labour + materials).
+  // line-tile-package $5,000, line-tile-install $4,800, line-tub $3,400, '' (other) $200
+  const ACTUAL_BY_LINE = {
+    'line-tile-package': 500000,
+    'line-tile-install': 480000,
+    'line-tub': 340000,
+    '': 20000, // untagged spend → "Other work"
+    // line-untouched intentionally absent
+  };
+  const CP_LABOUR_PLUS_MATERIALS = Object.values(ACTUAL_BY_LINE).reduce((s, v) => s + v, 0);
+  const CP_MGMT = Math.round(CP_LABOUR_PLUS_MATERIALS * 0.18);
+  const CP_GRAND = CP_LABOUR_PLUS_MATERIALS + CP_MGMT;
+
+  const COST_PLUS_LINES = baseArgs({
     isCostPlus: true,
-    costLines: [],
+    costLines: [LINE_TILE_PACKAGE, LINE_TILE_INSTALL, LINE_TUB, LINE_UNTOUCHED],
+    categories: [],
+    sections: [],
     mgmtRate: 0.18,
     costPlusBreakdown: {
-      labourCents: CP_LABOUR,
-      materialsCents: CP_MATERIALS,
+      labourCents: 600000,
+      materialsCents: CP_LABOUR_PLUS_MATERIALS - 600000,
       mgmtFeeCents: CP_MGMT,
-      detailedEntries: [
-        {
-          kind: 'labour',
-          title: 'Labour — Mar 11, 2026',
-          body_md: '6h × $100.00/hr · Demo prep',
-          total_cents: 60000,
-          date: '2026-03-11',
-        },
-        {
-          kind: 'material',
-          title: 'Home Depot',
-          body_md: 'Demo supplies · Mar 13, 2026',
-          total_cents: 18900,
-          date: '2026-03-13',
-        },
-        {
-          kind: 'labour',
-          title: 'Labour — Mar 15, 2026',
-          body_md: '8h × $100.00/hr',
-          total_cents: 80000,
-          date: '2026-03-15',
-        },
-        {
-          kind: 'material',
-          title: 'Roof Centre',
-          body_md: 'Shingles · Mar 21, 2026',
-          total_cents: 32000,
-          date: '2026-03-21',
-        },
-      ],
+      byCostLineCents: ACTUAL_BY_LINE,
     },
   });
 
-  it('detailed mode lists every entry, preserving caller-supplied order', () => {
-    const { preview } = buildCustomerViewLineItems({ ...COST_PLUS_ENTRIES, mode: 'detailed' });
-    // 4 entries + 1 mgmt fee row
-    expect(preview).toHaveLength(5);
-    expect(preview[0].title).toBe('Labour — Mar 11, 2026');
-    expect(preview[1].title).toBe('Home Depot');
-    expect(preview[2].title).toBe('Labour — Mar 15, 2026');
-    expect(preview[3].title).toBe('Roof Centre');
-    expect(preview[4].kind).toBe('mgmt_fee');
-    expect(
-      sumTotals(buildCustomerViewLineItems({ ...COST_PLUS_ENTRIES, mode: 'detailed' }).items),
-    ).toBe(CP_GRAND);
+  it('detailed mode shows one row per priced cost line in costLines order, with actual spend', () => {
+    const { preview } = buildCustomerViewLineItems({ ...COST_PLUS_LINES, mode: 'detailed' });
+    expect(preview[0]).toMatchObject({
+      title: 'Tile package',
+      body_md: 'Marble-look porcelain, 12×24',
+      total_cents: 500000,
+    });
+    expect(preview[1]).toMatchObject({
+      title: 'Tile install + waterproofing',
+      total_cents: 480000,
+    });
+    expect(preview[2]).toMatchObject({ title: 'Freestanding tub + filler', total_cents: 340000 });
+    expect(preview[3]).toMatchObject({ title: 'Other work', total_cents: 20000 });
+    expect(preview[4]).toMatchObject({ kind: 'mgmt_fee' });
   });
 
-  it('detailed mode renders entry body_md as the row body', () => {
-    const { preview } = buildCustomerViewLineItems({ ...COST_PLUS_ENTRIES, mode: 'detailed' });
-    expect(preview[0].body_md).toBe('6h × $100.00/hr · Demo prep');
-    expect(preview[1].body_md).toBe('Demo supplies · Mar 13, 2026');
+  it('hides cost lines with no actual spend (planned but untouched)', () => {
+    const { preview } = buildCustomerViewLineItems({ ...COST_PLUS_LINES, mode: 'detailed' });
+    expect(preview.find((r) => r.title === 'Planned but no spend yet')).toBeUndefined();
   });
 
-  it('falls back to lumped Labour / Materials / Mgmt when detailedEntries is empty', () => {
+  it('subtotal sums to labour + materials + mgmt fee (invariance)', () => {
+    const total = sumTotals(
+      buildCustomerViewLineItems({ ...COST_PLUS_LINES, mode: 'detailed' }).items,
+    );
+    expect(total).toBe(CP_GRAND);
+  });
+
+  it('falls back to lumped Labour / Materials when byCostLineCents is empty', () => {
     const { preview } = buildCustomerViewLineItems({
-      ...COST_PLUS_ENTRIES,
+      ...COST_PLUS_LINES,
       mode: 'detailed',
       costPlusBreakdown: {
-        labourCents: CP_LABOUR,
-        materialsCents: CP_MATERIALS,
+        labourCents: 600000,
+        materialsCents: CP_LABOUR_PLUS_MATERIALS - 600000,
         mgmtFeeCents: CP_MGMT,
-        detailedEntries: [],
+        byCostLineCents: {},
       },
     });
     expect(preview.map((r) => r.title)).toEqual([
