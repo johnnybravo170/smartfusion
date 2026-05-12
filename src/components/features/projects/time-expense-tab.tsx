@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import type { BudgetCategorySummary } from '@/lib/db/queries/projects';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import {
@@ -146,15 +147,19 @@ function TimeForm({
             </select>
           </div>
         )}
-        <div className="sm:col-span-2">
-          <span className="mb-1 block text-xs font-medium">Notes</span>
-          <Input
+        <div className="sm:col-span-4">
+          <span className="mb-1 block text-xs font-medium">
+            Scope notes{' '}
+            <span className="font-normal text-muted-foreground">— what was worked on</span>
+          </span>
+          <Textarea
             value={notes}
             onChange={(e) => {
               setNotes(e.target.value);
               if (e.target.value.trim()) setNeedsEmptyConfirm(false);
             }}
-            placeholder="What was worked on"
+            rows={2}
+            placeholder="e.g. Bathroom demo, plumbing rough-in, K5 grinded down for self-leveler"
           />
         </div>
       </div>
@@ -576,7 +581,9 @@ export function TimeExpenseTab({
                       {entry.budget_category_name ?? <span className="italic">unallocated</span>}
                     </td>
                     <td className="px-3 py-2 text-right">{Number(entry.hours)}h</td>
-                    <td className="px-3 py-2 text-muted-foreground">{entry.notes || '—'}</td>
+                    <td className="px-3 py-2 whitespace-pre-wrap text-muted-foreground">
+                      {entry.notes || '—'}
+                    </td>
                     <td className="px-3 py-2 text-right">
                       <Button
                         size="xs"
