@@ -18,6 +18,14 @@
  *   - Credit card interest, bank fees, and other non-service payments
  *     still show up here. Future card: categorize vendors by "is this a
  *     T4A-eligible service" heuristic.
+ *
+ * As of the cost-unification rollout this reads from the unified
+ * `project_costs` table, splitting receipts vs vendor bills via
+ * `source_type`. Per-vendor totals are byte-identical to the legacy
+ * implementation: receipts contribute their gross `amount_cents`, bills
+ * contribute their pre-GST `amount_cents` (read from
+ * `pre_tax_amount_cents`, which the backfill copied verbatim from the
+ * legacy `project_bills.amount_cents`).
  */
 
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -49,25 +57,16 @@ export async function getT4aReport(tenantId: string, year: number): Promise<T4aR
   const yearStart = `${year}-01-01`;
   const yearEnd = `${year}-12-31`;
 
-  const [expensesRes, billsRes] = await Promise.all([
-    admin
-      .from('expenses')
-      .select('vendor, amount_cents')
-      .eq('tenant_id', tenantId)
-      .gte('expense_date', yearStart)
-      .lte('expense_date', yearEnd)
-      .not('vendor', 'is', null),
-    admin
-      .from('project_bills')
-      .select('vendor, amount_cents')
-      .eq('tenant_id', tenantId)
-      .gte('bill_date', yearStart)
-      .lte('bill_date', yearEnd)
-      .not('vendor', 'is', null),
-  ]);
+  const costsRes = await admin
+    .from('project_costs')
+    .select('vendor, source_type, amount_cents, pre_tax_amount_cents')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'active')
+    .gte('cost_date', yearStart)
+    .lte('cost_date', yearEnd)
+    .not('vendor', 'is', null);
 
-  if (expensesRes.error) throw new Error(`T4A: ${expensesRes.error.message}`);
-  if (billsRes.error) throw new Error(`T4A: ${billsRes.error.message}`);
+  if (costsRes.error) throw new Error(`T4A: ${costsRes.error.message}`);
 
   type Bucket = {
     display: string;
@@ -94,11 +93,17 @@ export async function getT4aReport(tenantId: string, year: number): Promise<T4aR
     byKey.set(key, existing);
   };
 
-  for (const r of expensesRes.data ?? []) {
-    bump(r.vendor as string | null, (r.amount_cents as number) ?? 0);
-  }
-  for (const r of billsRes.data ?? []) {
-    bump(r.vendor as string | null, (r.amount_cents as number) ?? 0);
+  for (const r of costsRes.data ?? []) {
+    const source = r.source_type as 'receipt' | 'vendor_bill';
+    // Receipts: gross amount_cents (matches legacy expenses query).
+    // Vendor bills: pre-GST amount_cents (matches legacy project_bills
+    // query — pre_tax_amount_cents carries the original pre-GST value
+    // from the backfill; falls back to amount_cents for pre-0083 rows).
+    const amount =
+      source === 'vendor_bill'
+        ? ((r.pre_tax_amount_cents as number | null) ?? (r.amount_cents as number) ?? 0)
+        : ((r.amount_cents as number) ?? 0);
+    bump(r.vendor as string | null, amount);
   }
 
   const vendors: T4aVendorLine[] = Array.from(byKey.entries())
