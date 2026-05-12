@@ -23,9 +23,11 @@ export default async function BookkeeperHomePage() {
   const [report, uncategorized] = await Promise.all([
     getGstRemittanceReport(tenant.id, period),
     admin
-      .from('expenses')
+      .from('project_costs')
       .select('id', { count: 'exact', head: true })
       .eq('tenant_id', tenant.id)
+      .eq('source_type', 'receipt')
+      .eq('status', 'active')
       .is('category_id', null),
   ]);
 

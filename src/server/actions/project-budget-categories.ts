@@ -283,14 +283,16 @@ export async function removeBudgetCategoryAction(input: {
     .eq('budget_category_id', input.id);
 
   const { count: expenseCount } = await supabase
-    .from('expenses')
+    .from('project_costs')
     .select('id', { count: 'exact', head: true })
-    .eq('budget_category_id', input.id);
+    .eq('budget_category_id', input.id)
+    .eq('status', 'active');
 
   if ((timeCount ?? 0) > 0 || (expenseCount ?? 0) > 0) {
     return {
       ok: false,
-      error: 'Cannot remove category with linked time entries or expenses. Reassign them first.',
+      error:
+        'Cannot remove category with linked time entries or project costs. Reassign them first.',
     };
   }
 
