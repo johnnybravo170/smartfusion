@@ -45,7 +45,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Money } from '@/components/ui/money';
-import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Textarea } from '@/components/ui/textarea';
 import type { AppliedChangeOrderContribution } from '@/lib/db/queries/change-orders';
 import type { CostLineActualsSummary } from '@/lib/db/queries/cost-line-actuals';
@@ -844,56 +843,6 @@ type BudgetCategoryRowProps = {
   actualsByLineId: Record<string, CostLineActualsSummary>;
 };
 
-function CategoryCustomerDescriptionEditor({
-  categoryId,
-  projectId,
-  initial,
-}: {
-  categoryId: string;
-  projectId: string;
-  initial: string | null;
-}) {
-  const [value, setValue] = useState<string>(initial ?? '');
-  const [saved, setSaved] = useState<string>(initial ?? '');
-  const [pending, startTransition] = useTransition();
-
-  function handleSave() {
-    if (value === saved) return;
-    startTransition(async () => {
-      const res = await updateBudgetCategoryAction({
-        id: categoryId,
-        project_id: projectId,
-        description_md: value,
-      });
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      setSaved(value);
-      toast.success('Customer description saved.');
-    });
-  }
-
-  return (
-    <div className="space-y-1">
-      <div className="text-xs font-medium text-muted-foreground">
-        Customer description{' '}
-        <span className="font-normal opacity-70">
-          — shown on the invoice in Categories / Detailed modes
-        </span>
-      </div>
-      <RichTextEditor
-        value={value}
-        onChange={setValue}
-        onBlur={handleSave}
-        placeholder="What's included in this category (shown to customer). Supports **bold**, *italic*, lists."
-        rows={2}
-        disabled={pending}
-      />
-    </div>
-  );
-}
-
 function BudgetCategoryRow(props: BudgetCategoryRowProps) {
   const {
     line,
@@ -1471,12 +1420,6 @@ function BudgetCategoryRow(props: BudgetCategoryRowProps) {
                   </tbody>
                 </table>
               )}
-
-              <CategoryCustomerDescriptionEditor
-                categoryId={line.budget_category_id}
-                projectId={projectId}
-                initial={line.budget_category_description_md}
-              />
 
               {addingLineFor === line.budget_category_id ? (
                 <CostLineForm
