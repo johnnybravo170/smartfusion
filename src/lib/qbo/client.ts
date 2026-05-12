@@ -223,6 +223,23 @@ export type QboQueryAllOpts = {
   onPage?: (items: unknown[], pageIndex: number) => void;
   /** Forwarded to `qboFetch`. */
   onApiCall?: () => void;
+  /**
+   * 1-based STARTPOSITION to begin pagination from. Use for resuming
+   * a partially-completed import — set to the cursor saved on the job
+   * row. Defaults to 1 (start from the first page).
+   */
+  startPosition?: number;
+  /**
+   * Called after each successful page with the NEXT STARTPOSITION to
+   * resume from. Used by the worker to persist a cursor so a cron
+   * resume can skip already-processed pages.
+   */
+  onAdvanceCursor?: (nextStartPosition: number) => Promise<void> | void;
+  /**
+   * Predicate evaluated after each page. Return true to stop the
+   * iterator gracefully (without throwing). Used for time-budget exits.
+   */
+  shouldStop?: () => boolean;
 };
 
 /**
@@ -247,17 +264,24 @@ export async function* qboQueryAll<T>(
   const maxPages = opts.maxPages ?? Number.POSITIVE_INFINITY;
   const whereClause = opts.where ? ` WHERE ${opts.where}` : '';
 
-  let startPosition = 1;
+  let startPosition = Math.max(opts.startPosition ?? 1, 1);
   let pageIndex = 0;
 
   while (pageIndex < maxPages) {
+    if (opts.shouldStop?.()) return;
     const queryString = `SELECT * FROM ${entity}${whereClause} STARTPOSITION ${startPosition} MAXRESULTS ${pageSize}`;
     const { items } = await qboQuery<T>(tenantId, queryString, { onApiCall: opts.onApiCall });
     opts.onPage?.(items as unknown[], pageIndex);
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      // Mark cursor at end so the next resume doesn't refetch.
+      await opts.onAdvanceCursor?.(startPosition);
+      return;
+    }
     yield items;
+    const nextStart = startPosition + items.length;
+    await opts.onAdvanceCursor?.(nextStart);
     if (items.length < pageSize) return;
-    startPosition += items.length;
+    startPosition = nextStart;
     pageIndex += 1;
   }
 }
