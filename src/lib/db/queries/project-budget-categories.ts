@@ -16,6 +16,7 @@ export type BudgetCategoryRow = {
   name: string;
   section: string;
   description: string | null;
+  description_md: string | null;
   estimate_cents: number;
   display_order: number;
   is_visible_in_report: boolean;
@@ -27,6 +28,7 @@ export type BudgetLine = {
   budget_category_id: string;
   budget_category_name: string;
   budget_category_description: string | null;
+  budget_category_description_md: string | null;
   section: string;
   estimate_cents: number;
   labor_cents: number;
@@ -265,6 +267,7 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
       budget_category_id: b.id,
       budget_category_name: b.name,
       budget_category_description: b.description,
+      budget_category_description_md: b.description_md,
       section: b.section,
       estimate_cents,
       labor_cents,

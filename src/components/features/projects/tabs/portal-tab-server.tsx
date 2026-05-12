@@ -6,6 +6,7 @@ import { PortalBudgetVisibilityToggle } from '@/components/features/portal/porta
 import { PortalToggle } from '@/components/features/portal/portal-toggle';
 import { PortalUpdateForm } from '@/components/features/portal/portal-update-form';
 import { CustomerSectionsManager } from '@/components/features/projects/customer-sections-manager';
+import { CustomerSummaryCard } from '@/components/features/projects/customer-summary-card';
 import { CustomerViewModeCard } from '@/components/features/projects/customer-view-mode-card';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { listCustomerSectionsForProject } from '@/lib/db/queries/project-customer-sections';
@@ -37,7 +38,7 @@ export default async function PortalTabServer({ projectId }: { projectId: string
     supabase
       .from('projects')
       .select(
-        'name, portal_slug, portal_enabled, portal_show_budget, customer_view_mode, customers:customer_id (name, email, additional_emails)',
+        'name, portal_slug, portal_enabled, portal_show_budget, customer_view_mode, customer_summary_md, customers:customer_id (name, email, additional_emails)',
       )
       .eq('id', projectId)
       .single(),
@@ -114,18 +115,24 @@ export default async function PortalTabServer({ projectId }: { projectId: string
 
       <CustomerViewModeCard projectId={projectId} currentMode={customerViewMode} />
 
-      {customerViewMode === 'sections' ? (
-        <CustomerSectionsManager
-          projectId={projectId}
-          sections={customerSections.map((s) => ({
-            id: s.id,
-            name: s.name,
-            description_md: s.description_md,
-            sort_order: s.sort_order,
-          }))}
-          categories={categoriesForSections}
-        />
-      ) : null}
+      <CustomerSummaryCard
+        projectId={projectId}
+        initialSummaryMd={(portalData?.customer_summary_md as string | null) ?? null}
+      />
+
+      {/* Sections are always editable: even projects defaulting to "detailed"
+       * may have per-invoice overrides to sections mode, so the operator
+       * needs to be able to define them ahead of time. */}
+      <CustomerSectionsManager
+        projectId={projectId}
+        sections={customerSections.map((s) => ({
+          id: s.id,
+          name: s.name,
+          description_md: s.description_md,
+          sort_order: s.sort_order,
+        }))}
+        categories={categoriesForSections}
+      />
 
       {phases.length > 0 ? <PhaseRail phases={phases} projectId={projectId} /> : null}
 
