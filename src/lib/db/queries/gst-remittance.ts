@@ -18,9 +18,18 @@
  * Scope decisions carried over from V1:
  *   - GST/HST ONLY. PST/QST are not ITC-eligible.
  *   - Invoices count when paid (status = 'paid', paid_at in range).
- *   - Expenses + bills count when dated in range (expense_date,
- *     bill_date) regardless of whether the bill is marked paid.
+ *   - Expenses + bills count when dated in range (cost_date) regardless
+ *     of whether the bill is marked paid.
  *   - Admin client because bookkeepers will need cross-surface access.
+ *
+ * As of the cost-unification rollout the ITC side reads from the
+ * unified `project_costs` table, splitting receipts vs vendor bills via
+ * the `source_type` discriminator. Byte-identical to the legacy two-
+ * query implementation: receipts expose gross `amount_cents` + GST in
+ * `gst_cents` (which carries `expenses.tax_cents` verbatim); bills
+ * expose pre-GST `amount_cents` (read from `pre_tax_amount_cents`,
+ * which the backfill copied verbatim from `project_bills.amount_cents`)
+ * + GST in `gst_cents`.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -103,47 +112,40 @@ export async function getGstRemittanceReport(
 ): Promise<GstRemittanceReport> {
   const admin = createAdminClient();
 
-  const [invoicesRes, expensesRes, billsRes, categoriesRes, projectsRes, filedRes] =
-    await Promise.all([
-      admin
-        .from('invoices')
-        .select('amount_cents, tax_cents')
-        .eq('tenant_id', tenantId)
-        .eq('status', 'paid')
-        .gte('paid_at', period.from)
-        .lte('paid_at', `${period.to}T23:59:59.999Z`)
-        .is('deleted_at', null),
-      admin
-        .from('expenses')
-        .select(
-          'id, amount_cents, tax_cents, category_id, project_id, vendor, vendor_gst_number, expense_date',
-        )
-        .eq('tenant_id', tenantId)
-        .gte('expense_date', period.from)
-        .lte('expense_date', period.to),
-      admin
-        .from('project_bills')
-        .select('id, amount_cents, gst_cents, project_id, vendor, vendor_gst_number, bill_date')
-        .eq('tenant_id', tenantId)
-        .gte('bill_date', period.from)
-        .lte('bill_date', period.to),
-      admin
-        .from('expense_categories')
-        .select('id, name, parent_id, parent:parent_id (name)')
-        .eq('tenant_id', tenantId),
-      admin.from('projects').select('id, name').eq('tenant_id', tenantId).is('deleted_at', null),
-      admin
-        .from('gst_remittances')
-        .select('id, paid_at, amount_cents, reference, notes')
-        .eq('tenant_id', tenantId)
-        .eq('period_from', period.from)
-        .eq('period_to', period.to)
-        .maybeSingle(),
-    ]);
+  const [invoicesRes, costsRes, categoriesRes, projectsRes, filedRes] = await Promise.all([
+    admin
+      .from('invoices')
+      .select('amount_cents, tax_cents')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'paid')
+      .gte('paid_at', period.from)
+      .lte('paid_at', `${period.to}T23:59:59.999Z`)
+      .is('deleted_at', null),
+    admin
+      .from('project_costs')
+      .select(
+        'id, source_type, amount_cents, pre_tax_amount_cents, gst_cents, category_id, project_id, vendor, vendor_gst_number, cost_date',
+      )
+      .eq('tenant_id', tenantId)
+      .eq('status', 'active')
+      .gte('cost_date', period.from)
+      .lte('cost_date', period.to),
+    admin
+      .from('expense_categories')
+      .select('id, name, parent_id, parent:parent_id (name)')
+      .eq('tenant_id', tenantId),
+    admin.from('projects').select('id, name').eq('tenant_id', tenantId).is('deleted_at', null),
+    admin
+      .from('gst_remittances')
+      .select('id, paid_at, amount_cents, reference, notes')
+      .eq('tenant_id', tenantId)
+      .eq('period_from', period.from)
+      .eq('period_to', period.to)
+      .maybeSingle(),
+  ]);
 
   if (invoicesRes.error) throw new Error(`Remittance: ${invoicesRes.error.message}`);
-  if (expensesRes.error) throw new Error(`Remittance: ${expensesRes.error.message}`);
-  if (billsRes.error) throw new Error(`Remittance: ${billsRes.error.message}`);
+  if (costsRes.error) throw new Error(`Remittance: ${costsRes.error.message}`);
   if (categoriesRes.error) throw new Error(`Remittance: ${categoriesRes.error.message}`);
   if (projectsRes.error) throw new Error(`Remittance: ${projectsRes.error.message}`);
   if (filedRes.error && filedRes.error.code !== 'PGRST116') {
@@ -151,10 +153,48 @@ export async function getGstRemittanceReport(
   }
 
   const invoices = invoicesRes.data ?? [];
-  const expenses = expensesRes.data ?? [];
-  const bills = billsRes.data ?? [];
   const cats = categoriesRes.data ?? [];
   const projects = projectsRes.data ?? [];
+
+  // Reshape unified project_costs rows back to the (expense, bill) shape
+  // the rest of this function consumes, preserving byte-identical
+  // amount semantics (receipts gross, bills pre-GST).
+  type CostRow = {
+    id: string;
+    source_type: 'receipt' | 'vendor_bill';
+    amount_cents: number;
+    pre_tax_amount_cents: number | null;
+    gst_cents: number;
+    category_id: string | null;
+    project_id: string | null;
+    vendor: string | null;
+    vendor_gst_number: string | null;
+    cost_date: string;
+  };
+  const costRows = (costsRes.data ?? []) as CostRow[];
+  const expenses = costRows
+    .filter((c) => c.source_type === 'receipt')
+    .map((c) => ({
+      id: c.id,
+      amount_cents: c.amount_cents,
+      tax_cents: c.gst_cents,
+      category_id: c.category_id,
+      project_id: c.project_id,
+      vendor: c.vendor,
+      vendor_gst_number: c.vendor_gst_number,
+      expense_date: c.cost_date,
+    }));
+  const bills = costRows
+    .filter((c) => c.source_type === 'vendor_bill')
+    .map((c) => ({
+      id: c.id,
+      amount_cents: c.pre_tax_amount_cents ?? c.amount_cents,
+      gst_cents: c.gst_cents,
+      project_id: c.project_id,
+      vendor: c.vendor,
+      vendor_gst_number: c.vendor_gst_number,
+      bill_date: c.cost_date,
+    }));
 
   // Category label map (overhead side).
   const catLabel = new Map<string, string>();
