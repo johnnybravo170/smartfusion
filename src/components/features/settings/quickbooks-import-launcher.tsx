@@ -12,6 +12,7 @@
  */
 
 import { Loader2, PlayCircle } from 'lucide-react';
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -250,10 +251,15 @@ export function QuickBooksImportLauncher() {
             })}
           </div>
           {reviewCount > 0 && job.status === 'completed' && (
-            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-              {reviewCount} customer{reviewCount === 1 ? '' : 's'} need
-              {reviewCount === 1 ? 's' : ''} your review — resolution UI lands in the next release.
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+              <span>
+                {reviewCount} customer{reviewCount === 1 ? '' : 's'} need
+                {reviewCount === 1 ? 's' : ''} your review.
+              </span>
+              <Link href="/settings/qbo-review" className="font-medium underline">
+                Resolve now →
+              </Link>
+            </div>
           )}
           {(() => {
             const counters =
