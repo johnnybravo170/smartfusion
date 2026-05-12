@@ -20,6 +20,7 @@ import { CalendarFeedCard } from '@/components/features/settings/calendar-feed-c
 import { ChecklistSettingsCard } from '@/components/features/settings/checklist-settings-card';
 import { DataExportCard } from '@/components/features/settings/data-export-card';
 import { EstimatingDetailLevelCard } from '@/components/features/settings/estimating-detail-level-card';
+import { ProjectDefaultsCard } from '@/components/features/settings/project-defaults-card';
 import { PublicQuoteLinkCard } from '@/components/features/settings/public-quote-link-card';
 import { QuickBooksConnectCard } from '@/components/features/settings/quickbooks-connect-card';
 import { QuoteSettingsCard } from '@/components/features/settings/quote-settings-card';
@@ -80,6 +81,12 @@ async function EstimatingDetailLevelSection() {
   const { getEstimatingDetailLevel } = await import('@/server/actions/estimating-prefs');
   const level = await getEstimatingDetailLevel();
   return <EstimatingDetailLevelCard currentLevel={level} />;
+}
+
+async function ProjectDefaultsSection() {
+  const { getDefaultManagementFeeRate } = await import('@/server/actions/project-defaults');
+  const rate = await getDefaultManagementFeeRate();
+  return <ProjectDefaultsCard defaultManagementFeeRate={rate} />;
 }
 
 async function QuoteSettingsSection() {
@@ -232,6 +239,10 @@ export default function SettingsPage() {
           </CardHeader>
         </Card>
       </Link>
+
+      <Suspense fallback={<div className="h-48 animate-pulse rounded-xl border bg-card" />}>
+        <ProjectDefaultsSection />
+      </Suspense>
 
       <Suspense fallback={<div className="h-48 animate-pulse rounded-xl border bg-card" />}>
         <EstimatingDetailLevelSection />
