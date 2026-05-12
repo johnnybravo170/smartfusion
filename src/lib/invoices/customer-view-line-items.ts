@@ -7,16 +7,29 @@
  * `invoices.line_items`. Identical inputs → identical output, so the
  * preview the operator saw is byte-equal to what gets stored.
  *
+ * Returns two parallel arrays of equal length:
+ *
+ *   items[]    — InvoiceLineItem shape, persisted into invoices.line_items
+ *                JSONB on Apply. Descriptions are the "title — body" merged
+ *                form that the public/PDF renderer reads byte-for-byte.
+ *   preview[]  — Richer per-row metadata for the in-app preview UI: a short
+ *                title, an optional markdown body, and the row total. Lets
+ *                the preview render portal-style cards with RichTextDisplay
+ *                without re-deriving descriptions from inputs.
+ *
+ * Subtotal invariance across modes: tested. Switching modes only changes
+ * the row count and grouping, never the customer's total.
+ *
  * Modes (mirrors `projects.customer_view_mode`):
- *   lump_sum   — one line, sum of all cost lines (optional mgmt-bake-in)
- *   sections   — one line per customer-facing section; unsectioned → "Other"
- *   categories — one line per priced budget category
- *   detailed   — one line per priced cost line (current generator behavior,
+ *   lump_sum   — one row, sum of all cost lines (optional mgmt-bake-in)
+ *   sections   — one row per customer-facing section; unsectioned → "Other"
+ *   categories — one row per priced budget category
+ *   detailed   — one row per priced cost line (current generator behavior,
  *                byte-identical to the inline iteration this replaces)
  *
  * mgmtFeeInline semantics:
  *   lump_sum  → mgmt fee folded into the headline total when true.
- *   any other → mgmt fee always shown as a separate line. The toggle is
+ *   any other → mgmt fee always shown as a separate row. The toggle is
  *               surfaced in the UI but effectively a no-op outside
  *               lump_sum. Reason: distributing mgmt proportionally across
  *               detailed line items breaks the unit_price_cents × qty
@@ -30,8 +43,6 @@
  *   - Query Supabase. Caller fetches inputs.
  *   - Compute GST. Caller handles tax via `canadianTax.getCustomerFacingContext`.
  *   - Decide visibility / RLS. Caller's job.
- *   - Subtotal invariance across modes is a tested guarantee — switching
- *     modes never changes what the customer owes.
  */
 
 import type { InvoiceLineItem } from '@/lib/db/queries/invoices';
@@ -87,6 +98,30 @@ export type BuildCustomerViewArgs = {
   asOfDate?: string;
 };
 
+/** Richer per-row metadata for the preview UI. */
+export type CustomerViewPreviewRow = {
+  /** Short title — the row's headline. */
+  title: string;
+  /** Optional markdown body. Rendered with RichTextDisplay. Null when
+   *  the row has no supporting description (mgmt fee, prior credit, lump
+   *  sum without a customer_summary_md, etc.). */
+  body_md: string | null;
+  total_cents: number;
+  /** Visual hint for the preview component. Cosmetic only. */
+  kind: 'work' | 'mgmt_fee' | 'prior_credit';
+};
+
+/** Internal row used inside the helper. Carries everything needed for
+ *  both the persisted line item and the preview meta. */
+type Row = {
+  title: string;
+  body_md: string | null;
+  quantity: number;
+  unit_price_cents: number;
+  total_cents: number;
+  kind: CustomerViewPreviewRow['kind'];
+};
+
 /** Modes available on a given project type. Cost-plus can't do sections /
  *  categories because cost-plus draws from time_entries + project_costs,
  *  not estimate sections. UI uses this to grey out unavailable radios. */
@@ -96,24 +131,49 @@ export function availableModesFor(isCostPlus: boolean): CustomerViewMode[] {
 
 export function buildCustomerViewLineItems(args: BuildCustomerViewArgs): {
   items: InvoiceLineItem[];
+  preview: CustomerViewPreviewRow[];
 } {
-  const items = args.isCostPlus ? buildCostPlus(args) : buildFixedPrice(args);
+  const rows = args.isCostPlus ? buildCostPlus(args) : buildFixedPrice(args);
 
   if (args.priorBilledCents > 0) {
-    items.push({
-      description: 'Less: Prior Invoices',
+    rows.push({
+      title: 'Less: Prior Invoices',
+      body_md: null,
       quantity: 1,
       unit_price_cents: -args.priorBilledCents,
       total_cents: -args.priorBilledCents,
+      kind: 'prior_credit',
     });
   }
 
-  return { items };
+  return {
+    items: rows.map(rowToItem),
+    preview: rows.map((r) => ({
+      title: r.title,
+      body_md: r.body_md,
+      total_cents: r.total_cents,
+      kind: r.kind,
+    })),
+  };
+}
+
+function rowToItem(row: Row): InvoiceLineItem {
+  // Public/PDF renderer reads line_items.description directly. We keep the
+  // legacy "title — body" merge so the customer-facing surfaces stay
+  // byte-identical to the pre-preview generator. body_md should be a single
+  // line of plain text for the merge to look right — every callsite below
+  // satisfies that.
+  return {
+    description: row.body_md ? `${row.title} — ${row.body_md}` : row.title,
+    quantity: row.quantity,
+    unit_price_cents: row.unit_price_cents,
+    total_cents: row.total_cents,
+  };
 }
 
 // ─── Fixed-price ────────────────────────────────────────────────────────────
 
-function buildFixedPrice(args: BuildCustomerViewArgs): InvoiceLineItem[] {
+function buildFixedPrice(args: BuildCustomerViewArgs): Row[] {
   // Cost-plus modes (sections/categories) fall back to detailed when caller
   // hands us a cost-plus project on a fixed-price mode. Defensive — the UI
   // should already block this.
@@ -127,44 +187,49 @@ function buildFixedPrice(args: BuildCustomerViewArgs): InvoiceLineItem[] {
 
   if (mode === 'lump_sum') {
     const total = costLinesSubtotal + (args.mgmtFeeInline ? mgmtFeeCents : 0);
-    const items: InvoiceLineItem[] = [
+    const summary = args.customerSummaryMd?.trim() ?? null;
+    const rows: Row[] = [
       {
-        description: lumpSumDescription(args),
+        title: summary ? summary : `Project work — ${args.projectName}`,
+        body_md: null,
         quantity: 1,
         unit_price_cents: total,
         total_cents: total,
+        kind: 'work',
       },
     ];
     if (!args.mgmtFeeInline && mgmtFeeCents > 0) {
-      items.push(mgmtFeeLine(args.mgmtRate, mgmtFeeCents));
+      rows.push(mgmtFeeRow(args.mgmtRate, mgmtFeeCents));
     }
-    return items;
+    return rows;
   }
 
   if (mode === 'sections') {
-    const items = buildSectionsItems(args);
-    if (mgmtFeeCents > 0) items.push(mgmtFeeLine(args.mgmtRate, mgmtFeeCents));
-    return items;
+    const rows = buildSectionsRows(args);
+    if (mgmtFeeCents > 0) rows.push(mgmtFeeRow(args.mgmtRate, mgmtFeeCents));
+    return rows;
   }
 
   if (mode === 'categories') {
-    const items = buildCategoriesItems(args);
-    if (mgmtFeeCents > 0) items.push(mgmtFeeLine(args.mgmtRate, mgmtFeeCents));
-    return items;
+    const rows = buildCategoriesRows(args);
+    if (mgmtFeeCents > 0) rows.push(mgmtFeeRow(args.mgmtRate, mgmtFeeCents));
+    return rows;
   }
 
-  // detailed — current generator behavior, byte-identical.
-  const items: InvoiceLineItem[] = args.costLines.map((l) => ({
-    description: l.notes ? `${l.label} — ${l.notes}` : l.label,
+  // detailed — one row per priced cost line.
+  const rows: Row[] = args.costLines.map((l) => ({
+    title: l.label,
+    body_md: l.notes,
     quantity: Number(l.qty),
     unit_price_cents: l.unit_price_cents,
     total_cents: l.line_price_cents,
+    kind: 'work',
   }));
-  if (mgmtFeeCents > 0) items.push(mgmtFeeLine(args.mgmtRate, mgmtFeeCents));
-  return items;
+  if (mgmtFeeCents > 0) rows.push(mgmtFeeRow(args.mgmtRate, mgmtFeeCents));
+  return rows;
 }
 
-function buildCategoriesItems(args: BuildCustomerViewArgs): InvoiceLineItem[] {
+function buildCategoriesRows(args: BuildCustomerViewArgs): Row[] {
   const byCat = new Map<string, number>();
   let uncategorizedCents = 0;
   for (const line of args.costLines) {
@@ -178,30 +243,33 @@ function buildCategoriesItems(args: BuildCustomerViewArgs): InvoiceLineItem[] {
     );
   }
 
-  const items: InvoiceLineItem[] = [];
+  const rows: Row[] = [];
   for (const cat of args.categories) {
     const total = byCat.get(cat.id) ?? 0;
     if (total <= 0) continue;
-    items.push({
-      description: cat.description_md ? `${cat.name} — ${cat.description_md}` : cat.name,
+    rows.push({
+      title: cat.name,
+      body_md: cat.description_md,
       quantity: 1,
       unit_price_cents: total,
       total_cents: total,
+      kind: 'work',
     });
   }
   if (uncategorizedCents > 0) {
-    items.push({
-      description: 'Other work',
+    rows.push({
+      title: 'Other work',
+      body_md: null,
       quantity: 1,
       unit_price_cents: uncategorizedCents,
       total_cents: uncategorizedCents,
+      kind: 'work',
     });
   }
-  return items;
+  return rows;
 }
 
-function buildSectionsItems(args: BuildCustomerViewArgs): InvoiceLineItem[] {
-  // Map category -> section so we can route each cost line.
+function buildSectionsRows(args: BuildCustomerViewArgs): Row[] {
   const catToSection = new Map<string, string | null>();
   for (const cat of args.categories) {
     catToSection.set(cat.id, cat.customer_section_id);
@@ -220,56 +288,51 @@ function buildSectionsItems(args: BuildCustomerViewArgs): InvoiceLineItem[] {
     bySection.set(sectionId, (bySection.get(sectionId) ?? 0) + line.line_price_cents);
   }
 
-  const items: InvoiceLineItem[] = [];
+  const rows: Row[] = [];
   for (const s of args.sections) {
     const total = bySection.get(s.id) ?? 0;
     if (total <= 0) continue;
-    items.push({
-      description: s.description_md ? `${s.name} — ${s.description_md}` : s.name,
+    rows.push({
+      title: s.name,
+      body_md: s.description_md,
       quantity: 1,
       unit_price_cents: total,
       total_cents: total,
+      kind: 'work',
     });
   }
   if (otherCents > 0) {
-    items.push({
-      description: 'Other work',
+    rows.push({
+      title: 'Other work',
+      body_md: null,
       quantity: 1,
       unit_price_cents: otherCents,
       total_cents: otherCents,
+      kind: 'work',
     });
   }
-  return items;
+  return rows;
 }
 
-function lumpSumDescription(args: BuildCustomerViewArgs): string {
-  if (args.customerSummaryMd?.trim()) {
-    return args.customerSummaryMd.trim();
-  }
-  return `Project work — ${args.projectName}`;
-}
-
-function mgmtFeeLine(mgmtRate: number, mgmtFeeCents: number): InvoiceLineItem {
+function mgmtFeeRow(mgmtRate: number, mgmtFeeCents: number): Row {
   return {
-    description: `Management fee (${Math.round(mgmtRate * 100)}%)`,
+    title: `Management fee (${Math.round(mgmtRate * 100)}%)`,
+    body_md: null,
     quantity: 1,
     unit_price_cents: mgmtFeeCents,
     total_cents: mgmtFeeCents,
+    kind: 'mgmt_fee',
   };
 }
 
 // ─── Cost-plus ──────────────────────────────────────────────────────────────
 
-function buildCostPlus(args: BuildCustomerViewArgs): InvoiceLineItem[] {
+function buildCostPlus(args: BuildCustomerViewArgs): Row[] {
   const breakdown = args.costPlusBreakdown;
   if (!breakdown) {
     throw new Error('costPlusBreakdown is required when isCostPlus=true');
   }
 
-  // Cost-plus only supports lump_sum + detailed in v1. Sections/categories
-  // would need a different aggregation model (cost-plus draws from
-  // time_entries + project_costs, not estimate sections). Fall back to
-  // detailed for the disallowed modes — UI should already block this.
   const mode: CustomerViewMode = args.mode === 'lump_sum' ? 'lump_sum' : 'detailed';
 
   if (mode === 'lump_sum') {
@@ -277,55 +340,66 @@ function buildCostPlus(args: BuildCustomerViewArgs): InvoiceLineItem[] {
       breakdown.labourCents +
       breakdown.materialsCents +
       (args.mgmtFeeInline ? breakdown.mgmtFeeCents : 0);
-    const headline = args.customerSummaryMd?.trim()
-      ? args.customerSummaryMd.trim()
+    const summary = args.customerSummaryMd?.trim() ?? null;
+    const headline = summary
+      ? summary
       : args.asOfDate
         ? `Project work — period through ${args.asOfDate}`
         : `Project work — ${args.projectName}`;
-    const items: InvoiceLineItem[] = [
+    const rows: Row[] = [
       {
-        description: headline,
+        title: headline,
+        body_md: null,
         quantity: 1,
         unit_price_cents: total,
         total_cents: total,
+        kind: 'work',
       },
     ];
     if (!args.mgmtFeeInline && breakdown.mgmtFeeCents > 0) {
-      items.push({
-        description: `Management Fee (${Math.round(args.mgmtRate * 100)}%)`,
+      rows.push({
+        title: `Management Fee (${Math.round(args.mgmtRate * 100)}%)`,
+        body_md: null,
         quantity: 1,
         unit_price_cents: breakdown.mgmtFeeCents,
         total_cents: breakdown.mgmtFeeCents,
+        kind: 'mgmt_fee',
       });
     }
-    return items;
+    return rows;
   }
 
-  // detailed — current cost-plus generator behavior, byte-identical.
-  const items: InvoiceLineItem[] = [];
+  // detailed — Labour / Materials / Mgmt rows.
+  const rows: Row[] = [];
   if (breakdown.labourCents > 0) {
-    items.push({
-      description: 'Labour',
+    rows.push({
+      title: 'Labour',
+      body_md: null,
       quantity: 1,
       unit_price_cents: breakdown.labourCents,
       total_cents: breakdown.labourCents,
+      kind: 'work',
     });
   }
   if (breakdown.materialsCents > 0) {
-    items.push({
-      description: 'Materials & Expenses',
+    rows.push({
+      title: 'Materials & Expenses',
+      body_md: null,
       quantity: 1,
       unit_price_cents: breakdown.materialsCents,
       total_cents: breakdown.materialsCents,
+      kind: 'work',
     });
   }
   if (breakdown.mgmtFeeCents > 0) {
-    items.push({
-      description: `Management Fee (${Math.round(args.mgmtRate * 100)}%)`,
+    rows.push({
+      title: `Management Fee (${Math.round(args.mgmtRate * 100)}%)`,
+      body_md: null,
       quantity: 1,
       unit_price_cents: breakdown.mgmtFeeCents,
       total_cents: breakdown.mgmtFeeCents,
+      kind: 'mgmt_fee',
     });
   }
-  return items;
+  return rows;
 }
