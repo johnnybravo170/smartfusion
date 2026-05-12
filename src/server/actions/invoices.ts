@@ -1295,10 +1295,11 @@ export async function generateFinalInvoiceAction(input: {
 
   const [variance, rollup, priorInvoicesRes] = await Promise.all([
     getVarianceReport(input.projectId),
-    // Centralized cost-basis rollup: queries time_entries, expenses, and
-    // project_bills. When a new cost source is added later, wire it in
-    // here once — both the action below and the drift banner on the
-    // draft-invoice page read from this single helper.
+    // Centralized cost-basis rollup: queries time_entries + the unified
+    // project_costs table (receipts and vendor bills via source_type).
+    // When a new cost source is added later, wire it in here once —
+    // both the action below and the drift banner on the draft-invoice
+    // page read from this single helper.
     getProjectCostBasisRollup(input.projectId),
     supabase
       .from('invoices')
@@ -1399,8 +1400,8 @@ export async function generateFinalInvoiceAction(input: {
     });
 
     // Reconciliation guardrail: the helper's view of the cost basis
-    // (read straight from time_entries + expenses + project_bills)
-    // should byte-match what `computeCostPlusBreakdown` produces for
+    // (read straight from time_entries + project_costs) should
+    // byte-match what `computeCostPlusBreakdown` produces for
     // `labour + materials`. If they ever diverge it means the
     // breakdown's math has drifted from the helper's queries (or
     // vice versa) — surface a warning so the operator can spot-

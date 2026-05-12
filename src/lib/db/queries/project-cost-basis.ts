@@ -10,12 +10,21 @@
  *     vendor/sub-invoice path) the action's query was missed, so
  *     sub-heavy cost-plus invoices silently underbilled by the
  *     subcontractor total. The fix (#178) widened the action; this
- *     helper centralizes the three queries so the next time a cost
- *     source is added there's exactly one place to wire it in.
+ *     helper centralizes the queries so the next time a cost source
+ *     is added there's exactly one place to wire it in.
  *   - The draft-invoice page renders a drift banner if the persisted
  *     invoice's cost basis (frozen at creation time) no longer matches
  *     today's data. The banner needs the same numbers the action
  *     produced — calling this helper guarantees it.
+ *
+ * As of the cost-unification rollout, both receipts and vendor bills
+ * read from the unified `project_costs` table via a single query with
+ * a `source_type` discriminator. The output shape (`expenseRows` +
+ * `billRows`) is preserved so the cost-plus invoice action and the
+ * drift banner consume identical values — receipts expose gross
+ * `amount_cents` and `pre_tax_amount_cents`, bills expose pre-GST
+ * `amount_cents` (re-derived from `pre_tax_amount_cents`) and
+ * `gst_cents`. Same numbers, one query.
  *
  * What this helper does NOT do: apply markup, compute mgmt fee, or
  * project tax. That's `computeCostPlusBreakdown`'s job. The helper
@@ -66,11 +75,18 @@ export type ProjectCostBasisRollup = {
   invoiceCostBasisCents: number;
 };
 
+type ProjectCostRow = {
+  source_type: 'receipt' | 'vendor_bill';
+  amount_cents: number;
+  pre_tax_amount_cents: number | null;
+  gst_cents: number;
+};
+
 /**
  * Pure aggregator — same row semantics as `computeCostPlusBreakdown`'s
  * inputs. Split out from the DB query so the math is unit-testable
  * without mocking Supabase. The query function is just a thin wrapper
- * that fetches the three tables and hands rows to this.
+ * that fetches the source data and hands rows to this.
  */
 export function summarizeCostBasisRows(rows: {
   timeEntries: ReadonlyArray<CostBasisTimeEntry>;
@@ -107,6 +123,42 @@ export function summarizeCostBasisRows(rows: {
 }
 
 /**
+ * Split a stream of unified `project_costs` rows back into the
+ * (expenseRows, billRows) shape the aggregator expects. Pulled out so
+ * the splitting logic can be unit-tested independently of the DB
+ * query — the call site is otherwise a one-liner.
+ *
+ * Receipts → expenseRows verbatim (gross `amount_cents`, nullable
+ *   `pre_tax_amount_cents`).
+ * Vendor bills → billRows with `amount_cents` set to the PRE-GST
+ *   subtotal (read from `pre_tax_amount_cents`, which the backfill
+ *   copied verbatim from `project_bills.amount_cents`). Falls back to
+ *   gross `amount_cents` for legacy bills predating migration 0083's
+ *   GST split.
+ */
+export function splitProjectCostRows(rows: ReadonlyArray<ProjectCostRow>): {
+  expenseRows: CostBasisExpenseRow[];
+  billRows: CostBasisBillRow[];
+} {
+  const expenseRows: CostBasisExpenseRow[] = [];
+  const billRows: CostBasisBillRow[] = [];
+  for (const c of rows) {
+    if (c.source_type === 'vendor_bill') {
+      billRows.push({
+        amount_cents: c.pre_tax_amount_cents ?? c.amount_cents,
+        gst_cents: c.gst_cents,
+      });
+    } else {
+      expenseRows.push({
+        amount_cents: c.amount_cents,
+        pre_tax_amount_cents: c.pre_tax_amount_cents,
+      });
+    }
+  }
+  return { expenseRows, billRows };
+}
+
+/**
  * Pull all cost rows for a project and return them alongside the
  * pre-tax cost-basis aggregate the cost-plus invoice math will produce.
  *
@@ -119,21 +171,24 @@ export async function getProjectCostBasisRollup(
 ): Promise<ProjectCostBasisRollup> {
   const supabase = await createClient();
 
-  const [timeRes, expenseRes, billsRes] = await Promise.all([
+  const [timeRes, costRes] = await Promise.all([
     supabase.from('time_entries').select('hours, hourly_rate_cents').eq('project_id', projectId),
+    // Unified read across receipts + vendor bills. status='active' mirrors
+    // the legacy implicit-active behavior of `expenses` (which has no
+    // status column) and the no-void state of `project_bills` (which
+    // only flips to 'paid').
     supabase
-      .from('expenses')
-      .select('amount_cents, pre_tax_amount_cents')
-      .eq('project_id', projectId),
-    // project_bills (vendor/sub invoices) are a separate cost-entry
-    // path from `expenses` but feed the same cost basis. No status
-    // filter: bill status is pending|approved|paid with no void state.
-    supabase.from('project_bills').select('amount_cents, gst_cents').eq('project_id', projectId),
+      .from('project_costs')
+      .select('source_type, amount_cents, pre_tax_amount_cents, gst_cents')
+      .eq('project_id', projectId)
+      .eq('status', 'active'),
   ]);
+
+  const { expenseRows, billRows } = splitProjectCostRows((costRes.data ?? []) as ProjectCostRow[]);
 
   return summarizeCostBasisRows({
     timeEntries: (timeRes.data ?? []) as CostBasisTimeEntry[],
-    expenseRows: (expenseRes.data ?? []) as CostBasisExpenseRow[],
-    billRows: (billsRes.data ?? []) as CostBasisBillRow[],
+    expenseRows,
+    billRows,
   });
 }

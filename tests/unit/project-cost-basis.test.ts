@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { summarizeCostBasisRows } from '@/lib/db/queries/project-cost-basis';
+import { splitProjectCostRows, summarizeCostBasisRows } from '@/lib/db/queries/project-cost-basis';
 
 describe('summarizeCostBasisRows', () => {
   it('returns all zeros for an empty project', () => {
@@ -131,5 +131,82 @@ describe('summarizeCostBasisRows', () => {
     expect(r.timeEntries).toEqual(time);
     expect(r.expenseRows).toEqual(expenses);
     expect(r.billRows).toEqual(bills);
+  });
+});
+
+describe('splitProjectCostRows', () => {
+  it('routes receipts to expenseRows with gross + nullable pre-tax preserved', () => {
+    const { expenseRows, billRows } = splitProjectCostRows([
+      {
+        source_type: 'receipt',
+        amount_cents: 11300,
+        pre_tax_amount_cents: 10000,
+        gst_cents: 1300,
+      },
+      {
+        source_type: 'receipt',
+        amount_cents: 5000,
+        pre_tax_amount_cents: null, // legacy / no OCR breakdown
+        gst_cents: 0,
+      },
+    ]);
+    expect(billRows).toEqual([]);
+    expect(expenseRows).toEqual([
+      { amount_cents: 11300, pre_tax_amount_cents: 10000 },
+      { amount_cents: 5000, pre_tax_amount_cents: null },
+    ]);
+  });
+
+  it('routes vendor bills to billRows with pre-GST amount + gst preserved', () => {
+    const { expenseRows, billRows } = splitProjectCostRows([
+      {
+        source_type: 'vendor_bill',
+        amount_cents: 90400, // gross (pre-GST + GST)
+        pre_tax_amount_cents: 80000, // legacy bills.amount_cents
+        gst_cents: 10400,
+      },
+    ]);
+    expect(expenseRows).toEqual([]);
+    expect(billRows).toEqual([{ amount_cents: 80000, gst_cents: 10400 }]);
+  });
+
+  it('falls back to gross amount_cents for bills predating migration 0083', () => {
+    const { billRows } = splitProjectCostRows([
+      {
+        source_type: 'vendor_bill',
+        amount_cents: 50000,
+        pre_tax_amount_cents: null,
+        gst_cents: 0,
+      },
+    ]);
+    expect(billRows).toEqual([{ amount_cents: 50000, gst_cents: 0 }]);
+  });
+
+  it('handles mixed streams in input order', () => {
+    const { expenseRows, billRows } = splitProjectCostRows([
+      {
+        source_type: 'receipt',
+        amount_cents: 1000,
+        pre_tax_amount_cents: 952,
+        gst_cents: 48,
+      },
+      {
+        source_type: 'vendor_bill',
+        amount_cents: 5650,
+        pre_tax_amount_cents: 5000,
+        gst_cents: 650,
+      },
+      {
+        source_type: 'receipt',
+        amount_cents: 2000,
+        pre_tax_amount_cents: 1905,
+        gst_cents: 95,
+      },
+    ]);
+    expect(expenseRows).toHaveLength(2);
+    expect(billRows).toHaveLength(1);
+    expect(expenseRows[0]?.amount_cents).toBe(1000);
+    expect(expenseRows[1]?.amount_cents).toBe(2000);
+    expect(billRows[0]?.amount_cents).toBe(5000);
   });
 });
