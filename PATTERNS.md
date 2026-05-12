@@ -89,6 +89,7 @@ When you add a new status value to an enum, update the matching `*StatusTone` ma
 - `src/components/features/customers/customer-type-badge.tsx` — kind colors (customer/lead/vendor/sub/etc.) — separate palette from status tones by design
 - `src/components/features/inbox/worklog-entry-type-badge.tsx`
 - `src/components/features/worker/worker-invoice-status-badge.tsx`
+- `src/components/features/projects/project-costs-section.tsx` — inline `CostStatusBadge` for the unified Costs surface (`paid_receipt` / `bill_unpaid` / `bill_paid`). Uses the shared `projectCostStatusTone` map in `status-tokens.ts`; no standalone badge file because the three values are tightly coupled to a single rendering surface.
 
 ---
 

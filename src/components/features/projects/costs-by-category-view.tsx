@@ -21,7 +21,7 @@ import type { ProjectBillRow } from '@/lib/db/queries/project-bills';
 import type { SubQuoteRow } from '@/lib/db/queries/project-sub-quotes';
 import type { PurchaseOrderRow } from '@/lib/db/queries/purchase-orders';
 import { formatCurrency, formatCurrencyCompact } from '@/lib/pricing/calculator';
-import type { ExpenseItem } from './expenses-section';
+import type { ExpenseItem } from './project-costs-section';
 
 type Category = { id: string; name: string; section: 'interior' | 'exterior' | 'general' };
 
