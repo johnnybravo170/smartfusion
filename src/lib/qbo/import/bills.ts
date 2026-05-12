@@ -27,6 +27,17 @@ import { bumpJobProgress, setBatchIdForEntity } from './job';
 
 type BillStatus = 'open' | 'partial' | 'paid' | 'void';
 
+function firstBillClassRef(qbo: QboBill): { id: string; name: string } | null {
+  for (const line of qbo.Line ?? []) {
+    const cls =
+      line.AccountBasedExpenseLineDetail?.ClassRef ?? line.ItemBasedExpenseLineDetail?.ClassRef;
+    if (cls?.value) {
+      return { id: cls.value, name: cls.name?.trim() || cls.value };
+    }
+  }
+  return null;
+}
+
 export function mapQboBillToHeader(qbo: QboBill): {
   qbo_vendor_id: string;
   row: {
@@ -40,6 +51,8 @@ export function mapQboBillToHeader(qbo: QboBill): {
     status: BillStatus;
     memo: string | null;
     private_note: string | null;
+    qbo_class_id: string | null;
+    qbo_class_name: string | null;
   };
 } {
   const totalAmt = qbo.TotalAmt ?? 0;
@@ -53,6 +66,7 @@ export function mapQboBillToHeader(qbo: QboBill): {
 
   const status: BillStatus =
     balanceCents <= 0 ? 'paid' : balanceCents >= totalCents ? 'open' : 'partial';
+  const cls = firstBillClassRef(qbo);
 
   return {
     qbo_vendor_id: qbo.VendorRef.value,
@@ -67,6 +81,8 @@ export function mapQboBillToHeader(qbo: QboBill): {
       status,
       memo: null,
       private_note: qbo.PrivateNote?.trim() || null,
+      qbo_class_id: cls?.id ?? null,
+      qbo_class_name: cls?.name ?? null,
     },
   };
 }
@@ -199,6 +215,8 @@ export async function importBillPage(ctx: BillImportContext, page: QboBill[]): P
       status: r.header.status,
       memo: r.header.memo,
       private_note: r.header.private_note,
+      qbo_class_id: r.header.qbo_class_id,
+      qbo_class_name: r.header.qbo_class_name,
       qbo_bill_id: r.qbo_bill_id,
       qbo_sync_token: r.qbo_sync_token,
       qbo_sync_status: 'synced',
@@ -265,6 +283,8 @@ export async function importBillPage(ctx: BillImportContext, page: QboBill[]): P
         balance_cents: u.header.balance_cents,
         status: u.header.status,
         private_note: u.header.private_note,
+        qbo_class_id: u.header.qbo_class_id,
+        qbo_class_name: u.header.qbo_class_name,
         qbo_sync_token: u.qbo.SyncToken,
         qbo_sync_status: 'synced',
         qbo_synced_at: now,

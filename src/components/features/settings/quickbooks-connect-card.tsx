@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink, FileText, History, Loader2, Unplug } from 'lucide-react';
+import { ExternalLink, FileText, FolderTree, History, Loader2, Unplug } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useTransition } from 'react';
@@ -108,6 +108,12 @@ export function QuickBooksConnectCard({ realmId, companyName, connectedAt, envir
                 <Link href="/settings/qbo-history">
                   <History className="size-3.5" />
                   Import history
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/settings/qbo-class-mapping">
+                  <FolderTree className="size-3.5" />
+                  Map Classes
                 </Link>
               </Button>
               <Button variant="outline" size="sm" asChild>
