@@ -22,6 +22,7 @@ import { getPlatformStripe, mapSubscriptionStatus } from '@/lib/billing/stripe-s
 import { getPaymentProviderForRegion } from '@/lib/providers/factory';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { claimWebhookEvent } from '@/lib/webhooks/idempotency';
 
 const DEFAULT_REGION = 'ca-central-1';
 
@@ -42,6 +43,14 @@ export async function POST(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return new Response(`Webhook signature verification failed: ${message}`, { status: 400 });
+  }
+
+  // Idempotency: Stripe retries on 5xx for up to 3 days. Claim the event
+  // once so side-effects (invoice paid, worklog entry, subscription sync)
+  // never run twice for the same delivery.
+  const claim = await claimWebhookEvent('stripe', event.id, event);
+  if (claim.alreadyProcessed) {
+    return new Response('ok', { status: 200 });
   }
 
   const supabase = await createClient();

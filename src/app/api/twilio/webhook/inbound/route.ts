@@ -20,6 +20,7 @@
 import twilio from 'twilio';
 import { handleCustomerInboundSms } from '@/lib/messaging/sms-customer-router';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { claimWebhookEvent } from '@/lib/webhooks/idempotency';
 
 const STOP_KEYWORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']);
 const START_KEYWORDS = new Set(['start', 'yes', 'unstop']);
@@ -36,6 +37,16 @@ export async function POST(request: Request) {
   const to = params.get('To') ?? '';
   const body = (params.get('Body') ?? '').trim();
   const sid = params.get('MessageSid') ?? '';
+
+  // Idempotency: MessageSid is unique per inbound delivery. Re-delivery
+  // would otherwise insert a duplicate twilio_messages row and re-run
+  // STOP/START handling.
+  if (sid) {
+    const claim = await claimWebhookEvent('twilio:inbound', sid, Object.fromEntries(params));
+    if (claim.alreadyProcessed) {
+      return new Response(null, { status: 204 });
+    }
+  }
 
   const normalized = body.toLowerCase();
   const isStop = STOP_KEYWORDS.has(normalized);

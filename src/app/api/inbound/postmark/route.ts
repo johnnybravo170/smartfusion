@@ -20,6 +20,7 @@ import {
 import { processInboundEmail } from '@/lib/inbound-email/processor';
 import { resolveSenderToTenant } from '@/lib/inbound-email/sender-resolver';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { claimWebhookEvent } from '@/lib/webhooks/idempotency';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -62,6 +63,15 @@ export async function POST(request: Request) {
     payload = (await request.json()) as PostmarkInbound;
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  // Idempotency: Postmark may retry on 5xx. MessageID is unique per
+  // inbound email; claim it before any side effects.
+  if (payload.MessageID) {
+    const claim = await claimWebhookEvent('postmark:inbound', payload.MessageID, payload);
+    if (claim.alreadyProcessed) {
+      return NextResponse.json({ ok: true, deduplicated: true });
+    }
   }
 
   const tenantId = await resolveSenderToTenant(payload.From);

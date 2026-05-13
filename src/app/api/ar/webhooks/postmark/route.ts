@@ -23,6 +23,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { arSendLog, arSuppressionList } from '@/lib/db/schema/ar';
 import { customers } from '@/lib/db/schema/customers';
+import { claimWebhookEvent } from '@/lib/webhooks/idempotency';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +55,18 @@ export async function POST(request: Request) {
 
   const messageId = event.MessageID;
   if (!messageId) return Response.json({ ok: true, ignored: 'no_message_id' });
+
+  // Idempotency: same MessageID can emit different RecordTypes (Delivery
+  // then Open then Click). Dedup on the pair, so a retry of the SAME event
+  // is short-circuited but the natural event stream still flows.
+  const claim = await claimWebhookEvent(
+    'postmark:ar',
+    `${messageId}:${event.RecordType}`,
+    event as unknown as Record<string, unknown>,
+  );
+  if (claim.alreadyProcessed) {
+    return Response.json({ ok: true, deduplicated: true });
+  }
 
   const db = getDb();
   const now = new Date();
