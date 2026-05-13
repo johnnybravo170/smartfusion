@@ -17,6 +17,10 @@ type HealthRow = {
   latest_outcome: 'running' | 'success' | 'failure' | 'skipped' | null;
   latest_summary: string | null;
   latest_error: string | null;
+  latest_evidence_at: string | null;
+  evidence_24h: number | null;
+  evidence_source: string | null;
+  latest_activity_at: string | null;
   computed_status: 'ok' | 'stale' | 'broken' | 'never_run' | 'inactive';
 };
 
@@ -109,6 +113,14 @@ export default async function AgentsPage() {
                       <code className="font-mono">{a.slug}</code>
                       {a.schedule ? <> · {a.schedule}</> : null}
                       {a.latest_summary ? <> · {a.latest_summary}</> : null}
+                      {a.evidence_24h && a.evidence_24h > 0 ? (
+                        <>
+                          {' · '}
+                          <span title={a.evidence_source ?? ''}>
+                            {a.evidence_24h} write{a.evidence_24h === 1 ? '' : 's'} in 24h
+                          </span>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -117,8 +129,17 @@ export default async function AgentsPage() {
                     >
                       {a.computed_status.replace('_', ' ')}
                     </span>
-                    <span className="text-xs text-[var(--muted-foreground)]">
-                      {relativeTime(a.latest_started_at)}
+                    <span
+                      className="text-xs text-[var(--muted-foreground)]"
+                      title={
+                        a.latest_activity_at === a.latest_evidence_at && a.evidence_source
+                          ? `derived from ${a.evidence_source}`
+                          : a.latest_outcome
+                            ? `recorded run · ${a.latest_outcome}`
+                            : ''
+                      }
+                    >
+                      {relativeTime(a.latest_activity_at ?? a.latest_started_at)}
                     </span>
                   </div>
                 </div>

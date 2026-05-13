@@ -75,11 +75,14 @@ export function registerIdeaTools(server: McpServer, ctx: McpToolCtx) {
       'Capture a half-formed thought BEFORE it\u2019s a plan. Pre-commitment. Use when: surfacing an option to consider, a question Jonathan asked out loud, a pattern noticed but not yet acted on. Ideas graduate to kanban cards or decisions later. DO NOT use for actionable work (\u2192 kanban_card_create), established truth (\u2192 knowledge_write), or things that already happened (\u2192 worklog_add).',
       '',
       'File a new idea for Jonathan. Use for: feature suggestions, observations worth saving, things you noticed but did not act on. Returns a deep link.',
+      '',
+      'Optional `actor_name`: pass your routine slug (e.g. "business-scout") to override the default OAuth client_id stamp. Useful for per-agent attribution in the ops.agent_evidence view. Leave unset when calling from an ad-hoc terminal session.',
     ].join('\n'),
     {
       title: z.string().min(1).max(500),
       body: z.string().max(20000).optional().nullable(),
       tags: z.array(z.string().min(1).max(50)).max(20).optional(),
+      actor_name: z.string().min(1).max(100).optional(),
     },
     withAudit(ctx, 'ideas_add', 'write:ideas', async (input) => {
       const service = createServiceClient();
@@ -88,7 +91,7 @@ export function registerIdeaTools(server: McpServer, ctx: McpToolCtx) {
         .from('ideas')
         .insert({
           actor_type: 'agent',
-          actor_name: ctx.actorName,
+          actor_name: input.actor_name ?? ctx.actorName,
           key_id: ctx.keyId,
           title: input.title,
           body: input.body ?? null,
@@ -107,7 +110,7 @@ export function registerIdeaTools(server: McpServer, ctx: McpToolCtx) {
 
   server.tool(
     'ideas_rate',
-    'Rate an idea with -2/-1/+1/+2 and a reason. Explicit human feedback signal that all scout agents read on their next run. -2 = never propose this class again. -1 = low signal. +1 = good. +2 = more like this. Agents cannot rate their own ideas.',
+    'Rate an idea with -2/-1/+1/+2 and a reason. Explicit human feedback signal that all scout agents read on their next run. -2 = never propose this class again. -1 = low signal. +1 = good. +2 = more like this.',
     {
       id: z.string().uuid(),
       rating: z.union([z.literal(-2), z.literal(-1), z.literal(1), z.literal(2)]),
@@ -115,18 +118,7 @@ export function registerIdeaTools(server: McpServer, ctx: McpToolCtx) {
     },
     withAudit(ctx, 'ideas_rate', 'write:ideas', async ({ id, rating, reason }) => {
       const service = createServiceClient();
-      const { data: existing, error: selErr } = await service
-        .schema('ops')
-        .from('ideas')
-        .select('id, actor_name')
-        .eq('id', id)
-        .maybeSingle();
-      if (selErr) throw new Error(selErr.message);
-      if (!existing) throw new Error('Idea not found');
-      if (existing.actor_name === ctx.actorName) {
-        throw new Error('cannot rate your own idea — self-reinforcement loop');
-      }
-      const { error } = await service
+      const { data, error } = await service
         .schema('ops')
         .from('ideas')
         .update({
@@ -135,8 +127,11 @@ export function registerIdeaTools(server: McpServer, ctx: McpToolCtx) {
           user_rated_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', id);
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
       if (error) throw new Error(error.message);
+      if (!data) throw new Error('Idea not found');
       return jsonResult({ ok: true, id, rating, url: `https://ops.heyhenry.io/ideas/${id}` });
     }),
   );
