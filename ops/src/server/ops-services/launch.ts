@@ -52,7 +52,12 @@ export type LaunchRollup = {
   donePoints: number;
   percentDone: number;
   unsizedCards: number;
+  /** Total launch-blocker cards (done + remaining). Kept for back-compat —
+   *  prefer `remainingCardCount` for headline displays so the number isn't
+   *  inflated by completed work. */
   blockerCardCount: number;
+  doneCardCount: number;
+  remainingCardCount: number;
 };
 
 export async function getLaunchRollup(): Promise<LaunchRollup> {
@@ -61,10 +66,14 @@ export async function getLaunchRollup(): Promise<LaunchRollup> {
   let totalPoints = 0;
   let donePoints = 0;
   let unsizedCards = 0;
+  let doneCardCount = 0;
   for (const c of blockers) {
     const pts = pointsOf(c);
     totalPoints += pts;
-    if (isDone(c)) donePoints += pts;
+    if (isDone(c)) {
+      donePoints += pts;
+      doneCardCount += 1;
+    }
     if (c.size_points == null) unsizedCards += 1;
   }
   const percentDone = totalPoints > 0 ? Math.round((donePoints / totalPoints) * 100) : 0;
@@ -74,6 +83,8 @@ export async function getLaunchRollup(): Promise<LaunchRollup> {
     percentDone,
     unsizedCards,
     blockerCardCount: blockers.length,
+    doneCardCount,
+    remainingCardCount: blockers.length - doneCardCount,
   };
 }
 

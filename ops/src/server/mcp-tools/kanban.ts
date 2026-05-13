@@ -329,7 +329,7 @@ export function registerKanbanTools(server: McpServer, ctx: McpToolCtx) {
         : velocity.completedPoints === 0
           ? 'No cards completed in last 28 days \u2014 velocity is zero, ETA unknown.'
           : 'Remaining work is zero.';
-      const summary = `HeyHenry V1: ${rollup.percentDone}% ready (${rollup.donePoints}/${rollup.totalPoints} pts across ${rollup.blockerCardCount} launch-blocker cards).${unsizedNote} ${etaText}`;
+      const summary = `HeyHenry V1: ${rollup.percentDone}% ready (${rollup.donePoints}/${rollup.totalPoints} pts, ${rollup.remainingCardCount} of ${rollup.blockerCardCount} launch-blocker cards remaining).${unsizedNote} ${etaText}`;
       return jsonResult({ summary, rollup, velocity, eta });
     }),
   );
