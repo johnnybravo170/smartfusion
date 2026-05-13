@@ -185,31 +185,64 @@ export async function deleteTimeEntryAction(id: string): Promise<TimeEntryAction
   return { ok: true, id };
 }
 
-export async function listActiveProjectsAction(): Promise<
+export type ActiveProjectsResult =
   | {
       ok: true;
       projects: {
         id: string;
         name: string;
         categories: { id: string; name: string; section: string }[];
+        /** Priced cost lines on this project. Feeds the Quick Log
+         *  button's cascading "Line item" picker so labour can be
+         *  tagged to a specific line instead of just its category. */
+        costLines: { id: string; label: string; budget_category_id: string | null }[];
       }[];
     }
-  | { ok: false; error: string }
-> {
+  | { ok: false; error: string };
+
+export async function listActiveProjectsAction(): Promise<ActiveProjectsResult> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('projects')
-    .select(
-      'id, name, project_budget_categories(id, name, section, display_order, is_visible_in_report)',
-    )
-    .is('deleted_at', null)
-    .in('lifecycle_stage', ['planning', 'awaiting_approval', 'active'])
-    .order('created_at', { ascending: false })
-    .limit(100);
-  if (error) return { ok: false, error: error.message };
+  const [projectsRes, costLinesRes] = await Promise.all([
+    supabase
+      .from('projects')
+      .select(
+        'id, name, project_budget_categories(id, name, section, display_order, is_visible_in_report)',
+      )
+      .is('deleted_at', null)
+      .in('lifecycle_stage', ['planning', 'awaiting_approval', 'active'])
+      .order('created_at', { ascending: false })
+      .limit(100),
+    // Cost lines are loaded in one query and grouped client-side so we
+    // don't issue N+1 round-trips. Skip lines with line_price_cents=0
+    // (catalog stubs / not yet priced) to avoid surfacing meaningless
+    // picks in the dropdown.
+    supabase
+      .from('project_cost_lines')
+      .select('id, project_id, label, budget_category_id, line_price_cents')
+      .gt('line_price_cents', 0)
+      .order('sort_order')
+      .order('created_at'),
+  ]);
+
+  if (projectsRes.error) return { ok: false, error: projectsRes.error.message };
+
+  const linesByProject = new Map<
+    string,
+    { id: string; label: string; budget_category_id: string | null }[]
+  >();
+  for (const l of (costLinesRes.data ?? []) as Array<{
+    id: string;
+    project_id: string;
+    label: string;
+    budget_category_id: string | null;
+  }>) {
+    const list = linesByProject.get(l.project_id) ?? [];
+    list.push({ id: l.id, label: l.label, budget_category_id: l.budget_category_id });
+    linesByProject.set(l.project_id, list);
+  }
 
   const projects = (
-    (data ?? []) as Array<{
+    (projectsRes.data ?? []) as Array<{
       id: string;
       name: string;
       project_budget_categories:
@@ -232,6 +265,7 @@ export async function listActiveProjectsAction(): Promise<
           (a.section ?? '').localeCompare(b.section ?? '') || a.display_order - b.display_order,
       )
       .map((c) => ({ id: c.id, name: c.name, section: c.section })),
+    costLines: linesByProject.get(p.id) ?? [],
   }));
 
   return { ok: true, projects };
