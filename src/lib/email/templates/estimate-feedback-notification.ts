@@ -6,6 +6,8 @@
  * without having to click through.
  */
 
+import { escapeHtml, safeUrl } from '@/lib/email/escape';
+
 export type FeedbackEmailComment = {
   body: string;
   isLineItem: boolean;
@@ -40,7 +42,7 @@ export function estimateFeedbackEmailHtml(params: {
   </p>
   ${commentsHtml}
   <p style="margin:20px 0 24px 0;">
-    <a href="${params.projectUrl}" style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;text-decoration:none;border-radius:6px;font-weight:500;">
+    <a href="${safeUrl(params.projectUrl)}" style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;text-decoration:none;border-radius:6px;font-weight:500;">
       Open the project
     </a>
   </p>
@@ -65,13 +67,4 @@ export function estimateFeedbackSmsBody(params: {
   const excerpt = first.length > 120 ? `${first.slice(0, 117).trimEnd()}…` : first;
   const more = count > 1 ? ` (+${count - 1} more)` : '';
   return `${params.customerName}: "${excerpt}"${more}\n${params.projectUrl}`;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }

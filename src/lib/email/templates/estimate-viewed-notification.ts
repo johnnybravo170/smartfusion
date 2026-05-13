@@ -4,6 +4,8 @@
  * the project.
  */
 
+import { escapeHtml, safeUrl } from '@/lib/email/escape';
+
 export function estimateViewedEmailHtml(params: {
   customerName: string | null;
   projectName: string;
@@ -19,7 +21,7 @@ export function estimateViewedEmailHtml(params: {
     Project: <strong>${escapeHtml(params.projectName)}</strong>
   </p>
   <p style="margin:0 0 24px 0;">
-    <a href="${params.projectUrl}" style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;text-decoration:none;border-radius:6px;font-weight:500;">
+    <a href="${safeUrl(params.projectUrl)}" style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;text-decoration:none;border-radius:6px;font-weight:500;">
       View estimate status
     </a>
   </p>
@@ -28,15 +30,6 @@ export function estimateViewedEmailHtml(params: {
   </p>
 </body>
 </html>`;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 /**

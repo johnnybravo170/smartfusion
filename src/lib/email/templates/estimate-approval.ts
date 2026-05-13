@@ -1,4 +1,5 @@
 import { brandingFooterHtml, brandingLogoHtml } from '@/lib/email/branding';
+import { escapeHtml, safeUrl } from '@/lib/email/escape';
 
 export function estimateApprovalEmailHtml({
   businessName,
@@ -16,7 +17,7 @@ export function estimateApprovalEmailHtml({
   note?: string | null;
 }): string {
   const noteHtml = note?.trim()
-    ? `<p style="font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${note.trim()}</p>`
+    ? `<p style="font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(note.trim())}</p>`
     : '';
 
   return `<!DOCTYPE html>
@@ -24,16 +25,16 @@ export function estimateApprovalEmailHtml({
 <body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
   ${brandingLogoHtml(logoUrl, businessName)}
   <h2 style="color: #0a0a0a; margin-bottom: 4px;">Your estimate is ready</h2>
-  <p style="color: #666; font-size: 14px; margin-top: 0;">From ${businessName}</p>
+  <p style="color: #666; font-size: 14px; margin-top: 0;">From ${escapeHtml(businessName)}</p>
 
-  <p style="font-size: 15px; line-height: 1.6;">Hi ${customerName},</p>
+  <p style="font-size: 15px; line-height: 1.6;">Hi ${escapeHtml(customerName)},</p>
   <p style="font-size: 15px; line-height: 1.6;">
-    Your estimate for <strong>${projectName}</strong> is ready. Click below to review the details and approve or decline.
+    Your estimate for <strong>${escapeHtml(projectName)}</strong> is ready. Click below to review the details and approve or decline.
   </p>
   ${noteHtml}
 
   <p>
-    <a href="${approveUrl}" style="display: inline-block; padding: 12px 24px; background: #0a0a0a; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">
+    <a href="${safeUrl(approveUrl)}" style="display: inline-block; padding: 12px 24px; background: #0a0a0a; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">
       Review Estimate
     </a>
   </p>
