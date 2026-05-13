@@ -11,7 +11,7 @@ jobs:
     name: Typecheck, lint, unit, build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -78,7 +78,7 @@ jobs:
     # stack started in this job, so failures are signal — not flake from
     # missing prod creds.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4

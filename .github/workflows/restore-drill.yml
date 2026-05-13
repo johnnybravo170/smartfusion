@@ -24,7 +24,7 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Validate required secrets
         # Fail fast on missing secrets — same reasoning as the nightly
