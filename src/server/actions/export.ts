@@ -37,8 +37,12 @@ function toCsv(rows: Record<string, unknown>[]): string {
   return lines.join('\n');
 }
 
-/** Tables to include in the export, with their display names. */
+/** Tables to include in the export. List intentionally errs on the side of
+ *  inclusion — GDPR Article 20 (portability) means anything tenant-scoped
+ *  belongs in the dump. New tables added since this list was first written
+ *  should be appended here. */
 const EXPORT_TABLES = [
+  // Core entities
   'customers',
   'quotes',
   'quote_line_items',
@@ -49,6 +53,20 @@ const EXPORT_TABLES = [
   'todos',
   'worklog_entries',
   'catalog_items',
+  // Renovation / project vertical (added 2026-05 for GDPR completeness)
+  'projects',
+  'project_buckets',
+  'project_notes',
+  'project_assignments',
+  'project_scope_snapshots',
+  // Membership + ops
+  'tenant_members',
+  'change_orders',
+  'tasks',
+  'expenses',
+  'time_entries',
+  'worker_invoices',
+  'worker_profiles',
 ] as const;
 
 export async function requestExportAction(): Promise<ExportActionResult> {
@@ -163,6 +181,22 @@ export async function requestExportAction(): Promise<ExportActionResult> {
       related_type: null,
       related_id: null,
     });
+
+    // Audit trail (compliance — proves the data was exported under MFA).
+    const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
+    await supabase
+      .from('audit_log')
+      .insert({
+        tenant_id: tenant.id,
+        user_id: userId,
+        action: 'tenant.data_exported',
+        resource_type: 'data_export',
+        resource_id: exportId,
+        metadata_json: { tables: EXPORT_TABLES.length, expires_at: expiresAt },
+      })
+      .then(({ error }) => {
+        if (error) console.warn('[export] audit log insert failed:', error.message);
+      });
 
     revalidatePath('/settings');
     return { ok: true, downloadUrl: signedData.signedUrl, exportId };
