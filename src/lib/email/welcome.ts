@@ -1,5 +1,6 @@
 import type { Plan } from '@/lib/billing/features';
 import { PLAN_CATALOG } from '@/lib/billing/plans';
+import { escapeHtml, safeUrl } from '@/lib/email/escape';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from './send';
 
@@ -58,7 +59,7 @@ export async function sendWelcomeEmail(tenantId: string): Promise<void> {
     </p>
 
     <p style="margin-top:24px;">
-      <a href="${dashboardUrl}" style="display:inline-block;padding:10px 18px;background:#0a0a0a;color:#fff;text-decoration:none;border-radius:6px;">Open HeyHenry</a>
+      <a href="${safeUrl(dashboardUrl)}" style="display:inline-block;padding:10px 18px;background:#0a0a0a;color:#fff;text-decoration:none;border-radius:6px;">Open HeyHenry</a>
     </p>
 
     <p style="color:#666;font-size:12px;margin-top:24px;">
@@ -86,12 +87,4 @@ export async function sendWelcomeEmail(tenantId: string): Promise<void> {
     .from('tenants')
     .update({ welcome_email_sent_at: new Date().toISOString() })
     .eq('id', tenantId);
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
