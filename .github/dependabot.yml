@@ -1,0 +1,57 @@
+# Dependabot config — weekly dependency updates.
+#
+# Strategy:
+# - npm (pnpm) lockfile: weekly, grouped by minor/patch so we don't drown
+#   in a PR per package. Majors come through as separate PRs so they get
+#   the review they need.
+# - GitHub Actions: weekly. Action versions are short (4-5 PRs/month tops).
+#
+# To pause: set open-pull-requests-limit: 0 on the relevant ecosystem.
+# To disable for a package: add it to the `ignore` list.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Vancouver
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    groups:
+      # Group minor + patch updates per ecosystem so we get ~1 PR/week
+      # instead of N. Majors stay separate (they're often breaking).
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    # Ignore Next.js / React majors — these need coordinated upgrades
+    # (App Router APIs shift, the project is on the bleeding edge per
+    # AGENTS.md). Patch + minor still flow through.
+    ignore:
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/Vancouver
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "chore(ci)"
