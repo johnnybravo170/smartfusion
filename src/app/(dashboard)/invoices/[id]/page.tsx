@@ -18,15 +18,12 @@ import { formatDateTime } from '@/lib/date/format';
 import { loadInvoiceCustomerViewInputs } from '@/lib/db/queries/invoice-customer-view-inputs';
 import { getInvoice } from '@/lib/db/queries/invoices';
 import { getProjectCostBasisRollup } from '@/lib/db/queries/project-cost-basis';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { getSignedUrls } from '@/lib/storage/photos';
 import { createClient } from '@/lib/supabase/server';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 import { duplicateInvoiceAction } from '@/server/actions/invoices';
-
-function formatCad(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 function shortId(id: string) {
   return id.slice(0, 8);
@@ -191,18 +188,18 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             {showSubtotalRow ? (
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span>{formatCad(subtotalCents)}</span>
+                <span>{formatCurrency(subtotalCents)}</span>
               </div>
             ) : null}
             <InvoiceLineItems invoiceId={invoice.id} lineItems={lineItems} isDraft={isDraft} />
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">{taxLabel}</span>
-              <span>{formatCad(invoice.tax_cents)}</span>
+              <span>{formatCurrency(invoice.tax_cents)}</span>
             </div>
             <div className="border-t pt-2">
               <div className="flex items-center justify-between text-base font-semibold">
                 <span>Total</span>
-                <span>{formatCad(totalCents)}</span>
+                <span>{formatCurrency(totalCents)}</span>
               </div>
             </div>
             {regParts.length > 0 ? (

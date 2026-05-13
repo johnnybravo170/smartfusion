@@ -34,6 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { CatalogItemRow } from '@/lib/db/queries/catalog-items';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import {
   activateCatalogItemAction,
   deactivateCatalogItemAction,
@@ -104,14 +105,14 @@ function fromRow(row: CatalogItemRow): EditState {
 function priceLabel(row: CatalogItemRow): string {
   if (row.pricing_model === 'time_and_materials') return 'T&M';
   if (row.unit_price_cents == null) return '—';
-  const dollars = (row.unit_price_cents / 100).toFixed(2);
+  const formatted = formatCurrency(row.unit_price_cents);
   switch (row.pricing_model) {
     case 'fixed':
-      return `$${dollars}`;
+      return formatted;
     case 'per_unit':
-      return `$${dollars}/${row.unit_label ?? 'unit'}`;
+      return `${formatted}/${row.unit_label ?? 'unit'}`;
     case 'hourly':
-      return `$${dollars}/hr`;
+      return `${formatted}/hr`;
   }
 }
 

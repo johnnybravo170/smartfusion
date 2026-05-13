@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { PaymentSourceLite } from '@/lib/db/queries/payment-sources';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { compressReceiptIfImage, withTimeout } from '@/lib/storage/resize-image';
 import {
   type CategoryPickerOptionLite,
@@ -418,8 +419,7 @@ function ProcessingStage({
                 </span>
               ) : (
                 <span className="shrink-0 text-muted-foreground tabular-nums">
-                  {r.vendor ?? '—'} ·{' '}
-                  {r.amountCents !== null ? `$${(r.amountCents / 100).toFixed(2)}` : '—'}
+                  {r.vendor ?? '—'} · {r.amountCents !== null ? formatCurrency(r.amountCents) : '—'}
                 </span>
               )}
             </li>

@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { parseSubQuoteFromFileAction } from '@/server/actions/sub-quotes';
 import { SubQuoteForm, type SubQuoteInitialValues } from './sub-quote-form';
 
@@ -73,7 +74,7 @@ export function SubQuoteUploadButton({
         ? `AI suggested but no matching category:\n${result.unmatchedAllocations
             .map(
               (u) =>
-                `  • ${u.proposedCategoryName} — $${(u.allocatedCents / 100).toFixed(2)} (${u.reasoning})`,
+                `  • ${u.proposedCategoryName} — ${formatCurrency(u.allocatedCents)} (${u.reasoning})`,
             )
             .join('\n')}`
         : '';

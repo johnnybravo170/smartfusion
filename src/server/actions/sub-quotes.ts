@@ -22,6 +22,7 @@ import {
 } from '@/lib/ai/sub-quote-parse-prompt';
 import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -367,7 +368,7 @@ export async function acceptSubQuoteAction(input: {
   if (allocSum !== (quote.total_cents as number)) {
     return {
       ok: false,
-      error: `Allocations total $${(allocSum / 100).toFixed(2)}, but the quote total is $${((quote.total_cents as number) / 100).toFixed(2)}. Balance them before accepting.`,
+      error: `Allocations total ${formatCurrency(allocSum)}, but the quote total is ${formatCurrency(quote.total_cents as number)}. Balance them before accepting.`,
     };
   }
   if ((quote.total_cents as number) === 0) {
