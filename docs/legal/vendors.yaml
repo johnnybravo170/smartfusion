@@ -90,8 +90,8 @@ vendors:
       - subscription status
     subprocessor_url: https://stripe.com/privacy-center/legal
     detection:
-      packages: ['^stripe$']
-      env: ['^STRIPE_']
+      packages: ['^stripe$', '^@stripe/']
+      env: ['^STRIPE_', '^NEXT_PUBLIC_STRIPE_']
 
   - slug: sentry
     name: Sentry
