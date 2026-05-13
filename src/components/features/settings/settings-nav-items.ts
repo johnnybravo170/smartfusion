@@ -18,6 +18,7 @@ import {
   Calendar,
   CreditCard,
   Database,
+  Eye,
   FileText,
   HardHat,
   Layers,
@@ -28,6 +29,7 @@ import {
   Tag,
   TrendingUp,
   Upload,
+  User,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -49,6 +51,7 @@ export const SETTINGS_NAV: SettingsNavGroup[] = [
     label: 'Account',
     items: [
       { title: 'Business profile', href: '/settings/profile', icon: Building2 },
+      { title: 'Your profile', href: '/settings/your-profile', icon: User },
       { title: 'Security', href: '/settings/security', icon: ShieldCheck },
       { title: 'Team', href: '/settings/team', icon: Users },
     ],
@@ -64,7 +67,7 @@ export const SETTINGS_NAV: SettingsNavGroup[] = [
       { title: 'Estimating detail level', href: '/settings/estimating', icon: Ruler },
       { title: 'Pricebook', href: '/settings/pricebook', icon: Tag },
       { title: 'Cost catalog', href: '/settings/cost-catalog', icon: HardHat },
-      { title: 'Bucket templates', href: '/settings/budget-category-templates', icon: Layers },
+      { title: 'Budget templates', href: '/settings/budget-category-templates', icon: Layers },
       { title: 'Estimate snippets', href: '/settings/estimate-snippets', icon: FileText },
       { title: 'Quotes', href: '/settings/quotes', icon: FileText },
     ],
@@ -85,6 +88,7 @@ export const SETTINGS_NAV: SettingsNavGroup[] = [
       { title: 'Automations', href: '/settings/automations', icon: Bot },
       { title: 'Reminders', href: '/settings/reminders', icon: Bell },
       { title: 'Checklist settings', href: '/settings/checklist', icon: Layers },
+      { title: 'Customer portal', href: '/settings/customer-portal', icon: Eye },
     ],
   },
   {
