@@ -113,3 +113,34 @@ export function isSettingsItemActive(pathname: string, item: SettingsNavItem): b
   if (pathname === item.href) return true;
   return pathname.startsWith(`${item.href}/`);
 }
+
+/** Context for filtering the nav. Currently just the tenant's vertical
+ *  so we can hide vertical-irrelevant items (e.g. Pricebook on GC). */
+export type SettingsNavContext = { vertical: string | null };
+
+const GC_VERTICALS = new Set(['renovation', 'gc', 'general_contractor']);
+
+/** True when the operator's day-to-day workflow is GC-style — they build
+ *  scopes in the project Budget tab, not from a saved pricebook. */
+function isGcVertical(vertical: string | null): boolean {
+  return vertical != null && GC_VERTICALS.has(vertical);
+}
+
+/** Returns the nav groups filtered for the current tenant. Used by the
+ *  layout to drop items that don't belong to this operator's workflow. */
+export function getSettingsNav(ctx: SettingsNavContext): SettingsNavGroup[] {
+  return SETTINGS_NAV.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => shouldShowItem(item, ctx)),
+  })).filter((group) => group.items.length > 0);
+}
+
+function shouldShowItem(item: SettingsNavItem, ctx: SettingsNavContext): boolean {
+  // Pricebook is consumed by the older single-quote flow + AI catalog
+  // tool — neither part of the GC project workflow. GC operators build
+  // scope from the project Budget tab; zero of the 336 priced cost
+  // lines on prod ever referenced a catalog item. Hide for GC verticals
+  // until we either wire it into the project flow or remove it.
+  if (item.href === '/settings/pricebook' && isGcVertical(ctx.vertical)) return false;
+  return true;
+}
