@@ -5,6 +5,7 @@ import { escapeHtml } from '@/lib/email/escape';
  * Sent after a self-serve cancel + prorated refund. Tone: warm, no friction,
  * no "we'll miss you" theatre. Just facts: amount, card, when access ends.
  */
+// TODO(email-shell): migrate to renderEmailShell on next touch
 export function refundConfirmationEmailHtml({
   firstName,
   refundAmountFormatted,

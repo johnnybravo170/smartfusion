@@ -13,6 +13,7 @@ export type FeedbackEmailComment = {
   isLineItem: boolean;
 };
 
+// TODO(email-shell): migrate to renderEmailShell on next touch
 export function estimateFeedbackEmailHtml(params: {
   customerName: string;
   projectName: string;

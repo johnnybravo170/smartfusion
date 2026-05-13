@@ -9,6 +9,7 @@ function docFieldBlock(title: string, body: string | null | undefined): string {
   </div>`;
 }
 
+// TODO(email-shell): migrate to renderEmailShell on next touch
 export function invoiceEmailHtml({
   customerName,
   businessName,

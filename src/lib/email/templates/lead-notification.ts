@@ -9,6 +9,7 @@
 import { brandingFooterHtml } from '@/lib/email/branding';
 import { escapeHtml, safeMailtoHref, safeTelHref, safeUrl } from '@/lib/email/escape';
 
+// TODO(email-shell): migrate to renderEmailShell on next touch
 export function leadNotificationHtml({
   businessName,
   customerName,

@@ -7,6 +7,7 @@
 
 import { escapeHtml, safeUrl } from '@/lib/email/escape';
 
+// TODO(email-shell): migrate to renderEmailShell on next touch
 export function projectMessageOperatorNotificationHtml(params: {
   customerName: string;
   projectName: string;

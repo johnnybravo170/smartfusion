@@ -5,6 +5,7 @@
 import { brandingFooterHtml } from '@/lib/email/branding';
 import { escapeHtml, safeUrl } from '@/lib/email/escape';
 
+// TODO(email-shell): migrate to renderEmailShell on next touch
 export function quoteResponseEmailHtml({
   type,
   customerName,
