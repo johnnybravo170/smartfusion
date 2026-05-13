@@ -71,6 +71,7 @@ type ProjectOption = {
   name: string;
   is_cost_plus: boolean;
   categories: Array<{ id: string; name: string }>;
+  costLines: Array<{ id: string; label: string; budget_category_id: string | null }>;
 };
 type CategoryOption = { id: string; label: string; isParentHeader: boolean };
 
@@ -126,6 +127,7 @@ function ExpenseDialogBody({
   // Overhead mode: which expense_category (chart-of-accounts node) this overhead expense maps to.
   // Two separate state slots so switching modes doesn't lose the other side.
   const [budgetCategoryId, setBudgetCategoryId] = useState('');
+  const [costLineId, setCostLineId] = useState('');
   const [overheadCategoryId, setOverheadCategoryId] = useState('');
 
   const [receipt, setReceipt] = useState<File | null>(null);
@@ -242,6 +244,12 @@ function ExpenseDialogBody({
   }, []);
 
   const projectCategories = projects.find((p) => p.id === projectId)?.categories ?? [];
+  // Cost lines under the selected category. Picker hides when no
+  // category is picked or the category has no priced lines.
+  const projectCostLines = projects.find((p) => p.id === projectId)?.costLines ?? [];
+  const linesForCategory = budgetCategoryId
+    ? projectCostLines.filter((l) => l.budget_category_id === budgetCategoryId)
+    : [];
 
   async function handleReceipt(input: File | null) {
     if (!input) {
@@ -448,6 +456,7 @@ function ExpenseDialogBody({
       if (mode === 'project') {
         fd.append('project_id', projectId);
         if (budgetCategoryId) fd.append('budget_category_id', budgetCategoryId);
+        if (costLineId) fd.append('cost_line_id', costLineId);
         const res = await logExpenseWithReceiptAction(fd);
         if (!res.ok) {
           toast.error(res.error);
@@ -591,78 +600,118 @@ function ExpenseDialogBody({
 
       {/* Mode-specific pickers */}
       {mode === 'project' ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label
-              htmlFor="exp-project"
-              className="mb-1 block text-xs font-medium text-muted-foreground"
-            >
-              Project
-            </Label>
-            <Select
-              value={projectId}
-              onValueChange={(v) => {
-                setProjectId(v);
-                // Picking a cost-plus project (re-)engages auto-split;
-                // picking a fixed-price one hides the chip — refreshAuto-
-                // Split handles both via showTaxSplit gating downstream.
-                refreshAutoSplit();
-              }}
-              disabled={busy || loadingLookups}
-            >
-              <SelectTrigger id="exp-project">
-                <SelectValue placeholder={loadingLookups ? 'Loading…' : 'Pick a project'} />
-              </SelectTrigger>
-              <SelectContent>
-                {projects.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <>
+          {/* min-w-0 on each grid cell so the Select trigger can shrink
+           *  inside the 2-col grid and the long project name doesn't
+           *  spill into the Category column. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="min-w-0">
+              <Label
+                htmlFor="exp-project"
+                className="mb-1 block text-xs font-medium text-muted-foreground"
+              >
+                Project
+              </Label>
+              <Select
+                value={projectId}
+                onValueChange={(v) => {
+                  setProjectId(v);
+                  // Switching project invalidates category + line picks.
+                  setBudgetCategoryId('');
+                  setCostLineId('');
+                  // Picking a cost-plus project (re-)engages auto-split;
+                  // picking a fixed-price one hides the chip — refreshAuto-
+                  // Split handles both via showTaxSplit gating downstream.
+                  refreshAutoSplit();
+                }}
+                disabled={busy || loadingLookups}
+              >
+                <SelectTrigger id="exp-project" className="w-full">
+                  <SelectValue placeholder={loadingLookups ? 'Loading…' : 'Pick a project'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-0">
+              <Label
+                htmlFor="exp-category"
+                className="mb-1 block text-xs font-medium text-muted-foreground"
+              >
+                Category (optional)
+              </Label>
+              <Select
+                value={budgetCategoryId}
+                onValueChange={(v) => {
+                  setBudgetCategoryId(v);
+                  // Switching category invalidates any prior line pick.
+                  setCostLineId('');
+                  setSuggestedFromOcr(false);
+                  setCategoryMiss(false);
+                }}
+                disabled={busy || projectCategories.length === 0}
+              >
+                <SelectTrigger id="exp-category" className="w-full">
+                  <SelectValue
+                    placeholder={projectCategories.length === 0 ? 'None yet' : 'Pick a category'}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {projectCategories.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {suggestedFromOcr && budgetCategoryId ? (
+                <span className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <Sparkles className="size-2.5" />
+                  Suggested by Henry
+                </span>
+              ) : categoryMiss && !budgetCategoryId ? (
+                <span className="mt-1 text-[10px] text-muted-foreground">
+                  Henry couldn&apos;t pick one — choose above.
+                </span>
+              ) : null}
+            </div>
           </div>
-          <div>
-            <Label
-              htmlFor="exp-category"
-              className="mb-1 block text-xs font-medium text-muted-foreground"
-            >
-              Category (optional)
-            </Label>
-            <Select
-              value={budgetCategoryId}
-              onValueChange={(v) => {
-                setBudgetCategoryId(v);
-                setSuggestedFromOcr(false);
-                setCategoryMiss(false);
-              }}
-              disabled={busy || projectCategories.length === 0}
-            >
-              <SelectTrigger id="exp-category">
-                <SelectValue
-                  placeholder={projectCategories.length === 0 ? 'None yet' : 'Pick a category'}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {projectCategories.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {suggestedFromOcr && budgetCategoryId ? (
-              <span className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Sparkles className="size-2.5" />
-                Suggested by Henry
-              </span>
-            ) : categoryMiss && !budgetCategoryId ? (
-              <span className="mt-1 text-[10px] text-muted-foreground">
-                Henry couldn&apos;t pick one — choose above.
-              </span>
-            ) : null}
-          </div>
-        </div>
+          {/* Cost-line picker — appears only when the selected category
+           *  has priced lines. Same pattern as the Quick Log time form
+           *  + the project Time tab: optional, tags this expense to a
+           *  specific line so the Budget tab's per-line Spent column
+           *  reflects it. */}
+          {linesForCategory.length > 0 ? (
+            <div>
+              <Label
+                htmlFor="exp-cost-line"
+                className="mb-1 block text-xs font-medium text-muted-foreground"
+              >
+                Line item{' '}
+                <span className="font-normal text-muted-foreground">
+                  — optional, tags this expense to a specific line
+                </span>
+              </Label>
+              <Select value={costLineId} onValueChange={(v) => setCostLineId(v)} disabled={busy}>
+                <SelectTrigger id="exp-cost-line" className="w-full">
+                  <SelectValue placeholder="Category only" />
+                </SelectTrigger>
+                <SelectContent>
+                  {linesForCategory.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+        </>
       ) : (
         <div>
           <Label
