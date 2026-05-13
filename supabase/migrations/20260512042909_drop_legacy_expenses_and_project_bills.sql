@@ -18,20 +18,27 @@
 -- recover the legacy tables, restore from a point-in-time backup taken
 -- before this migration runs.
 
--- Sanity: confirm `project_costs` still has the union of rows that the
--- legacy tables held immediately before the drop. Aborts the migration
--- if the count is implausibly low (under the row count we saw at the
--- last PR #6 verification, 376) — a guard against running this against
--- a staging DB that hasn't been backfilled.
+-- Sanity: confirm `project_costs` still has at least as many rows as
+-- the legacy `expenses` table (the backfill is supposed to have
+-- copied them all). On a fresh DB (CI, a new dev environment) both
+-- tables are empty — the drop is then a no-op and we let it proceed.
+-- The hard floor of 300 was specific to the prod row count at PR #6
+-- verification time; it doesn't apply to fresh DBs.
 DO $$
 DECLARE
-  costs_count BIGINT;
+  expenses_count BIGINT;
+  costs_count    BIGINT;
 BEGIN
-  SELECT COUNT(*) INTO costs_count FROM public.project_costs;
-  IF costs_count < 300 THEN
+  SELECT COUNT(*) INTO expenses_count FROM public.expenses;
+  SELECT COUNT(*) INTO costs_count    FROM public.project_costs;
+
+  -- Fresh DB / never-used environment: nothing to lose, allow the drop.
+  IF expenses_count = 0 THEN
+    RAISE NOTICE 'expenses is empty; legacy drop is a no-op on this DB.';
+  ELSIF costs_count < expenses_count THEN
     RAISE EXCEPTION
-      'project_costs has only % rows — refusing to drop legacy tables. Expected >= 300 based on the last verification snapshot. If this is a fresh / staging DB without backfill, run the backfill migration before applying this one.',
-      costs_count;
+      'project_costs has % rows but expenses has % rows — backfill missing. Run the project_costs backfill migration first.',
+      costs_count, expenses_count;
   END IF;
 END $$;
 
