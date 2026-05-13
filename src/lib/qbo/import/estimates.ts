@@ -20,6 +20,7 @@
  * counted as `skipped`.
  */
 
+import { formatCurrency } from '@/lib/pricing/calculator';
 import type { QboEstimate, QboInvoiceLine } from '@/lib/qbo/types';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { bumpJobProgress, setBatchIdForEntity } from './job';
@@ -48,7 +49,7 @@ function summarizeLines(lines: QboInvoiceLine[] | undefined): string {
       line.Description?.trim() || line.SalesItemLineDetail.ItemRef?.name?.trim() || 'Line';
     const qty = line.SalesItemLineDetail.Qty ?? 1;
     const amount = line.Amount ?? 0;
-    rows.push(`${qty}× ${desc} — $${amount.toFixed(2)}`);
+    rows.push(`${qty}× ${desc} — ${formatCurrency(Math.round(amount * 100))}`);
   }
   return rows.join('\n');
 }

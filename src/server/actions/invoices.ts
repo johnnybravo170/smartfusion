@@ -162,7 +162,7 @@ export async function createInvoiceAction(input: {
     tenant_id: tenant.id,
     entry_type: 'system',
     title: `${docLabel} created`,
-    body: `Draft ${docLabel.toLowerCase()} #${data.id.slice(0, 8)} created for $${(amountCents / 100).toFixed(2)} + $${(taxCents / 100).toFixed(2)} GST.`,
+    body: `Draft ${docLabel.toLowerCase()} #${data.id.slice(0, 8)} created for ${formatCurrency(amountCents)} + ${formatCurrency(taxCents)} GST.`,
     related_type: 'job',
     related_id: input.jobId,
   });
@@ -1414,7 +1414,7 @@ export async function generateFinalInvoiceAction(input: {
     const breakdownCostBasis = breakdown.labourCents + breakdown.materialsCents;
     const drift = breakdownCostBasis - rollup.invoiceCostBasisCents;
     if (Math.abs(drift) > 100) {
-      driftWarning = `Cost-basis check: invoice billing $${(breakdownCostBasis / 100).toFixed(2)} but raw cost rollup shows $${(rollup.invoiceCostBasisCents / 100).toFixed(2)} (Δ $${(Math.abs(drift) / 100).toFixed(2)}). Possible missing cost source or math drift — review the draft before sending.`;
+      driftWarning = `Cost-basis check: invoice billing ${formatCurrency(breakdownCostBasis)} but raw cost rollup shows ${formatCurrency(rollup.invoiceCostBasisCents)} (Δ ${formatCurrency(Math.abs(drift))}). Possible missing cost source or math drift — review the draft before sending.`;
     }
 
     if (breakdown.labourCents > 0) {

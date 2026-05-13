@@ -18,6 +18,7 @@
  *   - worklog_entries        → existing per-related-type routing
  */
 
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { createClient } from '@/lib/supabase/server';
 
 export type ActivityEventKind =
@@ -180,7 +181,7 @@ export async function getRecentActivityFeed(): Promise<ActivityEvent[]> {
       actedAt = inv.sent_at;
       verb = 'Invoice sent';
     }
-    const dollars = `$${(inv.amount_cents / 100).toFixed(2)}`;
+    const dollars = formatCurrency(inv.amount_cents);
     events.push({
       id: `inv:${inv.id}:${kind}`,
       kind,

@@ -1,8 +1,9 @@
 import { AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
+import { formatCurrency } from '@/lib/pricing/calculator';
 
 function formatCad(cents: number): string {
-  return `$${(Math.abs(cents) / 100).toFixed(2)}`;
+  return formatCurrency(Math.abs(cents));
 }
 
 /**

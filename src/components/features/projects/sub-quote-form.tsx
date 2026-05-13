@@ -602,9 +602,7 @@ function AllocationBalance({
       )}
     >
       {formatCurrency(allocatedCents)} / {formatCurrency(totalCents)}
-      {over
-        ? ` · $${(Math.abs(diff) / 100).toFixed(2)} over`
-        : ` · $${(diff / 100).toFixed(2)} remaining`}
+      {over ? ` · ${formatCurrency(Math.abs(diff))} over` : ` · ${formatCurrency(diff)} remaining`}
     </span>
   );
 }

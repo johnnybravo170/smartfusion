@@ -11,6 +11,7 @@ import { TaskStatusBadge } from '@/components/features/tasks/task-status-badge';
 import { VerifyTaskButtons } from '@/components/features/tasks/verify-task-buttons';
 import { formatDateShort } from '@/lib/date/format';
 import type { DashboardTaskBuckets, JobTaskHealth, TaskRow } from '@/lib/db/queries/tasks';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 
 type ChangeOrderRow = {
@@ -185,9 +186,7 @@ export function CommandCenter({
                     className="min-w-0 flex-1 truncate hover:underline"
                   >
                     {co.customer_name ?? 'Change order'} ·{' '}
-                    <span className="text-muted-foreground">
-                      ${(co.total_cents / 100).toFixed(2)}
-                    </span>
+                    <span className="text-muted-foreground">{formatCurrency(co.total_cents)}</span>
                   </Link>
                 </li>
               ))}

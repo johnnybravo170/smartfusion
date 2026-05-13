@@ -38,7 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { MapQuoteCatalogEntry } from '@/lib/db/queries/catalog-items';
-import { calculateSurfacePrice } from '@/lib/pricing/calculator';
+import { calculateSurfacePrice, formatCurrency } from '@/lib/pricing/calculator';
 import { fetchBuildingInsights } from '@/lib/solar/building-insights';
 
 const LIBRARIES: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places'];
@@ -396,12 +396,12 @@ export function QuoteMap({
                 <span className="font-semibold">
                   {(() => {
                     const entry = catalog.find((c) => c.surface_type === selectedType);
-                    if (!entry) return '$0.00';
+                    if (!entry) return formatCurrency(0);
                     const cents = calculateSurfacePrice(
                       { surface_type: selectedType, sqft: pendingSqft },
                       entry,
                     );
-                    return `$${(cents / 100).toFixed(2)}`;
+                    return formatCurrency(cents);
                   })()}
                 </span>
               </p>

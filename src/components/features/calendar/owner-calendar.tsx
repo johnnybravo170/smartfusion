@@ -41,6 +41,7 @@ import type {
   CalendarUnavailability,
   CalendarWorker,
 } from '@/lib/db/queries/owner-calendar';
+import { formatCurrencyCompact } from '@/lib/pricing/calculator';
 import { cn } from '@/lib/utils';
 import {
   bulkAssignDatesAction,
@@ -1197,7 +1198,7 @@ function ChipActionSheet({
   onRemove: () => void;
   pending: boolean;
 }) {
-  const fmtRate = (cents: number) => `$${(cents / 100).toFixed(2).replace(/\.00$/, '')}/h`;
+  const fmtRate = (cents: number) => `${formatCurrencyCompact(cents)}/h`;
   const hasDetails =
     notes ||
     hourlyRateCents != null ||
