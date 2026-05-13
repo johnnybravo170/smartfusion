@@ -18,6 +18,7 @@ import { newTenantMemberDefaults } from '@/lib/auth/helpers';
 import { updateReferralOnSignup } from '@/lib/db/queries/referrals';
 import { sendWelcomeEmail } from '@/lib/email/welcome';
 import { CURRENT_PRIVACY_VERSION, CURRENT_TOS_VERSION } from '@/lib/legal/versions';
+import { callerIp, checkRateLimit, describeRetryAfter } from '@/lib/rate-limit';
 import { generateReferralCode } from '@/lib/referral/code-generator';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -58,6 +59,29 @@ export async function signupAction(input: {
     };
   }
   const { email, password, businessName, phone } = parsed.data;
+
+  // Rate limit: per-IP (burst control) + per-email (account-enumeration
+  // control). Enforce IP first so an attacker can't cycle emails to map
+  // existence quickly.
+  const ip = await callerIp();
+  const ipLimit = await checkRateLimit(`signup:ip:${ip}`, {
+    limit: 5,
+    windowMs: 10 * 60_000,
+  });
+  if (!ipLimit.ok) {
+    return {
+      error: `Too many signup attempts. Try again in ${describeRetryAfter(ipLimit.retryAfterMs)}.`,
+    };
+  }
+  const emailLimit = await checkRateLimit(`signup:email:${email}`, {
+    limit: 5,
+    windowMs: 60 * 60_000,
+  });
+  if (!emailLimit.ok) {
+    return {
+      error: `Too many attempts for this email. Try again in ${describeRetryAfter(emailLimit.retryAfterMs)}.`,
+    };
+  }
 
   const normalizedPhone = normalizePhone(phone);
   if (!normalizedPhone) {
@@ -294,6 +318,29 @@ export async function requestMagicLinkAction(input: {
     };
   }
   const { email } = parsed.data;
+
+  // Rate limit: per-IP (burst) + per-email (enumeration). Magic-link
+  // success/failure response is uniform regardless of whether the email
+  // exists, but without throttling an attacker can probe many emails fast.
+  const ip = await callerIp();
+  const ipLimit = await checkRateLimit(`magic:ip:${ip}`, {
+    limit: 10,
+    windowMs: 10 * 60_000,
+  });
+  if (!ipLimit.ok) {
+    return {
+      error: `Too many requests. Try again in ${describeRetryAfter(ipLimit.retryAfterMs)}.`,
+    };
+  }
+  const emailLimit = await checkRateLimit(`magic:email:${email}`, {
+    limit: 5,
+    windowMs: 60 * 60_000,
+  });
+  if (!emailLimit.ok) {
+    return {
+      error: `Too many magic-link requests for this email. Try again in ${describeRetryAfter(emailLimit.retryAfterMs)}.`,
+    };
+  }
 
   const origin = await originFromHeaders();
   const supabase = await createClient();
