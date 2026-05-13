@@ -7,6 +7,7 @@
  */
 
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
+import { checkRateLimit, describeRetryAfter } from '@/lib/rate-limit';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { normalizePhone, sendSms } from '@/lib/twilio/client';
 
@@ -31,9 +32,24 @@ export async function sendPhoneVerificationAction(input: {
     };
   }
 
+  // SMS-bombing protection: rate-limit on the DESTINATION number, not the
+  // requesting user. A logged-in attacker can otherwise repeatedly request
+  // codes for a victim's phone. Cap at 3 sends per hour per number.
+  const phoneLimit = await checkRateLimit(`phone:resend:${phone}`, {
+    limit: 3,
+    windowMs: 60 * 60_000,
+  });
+  if (!phoneLimit.ok) {
+    return {
+      ok: false,
+      error: `This phone has hit the verification-code limit. Try again in ${describeRetryAfter(phoneLimit.retryAfterMs)}.`,
+    };
+  }
+
   const admin = createAdminClient();
 
-  // Throttle: refuse if a code was sent in the last RESEND_THROTTLE_MS.
+  // Per-user throttle: refuse if THIS user sent a code in the last
+  // RESEND_THROTTLE_MS. Belt-and-braces alongside the per-phone limit.
   const { data: recent } = await admin
     .from('phone_verification_codes')
     .select('created_at')
