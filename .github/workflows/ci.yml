@@ -27,6 +27,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Vulnerability audit (critical — blocking)
+        # `pnpm audit --audit-level=critical` exits non-zero only if any
+        # advisory at severity=critical exists. At time of wiring there
+        # were zero criticals; this guard catches regressions where a
+        # dependency upgrade pulls one in. High-severity advisories are
+        # surfaced in the next step (non-blocking) so they're visible
+        # without churning every PR red.
+        run: pnpm audit --audit-level=critical --prod
+
+      - name: Vulnerability audit (high — informational)
+        # Reports high-severity advisories to the run log + step summary
+        # without failing the build. Dependabot opens cleanup PRs to
+        # drive these down over time. Switch `continue-on-error` to
+        # `false` once the baseline backlog is cleared.
+        run: pnpm audit --audit-level=high --prod
+        continue-on-error: true
+
       - name: Typecheck
         run: pnpm typecheck
 
