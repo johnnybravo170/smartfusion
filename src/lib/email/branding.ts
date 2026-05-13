@@ -34,7 +34,8 @@ export type EmailTemplateKey =
   | 'referral_invite'
   | 'pulse_update'
   | 'refund_confirmation'
-  | 'estimate_accepted_notification';
+  | 'estimate_accepted_notification'
+  | 'inbound_bounce';
 
 const LOGO_SIGN_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
