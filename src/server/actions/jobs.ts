@@ -22,6 +22,7 @@ import { formatDate, formatDateTime } from '@/lib/date/format';
 import { getEmailBrandingForTenant } from '@/lib/email/branding';
 import { sendEmail } from '@/lib/email/send';
 import { bookingEmailHtml, cancellationEmailHtml } from '@/lib/email/templates/job-booking';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import {
   emptyToNull,
@@ -293,31 +294,9 @@ export async function changeJobStatusAction(input: {
     return { ok: true, id: parsed.data.id };
   }
 
-  // 2. Build the update patch.
-  const now = new Date().toISOString();
-  const patch: Record<string, string> = {
-    status: newStatus,
-    updated_at: now,
-  };
-  if (newStatus === 'in_progress' && !current.started_at) {
-    patch.started_at = now;
-  }
-  if (newStatus === 'complete' && !current.completed_at) {
-    patch.completed_at = now;
-  }
-
-  const { error: updateErr } = await supabase
-    .from('jobs')
-    .update(patch)
-    .eq('id', parsed.data.id)
-    .is('deleted_at', null);
-
-  if (updateErr) {
-    return { ok: false, error: `Failed to update status: ${updateErr.message}` };
-  }
-
-  // 3. Write the worklog entry. Supabase returns the join as an array or an
-  // object depending on the inferred cardinality; handle both.
+  // 2 + 3. Atomic: jobs UPDATE + worklog_entries INSERT in one Postgres
+  // transaction. Either both commit or neither does — no more
+  // "status changed but worklog failed" half-state.
   const customerRaw = current.customers;
   const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw;
   const customerName =
@@ -325,21 +304,19 @@ export async function changeJobStatusAction(input: {
       ? (customer as { name: string }).name
       : 'customer';
 
-  const { error: logErr } = await supabase.from('worklog_entries').insert({
-    tenant_id: tenant.id,
-    entry_type: 'system',
-    title: 'Job status changed',
-    body: `Job for ${customerName} moved from ${jobStatusLabels[oldStatus]} to ${jobStatusLabels[newStatus]}.`,
-    related_type: 'job',
-    related_id: parsed.data.id,
+  // RPC is SECURITY DEFINER + service_role only — tenant ownership was
+  // already checked above via the RLS-aware `current` load.
+  const admin = createAdminClient();
+  const { error: rpcErr } = await admin.rpc('update_job_status_with_worklog', {
+    p_job_id: parsed.data.id,
+    p_tenant_id: tenant.id,
+    p_new_status: newStatus,
+    p_worklog_title: 'Job status changed',
+    p_worklog_body: `Job for ${customerName} moved from ${jobStatusLabels[oldStatus]} to ${jobStatusLabels[newStatus]}.`,
   });
 
-  if (logErr) {
-    // Status change succeeded; log failed. Surface but don't roll back.
-    return {
-      ok: false,
-      error: `Status changed, but the worklog entry failed: ${logErr.message}`,
-    };
+  if (rpcErr) {
+    return { ok: false, error: `Failed to update status: ${rpcErr.message}` };
   }
 
   // Fire the closeout loop when the job goes to 'complete'. Best-effort —
