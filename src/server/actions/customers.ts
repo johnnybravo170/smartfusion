@@ -13,7 +13,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { getCurrentTenant } from '@/lib/auth/helpers';
+import { audit } from '@/lib/audit';
+import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { type ContactMatch, findContactMatches } from '@/lib/db/queries/contact-matches';
 import { createClient } from '@/lib/supabase/server';
 import {
@@ -292,6 +293,9 @@ export async function deleteCustomerAction(id: string): Promise<CustomerActionRe
     return { ok: false, error: 'Missing customer id.' };
   }
 
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
   const supabase = await createClient();
   const { error } = await supabase
     .from('customers')
@@ -302,6 +306,15 @@ export async function deleteCustomerAction(id: string): Promise<CustomerActionRe
   if (error) {
     return { ok: false, error: error.message };
   }
+
+  const user = await getCurrentUser();
+  await audit({
+    tenantId: tenant.id,
+    userId: user?.id ?? null,
+    action: 'customer.deleted',
+    resourceType: 'customer',
+    resourceId: id,
+  });
 
   revalidatePath('/contacts');
   redirect('/contacts');
