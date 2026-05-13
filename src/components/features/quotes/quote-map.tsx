@@ -37,8 +37,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { CatalogEntryRow } from '@/lib/db/queries/service-catalog';
-import { type CatalogEntry, calculateSurfacePrice } from '@/lib/pricing/calculator';
+import type { MapQuoteCatalogEntry } from '@/lib/db/queries/catalog-items';
+import { calculateSurfacePrice, formatCurrency } from '@/lib/pricing/calculator';
 import { fetchBuildingInsights } from '@/lib/solar/building-insights';
 
 const LIBRARIES: ('drawing' | 'geometry' | 'places')[] = ['drawing', 'geometry', 'places'];
@@ -63,7 +63,7 @@ type DrawnPolygon = {
 };
 
 type QuoteMapProps = {
-  catalog: CatalogEntryRow[];
+  catalog: MapQuoteCatalogEntry[];
   onSurfaceAdd: (surface: {
     id: string;
     surface_type: string;
@@ -157,7 +157,7 @@ export function QuoteMap({
 
           const price_cents = calculateSurfacePrice(
             { surface_type: 'roof', sqft: result.totalRoofSqft },
-            roofEntry as CatalogEntry,
+            roofEntry,
           );
 
           const id = crypto.randomUUID();
@@ -218,7 +218,7 @@ export function QuoteMap({
 
     const price_cents = calculateSurfacePrice(
       { surface_type: selectedType, sqft: pendingSqft },
-      entry as CatalogEntry,
+      entry,
     );
 
     const id = crypto.randomUUID();
@@ -396,12 +396,12 @@ export function QuoteMap({
                 <span className="font-semibold">
                   {(() => {
                     const entry = catalog.find((c) => c.surface_type === selectedType);
-                    if (!entry) return '$0.00';
+                    if (!entry) return formatCurrency(0);
                     const cents = calculateSurfacePrice(
                       { surface_type: selectedType, sqft: pendingSqft },
-                      entry as CatalogEntry,
+                      entry,
                     );
-                    return `$${(cents / 100).toFixed(2)}`;
+                    return formatCurrency(cents);
                   })()}
                 </span>
               </p>

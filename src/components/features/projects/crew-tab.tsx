@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useTenantTimezone } from '@/lib/auth/tenant-context';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { assignWorkerAction, removeAssignmentAction } from '@/server/actions/project-assignments';
 
 export type CrewWorker = {
@@ -249,14 +250,14 @@ function AssignmentTable({
                 </TableCell>
               ) : null}
               <TableCell className="text-sm">
-                {pay !== null ? `$${(pay / 100).toFixed(2)}` : '—'}
+                {pay !== null ? formatCurrency(pay) : '—'}
                 {a.hourly_rate_cents !== null &&
                 a.hourly_rate_cents !== w?.default_hourly_rate_cents ? (
                   <span className="ml-1 text-xs text-muted-foreground">(override)</span>
                 ) : null}
               </TableCell>
               <TableCell className="text-sm">
-                {charge !== null ? `$${(charge / 100).toFixed(2)}` : '—'}
+                {charge !== null ? formatCurrency(charge) : '—'}
                 {a.charge_rate_cents !== null &&
                 a.charge_rate_cents !== w?.default_charge_rate_cents ? (
                   <span className="ml-1 text-xs text-muted-foreground">(override)</span>

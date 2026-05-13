@@ -5,11 +5,16 @@ import { PhaseRail } from '@/components/features/portal/phase-rail';
 import { PortalBudgetVisibilityToggle } from '@/components/features/portal/portal-budget-visibility-toggle';
 import { PortalToggle } from '@/components/features/portal/portal-toggle';
 import { PortalUpdateForm } from '@/components/features/portal/portal-update-form';
+import { CustomerSectionsManager } from '@/components/features/projects/customer-sections-manager';
+import { CustomerSummaryCard } from '@/components/features/projects/customer-summary-card';
+import { CustomerViewModeCard } from '@/components/features/projects/customer-view-mode-card';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { listCustomerSectionsForProject } from '@/lib/db/queries/project-customer-sections';
 import { listDecisionsForProject } from '@/lib/db/queries/project-decisions';
 import { listPhasesForProject } from '@/lib/db/queries/project-phases';
 import { ensurePortalSlug } from '@/lib/portal/slug';
 import { createClient } from '@/lib/supabase/server';
+import type { CustomerViewMode } from '@/lib/validators/project-customer-view';
 
 export default async function PortalTabServer({ projectId }: { projectId: string }) {
   const supabase = await createClient();
@@ -21,6 +26,8 @@ export default async function PortalTabServer({ projectId }: { projectId: string
     phases,
     decisions,
     { data: tenantSettings },
+    customerSections,
+    { data: budgetCategories },
   ] = await Promise.all([
     supabase
       .from('project_portal_updates')
@@ -31,7 +38,7 @@ export default async function PortalTabServer({ projectId }: { projectId: string
     supabase
       .from('projects')
       .select(
-        'name, portal_slug, portal_enabled, portal_show_budget, customers:customer_id (name, email, additional_emails)',
+        'name, portal_slug, portal_enabled, portal_show_budget, customer_view_mode, customer_summary_md, customers:customer_id (name, email, additional_emails)',
       )
       .eq('id', projectId)
       .single(),
@@ -40,6 +47,12 @@ export default async function PortalTabServer({ projectId }: { projectId: string
     tenant
       ? supabase.from('tenants').select('portal_show_budget').eq('id', tenant.id).maybeSingle()
       : Promise.resolve({ data: null }),
+    listCustomerSectionsForProject(projectId),
+    supabase
+      .from('project_budget_categories')
+      .select('id, name, customer_section_id')
+      .eq('project_id', projectId)
+      .order('display_order', { ascending: true }),
   ]);
 
   const portalEnabled = (portalData?.portal_enabled as boolean) ?? false;
@@ -50,6 +63,19 @@ export default async function PortalTabServer({ projectId }: { projectId: string
   const portalSlug = existingSlug ?? (await ensurePortalSlug(supabase, projectId));
   const portalShowBudget = (portalData?.portal_show_budget as boolean | null | undefined) ?? null;
   const tenantShowBudget = Boolean(tenantSettings?.portal_show_budget);
+  const customerViewMode = ((portalData?.customer_view_mode as string | null) ??
+    'detailed') as CustomerViewMode;
+  const categoriesForSections = (
+    (budgetCategories ?? []) as Array<{
+      id: string;
+      name: string;
+      customer_section_id: string | null;
+    }>
+  ).map((c) => ({
+    id: c.id,
+    name: c.name,
+    customer_section_id: c.customer_section_id,
+  }));
 
   // Project name + customer email fields for the share dialog. The
   // PostgREST embed returns customers as either an array or an object
@@ -86,6 +112,27 @@ export default async function PortalTabServer({ projectId }: { projectId: string
           />
         </div>
       ) : null}
+
+      <CustomerViewModeCard projectId={projectId} currentMode={customerViewMode} />
+
+      <CustomerSummaryCard
+        projectId={projectId}
+        initialSummaryMd={(portalData?.customer_summary_md as string | null) ?? null}
+      />
+
+      {/* Sections are always editable: even projects defaulting to "detailed"
+       * may have per-invoice overrides to sections mode, so the operator
+       * needs to be able to define them ahead of time. */}
+      <CustomerSectionsManager
+        projectId={projectId}
+        sections={customerSections.map((s) => ({
+          id: s.id,
+          name: s.name,
+          description_md: s.description_md,
+          sort_order: s.sort_order,
+        }))}
+        categories={categoriesForSections}
+      />
 
       {phases.length > 0 ? <PhaseRail phases={phases} projectId={projectId} /> : null}
 

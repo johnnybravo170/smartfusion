@@ -202,6 +202,9 @@ export default async function PortalPage({
     has_draws: false,
     customer_contract_total_cents: 0,
     tax_label: '',
+    customer_view_mode: 'detailed',
+    customer_summary_md: null,
+    sections: [],
   };
 
   let galleryPhotos: PortalGalleryPhoto[] = [];
@@ -233,10 +236,26 @@ export default async function PortalPage({
         ? admin.from('project_cost_lines').select('line_price_cents').eq('project_id', projectId)
         : Promise.resolve({ data: [] as Array<{ line_price_cents: number }> }),
       burnRunning
-        ? admin.from('project_bills').select('amount_cents').eq('project_id', projectId)
-        : Promise.resolve({ data: [] as Array<{ amount_cents: number }> }),
+        ? // Vendor bills via the unified table — use the pre-GST subtotal
+          // (pre_tax_amount_cents) to match the legacy project_bills.amount_cents
+          // semantics this rollup was originally written against.
+          admin
+            .from('project_costs')
+            .select('amount_cents, pre_tax_amount_cents')
+            .eq('project_id', projectId)
+            .eq('source_type', 'vendor_bill')
+            .eq('status', 'active')
+        : Promise.resolve({
+            data: [] as Array<{ amount_cents: number; pre_tax_amount_cents: number | null }>,
+          }),
       burnRunning
-        ? admin.from('expenses').select('amount_cents').eq('project_id', projectId)
+        ? // Receipts via the unified table — keep gross amount_cents.
+          admin
+            .from('project_costs')
+            .select('amount_cents')
+            .eq('project_id', projectId)
+            .eq('source_type', 'receipt')
+            .eq('status', 'active')
         : Promise.resolve({ data: [] as Array<{ amount_cents: number }> }),
       admin
         .from('project_phases')
@@ -291,10 +310,10 @@ export default async function PortalPage({
         (s, r) => s + ((r as { line_price_cents: number }).line_price_cents ?? 0),
         0,
       );
-      const bills = (billsRes.data ?? []).reduce(
-        (s, r) => s + ((r as { amount_cents: number }).amount_cents ?? 0),
-        0,
-      );
+      const bills = (billsRes.data ?? []).reduce((s, r) => {
+        const row = r as { amount_cents: number; pre_tax_amount_cents: number | null };
+        return s + (row.pre_tax_amount_cents ?? row.amount_cents ?? 0);
+      }, 0);
       const exps = (expensesRes.data ?? []).reduce(
         (s, r) => s + ((r as { amount_cents: number }).amount_cents ?? 0),
         0,

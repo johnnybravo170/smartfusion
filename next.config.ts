@@ -5,6 +5,21 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [new URL('https://*.supabase.co/storage/**')],
   },
+  // The single `src/pages/api/henry/gemini-proxy.ts` route triggers Next's
+  // pages-compat type augmentation in next-env.d.ts, which flips
+  // useSearchParams/useParams/usePathname return types to nullable across
+  // all app-router code. The project's `pnpm typecheck` step runs without
+  // that augmentation and is the authoritative type gate; skip the
+  // duplicate check inside `next build` so deploys don't spuriously fail.
+  //
+  // ⚠ Linked to src/pages/api/henry/gemini-proxy.ts — that route can't move
+  // to App Router (route handlers don't support WebSocket upgrade per Next 16
+  // docs: 01-app/02-guides/backend-for-frontend.md). If that file ever leaves
+  // src/pages/, delete this `typescript.ignoreBuildErrors` block too — they
+  // exist as a pair.
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   experimental: {
     serverActions: {
       // Photo uploads travel through server actions as multipart FormData.

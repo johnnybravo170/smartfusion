@@ -49,20 +49,29 @@ export async function confirmStagedBillAction(
     .single();
   if (loadErr || !email) return { ok: false, error: 'Inbound email not found.' };
 
+  const billPreTax = data.amountCents;
+  const billGst = data.gstCents;
   const { data: bill, error: billErr } = await supabase
-    .from('project_bills')
+    .from('project_costs')
     .insert({
       tenant_id: tenant.id,
       project_id: data.projectId,
       vendor: data.vendor,
       vendor_gst_number: data.vendorGstNumber || null,
-      bill_date: data.billDate,
+      cost_date: data.billDate,
       description: data.description || null,
-      amount_cents: data.amountCents,
-      gst_cents: data.gstCents,
+      // amount_cents on project_costs is gross; pre_tax preserves the
+      // cost-plus markup basis. Inbound-email parses pre-GST + GST
+      // separately.
+      amount_cents: billPreTax + billGst,
+      pre_tax_amount_cents: billPreTax,
+      gst_cents: billGst,
       budget_category_id: data.budgetCategoryId || null,
       cost_line_id: data.costLineId || null,
-      status: 'pending',
+      inbound_email_id: data.emailId,
+      source_type: 'vendor_bill',
+      payment_status: 'unpaid',
+      status: 'active',
     })
     .select('id')
     .single();

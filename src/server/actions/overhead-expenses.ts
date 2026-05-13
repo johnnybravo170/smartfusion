@@ -106,13 +106,15 @@ async function findProbableDuplicate(
   const hi = new Date(date.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   let query = admin
-    .from('expenses')
-    .select('id, vendor, amount_cents, expense_date')
+    .from('project_costs')
+    .select('id, vendor, amount_cents, cost_date')
     .eq('tenant_id', tenantId)
+    .eq('source_type', 'receipt')
+    .eq('status', 'active')
     .is('project_id', null)
     .eq('amount_cents', opts.amountCents)
-    .gte('expense_date', lo)
-    .lte('expense_date', hi)
+    .gte('cost_date', lo)
+    .lte('cost_date', hi)
     // Case-insensitive vendor match. ilike exact-match (no wildcards).
     .ilike('vendor', vendor);
   if (opts.excludeId) query = query.neq('id', opts.excludeId);
@@ -124,7 +126,7 @@ async function findProbableDuplicate(
     id: row.id as string,
     vendor: (row.vendor as string) ?? vendor,
     amount_cents: row.amount_cents as number,
-    expense_date: row.expense_date as string,
+    expense_date: row.cost_date as string,
   };
 }
 
@@ -261,7 +263,7 @@ export async function logOverheadExpenseAction(formData: FormData): Promise<Over
   }
 
   const { data, error } = await admin
-    .from('expenses')
+    .from('project_costs')
     .insert({
       tenant_id: tenant.id,
       user_id: user.id,
@@ -271,14 +273,18 @@ export async function logOverheadExpenseAction(formData: FormData): Promise<Over
       category_id: parsed.data.category_id,
       amount_cents: parsed.data.amount_cents,
       pre_tax_amount_cents: parsed.data.pre_tax_amount_cents ?? null,
-      tax_cents: parsed.data.tax_cents,
+      gst_cents: parsed.data.tax_cents,
       vendor: parsed.data.vendor?.trim() || null,
       vendor_gst_number: parsed.data.vendor_gst_number?.trim() || null,
       description: parsed.data.description?.trim() || null,
-      receipt_storage_path: receiptStoragePath,
-      expense_date: parsed.data.expense_date,
+      attachment_storage_path: receiptStoragePath,
+      cost_date: parsed.data.expense_date,
       payment_source_id: resolvedSourceId,
       card_last4: parsed.data.card_last4 ?? null,
+      source_type: 'receipt',
+      payment_status: 'paid',
+      paid_at: new Date().toISOString(),
+      status: 'active',
     })
     .select('id')
     .single();
@@ -621,9 +627,10 @@ export async function updateOverheadExpenseAction(
   // (we don't want to let someone edit a project expense through this
   // action — that has its own update path and preserves project context).
   const { data: existing, error: existingErr } = await admin
-    .from('expenses')
-    .select('id, tenant_id, project_id, receipt_storage_path, expense_date')
+    .from('project_costs')
+    .select('id, tenant_id, project_id, attachment_storage_path, cost_date')
     .eq('id', id)
+    .eq('source_type', 'receipt')
     .single();
   if (existingErr || !existing) return { ok: false, error: 'Expense not found.' };
   if (existing.tenant_id !== tenant.id) return { ok: false, error: 'Not found.' };
@@ -638,7 +645,7 @@ export async function updateOverheadExpenseAction(
     admin,
     tenant.id,
     parsed.data.expense_date,
-    existing.expense_date as string,
+    existing.cost_date as string,
   );
   if (closedBlock) return closedBlock;
 
@@ -715,14 +722,14 @@ export async function updateOverheadExpenseAction(
   const patch: Record<string, unknown> = {
     category_id: parsed.data.category_id,
     amount_cents: parsed.data.amount_cents,
-    tax_cents: parsed.data.tax_cents,
+    gst_cents: parsed.data.tax_cents,
     vendor: parsed.data.vendor?.trim() || null,
     description: parsed.data.description?.trim() || null,
-    expense_date: parsed.data.expense_date,
+    cost_date: parsed.data.expense_date,
     updated_at: new Date().toISOString(),
   };
   if (receiptStoragePath !== undefined) {
-    patch.receipt_storage_path = receiptStoragePath;
+    patch.attachment_storage_path = receiptStoragePath;
   }
   // Always write payment_source_id from the form — even null clears
   // any previous value so the operator can intentionally remove a
@@ -732,17 +739,21 @@ export async function updateOverheadExpenseAction(
     patch.card_last4 = parsed.data.card_last4;
   }
 
-  const { error: updErr } = await admin.from('expenses').update(patch).eq('id', id);
+  const { error: updErr } = await admin
+    .from('project_costs')
+    .update(patch)
+    .eq('id', id)
+    .eq('source_type', 'receipt');
   if (updErr) return { ok: false, error: updErr.message };
 
   // Clean up the old receipt file if we replaced or removed it. Best-
   // effort — if the delete fails we still return success; orphaned files
   // can be swept later.
-  if (receiptStoragePath !== undefined && existing.receipt_storage_path) {
-    if (receiptStoragePath !== existing.receipt_storage_path) {
+  if (receiptStoragePath !== undefined && existing.attachment_storage_path) {
+    if (receiptStoragePath !== existing.attachment_storage_path) {
       await admin.storage
         .from(RECEIPTS_BUCKET)
-        .remove([existing.receipt_storage_path as string])
+        .remove([existing.attachment_storage_path as string])
         .catch(() => {});
     }
   }
@@ -795,10 +806,11 @@ export async function bulkRecategorizeExpensesAction(input: {
   }
 
   const { data: rows } = await admin
-    .from('expenses')
-    .select('id, expense_date')
+    .from('project_costs')
+    .select('id, cost_date')
     .in('id', input.ids)
-    .eq('tenant_id', tenant.id);
+    .eq('tenant_id', tenant.id)
+    .eq('source_type', 'receipt');
 
   const { data: t } = await admin
     .from('tenants')
@@ -808,7 +820,7 @@ export async function bulkRecategorizeExpensesAction(input: {
   const closedThrough = (t?.books_closed_through as string | null) ?? null;
 
   const allowedIds = (rows ?? [])
-    .filter((r) => !closedThrough || (r.expense_date as string) > closedThrough)
+    .filter((r) => !closedThrough || (r.cost_date as string) > closedThrough)
     .map((r) => r.id as string);
 
   if (allowedIds.length === 0) {
@@ -821,7 +833,7 @@ export async function bulkRecategorizeExpensesAction(input: {
   }
 
   const { error } = await admin
-    .from('expenses')
+    .from('project_costs')
     .update({ category_id: input.category_id, updated_at: new Date().toISOString() })
     .in('id', allowedIds);
   if (error) return { ok: false, error: error.message };
@@ -868,10 +880,11 @@ export async function bulkSetPaymentSourceAction(input: {
   if (!source) return { ok: false, error: 'Payment source not found.' };
 
   const { data: rows } = await admin
-    .from('expenses')
-    .select('id, project_id, expense_date')
+    .from('project_costs')
+    .select('id, project_id, cost_date')
     .in('id', input.ids)
-    .eq('tenant_id', tenant.id);
+    .eq('tenant_id', tenant.id)
+    .eq('source_type', 'receipt');
 
   const { data: t } = await admin
     .from('tenants')
@@ -882,7 +895,7 @@ export async function bulkSetPaymentSourceAction(input: {
 
   const eligible = (rows ?? []).filter((r) => {
     if (r.project_id) return false;
-    if (closedThrough && (r.expense_date as string) <= closedThrough) return false;
+    if (closedThrough && (r.cost_date as string) <= closedThrough) return false;
     return true;
   });
 
@@ -897,7 +910,7 @@ export async function bulkSetPaymentSourceAction(input: {
 
   const ids = eligible.map((r) => r.id as string);
   const { error } = await admin
-    .from('expenses')
+    .from('project_costs')
     .update({
       payment_source_id: input.payment_source_id,
       card_last4: (source.last4 as string | null) ?? null,
@@ -927,10 +940,11 @@ export async function bulkDeleteExpensesAction(input: {
 
   const admin = createAdminClient();
   const { data: rows } = await admin
-    .from('expenses')
-    .select('id, project_id, expense_date, receipt_storage_path')
+    .from('project_costs')
+    .select('id, project_id, cost_date, attachment_storage_path')
     .in('id', input.ids)
-    .eq('tenant_id', tenant.id);
+    .eq('tenant_id', tenant.id)
+    .eq('source_type', 'receipt');
 
   const { data: t } = await admin
     .from('tenants')
@@ -941,7 +955,7 @@ export async function bulkDeleteExpensesAction(input: {
 
   const eligible = (rows ?? []).filter((r) => {
     if (r.project_id) return false;
-    if (closedThrough && (r.expense_date as string) <= closedThrough) return false;
+    if (closedThrough && (r.cost_date as string) <= closedThrough) return false;
     return true;
   });
 
@@ -951,10 +965,14 @@ export async function bulkDeleteExpensesAction(input: {
 
   const idsToDelete = eligible.map((r) => r.id as string);
   const receiptPaths = eligible
-    .map((r) => r.receipt_storage_path as string | null)
+    .map((r) => r.attachment_storage_path as string | null)
     .filter((p): p is string => !!p);
 
-  const { error } = await admin.from('expenses').delete().in('id', idsToDelete);
+  const { error } = await admin
+    .from('project_costs')
+    .delete()
+    .in('id', idsToDelete)
+    .eq('source_type', 'receipt');
   if (error) return { ok: false, error: error.message };
 
   if (receiptPaths.length > 0) {
@@ -978,25 +996,30 @@ export async function deleteOverheadExpenseAction(
   const admin = createAdminClient();
   // Fetch receipt path + date so we can clean storage and enforce books-close.
   const { data } = await admin
-    .from('expenses')
-    .select('receipt_storage_path, tenant_id, expense_date')
+    .from('project_costs')
+    .select('attachment_storage_path, tenant_id, cost_date')
     .eq('id', id)
+    .eq('source_type', 'receipt')
     .single();
   if (!data || data.tenant_id !== tenant.id) return { ok: false, error: 'Not found.' };
 
-  const closedBlock = await blockIfBooksClosed(admin, tenant.id, data.expense_date as string);
+  const closedBlock = await blockIfBooksClosed(admin, tenant.id, data.cost_date as string);
   if (closedBlock) {
     const msg = 'error' in closedBlock ? closedBlock.error : 'Books are closed for this period.';
     return { ok: false, error: msg };
   }
 
-  const { error } = await admin.from('expenses').delete().eq('id', id);
+  const { error } = await admin
+    .from('project_costs')
+    .delete()
+    .eq('id', id)
+    .eq('source_type', 'receipt');
   if (error) return { ok: false, error: error.message };
 
-  if (data.receipt_storage_path) {
+  if (data.attachment_storage_path) {
     await admin.storage
       .from(RECEIPTS_BUCKET)
-      .remove([data.receipt_storage_path as string])
+      .remove([data.attachment_storage_path as string])
       .catch(() => {});
   }
   revalidatePath('/expenses');

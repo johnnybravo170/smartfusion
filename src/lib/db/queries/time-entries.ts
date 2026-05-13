@@ -11,6 +11,9 @@ export type TimeEntryRow = {
   worker_profile_id: string | null;
   project_id: string | null;
   budget_category_id: string | null;
+  /** Optional cost line tag. When set, labour rolls up to the line's
+   *  per-line Spent column on the Budget tab. */
+  cost_line_id: string | null;
   job_id: string | null;
   hours: number;
   hourly_rate_cents: number | null;

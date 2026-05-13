@@ -7,6 +7,7 @@
  */
 
 import type { ProjectSelection } from '@/lib/db/queries/project-selections';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import {
   type SelectionCategory,
   selectionCategoryLabels,
@@ -67,14 +68,14 @@ export function PortalSelections({
                     <p className="mt-1 text-xs text-muted-foreground">
                       {sel.actual_cost_cents != null && sel.allowance_cents != null
                         ? sel.actual_cost_cents > sel.allowance_cents
-                          ? `+$${((sel.actual_cost_cents - sel.allowance_cents) / 100).toFixed(2)} over allowance`
+                          ? `+${formatCurrency(sel.actual_cost_cents - sel.allowance_cents)} over allowance`
                           : sel.actual_cost_cents < sel.allowance_cents
-                            ? `$${((sel.allowance_cents - sel.actual_cost_cents) / 100).toFixed(2)} under allowance`
+                            ? `${formatCurrency(sel.allowance_cents - sel.actual_cost_cents)} under allowance`
                             : 'On allowance'
                         : sel.allowance_cents != null
-                          ? `Allowance $${(sel.allowance_cents / 100).toFixed(2)}`
+                          ? `Allowance ${formatCurrency(sel.allowance_cents)}`
                           : sel.actual_cost_cents != null
-                            ? `Cost $${(sel.actual_cost_cents / 100).toFixed(2)}`
+                            ? `Cost ${formatCurrency(sel.actual_cost_cents)}`
                             : null}
                     </p>
                   ) : null}

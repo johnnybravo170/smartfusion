@@ -38,7 +38,7 @@ Soft-delete confirmations follow one shape. When you change the wording, button 
 
 - `src/components/features/customers/delete-customer-button.tsx`
 - `src/components/features/projects/delete-project-button.tsx`
-- `src/components/features/billing/cancel-subscription-button.tsx` — async preview-on-open variant; shows the prorated refund amount + access end date inside the dialog before the destructive button is enabled. No "are you sure / why are you leaving" upsell — locked policy.
+- `src/components/features/billing/cancel-subscription-button.tsx` — two-step variant. Step 1 shows the prorated refund preview + a non-coercive "pause for 30 days" alternative. Step 2 collects an exit-survey reason (radio list) + optional comment, both appended to `refunds_log.notes`. No discount upsell ("would $X off help?") — that line stays locked.
 
 All three use shadcn `AlertDialog`, wrap the action in a transition, and surface errors via toast. Delete variants additionally handle `NEXT_REDIRECT`.
 
@@ -89,6 +89,7 @@ When you add a new status value to an enum, update the matching `*StatusTone` ma
 - `src/components/features/customers/customer-type-badge.tsx` — kind colors (customer/lead/vendor/sub/etc.) — separate palette from status tones by design
 - `src/components/features/inbox/worklog-entry-type-badge.tsx`
 - `src/components/features/worker/worker-invoice-status-badge.tsx`
+- `src/components/features/projects/project-costs-section.tsx` — inline `CostStatusBadge` for the unified Costs surface (`paid_receipt` / `bill_unpaid` / `bill_paid`). Uses the shared `projectCostStatusTone` map in `status-tokens.ts`; no standalone badge file because the three values are tightly coupled to a single rendering surface.
 
 ---
 
@@ -537,3 +538,75 @@ Adjacent gotchas the lint rule does **not** catch:
 For AI tool handlers, the `setToolTimezone(tenant.timezone)` hook in `src/app/api/henry/tool/route.ts` already fans out to dashboard, invoice, and the shared `lib/ai/format.ts` formatters. New AI tool formatters that go through `setToolTimezone` are tz-correct by default.
 
 For Home Records, the snapshot freezes `timezone` at generation time (`HomeRecordSnapshotV1.timezone`). The PDF / ZIP / public web view all prefer the snapshot's frozen tz — the document is a permanent artifact, so dates render in the tz the work was actually done in even if the contractor relocates the business later.
+
+---
+
+## 24. Rich-text fields (markdown editor + safe render)
+
+Any description field that benefits from formatting (bold, italic, bullet/numbered lists, h3/h4) uses the shared **`RichTextEditor`** for writing and **`RichTextDisplay`** for reading. Storage is **plain markdown text** in a `*_md` column on the row — portable, easy to migrate, easy to grep.
+
+The editor is intentionally NOT a WYSIWYG. It's a textarea + toolbar — the operator sees raw `**bold**` while typing, the toolbar inserts the syntax at the cursor (and `Ctrl+B` / `Ctrl+I` shortcuts work). GitHub-style edit box. Predictable, zero ProseMirror/TipTap dependency, ~zero bundle hit.
+
+The display is `react-markdown` with default settings — **raw HTML is escaped, not rendered**. We do NOT use `rehype-raw`. Custom `<a>` renderer forces `target="_blank" rel="noopener noreferrer nofollow"` and the sanitization test (`tests/unit/rich-text-sanitization.test.tsx`) is the regression guard. If you change the display to allow HTML pass-through, that test MUST fail until you wire in `rehype-sanitize` with a strict allowlist.
+
+Supported markdown surface (intentionally narrow): `**bold**`, `*italic*`, `` `inline code` ``, `- bullet`, `1. numbered`, `### h3`, `#### h4`, `> blockquote`, `[link](url)`. No images, tables, raw HTML, or fenced code blocks.
+
+Files in this family:
+
+- `src/components/ui/rich-text-editor.tsx` — the editor (toolbar + textarea). Controlled (`value` / `onChange` + optional `onBlur`).
+- `src/components/ui/rich-text-display.tsx` — read-side renderer. Pairs with the editor.
+- `tests/unit/rich-text-sanitization.test.tsx` — XSS regression guard.
+
+Sibling instances to keep aligned when this pattern changes:
+
+- `src/components/features/projects/customer-sections-manager.tsx` — section description (`description_md` on `project_customer_sections`).
+
+When you add a new `*_md` column, store and edit with this pair. Do NOT introduce a parallel rich-text component — the security surface needs to stay singular. If you need more formatting (tables, images), extend the existing pair AND extend the sanitization test in the same change.
+
+---
+
+## 25. Live preview with toggles (operator-facing "what will the customer see")
+
+Surfaces where the operator picks a presentation mode and needs to *see the result* before applying. Solves the "abstract setting is opaque" problem — the operator toggles, the preview rebuilds in real time, then they hit Apply to materialize.
+
+Architecture, in three layers:
+
+1. **Pure helper** (`*-line-items.ts` / `*-rollup.ts` style). Takes all inputs as plain data, returns the computed shape. No DB access, no React, no side effects. Testable as a pure function. The helper is the single source of truth — both the client preview and the server-side Apply action run the same function with the same inputs.
+2. **Server-side loader query** (`load*Inputs(id)`). Fetches the underlying project data + resolves "what is the current default" once on page load. Page passes the loaded inputs as props to the client component.
+3. **Client preview component** (`'use client'`). Holds toggle state in `useState`, calls the helper via `useMemo` on every render, displays the result. Apply button invokes a server action with **just the toggle values** — the action re-fetches inputs server-side via the same loader and re-runs the helper. We never trust client-sent computed line items into the DB.
+
+Why this shape:
+
+- **Subtotal/total invariance is testable**. Unit tests on the helper assert that switching modes doesn't change the customer's total — a regression guarantee the operator can rely on.
+- **Apply is destructive but obvious**. The materialized shape replaces the persisted one; there's no surprise because the operator already saw what would land.
+- **Manual edits still work**. After Apply, the existing add/remove line-item actions mutate the persisted `line_items` JSONB. The preview is for the macro shape; manual edits handle the fiddly bits.
+
+Refused complexity:
+
+- **Compute on read, never persist.** Tempting but breaks PDF renderers, public customer view, and manual edits. Materialize on Apply.
+- **Per-line hide toggles.** Add/remove actions already exist. Don't double-cover.
+
+Files in this family:
+
+- `src/lib/invoices/customer-view-line-items.ts` — pure helper (the canonical example of this pattern).
+- `src/lib/db/queries/invoice-customer-view-inputs.ts` — server-side loader.
+- `src/components/features/invoices/invoice-view-mode-preview.tsx` — client preview component.
+- `src/server/actions/invoices.ts` → `applyCustomerViewToInvoiceAction` — Apply action.
+- `tests/unit/customer-view-line-items.test.ts` — subtotal-invariance regression guard.
+
+Persistence convention: store the **toggle values** on the parent row (`*_view_mode`, `*_view_*_inline`), nullable, where null = "inherit from a parent default" (e.g. project's `customer_view_mode`). The materialized shape lives in its own JSONB column (`line_items`). Both are written together on Apply.
+
+When adding a new live-preview surface, mirror these five files. Don't invent a new layering — keep the three-layer separation (helper / loader / client) so the helper stays testable as a pure function.
+
+---
+
+## 26. Dialogs scroll by default — don't re-add overflow handling
+
+The base `DialogContent` and `AlertDialogContent` ship with `max-h-[90dvh] overflow-y-auto`. Long-form dialogs (multi-field intake, expense logging, project intake) scroll *inside* the dialog body on mobile instead of overflowing the viewport and clipping the primary submit button.
+
+Don't re-add `max-h-*` or `overflow-y-auto` on the caller — they're already there. Layer your own `max-w-*` / `sm:max-w-*` width caps as needed. Use `dvh` (not `vh`) anywhere a custom height cap is unavoidable, so iOS Safari's dynamic bottom chrome doesn't clip the bottom row of buttons.
+
+- `src/components/ui/dialog.tsx` — base `DialogContent`.
+- `src/components/ui/alert-dialog.tsx` — base `AlertDialogContent`.
+
+If you find yourself wanting to opt out (e.g. a dialog that should never scroll), prefer making the dialog body shorter — that's the bug.

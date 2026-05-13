@@ -21,12 +21,13 @@ export const timeExpenseTools: AiTool[] = [
           hours: { type: 'number', description: 'Hours worked (e.g. 2.5)' },
           hourly_rate_cents: {
             type: 'number',
-            description: 'Hourly rate in cents (optional, for costing)',
+            description:
+              'Hourly rate in cents. Required so labour rolls up into the project budget. Use 0 for unbilled hours.',
           },
           notes: { type: 'string', description: 'Notes about the work done' },
           entry_date: { type: 'string', description: 'Date (YYYY-MM-DD), defaults to today' },
         },
-        required: ['hours', 'entry_date'],
+        required: ['hours', 'hourly_rate_cents', 'entry_date'],
       },
     },
     handler: async (input) => {
@@ -37,7 +38,7 @@ export const timeExpenseTools: AiTool[] = [
           job_id: input.job_id as string | undefined,
           budget_category_id: input.budget_category_id as string | undefined,
           hours: input.hours as number,
-          hourly_rate_cents: input.hourly_rate_cents as number | undefined,
+          hourly_rate_cents: input.hourly_rate_cents as number,
           notes: input.notes as string | undefined,
           entry_date: input.entry_date as string,
         });

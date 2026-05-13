@@ -18,6 +18,7 @@
  *   - worklog_entries        → existing per-related-type routing
  */
 
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { createClient } from '@/lib/supabase/server';
 
 export type ActivityEventKind =
@@ -59,10 +60,14 @@ export async function getRecentActivityFeed(): Promise<ActivityEvent[]> {
   const since = daysAgoIso(WINDOW_DAYS);
 
   const [expRes, photoRes, docRes, invRes, worklogRes] = await Promise.all([
+    // Activity feed surfaces receipt + vendor-bill creation alike; both
+    // live in project_costs now. Filter to active rows so voided
+    // entries don't pollute the feed.
     supabase
-      .from('expenses')
-      .select('id, project_id, vendor, description, created_at, receipt_storage_path')
+      .from('project_costs')
+      .select('id, project_id, vendor, description, created_at, attachment_storage_path')
       .gte('created_at', since)
+      .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(60),
     supabase
@@ -101,9 +106,9 @@ export async function getRecentActivityFeed(): Promise<ActivityEvent[]> {
     vendor: string | null;
     description: string | null;
     created_at: string;
-    receipt_storage_path: string | null;
+    attachment_storage_path: string | null;
   }>) {
-    const verb = e.receipt_storage_path ? 'Receipt added' : 'Expense added';
+    const verb = e.attachment_storage_path ? 'Receipt added' : 'Expense added';
     const tail = e.vendor ?? e.description ?? 'expense';
     events.push({
       id: `exp:${e.id}`,
@@ -176,7 +181,7 @@ export async function getRecentActivityFeed(): Promise<ActivityEvent[]> {
       actedAt = inv.sent_at;
       verb = 'Invoice sent';
     }
-    const dollars = `$${(inv.amount_cents / 100).toFixed(2)}`;
+    const dollars = formatCurrency(inv.amount_cents);
     events.push({
       id: `inv:${inv.id}:${kind}`,
       kind,

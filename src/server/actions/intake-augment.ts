@@ -379,7 +379,8 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
         ? (categoryIdByName.get(e.budget_category_name.toLowerCase()) ?? null)
         : null;
 
-      const { error: insErr } = await admin.from('expenses').insert({
+      const now = new Date().toISOString();
+      const { error: insErr } = await admin.from('project_costs').insert({
         tenant_id: tenant.id,
         user_id: user.id,
         project_id: input.projectId,
@@ -388,8 +389,12 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
         vendor: e.vendor?.trim() || null,
         vendor_gst_number: e.vendor_gst_number?.trim() || null,
         description: e.description?.trim() || null,
-        receipt_storage_path: receiptStoragePath,
-        expense_date: e.expense_date || new Date().toISOString().slice(0, 10),
+        attachment_storage_path: receiptStoragePath,
+        cost_date: e.expense_date || new Date().toISOString().slice(0, 10),
+        source_type: 'receipt',
+        payment_status: 'paid',
+        paid_at: now,
+        status: 'active',
       });
       if (insErr) {
         if (receiptStoragePath) {
@@ -428,18 +433,25 @@ export async function applyProjectAugmentAction(formData: FormData): Promise<App
         ? (categoryIdByName.get(b.budget_category_name.toLowerCase()) ?? null)
         : null;
 
-      const { error: insErr } = await supabase.from('project_bills').insert({
+      const billPreTax = b.amount_cents;
+      const billGst = b.gst_cents ?? 0;
+      const { error: insErr } = await supabase.from('project_costs').insert({
         tenant_id: tenant.id,
         project_id: input.projectId,
         vendor: b.vendor?.trim() || 'Unknown',
         vendor_gst_number: b.vendor_gst_number?.trim() || null,
-        bill_date: b.bill_date || new Date().toISOString().slice(0, 10),
+        cost_date: b.bill_date || new Date().toISOString().slice(0, 10),
         description: b.description?.trim() || null,
-        amount_cents: b.amount_cents,
-        gst_cents: b.gst_cents ?? 0,
+        // Bills enter with pre-GST + GST split; project_costs amount_cents
+        // is gross. pre_tax_amount_cents preserves the cost-plus basis.
+        amount_cents: billPreTax + billGst,
+        pre_tax_amount_cents: billPreTax,
+        gst_cents: billGst,
         budget_category_id: categoryId,
         attachment_storage_path: attachmentStoragePath,
-        status: 'pending',
+        source_type: 'vendor_bill',
+        payment_status: 'unpaid',
+        status: 'active',
       });
       if (insErr) {
         if (attachmentStoragePath) {

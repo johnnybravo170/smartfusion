@@ -112,13 +112,15 @@ export async function revertChangeAction(
       .select('id', { count: 'exact', head: true })
       .eq('budget_category_id', targetId);
     const { count: expenseCount } = await admin
-      .from('expenses')
+      .from('project_costs')
       .select('id', { count: 'exact', head: true })
-      .eq('budget_category_id', targetId);
+      .eq('budget_category_id', targetId)
+      .eq('status', 'active');
     if ((timeCount ?? 0) > 0 || (expenseCount ?? 0) > 0) {
       return {
         ok: false,
-        error: 'Cannot revert: this category has time entries or expenses linked. Move them first.',
+        error:
+          'Cannot revert: this category has time entries or project costs linked. Move them first.',
       };
     }
     const { error } = await admin

@@ -100,25 +100,36 @@ export async function getBudgetVsActual(projectId: string): Promise<BudgetSummar
     throw new Error(`Failed to load time entries: ${timeErr.message}`);
   }
 
-  // 3. Load expenses for this project, grouped by budget_category_id
-  const { data: expenseData, error: expErr } = await supabase
-    .from('expenses')
-    .select('budget_category_id, amount_cents')
-    .eq('project_id', projectId);
+  // 3+4. Load receipts + vendor bills from the unified project_costs
+  // table, grouped by budget_category_id. Receipts contribute gross
+  // amount_cents; vendor bills contribute the pre-GST subtotal (GST is
+  // an ITC, not a project cost). The split below preserves the
+  // pre-unification mixed semantics so variance numbers don't shift.
+  const { data: costData, error: costErr } = await supabase
+    .from('project_costs')
+    .select('budget_category_id, source_type, amount_cents, pre_tax_amount_cents')
+    .eq('project_id', projectId)
+    .eq('status', 'active');
 
-  if (expErr) {
-    throw new Error(`Failed to load expenses: ${expErr.message}`);
+  if (costErr) {
+    throw new Error(`Failed to load project costs: ${costErr.message}`);
   }
 
-  // 4. Load bills for this project, grouped by budget_category_id (pre-GST subtotal only)
-  const { data: billData, error: billErr } = await supabase
-    .from('project_bills')
-    .select('budget_category_id, amount_cents')
-    .eq('project_id', projectId);
-
-  if (billErr) {
-    throw new Error(`Failed to load bills: ${billErr.message}`);
-  }
+  const expenseData = (costData ?? [])
+    .filter((r) => (r as { source_type?: string }).source_type !== 'vendor_bill')
+    .map((r) => ({
+      budget_category_id: (r as { budget_category_id: string | null }).budget_category_id,
+      amount_cents: (r as { amount_cents: number }).amount_cents ?? 0,
+    }));
+  const billData = (costData ?? [])
+    .filter((r) => (r as { source_type?: string }).source_type === 'vendor_bill')
+    .map((r) => ({
+      budget_category_id: (r as { budget_category_id: string | null }).budget_category_id,
+      amount_cents:
+        (r as { pre_tax_amount_cents: number | null }).pre_tax_amount_cents ??
+        (r as { amount_cents: number }).amount_cents ??
+        0,
+    }));
 
   // 4a. Load cost lines summed per category. Used as a fallback when a
   // category's stored envelope is 0 but priced lines exist under it

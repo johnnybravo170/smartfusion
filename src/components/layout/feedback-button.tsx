@@ -38,7 +38,7 @@ export function FeedbackButton() {
     startTransition(async () => {
       const res = await submitFeedbackAction({
         message,
-        url: typeof window !== 'undefined' ? window.location.href : pathname,
+        url: typeof window !== 'undefined' ? window.location.href : (pathname ?? undefined),
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
       });
       if (!res.ok) {

@@ -140,30 +140,32 @@ export async function confirmBankMatchesAction(
     if (error) return { ok: false, error: `Invoice update failed: ${error.message}` };
   }
 
-  // 3b. Bills → status='paid'.
+  // 3b. Bills → payment_status='paid' on the unified project_costs table.
   if (billUpdates.length > 0) {
+    const billIds = billUpdates.map((u) => u.candidate.id);
+    const now = new Date().toISOString();
     const { error } = await supabase
-      .from('project_bills')
-      .update({ status: 'paid', updated_at: new Date().toISOString() })
-      .in(
-        'id',
-        billUpdates.map((u) => u.candidate.id),
-      )
-      .in('status', ['pending', 'approved']);
+      .from('project_costs')
+      .update({ payment_status: 'paid', paid_at: now, updated_at: now })
+      .in('id', billIds)
+      .eq('source_type', 'vendor_bill')
+      .eq('payment_status', 'unpaid');
     if (error) return { ok: false, error: `Bill update failed: ${error.message}` };
   }
 
   // 3c. Expenses don't have a status; just the bank_tx linkage below.
 
-  // 4. Stamp bank_transactions.
+  // 4. Stamp bank_transactions. Receipts + vendor bills both live on
+  //    project_costs now, so the two legacy columns (matched_expense_id,
+  //    matched_bill_id) collapse into matched_cost_id; the candidate's
+  //    `kind` discriminator survives indirectly via
+  //    project_costs.source_type for any reader that needs it.
   const nowIso = new Date().toISOString();
   for (const r of resolved) {
     const matchedField =
       r.candidate.kind === 'invoice'
         ? { matched_invoice_id: r.candidate.id }
-        : r.candidate.kind === 'bill'
-          ? { matched_bill_id: r.candidate.id }
-          : { matched_expense_id: r.candidate.id };
+        : { matched_cost_id: r.candidate.id };
     const { error } = await supabase
       .from('bank_transactions')
       .update({

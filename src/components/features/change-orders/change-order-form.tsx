@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useHenryForm } from '@/hooks/use-henry-form';
 import type { BudgetCategorySummary } from '@/lib/db/queries/projects';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { createChangeOrderAction, sendChangeOrderAction } from '@/server/actions/change-orders';
 
 export function ChangeOrderForm({
@@ -255,7 +256,8 @@ export function ChangeOrderForm({
             />
             <span className="text-sm">%</span>
             <span className="text-xs text-muted-foreground tabular-nums">
-              = ${((Math.max(totalCostCents, 0) * mgmtFeeRateNum) / 100).toFixed(2)} on this CO
+              = {formatCurrency(Math.round(Math.max(totalCostCents, 0) * mgmtFeeRateNum))} on this
+              CO
             </span>
           </div>
           {mgmtFeeChanged ? (
@@ -343,7 +345,7 @@ export function ChangeOrderForm({
                   <td
                     className={`px-3 py-2 text-right tabular-nums ${totalCostCents < 0 ? 'text-emerald-700' : ''}`}
                   >
-                    ${(totalCostCents / 100).toFixed(2)}
+                    {formatCurrency(totalCostCents)}
                   </td>
                 </tr>
               </tbody>

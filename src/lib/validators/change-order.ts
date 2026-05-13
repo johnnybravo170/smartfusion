@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod';
+import { formatCurrency } from '@/lib/pricing/calculator';
 
 export const changeOrderStatuses = [
   'draft',
@@ -95,7 +96,7 @@ export const changeOrderCreateSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['cost_breakdown'],
-        message: `Per-category amounts must sum to the total cost impact ($${(data.cost_impact_cents / 100).toFixed(2)}); got $${(sum / 100).toFixed(2)}.`,
+        message: `Per-category amounts must sum to the total cost impact (${formatCurrency(data.cost_impact_cents)}); got ${formatCurrency(sum)}.`,
       });
     }
   })

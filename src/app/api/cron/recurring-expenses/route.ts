@@ -69,12 +69,13 @@ export async function GET() {
       continue;
     }
 
-    // Idempotency: skip if an expense already exists for this rule on this date.
+    // Idempotency: skip if a receipt already exists for this rule on this date.
     const { data: existing } = await admin
-      .from('expenses')
+      .from('project_costs')
       .select('id')
+      .eq('source_type', 'receipt')
       .eq('recurring_rule_id', rule.id as string)
-      .eq('expense_date', runDate)
+      .eq('cost_date', runDate)
       .limit(1);
     if (existing && existing.length > 0) {
       skippedDuplicate++;
@@ -109,7 +110,7 @@ export async function GET() {
     }
     if (!userId) continue; // defensive — nobody to attribute to
 
-    const { error: insErr } = await admin.from('expenses').insert({
+    const { error: insErr } = await admin.from('project_costs').insert({
       tenant_id: tenantId,
       user_id: userId,
       project_id: null,
@@ -118,10 +119,14 @@ export async function GET() {
       category_id: rule.category_id as string | null,
       recurring_rule_id: rule.id as string,
       amount_cents: rule.amount_cents as number,
-      tax_cents: (rule.tax_cents as number) ?? 0,
+      gst_cents: (rule.tax_cents as number) ?? 0,
       vendor: (rule.vendor as string | null) ?? null,
       description: (rule.description as string | null) ?? null,
-      expense_date: runDate,
+      cost_date: runDate,
+      source_type: 'receipt',
+      payment_status: 'paid',
+      paid_at: new Date().toISOString(),
+      status: 'active',
     });
     if (insErr) {
       // Don't advance on error — we want to retry tomorrow.

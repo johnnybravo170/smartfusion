@@ -94,13 +94,19 @@ export async function listProjectProgress(
   if (projectIds.length === 0) return out;
 
   const supabase = await createClient();
-  const [linesRes, billsRes, expensesRes, projectsRes] = await Promise.all([
+  const [linesRes, costsRes, projectsRes] = await Promise.all([
     supabase
       .from('project_cost_lines')
       .select('project_id, line_price_cents')
       .in('project_id', projectIds),
-    supabase.from('project_bills').select('project_id, amount_cents').in('project_id', projectIds),
-    supabase.from('expenses').select('project_id, amount_cents').in('project_id', projectIds),
+    // Unified cost reads. Receipts use gross amount_cents; bills use
+    // pre_tax_amount_cents to preserve the legacy mixed semantics for
+    // the project-progress burn rollup.
+    supabase
+      .from('project_costs')
+      .select('project_id, source_type, amount_cents, pre_tax_amount_cents')
+      .in('project_id', projectIds)
+      .eq('status', 'active'),
     supabase.from('projects').select('id, lifecycle_stage').in('id', projectIds),
   ]);
 
@@ -109,11 +115,15 @@ export async function listProjectProgress(
     est.set(r.project_id, (est.get(r.project_id) ?? 0) + r.line_price_cents);
   }
   const cost = new Map<string, number>();
-  for (const r of (billsRes.data ?? []) as { project_id: string; amount_cents: number }[]) {
-    cost.set(r.project_id, (cost.get(r.project_id) ?? 0) + r.amount_cents);
-  }
-  for (const r of (expensesRes.data ?? []) as { project_id: string; amount_cents: number }[]) {
-    cost.set(r.project_id, (cost.get(r.project_id) ?? 0) + r.amount_cents);
+  for (const r of (costsRes.data ?? []) as {
+    project_id: string;
+    source_type: 'receipt' | 'vendor_bill';
+    amount_cents: number;
+    pre_tax_amount_cents: number | null;
+  }[]) {
+    const amount =
+      r.source_type === 'vendor_bill' ? (r.pre_tax_amount_cents ?? r.amount_cents) : r.amount_cents;
+    cost.set(r.project_id, (cost.get(r.project_id) ?? 0) + amount);
   }
   const stage = new Map<string, string>();
   for (const r of (projectsRes.data ?? []) as { id: string; lifecycle_stage: string }[]) {

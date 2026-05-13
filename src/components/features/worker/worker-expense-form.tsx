@@ -49,7 +49,7 @@ export function WorkerExpenseForm({ projects, tenantTaxRate }: Props) {
   const router = useRouter();
   const params = useSearchParams();
   const tz = useTenantTimezone();
-  const initialProject = params.get('project') ?? projects[0]?.project_id ?? '';
+  const initialProject = params?.get('project') ?? projects[0]?.project_id ?? '';
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 
   const [pending, startTransition] = useTransition();

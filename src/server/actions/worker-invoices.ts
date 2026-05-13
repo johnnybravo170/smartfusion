@@ -112,9 +112,10 @@ export async function submitWorkerInvoiceAction(input: {
   }
   if (expIds.length > 0) {
     const { error } = await admin
-      .from('expenses')
+      .from('project_costs')
       .update({ worker_invoice_id: invoiceId })
       .in('id', expIds)
+      .eq('source_type', 'receipt')
       .is('worker_invoice_id', null);
     if (error) {
       // Roll back the time stamps.
@@ -157,7 +158,11 @@ export async function deleteWorkerInvoiceAction(id: string): Promise<PlainResult
 
   // Clear stamps first so rows can be invoiced again.
   await admin.from('time_entries').update({ worker_invoice_id: null }).eq('worker_invoice_id', id);
-  await admin.from('expenses').update({ worker_invoice_id: null }).eq('worker_invoice_id', id);
+  await admin
+    .from('project_costs')
+    .update({ worker_invoice_id: null })
+    .eq('source_type', 'receipt')
+    .eq('worker_invoice_id', id);
 
   const { error } = await admin.from('worker_invoices').delete().eq('id', id);
   if (error) return { ok: false, error: error.message };
@@ -251,8 +256,9 @@ export async function rejectWorkerInvoiceAction(input: {
     .update({ worker_invoice_id: null })
     .eq('worker_invoice_id', parsed.data.id);
   await admin
-    .from('expenses')
+    .from('project_costs')
     .update({ worker_invoice_id: null })
+    .eq('source_type', 'receipt')
     .eq('worker_invoice_id', parsed.data.id);
 
   const { error } = await admin

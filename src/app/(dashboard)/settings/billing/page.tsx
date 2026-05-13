@@ -1,46 +1,35 @@
-import { CreditCard, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { CancelSubscriptionButton } from '@/components/features/billing/cancel-subscription-button';
-import { ManagePaymentMethodButton } from '@/components/features/billing/manage-payment-method-button';
+import { ChangePlanCard } from '@/components/features/billing/change-plan-card';
+import { InvoicesTable } from '@/components/features/billing/invoices-table';
+import { PaymentMethodCard } from '@/components/features/billing/payment-method-card';
+import { ResumeSubscriptionButton } from '@/components/features/billing/resume-subscription-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { requireTenant } from '@/lib/auth/helpers';
 import { PLAN_CATALOG } from '@/lib/billing/plans';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { getBillingOverviewAction } from '@/server/actions/billing-management';
 
 /**
- * Billing settings — current plan, payment method, and self-serve cancel.
+ * Billing settings — fully native HeyHenry UI for plan, payment method,
+ * invoice history, and self-serve cancel/pause. Replaces the previous
+ * redirect-to-Stripe-Customer-Portal flow so customers stay in-app.
  *
- * Cancel policy is documented at /refund-policy. The button here is the
- * single entry point for self-serve cancellation; no friction, no upsell.
+ * Dates render in the tenant's timezone (not the viewer's local) so a
+ * "next renewal Mon Jun 3" message matches what the customer sees on the
+ * invoice rather than shifting by a day across the date line.
  */
 export default async function BillingPage() {
   const { tenant } = await requireTenant();
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from('tenants')
-    .select(
-      'plan, subscription_status, current_period_end, trial_ends_at, stripe_subscription_id, stripe_customer_id',
-    )
-    .eq('id', tenant.id)
-    .single();
-
-  const plan = ((data?.plan as string | null) ?? tenant.plan) as keyof typeof PLAN_CATALOG;
-  const status = (data?.subscription_status as string | null) ?? tenant.subscriptionStatus;
-  const periodEnd = (data?.current_period_end as string | null) ?? null;
-  const trialEnd = (data?.trial_ends_at as string | null) ?? null;
-  const hasSubscription = Boolean(data?.stripe_subscription_id);
-  const hasCustomer = Boolean(data?.stripe_customer_id);
-
-  const planCopy = PLAN_CATALOG[plan] ?? PLAN_CATALOG.starter;
-  const renewalDate = periodEnd ? formatDate(periodEnd, tenant.timezone) : null;
-  const trialDate = trialEnd ? formatDate(trialEnd, tenant.timezone) : null;
+  const overview = await getBillingOverviewAction();
+  const tz = tenant.timezone;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Billing</h1>
         <p className="text-sm text-muted-foreground">
-          Your plan, payment method, and subscription. See the{' '}
+          Your plan, payment method, invoices, and subscription. See the{' '}
           <Link href="/refund-policy" className="underline underline-offset-2">
             refund policy
           </Link>{' '}
@@ -48,73 +37,114 @@ export default async function BillingPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
+      {!overview.hasSubscription ? (
+        <Card>
+          <CardHeader>
             <div className="flex items-start gap-2">
               <Sparkles className="size-5 mt-0.5" />
               <div>
-                <CardTitle>{planCopy.name} plan</CardTitle>
-                <CardDescription>{planCopy.tagline}</CardDescription>
+                <CardTitle>No active subscription</CardTitle>
+                <CardDescription>
+                  Pick a plan to unlock the full HeyHenry feature set.
+                </CardDescription>
               </div>
             </div>
-            <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground capitalize">
-              {status.replace('_', ' ')}
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent className="text-sm space-y-1 text-muted-foreground">
-          {status === 'trialing' && trialDate ? <p>Trial ends {trialDate}.</p> : null}
-          {status !== 'trialing' && renewalDate ? <p>Next renewal {renewalDate}.</p> : null}
-          {status === 'canceled' ? (
-            <p>
-              Subscription cancelled. Access continues until{' '}
-              {renewalDate ?? 'the end of the period'}.
-            </p>
-          ) : null}
-          {!hasSubscription ? (
-            <p>
-              No active subscription.{' '}
-              <Link href="/onboarding/plan" className="underline underline-offset-2">
-                Pick a plan
-              </Link>
-              .
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <CreditCard className="size-5" />
-            <div>
-              <CardTitle>Payment method</CardTitle>
-              <CardDescription>Update your card or view past invoices.</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <ManagePaymentMethodButton disabled={!hasCustomer} />
-        </CardContent>
-      </Card>
-
-      {hasSubscription ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Cancel subscription</CardTitle>
-            <CardDescription>
-              Stops auto-renewal immediately and refunds the unused portion of the current billing
-              period to your original card. You keep access through the end of the period you've
-              already paid for.
-            </CardDescription>
           </CardHeader>
           <CardContent>
-            <CancelSubscriptionButton />
+            <Link href="/onboarding/plan" className="text-sm underline underline-offset-2">
+              Choose a plan →
+            </Link>
           </CardContent>
         </Card>
-      ) : null}
+      ) : (
+        <>
+          <CurrentPlanCard overview={overview} tz={tz} />
+          <PaymentMethodCard card={overview.defaultCard} />
+          <ChangePlanCard currentPlan={overview.plan} currentCycle={overview.cycle} />
+          <InvoicesTable />
+          <Card>
+            <CardHeader>
+              <CardTitle>Cancel subscription</CardTitle>
+              <CardDescription>
+                Stops auto-renewal immediately and refunds the unused portion of the current billing
+                period to your original card. You keep access through the end of the period you've
+                already paid for.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CancelSubscriptionButton />
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
+  );
+}
+
+function CurrentPlanCard({
+  overview,
+  tz,
+}: {
+  overview: Extract<
+    Awaited<ReturnType<typeof getBillingOverviewAction>>,
+    { hasSubscription: true }
+  >;
+  tz: string;
+}) {
+  const planCopy = PLAN_CATALOG[overview.plan];
+  const renewalDate = overview.currentPeriodEnd ? formatDate(overview.currentPeriodEnd, tz) : null;
+  const trialDate = overview.trialEndsAt ? formatDate(overview.trialEndsAt, tz) : null;
+  const paused = overview.pausedUntil !== null;
+  const pausedUntilDate =
+    overview.pausedUntil && overview.pausedUntil !== 'indefinite'
+      ? formatDate(overview.pausedUntil, tz)
+      : null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <Sparkles className="size-5 mt-0.5" />
+            <div>
+              <CardTitle>
+                {planCopy.name} plan ·{' '}
+                <span className="text-muted-foreground capitalize">{overview.cycle}</span>
+              </CardTitle>
+              <CardDescription>{planCopy.tagline}</CardDescription>
+            </div>
+          </div>
+          <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground capitalize">
+            {paused ? 'paused' : overview.status.replace('_', ' ')}
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent className="text-sm space-y-1 text-muted-foreground">
+        {paused ? (
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p>
+              Subscription paused.
+              {pausedUntilDate ? <> Resumes automatically {pausedUntilDate}.</> : null}
+            </p>
+            <ResumeSubscriptionButton />
+          </div>
+        ) : null}
+        {!paused && overview.status === 'trialing' && trialDate ? (
+          <p>Trial ends {trialDate}.</p>
+        ) : null}
+        {!paused && overview.status !== 'trialing' && renewalDate && !overview.cancelAtPeriodEnd ? (
+          <p>Next renewal {renewalDate}.</p>
+        ) : null}
+        {overview.cancelAtPeriodEnd && renewalDate ? (
+          <p>Cancellation pending. Access continues until {renewalDate}.</p>
+        ) : null}
+        {overview.promoCode ? (
+          <p>
+            Promo applied: <strong>{overview.promoCode}</strong>
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 

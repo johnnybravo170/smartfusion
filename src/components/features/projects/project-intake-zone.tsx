@@ -26,6 +26,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type { AugmentResult } from '@/lib/ai/intake-augment-prompt';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { resizeImage } from '@/lib/storage/resize-image';
 import {
   applyProjectAugmentAction,
@@ -79,9 +80,9 @@ export function ProjectIntakeZone({
   // later changes shouldn't re-trigger.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only behaviour is deliberate.
   useEffect(() => {
-    const shouldOpen = searchParams.get('intake') === 'open';
-    const shareToken = searchParams.get('share');
-    const shareName = searchParams.get('share_name') ?? undefined;
+    const shouldOpen = searchParams?.get('intake') === 'open';
+    const shareToken = searchParams?.get('share');
+    const shareName = searchParams?.get('share_name') ?? undefined;
     if (!shouldOpen && !shareToken) return;
     if (shouldOpen) setOpen(true);
 
@@ -112,7 +113,7 @@ export function ProjectIntakeZone({
 
     // Strip the share-related params so a refresh doesn't re-fetch the
     // (now-deleted) file.
-    const sp = new URLSearchParams(searchParams.toString());
+    const sp = new URLSearchParams(searchParams?.toString());
     sp.delete('intake');
     sp.delete('share');
     sp.delete('share_name');
@@ -612,7 +613,7 @@ export function ProjectIntakeZone({
                           <div className="flex items-baseline gap-2">
                             <span className="text-sm font-medium">{sq.vendor_name}</span>
                             <span className="text-sm font-semibold tabular-nums">
-                              ${(sq.total_cents / 100).toFixed(2)}
+                              {formatCurrency(sq.total_cents)}
                             </span>
                             {sq.quote_date ? (
                               <span className="text-xs text-muted-foreground">{sq.quote_date}</span>
@@ -629,7 +630,7 @@ export function ProjectIntakeZone({
                               {sq.allocations
                                 .map(
                                   (a) =>
-                                    `${a.budget_category_name} $${(a.allocated_cents / 100).toFixed(2)}`,
+                                    `${a.budget_category_name} ${formatCurrency(a.allocated_cents)}`,
                                 )
                                 .join(' · ')}
                             </p>
@@ -685,11 +686,11 @@ export function ProjectIntakeZone({
                               {b.vendor ?? 'Unknown vendor'}
                             </span>
                             <span className="text-sm font-semibold tabular-nums">
-                              ${(b.amount_cents / 100).toFixed(2)}
+                              {formatCurrency(b.amount_cents)}
                             </span>
                             {b.gst_cents > 0 && (
                               <span className="text-xs text-muted-foreground">
-                                + ${(b.gst_cents / 100).toFixed(2)} GST
+                                + {formatCurrency(b.gst_cents)} GST
                               </span>
                             )}
                             {b.bill_date && (
@@ -781,7 +782,7 @@ export function ProjectIntakeZone({
                               {e.vendor ?? 'Unknown vendor'}
                             </span>
                             <span className="text-sm font-semibold tabular-nums">
-                              ${(e.amount_cents / 100).toFixed(2)}
+                              {formatCurrency(e.amount_cents)}
                             </span>
                             {e.expense_date ? (
                               <span className="text-xs text-muted-foreground">
@@ -996,13 +997,13 @@ function SubQuoteReviewDialog({
   const unmatched = sq.allocations.filter((a) => !categoriesByName.has(a.budget_category_name));
   const unmatchedNote = unmatched.length
     ? `Henry suggested but no matching category:\n${unmatched
-        .map((u) => `  • ${u.budget_category_name} — $${(u.allocated_cents / 100).toFixed(2)}`)
+        .map((u) => `  • ${u.budget_category_name} — ${formatCurrency(u.allocated_cents)}`)
         .join('\n')}`
     : '';
 
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-4" /> Review vendor quote

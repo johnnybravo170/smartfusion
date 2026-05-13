@@ -128,7 +128,7 @@ export function LabelCardDialog({
               id="card-label"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder='e.g. "JB Debit", "TD VISA"'
+              placeholder="e.g. Business Visa, Personal debit, Truck card"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === 'Enter') submit();

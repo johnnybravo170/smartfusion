@@ -82,7 +82,7 @@ export function WorkerBottomNav({
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t bg-background">
       <ul className="mx-auto flex max-w-md">
         {ITEMS.map((item) => {
-          const active = item.match(pathname);
+          const active = item.match(pathname ?? '');
           const Icon = item.icon;
           return (
             <li key={item.href} className="flex-1">

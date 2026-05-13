@@ -141,14 +141,20 @@ export async function getInvoiceLines(
       .eq('tenant_id', tenantId)
       .eq('worker_invoice_id', invoiceId)
       .order('entry_date', { ascending: true }),
+    // Worker receipts only — vendor bills don't flow through worker
+    // invoices. Reads from the unified project_costs table; the field
+    // names below are remapped in the result builder to keep the
+    // output shape stable for callers.
     admin
-      .from('expenses')
+      .from('project_costs')
       .select(
-        'id, expense_date, amount_cents, vendor, description, receipt_storage_path, projects:project_id (name)',
+        'id, cost_date, amount_cents, vendor, description, attachment_storage_path, projects:project_id (name)',
       )
       .eq('tenant_id', tenantId)
+      .eq('source_type', 'receipt')
+      .eq('status', 'active')
       .eq('worker_invoice_id', invoiceId)
-      .order('expense_date', { ascending: true }),
+      .order('cost_date', { ascending: true }),
   ]);
 
   const time = ((timeRows ?? []) as unknown as RawInvoice[]).map((r) => {
@@ -173,14 +179,18 @@ export async function getInvoiceLines(
   const expenses = ((expRows ?? []) as unknown as RawInvoice[]).map((r) => {
     const proj = r.projects as { name?: string } | { name?: string }[] | null;
     const p = Array.isArray(proj) ? proj[0] : proj;
+    const row = r as unknown as Record<string, unknown>;
     return {
       id: r.id as string,
-      expense_date: r.expense_date as string,
+      expense_date: (row.cost_date as string | undefined) ?? (r.expense_date as string),
       amount_cents: Number(r.amount_cents),
       vendor: (r.vendor as string | null) ?? null,
       description: (r.description as string | null) ?? null,
       project_name: p?.name ?? null,
-      receipt_storage_path: (r.receipt_storage_path as string | null) ?? null,
+      receipt_storage_path:
+        (row.attachment_storage_path as string | null | undefined) ??
+        (row.receipt_storage_path as string | null | undefined) ??
+        null,
     };
   });
 
@@ -208,16 +218,18 @@ export async function previewUnbilledForWorker(args: {
     .lte('entry_date', args.toDate)
     .order('entry_date', { ascending: true });
   let expQuery = admin
-    .from('expenses')
+    .from('project_costs')
     .select(
-      'id, expense_date, amount_cents, vendor, description, receipt_storage_path, projects:project_id (name)',
+      'id, cost_date, amount_cents, vendor, description, attachment_storage_path, projects:project_id (name)',
     )
     .eq('tenant_id', args.tenantId)
+    .eq('source_type', 'receipt')
+    .eq('status', 'active')
     .eq('worker_profile_id', args.workerProfileId)
     .is('worker_invoice_id', null)
-    .gte('expense_date', args.fromDate)
-    .lte('expense_date', args.toDate)
-    .order('expense_date', { ascending: true });
+    .gte('cost_date', args.fromDate)
+    .lte('cost_date', args.toDate)
+    .order('cost_date', { ascending: true });
   if (args.projectId) {
     timeQuery = timeQuery.eq('project_id', args.projectId);
     expQuery = expQuery.eq('project_id', args.projectId);
@@ -246,14 +258,18 @@ export async function previewUnbilledForWorker(args: {
   const expenses = ((expRows ?? []) as unknown as RawInvoice[]).map((r) => {
     const proj = r.projects as { name?: string } | { name?: string }[] | null;
     const p = Array.isArray(proj) ? proj[0] : proj;
+    const row = r as unknown as Record<string, unknown>;
     return {
       id: r.id as string,
-      expense_date: r.expense_date as string,
+      expense_date: (row.cost_date as string | undefined) ?? (r.expense_date as string),
       amount_cents: Number(r.amount_cents),
       vendor: (r.vendor as string | null) ?? null,
       description: (r.description as string | null) ?? null,
       project_name: p?.name ?? null,
-      receipt_storage_path: (r.receipt_storage_path as string | null) ?? null,
+      receipt_storage_path:
+        (row.attachment_storage_path as string | null | undefined) ??
+        (row.receipt_storage_path as string | null | undefined) ??
+        null,
     };
   });
 

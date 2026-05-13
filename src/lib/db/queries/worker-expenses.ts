@@ -21,14 +21,18 @@ export async function listWorkerExpenses(
   limit = 200,
 ): Promise<WorkerExpense[]> {
   const admin = createAdminClient();
+  // Worker mobile receipt list — reads from the unified project_costs
+  // table, filtered to receipts only (workers don't log vendor bills).
   const { data, error } = await admin
-    .from('expenses')
+    .from('project_costs')
     .select(
-      'id, expense_date, amount_cents, vendor, description, receipt_storage_path, receipt_url, project_id, budget_category_id, created_at, projects:project_id (name), project_budget_categories:budget_category_id (name)',
+      'id, cost_date, amount_cents, vendor, description, attachment_storage_path, receipt_url, project_id, budget_category_id, created_at, projects:project_id (name), project_budget_categories:budget_category_id (name)',
     )
     .eq('tenant_id', tenantId)
+    .eq('source_type', 'receipt')
+    .eq('status', 'active')
     .eq('worker_profile_id', workerProfileId)
-    .order('expense_date', { ascending: false })
+    .order('cost_date', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -41,11 +45,11 @@ export async function listWorkerExpenses(
     const cat = Array.isArray(category) ? category[0] : category;
     return {
       id: r.id as string,
-      expense_date: r.expense_date as string,
+      expense_date: r.cost_date as string,
       amount_cents: Number(r.amount_cents),
       vendor: (r.vendor as string | null) ?? null,
       description: (r.description as string | null) ?? null,
-      receipt_storage_path: (r.receipt_storage_path as string | null) ?? null,
+      receipt_storage_path: (r.attachment_storage_path as string | null) ?? null,
       receipt_url: (r.receipt_url as string | null) ?? null,
       project_id: (r.project_id as string | null) ?? null,
       project_name: proj?.name ?? null,

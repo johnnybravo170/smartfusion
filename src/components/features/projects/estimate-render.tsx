@@ -5,7 +5,9 @@
  */
 
 import { Fragment } from 'react';
+import { RichTextDisplay } from '@/components/ui/rich-text-display';
 import { formatCurrency } from '@/lib/pricing/calculator';
+import type { CustomerViewMode } from '@/lib/validators/project-customer-view';
 import { EstimatePhotoLightbox } from './estimate-photo-lightbox';
 
 export type EstimateRenderLine = {
@@ -67,6 +69,19 @@ export type EstimateRenderProps = {
    * binding). Only affects the heading / status copy on the customer-facing page.
    */
   documentType?: 'estimate' | 'quote';
+  /**
+   * How much of the cost breakdown the customer sees. Defaults to 'detailed'
+   * (the current behaviour — section → category → lines). The other three
+   * modes collapse upward:
+   *   lump_sum   — one headline total + optional scope summary
+   *   sections   — section rows only
+   *   categories — section + category rows; lines not shown
+   *   detailed   — full section → category → lines disclosure (default)
+   */
+  customerViewMode?: CustomerViewMode;
+  /** Optional project-level scope summary, used in lump_sum mode as the body
+   *  under the headline total. Markdown rendered via RichTextDisplay. */
+  customerSummaryMd?: string | null;
 };
 
 function formatDate(iso: string | null | undefined, tz: string | null | undefined): string | null {
@@ -98,12 +113,15 @@ function formatDate(iso: string | null | undefined, tz: string | null | undefine
  * <table> so the disclosure widget can wrap each category cleanly
  * without fighting <table> semantics.
  */
-function renderGroups(lines: EstimateRenderLine[]) {
+/** Aggregate cost lines into the section → category → lines tree shape
+ *  used by every render mode below. Pure helper, no JSX. */
+function groupLines(lines: EstimateRenderLine[]) {
   type Category = {
     key: string;
     categoryName: string;
     description: string | null;
     order: number;
+    section: string | null;
     lines: EstimateRenderLine[];
   };
   type Section = {
@@ -112,7 +130,7 @@ function renderGroups(lines: EstimateRenderLine[]) {
     order: number;
     categories: Category[];
   };
-  const byCategory = new Map<string, Category & { section: string | null }>();
+  const byCategory = new Map<string, Category>();
   for (const l of lines) {
     const key = l.budget_category_id ?? '__none__';
     const g = byCategory.get(key) ?? {
@@ -135,19 +153,112 @@ function renderGroups(lines: EstimateRenderLine[]) {
       order: b.order,
       categories: [],
     };
-    s.categories.push({
-      key: b.key,
-      categoryName: b.categoryName,
-      description: b.description,
-      order: b.order,
-      lines: b.lines,
-    });
+    s.categories.push(b);
     s.order = Math.min(s.order, b.order);
     bySection.set(sKey, s);
   }
-  const sections = Array.from(bySection.values())
+  return Array.from(bySection.values())
     .map((s) => ({ ...s, categories: s.categories.sort((a, b) => a.order - b.order) }))
     .sort((a, b) => a.order - b.order);
+}
+
+/** Lump-sum view — one headline total with optional scope summary. */
+function renderLumpSum(
+  total: number,
+  projectName: string,
+  customerSummaryMd: string | null | undefined,
+) {
+  const summary = customerSummaryMd?.trim();
+  return (
+    <div className="overflow-hidden rounded-md border">
+      <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 bg-foreground/5 px-4 py-3 text-sm">
+        <div className="font-medium">Project work — {projectName}</div>
+        <span className="font-semibold tabular-nums">{formatCurrency(total)}</span>
+      </div>
+      {summary ? (
+        <div className="px-4 py-3 text-sm text-muted-foreground">
+          <RichTextDisplay markdown={summary} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Sections view — one row per section with the section subtotal.
+ *  Lines and categories collapsed into the parent section. */
+function renderSections(lines: EstimateRenderLine[]) {
+  const sections = groupLines(lines);
+  return (
+    <div className="overflow-hidden rounded-md border">
+      <div className="grid grid-cols-[1fr_auto] gap-x-3 border-b bg-muted/50 px-4 py-2 text-sm font-medium">
+        <div>Section</div>
+        <div className="text-right">Total</div>
+      </div>
+      {sections.map((sec) => {
+        const sectionTotal = sec.categories.reduce(
+          (s, c) => s + c.lines.reduce((ss, l) => ss + l.line_price_cents, 0),
+          0,
+        );
+        return (
+          <div
+            key={sec.key}
+            className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 border-b px-4 py-3 last:border-0"
+          >
+            <span className="font-medium">{sec.section ?? 'Other work'}</span>
+            <span className="font-medium tabular-nums">{formatCurrency(sectionTotal)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Categories view — section bands with one row per category and its
+ *  subtotal. Lines themselves are not shown. */
+function renderCategories(lines: EstimateRenderLine[]) {
+  const sections = groupLines(lines);
+  return (
+    <div className="overflow-hidden rounded-md border">
+      <div className="grid grid-cols-[1fr_auto] gap-x-3 border-b bg-muted/50 px-4 py-2 text-sm font-medium">
+        <div>Item</div>
+        <div className="text-right">Total</div>
+      </div>
+      {sections.map((sec) => (
+        <Fragment key={sec.key}>
+          {sec.section ? (
+            <div className="border-b bg-foreground/5 px-4 py-2.5 text-sm font-bold uppercase tracking-wider text-foreground">
+              {sec.section}
+            </div>
+          ) : null}
+          {sec.categories.map((g) => {
+            const categoryTotal = g.lines.reduce((s, l) => s + l.line_price_cents, 0);
+            return (
+              <div
+                key={g.key}
+                className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 border-b px-4 py-3 last:border-0"
+              >
+                <div>
+                  <p className="font-medium">{g.categoryName}</p>
+                  {g.description?.trim() ? (
+                    <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
+                      {g.description.trim()}
+                    </p>
+                  ) : null}
+                </div>
+                <span className="font-medium tabular-nums">{formatCurrency(categoryTotal)}</span>
+              </div>
+            );
+          })}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** Detailed view — section → category disclosures → lines. Current
+ *  behaviour preserved. */
+function renderDetailed(lines: EstimateRenderLine[]) {
+  const sections = groupLines(lines);
 
   return (
     <>
@@ -270,6 +381,8 @@ export function EstimateRender({
   wcbNumber,
   termsText,
   documentType = 'estimate',
+  customerViewMode = 'detailed',
+  customerSummaryMd,
 }: EstimateRenderProps) {
   const docLabel = documentType === 'quote' ? 'Quote' : 'Estimate';
   const subtotal = lines.reduce((s, l) => s + l.line_price_cents, 0);
@@ -277,6 +390,10 @@ export function EstimateRender({
   const beforeTax = subtotal + mgmtFee;
   const gst = Math.round(beforeTax * gstRate);
   const total = beforeTax + gst;
+  // Lump-sum mode collapses the breakdown to one row at the pre-tax
+  // total (subtotal + mgmt fee). Other modes use the section/category
+  // grouping helpers below.
+  const lumpSumTotal = subtotal + mgmtFee;
 
   const dateLabel =
     formatDate(quoteDate, timezone) ?? formatDate(new Date().toISOString(), timezone);
@@ -349,14 +466,24 @@ export function EstimateRender({
         </p>
       ) : null}
 
-      {renderGroups(lines)}
+      {customerViewMode === 'lump_sum'
+        ? renderLumpSum(lumpSumTotal, projectName, customerSummaryMd)
+        : customerViewMode === 'sections'
+          ? renderSections(lines)
+          : customerViewMode === 'categories'
+            ? renderCategories(lines)
+            : renderDetailed(lines)}
 
       <div className="mt-4 space-y-1 text-sm">
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Subtotal</span>
-          <span>{formatCurrency(subtotal)}</span>
-        </div>
-        {mgmtFee > 0 ? (
+        {/* Subtotal stays visible on every mode except lump_sum, where it
+         *  would just repeat the single-line total above. */}
+        {customerViewMode !== 'lump_sum' ? (
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span>{formatCurrency(subtotal)}</span>
+          </div>
+        ) : null}
+        {customerViewMode !== 'lump_sum' && mgmtFee > 0 ? (
           <div className="flex justify-between">
             <span className="text-muted-foreground">
               Management fee ({Math.round(managementFeeRate * 100)}%)

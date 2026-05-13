@@ -108,7 +108,7 @@ export async function logWorkerExpenseAction(formData: FormData): Promise<Worker
     parsed.data.payment_source_id?.trim() || (await getDefaultPaymentSourceId());
 
   const { data, error } = await admin
-    .from('expenses')
+    .from('project_costs')
     .insert({
       tenant_id: tenant.id,
       user_id: user.id,
@@ -118,14 +118,18 @@ export async function logWorkerExpenseAction(formData: FormData): Promise<Worker
       cost_line_id: parsed.data.cost_line_id || null,
       amount_cents: parsed.data.amount_cents,
       pre_tax_amount_cents: parsed.data.pre_tax_amount_cents ?? null,
-      ...(parsed.data.tax_cents !== undefined ? { tax_cents: parsed.data.tax_cents } : {}),
+      gst_cents: parsed.data.tax_cents ?? 0,
       vendor: parsed.data.vendor?.trim() || null,
       vendor_gst_number: parsed.data.vendor_gst_number?.trim() || null,
       description: parsed.data.description?.trim() || null,
-      receipt_storage_path: receiptStoragePath,
-      expense_date: parsed.data.expense_date,
+      attachment_storage_path: receiptStoragePath,
+      cost_date: parsed.data.expense_date,
       payment_source_id: paymentSourceId,
       card_last4: parsed.data.card_last4?.trim() || null,
+      source_type: 'receipt',
+      payment_status: 'paid',
+      paid_at: new Date().toISOString(),
+      status: 'active',
     })
     .select('id')
     .single();
@@ -150,9 +154,10 @@ export async function deleteWorkerExpenseAction(id: string): Promise<WorkerExpen
 
   const admin = createAdminClient();
   const { data: row } = await admin
-    .from('expenses')
-    .select('id, worker_profile_id, project_id, receipt_storage_path, created_at')
+    .from('project_costs')
+    .select('id, worker_profile_id, project_id, attachment_storage_path, created_at')
     .eq('id', id)
+    .eq('source_type', 'receipt')
     .maybeSingle();
 
   if (!row || row.worker_profile_id !== profile.id) {
@@ -164,11 +169,15 @@ export async function deleteWorkerExpenseAction(id: string): Promise<WorkerExpen
     return { ok: false, error: 'Expenses can only be deleted within 24 hours.' };
   }
 
-  const { error } = await admin.from('expenses').delete().eq('id', id);
+  const { error } = await admin
+    .from('project_costs')
+    .delete()
+    .eq('id', id)
+    .eq('source_type', 'receipt');
   if (error) return { ok: false, error: error.message };
 
-  if (row.receipt_storage_path) {
-    await admin.storage.from(RECEIPTS_BUCKET).remove([row.receipt_storage_path as string]);
+  if (row.attachment_storage_path) {
+    await admin.storage.from(RECEIPTS_BUCKET).remove([row.attachment_storage_path as string]);
   }
 
   revalidatePath('/w/expenses');

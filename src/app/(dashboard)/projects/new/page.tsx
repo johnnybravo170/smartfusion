@@ -5,6 +5,7 @@ import { NewProjectFormSurface } from '@/components/features/projects/new-projec
 import { ProjectForm } from '@/components/features/projects/project-form';
 import { listCustomers } from '@/lib/db/queries/customers';
 import { loadIntakeDraft } from '@/lib/db/queries/intake-drafts';
+import { getDefaultManagementFeeRate } from '@/server/actions/project-defaults';
 import { createProjectAction } from '@/server/actions/projects';
 
 export const metadata = {
@@ -34,9 +35,10 @@ export default async function NewProjectPage({
   // and got the address casing right. ?ai=gpt flips back to gpt-4.1
   // for spot-checks.
   const aiChoice = typeof params.ai === 'string' && params.ai === 'gpt' ? 'openai' : 'claude';
-  const [customers, initialDraft] = await Promise.all([
+  const [customers, initialDraft, defaultMgmtFeeRate] = await Promise.all([
     listCustomers({ limit: 500 }),
     draftIdParam ? loadIntakeDraft(draftIdParam) : Promise.resolve(null),
+    getDefaultManagementFeeRate(),
   ]);
 
   // Valid ?customer=<id> means the operator already picked someone (usually
@@ -67,7 +69,10 @@ export default async function NewProjectPage({
         <ProjectForm
           mode="create"
           customers={customers.map((c) => ({ id: c.id, name: c.name }))}
-          defaults={{ customer_id: preselectedCustomer }}
+          defaults={{
+            customer_id: preselectedCustomer,
+            management_fee_rate: defaultMgmtFeeRate,
+          }}
           action={createProjectAction}
         />
       </div>
@@ -139,6 +144,7 @@ export default async function NewProjectPage({
       <NewProjectFormSurface
         customers={customers.map((c) => ({ id: c.id, name: c.name }))}
         action={createProjectAction}
+        defaults={{ management_fee_rate: defaultMgmtFeeRate }}
       />
 
       <p className="mt-8 text-center text-xs text-muted-foreground">

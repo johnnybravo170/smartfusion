@@ -8,6 +8,7 @@
     { "path": "/api/cron/henry-nightly", "schedule": "0 13 * * *" },
     { "path": "/api/cron/portal-phase-notify", "schedule": "* * * * *" },
     { "path": "/api/cron/portal-schedule-notify", "schedule": "* * * * *" },
-    { "path": "/api/cron/project-message-notify", "schedule": "* * * * *" }
+    { "path": "/api/cron/project-message-notify", "schedule": "* * * * *" },
+    { "path": "/api/cron/qbo-import-resume", "schedule": "* * * * *" }
   ]
 }

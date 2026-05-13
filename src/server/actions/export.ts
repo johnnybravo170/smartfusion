@@ -48,7 +48,7 @@ const EXPORT_TABLES = [
   'invoices',
   'todos',
   'worklog_entries',
-  'service_catalog',
+  'catalog_items',
 ] as const;
 
 export async function requestExportAction(): Promise<ExportActionResult> {

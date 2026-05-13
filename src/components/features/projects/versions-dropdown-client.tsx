@@ -50,9 +50,9 @@ export function VersionsDropdownClient({
   const searchParams = useSearchParams();
   const [popoverOpen, setPopoverOpen] = useState(false);
   useEffect(() => {
-    if (searchParams.get('versions') === 'open') {
+    if (searchParams?.get('versions') === 'open') {
       setPopoverOpen(true);
-      const sp = new URLSearchParams(searchParams.toString());
+      const sp = new URLSearchParams(searchParams?.toString());
       sp.delete('versions');
       router.replace(sp.toString() ? `?${sp.toString()}` : '?', { scroll: false });
     }

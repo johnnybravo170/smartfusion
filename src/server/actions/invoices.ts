@@ -13,8 +13,10 @@
 import { revalidatePath } from 'next/cache';
 import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant } from '@/lib/auth/helpers';
+import { loadInvoiceCustomerViewInputs } from '@/lib/db/queries/invoice-customer-view-inputs';
 import type { InvoiceLineItem } from '@/lib/db/queries/invoices';
 import { computeCostPlusBreakdown } from '@/lib/invoices/cost-plus-markup';
+import { buildCustomerViewLineItems } from '@/lib/invoices/customer-view-line-items';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { getPaymentProvider } from '@/lib/providers/factory';
 import { createClient } from '@/lib/supabase/server';
@@ -25,6 +27,7 @@ import {
   invoiceSendSchema,
   invoiceVoidSchema,
 } from '@/lib/validators/invoice';
+import { type CustomerViewMode, customerViewModes } from '@/lib/validators/project-customer-view';
 
 export type InvoiceActionResult =
   | { ok: true; id?: string; paymentUrl?: string; warning?: string }
@@ -159,7 +162,7 @@ export async function createInvoiceAction(input: {
     tenant_id: tenant.id,
     entry_type: 'system',
     title: `${docLabel} created`,
-    body: `Draft ${docLabel.toLowerCase()} #${data.id.slice(0, 8)} created for $${(amountCents / 100).toFixed(2)} + $${(taxCents / 100).toFixed(2)} GST.`,
+    body: `Draft ${docLabel.toLowerCase()} #${data.id.slice(0, 8)} created for ${formatCurrency(amountCents)} + ${formatCurrency(taxCents)} GST.`,
     related_type: 'job',
     related_id: input.jobId,
   });
@@ -1291,17 +1294,16 @@ export async function generateFinalInvoiceAction(input: {
   // operator intent explicit. Migration 0209 backfills existing rows
   // to TRUE (matches Jonathan's all-cost-plus reality).
   const { getVarianceReport } = await import('@/lib/db/queries/cost-lines');
+  const { getProjectCostBasisRollup } = await import('@/lib/db/queries/project-cost-basis');
 
-  const [variance, timeRes, expenseRes, priorInvoicesRes] = await Promise.all([
+  const [variance, rollup, priorInvoicesRes] = await Promise.all([
     getVarianceReport(input.projectId),
-    supabase
-      .from('time_entries')
-      .select('hours, hourly_rate_cents')
-      .eq('project_id', input.projectId),
-    supabase
-      .from('expenses')
-      .select('amount_cents, pre_tax_amount_cents')
-      .eq('project_id', input.projectId),
+    // Centralized cost-basis rollup: queries time_entries + the unified
+    // project_costs table (receipts and vendor bills via source_type).
+    // When a new cost source is added later, wire it in here once —
+    // both the action below and the drift banner on the draft-invoice
+    // page read from this single helper.
+    getProjectCostBasisRollup(input.projectId),
     supabase
       .from('invoices')
       .select('amount_cents')
@@ -1310,11 +1312,16 @@ export async function generateFinalInvoiceAction(input: {
       .is('deleted_at', null),
   ]);
 
-  const timeEntries = (timeRes.data ?? []) as { hours: number; hourly_rate_cents: number | null }[];
-  const expenses = (expenseRes.data ?? []) as {
-    amount_cents: number;
-    pre_tax_amount_cents: number | null;
-  }[];
+  // Bills' amount_cents is pre-GST, so map straight into pre_tax_amount_cents;
+  // the gross is amount_cents + gst_cents (only consulted by the legacy null-
+  // pre_tax fallback in computeCostPlusBreakdown, which won't fire for bills).
+  const expenses = [
+    ...rollup.expenseRows,
+    ...rollup.billRows.map((b) => ({
+      amount_cents: b.amount_cents + b.gst_cents,
+      pre_tax_amount_cents: b.amount_cents,
+    })),
+  ];
   const priorInvoices = (priorInvoicesRes.data ?? []) as { amount_cents: number }[];
 
   const priorBilledCents = priorInvoices.reduce((s, i) => s + i.amount_cents, 0);
@@ -1332,6 +1339,7 @@ export async function generateFinalInvoiceAction(input: {
   }
 
   const lineItems: InvoiceLineItem[] = [];
+  let driftWarning: string | undefined;
 
   if (!isCostPlus) {
     // Fixed-price job: itemize the priced cost lines + mgmt fee, then
@@ -1388,11 +1396,26 @@ export async function generateFinalInvoiceAction(input: {
     // the full subtotal — preventing the GST-on-GST trap.
     // See `computeCostPlusBreakdown` for the math + Mike's worked example.
     const breakdown = computeCostPlusBreakdown({
-      timeEntries,
+      timeEntries: rollup.timeEntries,
       expenses,
       priorInvoices,
       mgmtRate,
     });
+
+    // Reconciliation guardrail: the helper's view of the cost basis
+    // (read straight from time_entries + project_costs) should
+    // byte-match what `computeCostPlusBreakdown` produces for
+    // `labour + materials`. If they ever diverge it means the
+    // breakdown's math has drifted from the helper's queries (or
+    // vice versa) — surface a warning so the operator can spot-
+    // check before sending. Threshold is $1 to absorb any rounding
+    // we don't control. See c617fad for the kind of silent miss
+    // this is meant to make loud.
+    const breakdownCostBasis = breakdown.labourCents + breakdown.materialsCents;
+    const drift = breakdownCostBasis - rollup.invoiceCostBasisCents;
+    if (Math.abs(drift) > 100) {
+      driftWarning = `Cost-basis check: invoice billing ${formatCurrency(breakdownCostBasis)} but raw cost rollup shows ${formatCurrency(rollup.invoiceCostBasisCents)} (Δ ${formatCurrency(Math.abs(drift))}). Possible missing cost source or math drift — review the draft before sending.`;
+    }
 
     if (breakdown.labourCents > 0) {
       lineItems.push({
@@ -1476,7 +1499,130 @@ export async function generateFinalInvoiceAction(input: {
 
   revalidatePath(`/projects/${input.projectId}`);
   revalidatePath('/invoices');
-  return { ok: true, id: data.id as string };
+  return { ok: true, id: data.id as string, warning: driftWarning };
+}
+
+/**
+ * Apply a customer-view mode + management-fee toggle to an existing draft
+ * invoice. Re-fetches the project data server-side (never trusts client-
+ * sent line items), runs `buildCustomerViewLineItems`, and overwrites
+ * `invoices.line_items` + the two override columns.
+ *
+ * Recomputes `tax_cents` from the new subtotal — subtotal SHOULD be invariant
+ * across modes (the helper guarantees it; unit tests guard it), but the
+ * recompute is defense-in-depth in case a future mode breaks the invariant.
+ *
+ * Refuses to run on non-draft invoices: line_items become customer-facing
+ * once a draft is sent, and silent overwrites of sent invoices would corrupt
+ * the legal record.
+ */
+export async function applyCustomerViewToInvoiceAction(input: {
+  invoiceId: string;
+  mode: CustomerViewMode;
+  mgmtFeeInline: boolean;
+}): Promise<InvoiceActionResult> {
+  if (!customerViewModes.includes(input.mode)) {
+    return { ok: false, error: 'Invalid view mode.' };
+  }
+
+  const tenant = await getCurrentTenant();
+  if (!tenant) return { ok: false, error: 'Not signed in or missing tenant.' };
+
+  const supabase = await createClient();
+
+  const { data: invoice, error: invoiceErr } = await supabase
+    .from('invoices')
+    .select('id, status, project_id, customer_id, tax_inclusive')
+    .eq('id', input.invoiceId)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (invoiceErr || !invoice) {
+    return { ok: false, error: invoiceErr?.message ?? 'Invoice not found.' };
+  }
+  if (invoice.status !== 'draft') {
+    return { ok: false, error: 'View mode can only be changed on draft invoices.' };
+  }
+  if (!invoice.project_id) {
+    return { ok: false, error: 'This invoice is not attached to a project.' };
+  }
+  if (invoice.tax_inclusive) {
+    // Tax-inclusive invoices encode the customer total in amount_cents with
+    // line_items as a sub-breakdown; the preview model assumes tax-exclusive
+    // semantics (amount_cents=0 + line_items additive). Refuse rather than
+    // silently produce wrong totals.
+    return {
+      ok: false,
+      error: 'Customer view changes are only supported on tax-exclusive draft invoices.',
+    };
+  }
+
+  const inputs = await loadInvoiceCustomerViewInputs(input.invoiceId);
+  if (!inputs) {
+    return { ok: false, error: 'Could not load project data for this invoice.' };
+  }
+
+  const { items } = buildCustomerViewLineItems({
+    mode: input.mode,
+    mgmtFeeInline: input.mgmtFeeInline,
+    projectName: inputs.projectName,
+    customerSummaryMd: inputs.customerSummaryMd,
+    costLines: inputs.costLines,
+    categories: inputs.categories,
+    priorBilledCents: inputs.priorBilledCents,
+    mgmtRate: inputs.mgmtRate,
+    isCostPlus: inputs.isCostPlus,
+    costPlusBreakdown: inputs.costPlusBreakdown ?? undefined,
+    asOfDate: new Date().toISOString().slice(0, 10),
+  });
+
+  const subtotalCents = items.reduce((s, li) => s + li.total_cents, 0);
+  if (subtotalCents <= 0) {
+    return { ok: false, error: 'Resulting invoice has zero balance.' };
+  }
+
+  // Recompute tax from the new subtotal. For cost-plus + fixed-price we've
+  // stayed tax-exclusive (per the existing generator comments) — line_items
+  // are pre-tax and the bottom-of-invoice GST line applies once.
+  const { canadianTax } = await import('@/lib/providers/tax/canadian');
+  const { data: cust } = await supabase
+    .from('customers')
+    .select('tax_exempt')
+    .eq('id', invoice.customer_id)
+    .maybeSingle();
+  const taxExempt = Boolean(cust?.tax_exempt);
+  const taxCtx = await canadianTax.getCustomerFacingContext(tenant.id);
+  const taxCents = taxExempt ? 0 : Math.round(subtotalCents * taxCtx.totalRate);
+
+  const { error: updateErr } = await supabase
+    .from('invoices')
+    .update({
+      line_items: items,
+      tax_cents: taxCents,
+      customer_view_mode: input.mode,
+      customer_view_mgmt_fee_inline: input.mgmtFeeInline,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.invoiceId);
+
+  if (updateErr) {
+    return { ok: false, error: updateErr.message };
+  }
+
+  await supabase.from('project_events').insert({
+    tenant_id: tenant.id,
+    project_id: invoice.project_id,
+    kind: 'invoice_view_mode_applied',
+    meta: {
+      invoice_id: input.invoiceId,
+      mode: input.mode,
+      mgmt_fee_inline: input.mgmtFeeInline,
+    },
+    actor: tenant.member.id,
+  });
+
+  revalidatePath(`/invoices/${input.invoiceId}`);
+  return { ok: true, id: input.invoiceId };
 }
 
 /**

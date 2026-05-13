@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { EstimateCustomerViewPicker } from '@/components/features/projects/estimate-customer-view-picker';
 import { EstimatePreflightWarnings } from '@/components/features/projects/estimate-preflight-warnings';
 import { EstimatePreviewSendBar } from '@/components/features/projects/estimate-preview-send-bar';
 import {
@@ -13,6 +14,7 @@ import { formatCurrency } from '@/lib/pricing/calculator';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import type { CustomerViewMode } from '@/lib/validators/project-customer-view';
 
 export const metadata = {
   title: 'Preview estimate — HeyHenry',
@@ -30,6 +32,7 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
       `id, name, description, management_fee_rate, estimate_sent_at,
        estimate_status, estimate_approved_at, estimate_approved_by_name,
        estimate_declined_reason, terms_text, document_type,
+       customer_view_mode, customer_summary_md,
        customer_id, tenant_id,
        customers:customer_id (name, email, additional_emails, address_line1, tax_exempt),
        tenants:tenant_id (name, logo_storage_path, gst_number, wcb_number, timezone)`,
@@ -195,6 +198,13 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
 
       <EstimatePreflightWarnings preflight={preflight} projectId={id} variant="card" />
 
+      <EstimateCustomerViewPicker
+        projectId={id}
+        initialMode={
+          ((p.customer_view_mode as CustomerViewMode | null) ?? 'detailed') as CustomerViewMode
+        }
+      />
+
       <div className="rounded-lg border bg-card p-6 shadow-sm">
         <p className="mb-4 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Preview — this is what {(customerRaw?.name as string) ?? 'the customer'} will see
@@ -220,6 +230,10 @@ export default async function EstimatePreviewPage({ params }: { params: Promise<
           wcbNumber={(tenantRaw?.wcb_number as string | null) ?? null}
           termsText={(p.terms_text as string | null) ?? null}
           documentType={(p.document_type as 'estimate' | 'quote' | null) ?? 'estimate'}
+          customerViewMode={
+            ((p.customer_view_mode as CustomerViewMode | null) ?? 'detailed') as CustomerViewMode
+          }
+          customerSummaryMd={(p.customer_summary_md as string | null) ?? null}
         />
       </div>
     </div>

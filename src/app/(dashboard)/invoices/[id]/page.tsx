@@ -1,28 +1,29 @@
 import { Briefcase, Copy, User } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { CostBasisDriftBanner } from '@/components/features/invoices/cost-basis-drift-banner';
 import { InvoiceActions } from '@/components/features/invoices/invoice-actions';
 import { InvoiceDefaultsSetupBanner } from '@/components/features/invoices/invoice-defaults-setup-banner';
 import { InvoiceLineItems } from '@/components/features/invoices/invoice-line-items';
 import { InvoiceNote } from '@/components/features/invoices/invoice-note';
 import { InvoiceOverridesEditor } from '@/components/features/invoices/invoice-overrides-editor';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
+import { InvoiceViewModePreview } from '@/components/features/invoices/invoice-view-mode-preview';
 import { MissingGstNotice } from '@/components/features/invoices/missing-gst-notice';
 import { PrintButton } from '@/components/features/shared/print-button';
 import { DetailPageNav } from '@/components/layout/detail-page-nav';
 import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime } from '@/lib/date/format';
+import { loadInvoiceCustomerViewInputs } from '@/lib/db/queries/invoice-customer-view-inputs';
 import { getInvoice } from '@/lib/db/queries/invoices';
+import { getProjectCostBasisRollup } from '@/lib/db/queries/project-cost-basis';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { getSignedUrls } from '@/lib/storage/photos';
 import { createClient } from '@/lib/supabase/server';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 import { duplicateInvoiceAction } from '@/server/actions/invoices';
-
-function formatCad(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 function shortId(id: string) {
   return id.slice(0, 8);
@@ -91,6 +92,50 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const taxLabel = taxInclusive ? `GST (${ratePct}%, included)` : `GST (${ratePct}%)`;
   const isDraft = invoice.status === 'draft';
 
+  // Cost-basis drift check (cost-plus drafts only). The action freezes
+  // labour + materials into line_items at creation; we re-roll the same
+  // numbers now and compare. A non-zero delta usually means either new
+  // time/expenses logged since this draft (operator should regenerate),
+  // or — much rarer, and the reason this banner exists — a cost source
+  // wasn't picked up by the action.
+  let driftBanner: {
+    projectId: string;
+    billedCostBasisCents: number;
+    currentCostBasisCents: number;
+  } | null = null;
+  if (isDraft && invoice.project_id) {
+    const { data: projectRow } = await supabase
+      .from('projects')
+      .select('is_cost_plus')
+      .eq('id', invoice.project_id)
+      .maybeSingle();
+    const isCostPlusProject = (projectRow?.is_cost_plus as boolean | null) !== false;
+    if (isCostPlusProject) {
+      const billed = lineItems
+        .filter((li) => li.description === 'Labour' || li.description === 'Materials & Expenses')
+        .reduce((s, li) => s + li.total_cents, 0);
+      if (billed > 0) {
+        const rollup = await getProjectCostBasisRollup(invoice.project_id);
+        if (Math.abs(rollup.invoiceCostBasisCents - billed) > 100) {
+          driftBanner = {
+            projectId: invoice.project_id,
+            billedCostBasisCents: billed,
+            currentCostBasisCents: rollup.invoiceCostBasisCents,
+          };
+        }
+      }
+    }
+  }
+
+  // Customer-view preview — only for draft, tax-exclusive invoices with a
+  // project. Tax-inclusive drafts encode customer total in amount_cents
+  // (different line_items semantics); the preview helper assumes
+  // tax-exclusive shape and would silently produce wrong totals.
+  const showViewPreview = isDraft && !taxInclusive && Boolean(invoice.project_id);
+  const viewPreviewInputs = showViewPreview
+    ? await loadInvoiceCustomerViewInputs(invoice.id)
+    : null;
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <DetailPageNav homeHref="/invoices" homeLabel="All invoices" />
@@ -112,31 +157,57 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         )}
       </header>
 
-      {/* Amount breakdown */}
-      <section className="rounded-xl border bg-card p-5">
-        <div className="flex flex-col gap-2">
-          {showSubtotalRow ? (
+      {/* Customer-view preview — drafts only */}
+      {viewPreviewInputs ? (
+        <InvoiceViewModePreview
+          invoiceId={invoice.id}
+          initialMode={invoice.customer_view_mode ?? viewPreviewInputs.projectDefaultMode}
+          initialMgmtFeeInline={invoice.customer_view_mgmt_fee_inline ?? false}
+          projectDefaultMode={viewPreviewInputs.projectDefaultMode}
+          inputs={{
+            projectName: viewPreviewInputs.projectName,
+            customerSummaryMd: viewPreviewInputs.customerSummaryMd,
+            costLines: viewPreviewInputs.costLines,
+            categories: viewPreviewInputs.categories,
+            priorBilledCents: viewPreviewInputs.priorBilledCents,
+            mgmtRate: viewPreviewInputs.mgmtRate,
+            isCostPlus: viewPreviewInputs.isCostPlus,
+            costPlusBreakdown: viewPreviewInputs.costPlusBreakdown,
+          }}
+          taxRate={taxCtx ? taxCtx.totalRate : 0.05}
+          taxLabel={taxLabel}
+        />
+      ) : null}
+
+      {/* Amount breakdown — suppressed on drafts while the preview surface
+       *  is showing, since the preview IS the breakdown there. Sent / paid
+       *  / void invoices always show the persisted breakdown. */}
+      {!viewPreviewInputs ? (
+        <section className="rounded-xl border bg-card p-5">
+          <div className="flex flex-col gap-2">
+            {showSubtotalRow ? (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span>{formatCurrency(subtotalCents)}</span>
+              </div>
+            ) : null}
+            <InvoiceLineItems invoiceId={invoice.id} lineItems={lineItems} isDraft={isDraft} />
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatCad(subtotalCents)}</span>
+              <span className="text-muted-foreground">{taxLabel}</span>
+              <span>{formatCurrency(invoice.tax_cents)}</span>
             </div>
-          ) : null}
-          <InvoiceLineItems invoiceId={invoice.id} lineItems={lineItems} isDraft={isDraft} />
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">{taxLabel}</span>
-            <span>{formatCad(invoice.tax_cents)}</span>
-          </div>
-          <div className="border-t pt-2">
-            <div className="flex items-center justify-between text-base font-semibold">
-              <span>Total</span>
-              <span>{formatCad(totalCents)}</span>
+            <div className="border-t pt-2">
+              <div className="flex items-center justify-between text-base font-semibold">
+                <span>Total</span>
+                <span>{formatCurrency(totalCents)}</span>
+              </div>
             </div>
+            {regParts.length > 0 ? (
+              <p className="mt-1 text-xs text-muted-foreground">{regParts.join('  ·  ')}</p>
+            ) : null}
           </div>
-          {regParts.length > 0 ? (
-            <p className="mt-1 text-xs text-muted-foreground">{regParts.join('  ·  ')}</p>
-          ) : null}
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       {/* Customer note */}
       <InvoiceNote invoiceId={invoice.id} note={invoice.customer_note} isDraft={isDraft} />
@@ -203,6 +274,18 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </p>
         </section>
       )}
+
+      {/* Cost-basis drift warning — cost-plus drafts where the frozen
+       *  Labour + Materials lines no longer match the project's live
+       *  cost rollup. Catches both stale drafts and a future missing-
+       *  source bug like c617fad. */}
+      {driftBanner ? (
+        <CostBasisDriftBanner
+          projectId={driftBanner.projectId}
+          billedCostBasisCents={driftBanner.billedCostBasisCents}
+          currentCostBasisCents={driftBanner.currentCostBasisCents}
+        />
+      ) : null}
 
       {/* Defense-in-depth GST# warning — gate at send time should make
        *  this impossible, but if a draft predates the gate or the field

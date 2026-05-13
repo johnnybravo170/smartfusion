@@ -41,6 +41,7 @@ fi
 FILES=(
   ".env.local"
   ".env.sentry-build-plugin"
+  "ops/.env.local"
 )
 
 linked=0

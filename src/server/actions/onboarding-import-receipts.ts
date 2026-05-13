@@ -149,8 +149,8 @@ export type ProposedReceiptExpense = {
   /** Card network if visible alongside the last 4. */
   cardNetwork: PaymentSourceNetwork | null;
   /** Pre-resolved payment source — either a registered card matching
-   *  card_last4 (label "JB Debit"), or the tenant default if no card
-   *  was seen. null only if even the default lookup failed. */
+   *  card_last4, or the tenant default if no card was seen. null only
+   *  if even the default lookup failed. */
   paymentSourceId: string | null;
   /** Tag so the wizard can render an "Unknown card — label this?"
    *  affordance vs a normal source pill. */
@@ -441,15 +441,17 @@ export async function dedupReceiptProposalsAction(
   if (!tenant) return { ok: false, error: 'Not signed in.' };
   const supabase = await createClient();
   const { data, error } = await supabase
-    .from('expenses')
-    .select('id, vendor, amount_cents, tax_cents, expense_date');
+    .from('project_costs')
+    .select('id, vendor, amount_cents, gst_cents, cost_date')
+    .eq('source_type', 'receipt')
+    .eq('status', 'active');
   if (error) return { ok: false, error: error.message };
   const existing: ExistingExpense[] = (data ?? []).map((e) => ({
     id: e.id as string,
     vendor: (e.vendor as string | null) ?? null,
     amount_cents: (e.amount_cents as number) ?? 0,
-    tax_cents: (e.tax_cents as number) ?? 0,
-    expense_date: e.expense_date as string,
+    tax_cents: (e.gst_cents as number) ?? 0,
+    expense_date: e.cost_date as string,
   }));
 
   const hints: ReceiptDedupHint[] = proposals.map((p) => {
@@ -569,7 +571,8 @@ export async function commitReceiptImportAction(input: {
     const fallbackSources = await listPaymentSources();
     const fallbackDefaultId = fallbackSources.find((s) => s.is_default)?.id ?? null;
 
-    const expenseRows = toCreate.map((r) => ({
+    const now = new Date().toISOString();
+    const costRows = toCreate.map((r) => ({
       tenant_id: tenant.id,
       user_id: user.id,
       project_id: null,
@@ -578,17 +581,21 @@ export async function commitReceiptImportAction(input: {
       category_id: r.categoryId,
       amount_cents: r.amountCents ?? 0,
       pre_tax_amount_cents: r.preTaxAmountCents,
-      tax_cents: r.taxCents ?? 0,
+      gst_cents: r.taxCents ?? 0,
       vendor: r.vendor,
       vendor_gst_number: r.vendorGstNumber,
       description: r.description,
-      receipt_storage_path: r.storagePath,
-      expense_date: r.expenseDateIso,
+      attachment_storage_path: r.storagePath,
+      cost_date: r.expenseDateIso,
       import_batch_id: batchId,
       payment_source_id: r.paymentSourceId ?? fallbackDefaultId,
       card_last4: r.cardLast4,
+      source_type: 'receipt',
+      payment_status: 'paid',
+      paid_at: now,
+      status: 'active',
     }));
-    const { error: insErr } = await supabase.from('expenses').insert(expenseRows);
+    const { error: insErr } = await supabase.from('project_costs').insert(costRows);
     if (insErr) {
       // Best-effort cleanup: drop the batch so it doesn't dangle. Don't
       // remove storage objects here — the operator may want to retry.
@@ -627,14 +634,15 @@ export async function rollbackReceiptImportAction(
 
   const now = new Date().toISOString();
 
-  // Soft-delete via deleted_at — but expenses doesn't have that column
-  // in this schema; check before assuming.
-  // Looking at the schema: expenses has no deleted_at column. We
-  // hard-delete imported expenses on rollback. Receipt files in storage
-  // are left alone (the operator can re-import or use storage admin).
-  // If we later add deleted_at to expenses, switch this to soft-delete.
+  // Hard-delete imported receipts on rollback. project_costs has a
+  // deleted_at column we could use to soft-delete, but the batch-level
+  // rolled_back_at on import_batches already gives us the audit trail
+  // and the rows themselves aren't referenced by anything else (the
+  // FK out of cost_line_actuals etc. points the other way). Receipt
+  // files in storage are left alone — the operator can re-import or
+  // use storage admin.
   const { data: deletedRows, error: delErr } = await supabase
-    .from('expenses')
+    .from('project_costs')
     .delete()
     .eq('import_batch_id', batchId)
     .select('id');

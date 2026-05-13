@@ -1,6 +1,12 @@
 /**
  * Overhead expense queries — operating expenses not tied to any project.
- * Same `expenses` table as project expenses; filtered by `project_id IS NULL`.
+ *
+ * As of the cost-unification rollout these read from the unified
+ * `project_costs` table filtered to `source_type='receipt'` (overhead
+ * expenses don't have a vendor-bill counterpart). The output shape
+ * keeps using `expense_date` / `receipt_storage_path` / `tax_cents` —
+ * remapped from `cost_date` / `attachment_storage_path` / `gst_cents`
+ * on the way out so callers don't shift.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -49,11 +55,13 @@ export async function listOverheadExpenses(opts?: {
   const supabase = await createClient();
 
   let query = supabase
-    .from('expenses')
+    .from('project_costs')
     .select(
-      'id, expense_date, amount_cents, tax_cents, vendor, description, receipt_storage_path, project_id, category_id, card_last4, categories:category_id (name, parent:parent_id (name)), payment_source:payment_source_id (id, label, last4, paid_by, kind)',
+      'id, cost_date, amount_cents, gst_cents, vendor, description, attachment_storage_path, project_id, category_id, card_last4, categories:category_id (name, parent:parent_id (name)), payment_source:payment_source_id (id, label, last4, paid_by, kind)',
     )
-    .order('expense_date', { ascending: false });
+    .eq('source_type', 'receipt')
+    .eq('status', 'active')
+    .order('cost_date', { ascending: false });
 
   if (!opts?.includeProjectExpenses) {
     query = query.is('project_id', null);
@@ -62,8 +70,8 @@ export async function listOverheadExpenses(opts?: {
     query = query.is('category_id', null);
   }
 
-  if (opts?.from) query = query.gte('expense_date', opts.from);
-  if (opts?.to) query = query.lte('expense_date', opts.to);
+  if (opts?.from) query = query.gte('cost_date', opts.from);
+  if (opts?.to) query = query.lte('cost_date', opts.to);
   if (opts?.categoryId) query = query.eq('category_id', opts.categoryId);
 
   const { data, error } = await query;
@@ -75,7 +83,7 @@ export async function listOverheadExpenses(opts?: {
   // is flaky from the list render path (same reason cost-line thumbs
   // use admin). One createSignedUrls call for all paths.
   const receiptPaths = (data ?? [])
-    .map((r) => r.receipt_storage_path as string | null)
+    .map((r) => (r as { attachment_storage_path?: string | null }).attachment_storage_path ?? null)
     .filter((p): p is string => !!p);
 
   const urlByPath = new Map<string, string>();
@@ -97,7 +105,10 @@ export async function listOverheadExpenses(opts?: {
     const cat = Array.isArray(catRaw) ? catRaw[0] : catRaw;
     const parentRaw = cat?.parent;
     const parent = Array.isArray(parentRaw) ? parentRaw[0] : parentRaw;
-    const receiptPath = (row.receipt_storage_path as string | null) ?? null;
+    const receiptPath =
+      ((row as { attachment_storage_path?: string | null }).attachment_storage_path as
+        | string
+        | null) ?? null;
     const isPdf = receiptPath?.toLowerCase().endsWith('.pdf') ?? false;
 
     type RawSource = {
@@ -134,9 +145,9 @@ export async function listOverheadExpenses(opts?: {
 
     return {
       id: row.id as string,
-      expense_date: row.expense_date as string,
+      expense_date: (row as { cost_date: string }).cost_date,
       amount_cents: row.amount_cents as number,
-      tax_cents: (row.tax_cents as number) ?? 0,
+      tax_cents: ((row as { gst_cents?: number }).gst_cents as number) ?? 0,
       vendor: (row.vendor as string | null) ?? null,
       description: (row.description as string | null) ?? null,
       project_id: (row.project_id as string | null) ?? null,

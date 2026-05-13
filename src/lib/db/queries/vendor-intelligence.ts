@@ -52,10 +52,14 @@ export async function getVendorSuggestion(
   if (!vendor) return null;
 
   const admin = createAdminClient();
+  // Vendor → category hints come from past RECEIPTS (overhead categorization
+  // signal). Vendor bills don't carry an `expense_categories` link.
   const { data, error } = await admin
-    .from('expenses')
+    .from('project_costs')
     .select('category_id, categories:category_id (name, parent:parent_id (name))')
     .eq('tenant_id', tenantId)
+    .eq('source_type', 'receipt')
+    .eq('status', 'active')
     .ilike('vendor', vendor)
     .not('category_id', 'is', null);
   if (error || !data || data.length === 0) return null;
@@ -125,9 +129,11 @@ export async function getTopVendorHints(
 ): Promise<VendorCategoryHint[]> {
   const admin = createAdminClient();
   const { data, error } = await admin
-    .from('expenses')
+    .from('project_costs')
     .select('vendor, category_id, categories:category_id (name, parent:parent_id (name))')
     .eq('tenant_id', tenantId)
+    .eq('source_type', 'receipt')
+    .eq('status', 'active')
     .not('vendor', 'is', null)
     .not('category_id', 'is', null);
   if (error || !data) return [];

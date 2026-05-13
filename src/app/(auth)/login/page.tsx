@@ -42,8 +42,8 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const recoveryUsed = searchParams.get('recovery') === '1';
-  const prefilledEmail = searchParams.get('email')?.trim() || '';
+  const recoveryUsed = searchParams?.get('recovery') === '1';
+  const prefilledEmail = searchParams?.get('email')?.trim() || '';
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -52,7 +52,7 @@ function LoginForm() {
     const email = String(form.get('email') ?? '');
     const password = String(form.get('password') ?? '');
 
-    const next = searchParams.get('next') ?? undefined;
+    const next = searchParams?.get('next') ?? undefined;
     const safeNext = next?.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
     startTransition(async () => {
       const result = await loginAction({ email, password, next });

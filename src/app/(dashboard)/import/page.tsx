@@ -51,7 +51,11 @@ export default async function ImportHubPage() {
     supabase.from('customers').select('id', { count: 'exact', head: true }).is('deleted_at', null),
     supabase.from('projects').select('id', { count: 'exact', head: true }).is('deleted_at', null),
     supabase.from('invoices').select('id', { count: 'exact', head: true }).is('deleted_at', null),
-    supabase.from('expenses').select('id', { count: 'exact', head: true }),
+    supabase
+      .from('project_costs')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_type', 'receipt')
+      .eq('status', 'active'),
     supabase.from('photos').select('id', { count: 'exact', head: true }).is('deleted_at', null),
     supabase.from('time_entries').select('id', { count: 'exact', head: true }),
     supabase

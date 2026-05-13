@@ -1,6 +1,7 @@
 'use client';
 
-import { ExternalLink, FileText, Loader2, Unplug } from 'lucide-react';
+import { ExternalLink, FileText, FolderTree, History, Loader2, Unplug } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -18,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { connectQboAction, disconnectQboAction } from '@/server/actions/qbo';
+import { QuickBooksImportLauncher } from './quickbooks-import-launcher';
 
 type Props = {
   realmId: string | null;
@@ -31,7 +33,7 @@ export function QuickBooksConnectCard({ realmId, companyName, connectedAt, envir
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
-  const qboParam = searchParams.get('qbo');
+  const qboParam = searchParams?.get('qbo');
   const isConnected = Boolean(realmId && connectedAt);
 
   // Handle return from Intuit OAuth.
@@ -96,12 +98,24 @@ export function QuickBooksConnectCard({ realmId, companyName, connectedAt, envir
                   realm {realmId}
                   {environment === 'sandbox' ? ' · sandbox' : ''}
                 </p>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                  Import flow lands in the next release.
-                </p>
               </div>
             </div>
+
+            <QuickBooksImportLauncher />
+
             <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/settings/qbo-history">
+                  <History className="size-3.5" />
+                  Import history
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/settings/qbo-class-mapping">
+                  <FolderTree className="size-3.5" />
+                  Map Classes
+                </Link>
+              </Button>
               <Button variant="outline" size="sm" asChild>
                 <a
                   href={

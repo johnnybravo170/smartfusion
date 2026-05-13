@@ -124,7 +124,7 @@ export function BudgetCategoriesTable({
   // budget_category_name (case-insensitive — variance categories arrive lowercase
   // capitalize; category names are operator-typed). Highlight fades after
   // ~2.5s so the table looks normal again on subsequent interactions.
-  const focusName = searchParams.get('focus');
+  const focusName = searchParams?.get('focus');
   const focusCategoryId = useMemo(() => {
     if (!focusName) return null;
     const needle = focusName.toLowerCase().trim();
@@ -414,16 +414,16 @@ export function BudgetCategoriesTable({
         <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
-            onClick={() => setAddCategoryMode((m) => (m === 'category' ? 'closed' : 'category'))}
-          >
-            {addCategoryMode === 'category' ? 'Cancel' : '+ Add category'}
-          </Button>
-          <Button
-            size="sm"
             variant="outline"
             onClick={() => setAddCategoryMode((m) => (m === 'section' ? 'closed' : 'section'))}
           >
             {addCategoryMode === 'section' ? 'Cancel' : '+ New section'}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setAddCategoryMode((m) => (m === 'category' ? 'closed' : 'category'))}
+          >
+            {addCategoryMode === 'category' ? 'Cancel' : '+ Add category'}
           </Button>
           {headerActions}
         </div>
