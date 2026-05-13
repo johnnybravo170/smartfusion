@@ -73,6 +73,11 @@ export async function listProjectsWithCategoriesForExpenseAction(): Promise<
         /** Drives the auto-split tax chip in the Log Expense dialog. */
         is_cost_plus: boolean;
         categories: Array<{ id: string; name: string }>;
+        /** Priced cost lines on this project. Feeds the cascading
+         *  "Line item" picker so expenses can be tagged to a specific
+         *  line instead of just its category — matches the Quick Log
+         *  time form's precision. */
+        costLines: Array<{ id: string; label: string; budget_category_id: string | null }>;
       }>;
     }
   | { ok: false; error: string }
@@ -89,12 +94,24 @@ export async function listProjectsWithCategoriesForExpenseAction(): Promise<
   const projectIds = (projects ?? []).map((p) => p.id as string);
   if (projectIds.length === 0) return { ok: true, projects: [] };
 
-  const { data: categories, error: bErr } = await supabase
-    .from('project_budget_categories')
-    .select('id, name, project_id, display_order')
-    .in('project_id', projectIds)
-    .order('display_order', { ascending: true });
+  const [{ data: categories, error: bErr }, { data: lines, error: lErr }] = await Promise.all([
+    supabase
+      .from('project_budget_categories')
+      .select('id, name, project_id, display_order')
+      .in('project_id', projectIds)
+      .order('display_order', { ascending: true }),
+    // Priced cost lines per project. Skipping line_price_cents=0 stubs
+    // so the dropdown surfaces real picks only.
+    supabase
+      .from('project_cost_lines')
+      .select('id, project_id, label, budget_category_id, line_price_cents')
+      .in('project_id', projectIds)
+      .gt('line_price_cents', 0)
+      .order('sort_order')
+      .order('created_at'),
+  ]);
   if (bErr) return { ok: false, error: bErr.message };
+  if (lErr) return { ok: false, error: lErr.message };
 
   const categoriesByProject = new Map<string, Array<{ id: string; name: string }>>();
   for (const b of categories ?? []) {
@@ -104,6 +121,21 @@ export async function listProjectsWithCategoriesForExpenseAction(): Promise<
     categoriesByProject.set(pid, arr);
   }
 
+  const linesByProject = new Map<
+    string,
+    Array<{ id: string; label: string; budget_category_id: string | null }>
+  >();
+  for (const l of lines ?? []) {
+    const pid = l.project_id as string;
+    const arr = linesByProject.get(pid) ?? [];
+    arr.push({
+      id: l.id as string,
+      label: l.label as string,
+      budget_category_id: (l.budget_category_id as string | null) ?? null,
+    });
+    linesByProject.set(pid, arr);
+  }
+
   return {
     ok: true,
     projects: (projects ?? []).map((p) => ({
@@ -111,6 +143,7 @@ export async function listProjectsWithCategoriesForExpenseAction(): Promise<
       name: p.name as string,
       is_cost_plus: (p.is_cost_plus as boolean | null) !== false, // default-true
       categories: categoriesByProject.get(p.id as string) ?? [],
+      costLines: linesByProject.get(p.id as string) ?? [],
     })),
   };
 }
