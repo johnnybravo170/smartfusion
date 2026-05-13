@@ -23,11 +23,19 @@ export default async function AdminTenantDetailPage({ params }: Props) {
         </Link>
       </div>
 
-      <div>
-        <h1 className="text-2xl font-semibold">{tenant.name}</h1>
-        <p className="text-sm text-muted-foreground">
-          Read-only support view of this operator&apos;s account.
-        </p>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">{tenant.name}</h1>
+          <p className="text-sm text-muted-foreground">
+            Read-only support view of this operator&apos;s account.
+          </p>
+        </div>
+        <Link
+          href={`/admin/tenants/${id}/audit`}
+          className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+        >
+          Audit log &rarr;
+        </Link>
       </div>
 
       <TenantDetail tenant={tenant} />

@@ -10,7 +10,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
-import { getCurrentTenant } from '@/lib/auth/helpers';
+import { audit } from '@/lib/audit';
+import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { guardMfaForSensitiveAction } from '@/lib/auth/mfa-enforcement';
 import { listTeamMembers, removeTeamMember } from '@/lib/db/queries/team';
 import {
@@ -105,6 +106,20 @@ export async function createWorkerInviteAction(input?: {
       }
     }
 
+    const user = await getCurrentUser();
+    await audit({
+      tenantId: tenant.id,
+      userId: user?.id ?? null,
+      action: 'team.invite_created',
+      resourceType: 'worker_invite',
+      resourceId: null,
+      metadata: {
+        role: input?.role ?? 'worker',
+        has_email: !!input?.invited_email,
+        invite_code_prefix: invite.code.slice(0, 4),
+      },
+    });
+
     revalidatePath('/settings/team');
     return { ok: true, code: invite.code, joinUrl };
   } catch (err) {
@@ -147,6 +162,14 @@ export async function removeTeamMemberAction(
 
   try {
     await removeTeamMember(tenant.id, memberId);
+    const user = await getCurrentUser();
+    await audit({
+      tenantId: tenant.id,
+      userId: user?.id ?? null,
+      action: 'team.member_removed',
+      resourceType: 'tenant_member',
+      resourceId: memberId,
+    });
     revalidatePath('/settings/team');
     return { ok: true };
   } catch (err) {

@@ -11,7 +11,8 @@
  */
 
 import { revalidatePath } from 'next/cache';
-import { getCurrentTenant } from '@/lib/auth/helpers';
+import { audit } from '@/lib/audit';
+import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { guardMfaForSensitiveAction } from '@/lib/auth/mfa-enforcement';
 import { getPaymentProvider } from '@/lib/providers/factory';
 import { createClient } from '@/lib/supabase/server';
@@ -151,6 +152,15 @@ export async function disconnectStripeAction(): Promise<StripeActionResult> {
   if (error) {
     return { ok: false, error: `Failed to disconnect: ${error.message}` };
   }
+
+  const user = await getCurrentUser();
+  await audit({
+    tenantId: tenant.id,
+    userId: user?.id ?? null,
+    action: 'stripe.disconnected',
+    resourceType: 'tenant',
+    resourceId: tenant.id,
+  });
 
   revalidatePath('/settings');
   return { ok: true };

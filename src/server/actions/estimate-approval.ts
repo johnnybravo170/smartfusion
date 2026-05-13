@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { emitArEvent } from '@/lib/ar/event-bus';
 import { ensureQuoteFollowupSequence, shouldEnrollQuoteFollowup } from '@/lib/ar/system-sequences';
+import { audit } from '@/lib/audit';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { getEmailBrandingForTenant } from '@/lib/email/branding';
 import { sendEmail } from '@/lib/email/send';
@@ -354,6 +355,17 @@ export async function approveEstimateAction(
     label: 'Original estimate',
     signedAt: now,
     signedByName: name,
+  });
+
+  // No authenticated user on the customer-facing approval path — record as
+  // a customer-side event (userId null) with the typed name as evidence.
+  await audit({
+    tenantId: p.tenant_id as string,
+    userId: null,
+    action: 'estimate.approved',
+    resourceType: 'project',
+    resourceId: p.id as string,
+    metadata: { approved_by_name: name },
   });
 
   return { ok: true, id: p.id as string };

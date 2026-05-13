@@ -12,7 +12,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { gateway, isAiError } from '@/lib/ai-gateway';
-import { getCurrentTenant } from '@/lib/auth/helpers';
+import { audit } from '@/lib/audit';
+import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { loadInvoiceCustomerViewInputs } from '@/lib/db/queries/invoice-customer-view-inputs';
 import type { InvoiceLineItem } from '@/lib/db/queries/invoices';
 import { computeCostPlusBreakdown } from '@/lib/invoices/cost-plus-markup';
@@ -638,6 +639,16 @@ export async function voidInvoiceAction(input: {
     related_id: invoice.job_id,
   });
 
+  const user = await getCurrentUser();
+  await audit({
+    tenantId: tenant.id,
+    userId: user?.id ?? null,
+    action: 'invoice.voided',
+    resourceType: 'invoice',
+    resourceId: invoice.id,
+    metadata: { prior_status: invoice.status, job_id: invoice.job_id },
+  });
+
   revalidatePath('/invoices');
   revalidatePath(`/invoices/${invoice.id}`);
   revalidatePath(`/jobs/${invoice.job_id}`);
@@ -724,6 +735,21 @@ export async function markInvoicePaidAction(input: {
     body: `Invoice #${invoice.id.slice(0, 8)} marked as paid via ${method}${refSuffix}.${photoSuffix}`,
     related_type: 'job',
     related_id: invoice.job_id,
+  });
+
+  const paidUser = await getCurrentUser();
+  await audit({
+    tenantId: tenant.id,
+    userId: paidUser?.id ?? null,
+    action: 'invoice.marked_paid',
+    resourceType: 'invoice',
+    resourceId: invoice.id,
+    metadata: {
+      payment_method: method,
+      has_reference: !!reference,
+      receipt_count: receiptPaths.length,
+      job_id: invoice.job_id,
+    },
   });
 
   revalidatePath('/invoices');

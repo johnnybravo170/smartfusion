@@ -15,6 +15,8 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
+import { audit } from '@/lib/audit';
+import { getCurrentTenant } from '@/lib/auth/helpers';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 
@@ -248,6 +250,19 @@ export async function unenrollMfaAction(input: { code: string }): Promise<MfaAct
 
   const admin = createAdminClient();
   await admin.from('user_recovery_codes').delete().eq('user_id', user.id);
+
+  // Security regression — log loudly.
+  const tenant = await getCurrentTenant();
+  if (tenant) {
+    await audit({
+      tenantId: tenant.id,
+      userId: user.id,
+      action: 'mfa.disabled',
+      resourceType: 'user',
+      resourceId: user.id,
+      metadata: { factor_id: totp.id },
+    });
+  }
 
   return { ok: true };
 }
