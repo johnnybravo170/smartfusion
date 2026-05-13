@@ -101,7 +101,7 @@ jobs:
         # The supabase npm dep is a thin wrapper that doesn't always
         # install a usable binary in CI. setup-cli is the canonical
         # path and matches what supabase docs recommend.
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v2
         with:
           version: latest
 
