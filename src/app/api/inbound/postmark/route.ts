@@ -77,6 +77,16 @@ export async function POST(request: Request) {
   const tenantId = await resolveSenderToTenant(payload.From);
   const admin = createAdminClient();
 
+  // TEMP DEBUG — remove once happy-path smoke test confirmed
+  console.log(
+    '[inbound-debug]',
+    JSON.stringify({
+      rawFrom: payload.From,
+      resolvedTenantId: tenantId,
+      subject: payload.Subject,
+    }),
+  );
+
   // Sender isn't a tenant member — try the customer-reply branch
   // (Phase 2 of PROJECT_MESSAGING_PLAN.md). The handler resolves to a
   // (tenant, project) tuple via In-Reply-To → footer token → recency,
