@@ -77,7 +77,9 @@ export async function GET(req: NextRequest) {
       ).length;
       const acted = promoted + archivedCount + dedupedCount + incidents_surfaced;
       await finishAgentRun(run.id, {
-        outcome: failed > 0 ? 'failure' : acted === 0 ? 'skipped' : 'success',
+        // Per-item failures are surfaced in the summary; only mark the whole
+        // run failed if nothing was acted on AND something failed.
+        outcome: acted > 0 ? 'success' : failed > 0 ? 'failure' : 'skipped',
         items_scanned: triaged,
         items_acted: acted,
         summary: `${promoted} promoted, ${archivedCount} archived, ${dedupedCount} deduped, ${incidents_surfaced} incidents${failed ? `, ${failed} failed` : ''}`,
