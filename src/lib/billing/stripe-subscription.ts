@@ -110,6 +110,66 @@ export async function createSubscriptionCheckoutSession(input: {
 }
 
 /**
+ * Default `expand` paths used by the in-app billing page. Pulls the
+ * default payment method (so we can render `•••• 4242 Visa`) and the
+ * latest invoice in one round-trip.
+ */
+const SUBSCRIPTION_EXPAND = [
+  'default_payment_method',
+  'latest_invoice',
+  'latest_invoice.payment_intent',
+  'pause_collection',
+] as const;
+
+export type LoadedSubscription = Stripe.Subscription & {
+  default_payment_method?: Stripe.PaymentMethod | string | null;
+};
+
+export async function loadSubscriptionExpanded(
+  subscriptionId: string,
+): Promise<LoadedSubscription> {
+  const stripe = await getStripe();
+  return (await stripe.subscriptions.retrieve(subscriptionId, {
+    expand: [...SUBSCRIPTION_EXPAND],
+  })) as LoadedSubscription;
+}
+
+/**
+ * Pulls the customer-level default card (Stripe stores this on
+ * `invoice_settings.default_payment_method`) plus a fallback to the
+ * subscription-level default.
+ */
+export async function getDefaultCard(input: {
+  customerId: string;
+  subscription?: LoadedSubscription | null;
+}): Promise<{ brand: string; last4: string; expMonth: number; expYear: number } | null> {
+  const stripe = await getStripe();
+  const subPm = input.subscription?.default_payment_method;
+  if (subPm && typeof subPm === 'object' && subPm.card) {
+    return {
+      brand: subPm.card.brand,
+      last4: subPm.card.last4,
+      expMonth: subPm.card.exp_month,
+      expYear: subPm.card.exp_year,
+    };
+  }
+  const customer = (await stripe.customers.retrieve(input.customerId, {
+    expand: ['invoice_settings.default_payment_method'],
+  })) as Stripe.Customer;
+  if (customer.deleted) return null;
+  const pm = customer.invoice_settings?.default_payment_method;
+  if (pm && typeof pm === 'object' && pm.card) {
+    return {
+      brand: pm.card.brand,
+      last4: pm.card.last4,
+      expMonth: pm.card.exp_month,
+      expYear: pm.card.exp_year,
+    };
+  }
+  return null;
+}
+
+/**
  * Maps Stripe's subscription status strings onto our DB enum.
  * Anything we don't explicitly handle collapses to 'canceled'
  * (treated as starter at the gate).

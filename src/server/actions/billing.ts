@@ -283,14 +283,31 @@ export type CancelResult =
     }
   | CancelRefundError;
 
+export type CancelReason =
+  | 'too_expensive'
+  | 'missing_features'
+  | 'switching_tools'
+  | 'business_change'
+  | 'temporary_break'
+  | 'too_complex'
+  | 'other';
+
+export type CancelInput = {
+  reason?: CancelReason;
+  comment?: string;
+};
+
 /**
  * Execute the cancel: set cancel_at_period_end (or delete immediately for
  * trial), issue the prorated refund, log it, send the confirmation email.
  *
  * Webhook is the source of truth for `subscription_status` — we let it
  * mirror the status flip rather than writing it from here.
+ *
+ * Optional `reason` + `comment` are appended to the refunds_log notes for
+ * the exit-survey trail.
  */
-export async function cancelSubscriptionAction(): Promise<CancelResult> {
+export async function cancelSubscriptionAction(input?: CancelInput): Promise<CancelResult> {
   const { user, tenant } = await requireTenant();
   if (tenant.member.role !== 'owner' && tenant.member.role !== 'admin') {
     return { ok: false, error: 'Only the account owner can cancel the subscription.' };
@@ -312,6 +329,8 @@ export async function cancelSubscriptionAction(): Promise<CancelResult> {
   const recipientEmail = (row?.contact_email as string | null) ?? user.email ?? null;
   const firstName = inferFirstName(user.email, (row?.name as string | null) ?? tenant.name);
 
+  const surveyNote = formatSurveyNote(input);
+
   // ---- Trial cancel: delete now, no refund ----
   if (sub.status === 'trialing') {
     await stripe.subscriptions.cancel(stripeSubId);
@@ -323,7 +342,7 @@ export async function cancelSubscriptionAction(): Promise<CancelResult> {
       amount_cents: 0,
       currency,
       reason: 'user_cancel',
-      notes: 'trial cancellation',
+      notes: ['trial cancellation', surveyNote].filter(Boolean).join(' | '),
       refunded_by: user.id,
     });
 
@@ -398,11 +417,16 @@ export async function cancelSubscriptionAction(): Promise<CancelResult> {
     amount_cents: stripeRefundId ? refundCents : 0,
     currency,
     reason: 'user_cancel',
-    notes: stripeRefundId
-      ? `prorated ${unusedDays}/${totalDays} days of ${formatCents(periodAmountCents, currency)}`
-      : refundCents > 0
-        ? 'no chargeable invoice found; cancelled auto-renewal only — review for manual refund'
-        : 'no charge to refund (zero-amount period)',
+    notes: [
+      stripeRefundId
+        ? `prorated ${unusedDays}/${totalDays} days of ${formatCents(periodAmountCents, currency)}`
+        : refundCents > 0
+          ? 'no chargeable invoice found; cancelled auto-renewal only — review for manual refund'
+          : 'no charge to refund (zero-amount period)',
+      surveyNote,
+    ]
+      .filter(Boolean)
+      .join(' | '),
     refunded_by: user.id,
   });
 
@@ -460,41 +484,21 @@ function formatAccessEnd(ms: number, tz: string): string {
   }).format(new Date(ms));
 }
 
+function formatSurveyNote(input: CancelInput | undefined): string {
+  if (!input?.reason && !input?.comment) return '';
+  const parts: string[] = [];
+  if (input.reason) parts.push(`reason=${input.reason}`);
+  if (input.comment) {
+    const trimmed = input.comment.trim().slice(0, 500);
+    if (trimmed) parts.push(`comment="${trimmed.replace(/"/g, "'")}"`);
+  }
+  return parts.join(' ');
+}
+
 function inferFirstName(email: string | null | undefined, fallback: string): string {
   if (email) {
     const local = email.split('@')[0];
     if (local) return local.charAt(0).toUpperCase() + local.slice(1);
   }
   return fallback;
-}
-
-// ---------------------------------------------------------------------------
-// Stripe Customer Portal — manage payment method
-// ---------------------------------------------------------------------------
-
-export type PortalSessionResult = { ok: true; url: string } | { ok: false; error: string };
-
-/**
- * Returns a one-shot Customer Portal URL the client can window.location.assign
- * to. Lets the user update card / view invoices without us building the UI.
- */
-export async function createBillingPortalSessionAction(): Promise<PortalSessionResult> {
-  const { tenant } = await requireTenant();
-  const admin = createAdminClient();
-  const { data: row } = await admin
-    .from('tenants')
-    .select('stripe_customer_id')
-    .eq('id', tenant.id)
-    .single();
-
-  const customerId = (row?.stripe_customer_id as string | null) ?? null;
-  if (!customerId) return { ok: false, error: 'No Stripe customer on file yet.' };
-
-  const stripe = await getPlatformStripe();
-  const origin = await originFromHeaders();
-  const session = await stripe.billingPortal.sessions.create({
-    customer: customerId,
-    return_url: `${origin}/settings/billing`,
-  });
-  return { ok: true, url: session.url };
 }
