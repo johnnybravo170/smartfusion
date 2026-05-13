@@ -1,4 +1,5 @@
 import { brandingFooterHtml } from '@/lib/email/branding';
+import { escapeHtml } from '@/lib/email/escape';
 
 /**
  * Sent after a self-serve cancel + prorated refund. Tone: warm, no friction,
@@ -17,15 +18,17 @@ export function refundConfirmationEmailHtml({
   accessEndsAtFormatted: string; // e.g. "Mon, May 12, 2026"
   isTrial: boolean;
 }): string {
-  const greeting = `Hi ${firstName},`;
+  const greeting = `Hi ${escapeHtml(firstName)},`;
 
   const body = isTrial
     ? `<p>We've cancelled your trial. No charge was made, so there's nothing to refund.</p>
        <p>Your access ended just now. If you change your mind, your data is preserved for 30 days — just sign back in and pick a plan.</p>`
-    : `<p>We've processed your cancellation and refunded <strong>${refundAmountFormatted}</strong>${
-        cardLast4 ? ` to the card ending in •••• ${cardLast4}` : ' to your original payment method'
+    : `<p>We've processed your cancellation and refunded <strong>${escapeHtml(refundAmountFormatted)}</strong>${
+        cardLast4
+          ? ` to the card ending in •••• ${escapeHtml(cardLast4)}`
+          : ' to your original payment method'
       }. Most banks post the refund within 5-10 business days.</p>
-       <p>Your account stays active until <strong>${accessEndsAtFormatted}</strong> — feel free to export anything you need.</p>
+       <p>Your account stays active until <strong>${escapeHtml(accessEndsAtFormatted)}</strong> — feel free to export anything you need.</p>
        <p>No bad blood. If you ever want to come back, your data and history are preserved for 30 days after the access end date.</p>`;
 
   return `<!DOCTYPE html>

@@ -1,13 +1,5 @@
 import { brandingFooterHtml, brandingLogoHtml } from '@/lib/email/branding';
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { escapeHtml, safeUrl } from '@/lib/email/escape';
 
 function docFieldBlock(title: string, body: string | null | undefined): string {
   if (!body || body.trim().length === 0) return '';
@@ -49,9 +41,10 @@ export function invoiceEmailHtml({
     : '';
 
   const buttonLabel = hasStripe ? 'Pay Now' : 'View Invoice';
+  const safeNumber = escapeHtml(invoiceNumber);
   const footerNote = hasStripe
-    ? `Invoice #${invoiceNumber}. Payment is processed securely via Stripe.`
-    : `Invoice #${invoiceNumber}.`;
+    ? `Invoice #${safeNumber}. Payment is processed securely via Stripe.`
+    : `Invoice #${safeNumber}.`;
 
   return `<!DOCTYPE html>
 <html>
@@ -59,11 +52,11 @@ export function invoiceEmailHtml({
   ${brandingLogoHtml(logoUrl, businessName)}
   <h2 style="color: #0a0a0a;">Invoice from ${escapeHtml(businessName)}</h2>
   <p>Hi ${escapeHtml(customerName.split(' ')[0])},</p>
-  <p>${escapeHtml(businessName)} has sent you an invoice for <strong>${totalFormatted}</strong>.</p>
+  <p>${escapeHtml(businessName)} has sent you an invoice for <strong>${escapeHtml(totalFormatted)}</strong>.</p>
   ${noteBlock}
   ${docFieldBlock('How to pay', paymentInstructions)}
   <p>
-    <a href="${payUrl}" style="display: inline-block; padding: 12px 24px; background: #0a0a0a; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">
+    <a href="${safeUrl(payUrl)}" style="display: inline-block; padding: 12px 24px; background: #0a0a0a; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">
       ${buttonLabel}
     </a>
   </p>
