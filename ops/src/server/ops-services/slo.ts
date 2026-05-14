@@ -140,28 +140,50 @@ async function fetchOverallSentry(windowDays: number) {
   };
 }
 
+/**
+ * PostgREST `in` list literal — `(id1,id2)` — for the QA / demo tenants,
+ * or null when there are none. Demo tenants have suppressed (never-sent)
+ * email + SMS, so their rows would otherwise skew send-success rates. The
+ * HeyHenry app applies the same exclusion to its own metrics; see
+ * `src/lib/tenants/demo.ts`.
+ */
+async function demoTenantExclusion(
+  supabase: ReturnType<typeof createServiceClient>,
+): Promise<string | null> {
+  const { data } = await supabase.from('tenants').select('id').eq('is_demo', true);
+  const ids = (data ?? []).map((r) => r.id as string);
+  return ids.length ? `(${ids.join(',')})` : null;
+}
+
 async function fetchSendStats(windowDays: number) {
   const supabase = createServiceClient();
   const since = new Date(Date.now() - windowDays * 86400_000).toISOString();
+  const excludeDemo = await demoTenantExclusion(supabase);
 
   // Transactional email (email_send_log).
-  const txEmail = await supabase
+  let txEmailQ = supabase
     .from('email_send_log')
     .select('status', { count: 'exact' })
     .gte('created_at', since);
+  if (excludeDemo) txEmailQ = txEmailQ.not('tenant_id', 'in', excludeDemo);
+  const txEmail = await txEmailQ;
 
   // Autoresponder (ar_send_log) — split by channel.
-  const arEmail = await supabase
+  let arEmailQ = supabase
     .from('ar_send_log')
     .select('status', { count: 'exact' })
     .eq('channel', 'email')
     .gte('created_at', since);
+  if (excludeDemo) arEmailQ = arEmailQ.not('tenant_id', 'in', excludeDemo);
+  const arEmail = await arEmailQ;
 
-  const arSms = await supabase
+  let arSmsQ = supabase
     .from('ar_send_log')
     .select('status', { count: 'exact' })
     .eq('channel', 'sms')
     .gte('created_at', since);
+  if (excludeDemo) arSmsQ = arSmsQ.not('tenant_id', 'in', excludeDemo);
+  const arSms = await arSmsQ;
 
   function toTile(label: string, rows: { status: string }[] | null, total: number): SloTile {
     if (!rows || total === 0) {
