@@ -24,6 +24,7 @@
  */
 
 import { brandingFooterHtml, type EmailTemplateKey } from '@/lib/email/branding';
+import { escapeHtml } from '@/lib/email/escape';
 
 export type CalloutVariant = 'note' | 'quote' | 'warning';
 export type CtaVariant = 'primary' | 'secondary';
@@ -72,15 +73,6 @@ const COLOR_SIGNOFF = '#444';
 const CTA_RADIUS_PX = 6;
 const CTA_PADDING = '12px 24px';
 const HR_HTML = '<hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />';
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 export function renderCalloutHtml(callout: EmailShellCallout): string {
   const variant = callout.variant ?? 'note';
