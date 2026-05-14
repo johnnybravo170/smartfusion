@@ -118,6 +118,8 @@ const ARTIFACT_KINDS = [
   'spec_drawing_pdf',
   'receipt',
   'inspiration_photo',
+  'customer_message',
+  'text_body',
   'other',
 ] as const;
 export type IntakeArtifactKind = (typeof ARTIFACT_KINDS)[number];
@@ -226,8 +228,10 @@ const ARTIFACT_CLASSIFY_PROMPT = `You're inspecting artifacts the operator dropp
 - screenshot (text-thread, email, or messaging-app capture)
 - sub_quote_pdf (PDF quote from a sub-trade)
 - spec_drawing_pdf (architectural drawing, floor plan, or technical spec PDF)
-- receipt (invoice or receipt for materials / supplies)
+- receipt (invoice or receipt for materials / supplies — includes screenshots of receipts, not just PDFs)
 - inspiration_photo (Pinterest-style aesthetic shot — what the customer wants it to look like)
+- customer_message (email or text FROM a customer that the operator is forwarding — scope question, complaint, change request, etc.)
+- text_body (the body of a forwarded email itself, as text — never from an attachment, only from the email envelope)
 - other (when nothing fits)
 
 Also produce a short label (max 80 chars) describing what's IN the artifact specifically. Examples: "Water-damaged hardwood near the back door", "Text thread — kitchen reno scope", "Sub-trade quote — electrical, 4 lines".
