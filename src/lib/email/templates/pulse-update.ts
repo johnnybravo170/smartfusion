@@ -6,6 +6,7 @@ import { escapeHtml, safeUrl } from '@/lib/email/escape';
  * plain-text glyph format the public /pulse/<code> page renders, so the
  * email and the web view feel like the same artifact.
  */
+// TODO(email-shell): migrate to renderEmailShell on next touch
 export function pulseUpdateEmailHtml({
   businessName,
   logoUrl,

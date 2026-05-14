@@ -2,6 +2,8 @@
 
 Durable reference for the four-class email system at HeyHenry. Designed to scale to 10k tenants without reputation cross-contamination, and to coexist with Google Workspace on the root domain.
 
+**Sister doc:** [docs/email-templates.md](./email-templates.md) covers the visual + content layer (the `renderEmailShell` standardization, callout/CTA variants, subject-line conventions, CASL category picking, pre-ship verification).
+
 **Last updated:** 2026-05-08
 **Status:** Phase 1 partially live (transactional + marketing split exists in code, DNS not fully cut over yet)
 
