@@ -6,9 +6,11 @@
  * ambiguous senders get a polite bounce; we still persist a row with
  * status='bounced' for abuse visibility.
  *
- * Recognised senders → row in 'pending' status, processor runs inline,
- * row ends in 'needs_review' (or 'rejected' for classification='other').
- * Postmark tolerates up to 30s for the response.
+ * Recognised senders → row in 'pending' status, processor creates an
+ * intake_drafts row (universal inbox pipeline) + runs the classifier
+ * inline, envelope ends in 'routed_to_intake'. Postmark tolerates up to
+ * 30s for the response. The response surfaces draftId for downstream
+ * test / log visibility.
  */
 
 import { NextResponse } from 'next/server';
@@ -183,11 +185,13 @@ export async function POST(request: Request) {
 
   // Await inline — Vercel serverless terminates fire-and-forget work the
   // moment we return. Postmark tolerates up to 30s.
+  let draftId: string | null = null;
   try {
-    await processInboundEmail(inserted.id as string);
+    const result = await processInboundEmail(inserted.id as string);
+    draftId = result.draftId;
   } catch (err) {
     console.error('[inbound-email] processing failed', inserted.id, err);
   }
 
-  return NextResponse.json({ ok: true, id: inserted.id });
+  return NextResponse.json({ ok: true, id: inserted.id, draftId });
 }
