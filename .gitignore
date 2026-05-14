@@ -60,3 +60,4 @@ supabase/.temp
 *.local
 !.env.local.example
 .claude/scheduled_tasks.lock
+.claude/worktrees/

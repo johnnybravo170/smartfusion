@@ -18,7 +18,8 @@
       "!**/dist",
       "!**/build",
       "!**/src/components/ui",
-      "!**/components.json"
+      "!**/components.json",
+      "!**/.claude"
     ]
   },
   "formatter": {
