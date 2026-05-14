@@ -14,10 +14,10 @@
 
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { newTenantMemberDefaults } from '@/lib/auth/helpers';
 import { updateReferralOnSignup } from '@/lib/db/queries/referrals';
 import { sendWelcomeEmail } from '@/lib/email/welcome';
 import { CURRENT_PRIVACY_VERSION, CURRENT_TOS_VERSION } from '@/lib/legal/versions';
+import { callerIp, checkRateLimit, describeRetryAfter } from '@/lib/rate-limit';
 import { generateReferralCode } from '@/lib/referral/code-generator';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
@@ -42,6 +42,8 @@ async function originFromHeaders(): Promise<string> {
 export async function signupAction(input: {
   email: string;
   password: string;
+  firstName: string;
+  lastName: string;
   businessName: string;
   phone: string;
   acceptedPolicies: boolean;
@@ -57,7 +59,30 @@ export async function signupAction(input: {
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     };
   }
-  const { email, password, businessName, phone } = parsed.data;
+  const { email, password, firstName, lastName, businessName, phone } = parsed.data;
+
+  // Rate limit: per-IP (burst control) + per-email (account-enumeration
+  // control). Enforce IP first so an attacker can't cycle emails to map
+  // existence quickly.
+  const ip = await callerIp();
+  const ipLimit = await checkRateLimit(`signup:ip:${ip}`, {
+    limit: 5,
+    windowMs: 10 * 60_000,
+  });
+  if (!ipLimit.ok) {
+    return {
+      error: `Too many signup attempts. Try again in ${describeRetryAfter(ipLimit.retryAfterMs)}.`,
+    };
+  }
+  const emailLimit = await checkRateLimit(`signup:email:${email}`, {
+    limit: 5,
+    windowMs: 60 * 60_000,
+  });
+  if (!emailLimit.ok) {
+    return {
+      error: `Too many attempts for this email. Try again in ${describeRetryAfter(emailLimit.retryAfterMs)}.`,
+    };
+  }
 
   const normalizedPhone = normalizePhone(phone);
   if (!normalizedPhone) {
@@ -99,90 +124,47 @@ export async function signupAction(input: {
   const userId = created.user.id;
   let createdTenantId: string | null = null;
 
-  // 2 + 3. Create tenant + tenant_member. Roll back the auth user on failure.
+  // 2 + 3 + 4 + seeds + referral_code in ONE Postgres transaction via
+  // signup_tenant() RPC. If any step inside fails, the whole block rolls
+  // back automatically — no half-set-up tenant rows. The auth.user stays
+  // outside (it's in the auth schema, managed by Supabase Auth) so the
+  // only compensating action we still need is deleting it on RPC error.
   const { referralCode } = input;
+  const referralCodeBase = generateReferralCode(businessName);
+  const referralCodeSuffix = Math.random().toString(36).slice(2, 6);
+  const newReferralCode = `${referralCodeBase}-${referralCodeSuffix}`;
+  const acceptedAt = new Date().toISOString();
+
   try {
-    // Build tenant insert payload. If a valid referral code was provided,
-    // set referred_by_code and extend the trial to 14 days.
-    // Default new signups to the renovation (GC) vertical — most inbound
-    // tenants are general contractors. TODO: replace with a vertical picker
-    // on the signup form.
-    const tenantInsert: Record<string, unknown> = { name: businessName, vertical: 'renovation' };
-    if (referralCode) {
-      tenantInsert.referred_by_code = referralCode;
-      tenantInsert.trial_ends_at = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-    }
-
-    const { data: tenant, error: tenantErr } = await admin
-      .from('tenants')
-      .insert(tenantInsert)
-      .select('id')
-      .single();
-    if (tenantErr || !tenant) {
-      throw new Error(tenantErr?.message ?? 'Could not create tenant.');
-    }
-    createdTenantId = tenant.id;
-
-    const acceptedAt = new Date().toISOString();
-    const { error: memberErr } = await admin.from('tenant_members').insert({
-      tenant_id: tenant.id,
-      user_id: userId,
-      role: 'owner',
-      ...(await newTenantMemberDefaults(admin, userId)),
-      phone: normalizedPhone,
-      tos_version: CURRENT_TOS_VERSION,
-      tos_accepted_at: acceptedAt,
-      privacy_version: CURRENT_PRIVACY_VERSION,
-      privacy_accepted_at: acceptedAt,
+    const { data: tenantId, error: rpcErr } = await admin.rpc('signup_tenant', {
+      p_user_id: userId,
+      p_business_name: businessName,
+      p_vertical: 'renovation',
+      p_phone: normalizedPhone,
+      p_tos_version: CURRENT_TOS_VERSION,
+      p_privacy_version: CURRENT_PRIVACY_VERSION,
+      p_accepted_at: acceptedAt,
+      p_referral_code: newReferralCode,
+      p_referred_by_code: referralCode ?? null,
+      p_first_name: firstName,
+      p_last_name: lastName,
     });
-    if (memberErr) {
-      // Tenant row exists but membership failed — delete the tenant too so
-      // we don't leak a dangling row. `deleted_at` soft-delete is fine but
-      // for this error path a hard delete keeps things tidy.
-      await admin.from('tenants').delete().eq('id', tenant.id);
-      throw new Error(memberErr.message);
+    if (rpcErr || !tenantId) {
+      throw new Error(rpcErr?.message ?? 'Could not create tenant.');
     }
+    createdTenantId = tenantId as string;
 
-    // Seed default overhead expense categories so /expenses/new isn't a
-    // dead-end on first use. Non-fatal — the user can recreate any.
-    await admin
-      .rpc('seed_default_expense_categories', {
-        p_tenant_id: tenant.id,
-        p_vertical: 'renovation',
-      })
-      .then(({ error }) => {
-        if (error) console.warn('Failed to seed expense categories:', error.message);
-      });
-
-    // Seed default payment sources (Business / Personal / Petty cash) so
-    // the receipt forms have something to fall back on before any cards
-    // are labeled. Non-fatal.
-    await admin
-      .rpc('seed_default_payment_sources', { p_tenant_id: tenant.id })
-      .then(({ error }) => {
-        if (error) console.warn('Failed to seed payment sources:', error.message);
-      });
-
-    // Auto-generate a referral code for the new tenant.
-    const code = generateReferralCode(businessName);
-    const suffix = Math.random().toString(36).slice(2, 6);
-    await admin
-      .from('referral_codes')
-      .insert({ tenant_id: tenant.id, code: `${code}-${suffix}`, type: 'operator' })
-      .select('id')
-      .single()
-      .then(({ error: refErr }) => {
-        // Non-fatal: if referral code creation fails, the user can still sign up.
-        if (refErr) console.warn('Failed to auto-generate referral code:', refErr.message);
-      });
-
-    // If this signup used a referral code, update the referral row.
+    // Side-effect outside the transaction: update the inbound referral
+    // row (best-effort — failure here doesn't undo the signup).
     if (referralCode) {
-      await updateReferralOnSignup(referralCode, tenant.id).catch((err) => {
+      await updateReferralOnSignup(referralCode, createdTenantId).catch((err) => {
         console.warn('Failed to update referral on signup:', err);
       });
     }
   } catch (err) {
+    // The Postgres transaction already rolled back the tenant/member/
+    // referral_code rows. Delete the auth user so the email can be
+    // re-used on a retry without hitting "already registered".
     await admin.auth.admin.deleteUser(userId).catch(() => {
       // Nothing we can do if the rollback fails. The dangling auth user
       // can be cleaned up manually.
@@ -294,6 +276,29 @@ export async function requestMagicLinkAction(input: {
     };
   }
   const { email } = parsed.data;
+
+  // Rate limit: per-IP (burst) + per-email (enumeration). Magic-link
+  // success/failure response is uniform regardless of whether the email
+  // exists, but without throttling an attacker can probe many emails fast.
+  const ip = await callerIp();
+  const ipLimit = await checkRateLimit(`magic:ip:${ip}`, {
+    limit: 10,
+    windowMs: 10 * 60_000,
+  });
+  if (!ipLimit.ok) {
+    return {
+      error: `Too many requests. Try again in ${describeRetryAfter(ipLimit.retryAfterMs)}.`,
+    };
+  }
+  const emailLimit = await checkRateLimit(`magic:email:${email}`, {
+    limit: 5,
+    windowMs: 60 * 60_000,
+  });
+  if (!emailLimit.ok) {
+    return {
+      error: `Too many magic-link requests for this email. Try again in ${describeRetryAfter(emailLimit.retryAfterMs)}.`,
+    };
+  }
 
   const origin = await originFromHeaders();
   const supabase = await createClient();

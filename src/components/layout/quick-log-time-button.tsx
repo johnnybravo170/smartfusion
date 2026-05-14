@@ -18,7 +18,8 @@ import { Label } from '@/components/ui/label';
 import { listActiveProjectsAction, logTimeAction } from '@/server/actions/time-entries';
 
 type Category = { id: string; name: string; section: string };
-type Project = { id: string; name: string; categories: Category[] };
+type CostLine = { id: string; label: string; budget_category_id: string | null };
+type Project = { id: string; name: string; categories: Category[]; costLines: CostLine[] };
 
 export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number | null }) {
   const [open, setOpen] = useState(false);
@@ -27,6 +28,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
 
   const [projectId, setProjectId] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [costLineId, setCostLineId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [hours, setHours] = useState('');
   const [rate, setRate] = useState(ownerRateCents ? String(ownerRateCents / 100) : '');
@@ -35,7 +37,14 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
   const [pending, startTransition] = useTransition();
   const [needsEmptyConfirm, setNeedsEmptyConfirm] = useState(false);
 
-  const categories = projects.find((p) => p.id === projectId)?.categories ?? [];
+  const selectedProject = projects.find((p) => p.id === projectId);
+  const categories = selectedProject?.categories ?? [];
+  // Cost lines under the selected category. Hidden when no category is
+  // picked or when the category has no priced lines — keeps the form
+  // tight for the common case where operators just tag the category.
+  const linesForCategory = categoryId
+    ? (selectedProject?.costLines ?? []).filter((l) => l.budget_category_id === categoryId)
+    : [];
 
   useEffect(() => {
     if (!open) return;
@@ -51,6 +60,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
     if (!o) {
       setProjectId('');
       setCategoryId('');
+      setCostLineId('');
       setDate(new Date().toISOString().slice(0, 10));
       setHours('');
       setRate(ownerRateCents ? String(ownerRateCents / 100) : '');
@@ -75,10 +85,15 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
     }
     setError('');
     startTransition(async () => {
-      const rateCents = rate ? Math.round(parseFloat(rate) * 100) : undefined;
+      const rateCents = rate ? Math.round(parseFloat(rate) * 100) : Number.NaN;
+      if (!Number.isFinite(rateCents) || rateCents < 0) {
+        setError('Rate is required so labour rolls up into the budget. Use 0 for unbilled hours.');
+        return;
+      }
       const res = await logTimeAction({
         project_id: projectId,
         budget_category_id: categoryId || undefined,
+        cost_line_id: costLineId || undefined,
         entry_date: date,
         hours: parseFloat(hours),
         hourly_rate_cents: rateCents,
@@ -120,6 +135,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
                 onChange={(e) => {
                   setProjectId(e.target.value);
                   setCategoryId('');
+                  setCostLineId('');
                 }}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                 required
@@ -143,6 +159,8 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
                 value={categoryId}
                 onChange={(e) => {
                   setCategoryId(e.target.value);
+                  // Switching category invalidates any prior line pick.
+                  setCostLineId('');
                   if (e.target.value) setNeedsEmptyConfirm(false);
                 }}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -151,6 +169,33 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
                 {categories.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.section ? `${b.section} · ${b.name}` : b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {/* Cost-line picker — same shape as the project Time tab's
+           *  form. Optional: tag labour to a specific line so the
+           *  Budget tab's per-line Spent column picks it up, not just
+           *  the category total. */}
+          {linesForCategory.length > 0 ? (
+            <div>
+              <Label htmlFor="ql-cost-line" className="mb-1.5 block text-sm">
+                Line item{' '}
+                <span className="font-normal text-muted-foreground">
+                  — optional, tags labour to this specific line
+                </span>
+              </Label>
+              <select
+                id="ql-cost-line"
+                value={costLineId}
+                onChange={(e) => setCostLineId(e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">— category only —</option>
+                {linesForCategory.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.label}
                   </option>
                 ))}
               </select>
@@ -187,7 +232,8 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
           </div>
           <div>
             <Label htmlFor="ql-rate" className="mb-1.5 block text-sm">
-              Rate ($/h) <span className="font-normal text-muted-foreground">optional</span>
+              Rate ($/h){' '}
+              <span className="font-normal text-muted-foreground">use 0 for unbilled hours</span>
             </Label>
             <Input
               id="ql-rate"
@@ -197,6 +243,7 @@ export function QuickLogTimeButton({ ownerRateCents }: { ownerRateCents: number 
               value={rate}
               onChange={(e) => setRate(e.target.value)}
               placeholder="e.g. 75"
+              required
               className="max-w-[160px]"
             />
           </div>

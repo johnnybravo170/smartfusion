@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import {
   extractPaymentReceiptAction,
   markInvoicePaidAction,
@@ -342,8 +343,8 @@ export function RecordPaymentDialog({
               <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                 <span>
-                  Photo shows ${(ocrAmountCents / 100).toFixed(2)} but invoice total is $
-                  {(invoiceTotalCents / 100).toFixed(2)}. Partial payment, wrong photo, or bad read?
+                  Photo shows {formatCurrency(ocrAmountCents)} but invoice total is{' '}
+                  {formatCurrency(invoiceTotalCents)}. Partial payment, wrong photo, or bad read?
                 </span>
               </div>
             ) : null}

@@ -28,6 +28,7 @@ import {
   Info,
   Lightbulb,
   Loader2,
+  Mail,
   MessageSquare,
   Mic,
   Pencil,
@@ -35,6 +36,7 @@ import {
   Receipt,
   RefreshCcw,
   Sparkles,
+  Type,
   X,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -100,6 +102,8 @@ const ARTIFACT_KIND_META: Record<
   spec_drawing_pdf: { Icon: FileText, label: 'Spec drawing' },
   receipt: { Icon: Receipt, label: 'Receipt' },
   inspiration_photo: { Icon: Sparkles, label: 'Inspiration' },
+  customer_message: { Icon: Mail, label: 'Customer message' },
+  text_body: { Icon: Type, label: 'Email body' },
   other: { Icon: FileQuestion, label: 'Artifact' },
 };
 

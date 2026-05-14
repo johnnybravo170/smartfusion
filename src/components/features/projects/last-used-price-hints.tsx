@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import type { MaterialsCatalogRow } from '@/lib/db/queries/materials-catalog';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { getPricingHintsAction, type PricingHint } from '@/server/actions/pricing-hints';
 
 type Props = {
@@ -115,7 +116,7 @@ export function LastUsedPriceHints({
               title={`${row.label} — canonical price from your catalog`}
               className="rounded-full border border-primary/40 bg-primary/5 px-2 py-0.5 text-foreground hover:bg-primary/10"
             >
-              ${(row.unit_price_cents / 100).toFixed(2)}/{row.unit}
+              {formatCurrency(row.unit_price_cents)}/{row.unit}
             </button>
           ))}
         </>
@@ -134,7 +135,7 @@ export function LastUsedPriceHints({
               ).format(new Date(h.last_used_at))}`}
               className="rounded-full border bg-background px-2 py-0.5 hover:bg-muted hover:text-foreground"
             >
-              ${(h.unit_price_cents / 100).toFixed(2)}/{h.unit}
+              {formatCurrency(h.unit_price_cents)}/{h.unit}
               {h.use_count > 1 ? (
                 <span className="ml-1 text-muted-foreground/70">×{h.use_count}</span>
               ) : null}

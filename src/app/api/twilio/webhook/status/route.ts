@@ -12,6 +12,7 @@
 
 import twilio from 'twilio';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { claimWebhookEvent } from '@/lib/webhooks/idempotency';
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -29,6 +30,18 @@ export async function POST(request: Request) {
 
   if (!sid || !status) {
     return new Response('Missing MessageSid or MessageStatus', { status: 400 });
+  }
+
+  // Idempotency: the same SID can legitimately move through queued → sent →
+  // delivered, so the dedup key is the (SID, status) pair. Re-delivery of
+  // the same transition gets short-circuited.
+  const claim = await claimWebhookEvent(
+    'twilio:status',
+    `${sid}:${status}`,
+    Object.fromEntries(params),
+  );
+  if (claim.alreadyProcessed) {
+    return new Response(null, { status: 204 });
   }
 
   const supabase = createAdminClient();

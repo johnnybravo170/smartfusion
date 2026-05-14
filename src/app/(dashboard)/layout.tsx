@@ -6,6 +6,7 @@ import { ChatToggle } from '@/components/chat/chat-toggle';
 import { PastDueBanner } from '@/components/features/billing/past-due-banner';
 import { TrialBanner } from '@/components/features/billing/trial-banner';
 import { MfaEnforcementBanner } from '@/components/features/settings/mfa-enforcement-banner';
+import { NamePromptModal } from '@/components/features/settings/name-prompt-modal';
 import { FeedbackButton } from '@/components/layout/feedback-button';
 import { Header } from '@/components/layout/header';
 import { SidebarNav } from '@/components/layout/sidebar';
@@ -36,6 +37,13 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   const [tenant, currentUser] = await Promise.all([getCurrentTenant(), getCurrentUser()]);
 
+  // GDPR / PIPEDA right-to-erasure gate. If the owner has requested account
+  // deletion, every dashboard route bounces to the deletion-pending landing
+  // until the 30-day window expires or the request is aborted.
+  if (tenant?.deletedAt) {
+    redirect('/account/deletion-pending');
+  }
+
   // Note: no email/phone verification gate. New signups land here directly
   // (zero-friction onboarding — see docs/onboarding-audit-2026-05.md).
   // Phone is verified lazily when an SMS feature is first used.
@@ -55,6 +63,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   ]);
   const ownerRateCents = operatorProfile?.defaultHourlyRateCents ?? null;
   const tenantTaxRate = taxCtx?.totalRate ?? 0;
+  // Signup didn't require a name until 2026-05. Operators who pre-date that
+  // land with a blank tenant_members.first_name — soft-block until they fill it.
+  const needsName = Boolean(operatorProfile) && !operatorProfile?.firstName?.trim();
   const activeMembership = memberships.find((m) => m.isActive) ?? null;
   const accentColor = activeMembership?.accentColor ?? null;
 
@@ -95,6 +106,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             </TenantProvider>
           </div>
         </div>
+        {needsName ? <NamePromptModal /> : null}
         <FeedbackButton />
         <ChatToggle />
         <ChatPanel />

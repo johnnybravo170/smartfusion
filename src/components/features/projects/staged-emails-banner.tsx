@@ -1,10 +1,11 @@
 /**
- * Project-page banner for forwarded emails staged on this project that
- * are awaiting operator confirmation.
+ * Project-page banner for intake drafts staged on this project that are
+ * awaiting operator confirmation.
  *
- * Server-component that queries inbound_emails for needs_review items on
- * this project. Renders nothing if there are zero. Otherwise hands off
- * to a small client wrapper for the dismiss-per-session affordance.
+ * V2: query intake_drafts joined to inbound_emails (when source='email')
+ * for envelope-level from/subject. Legacy V1 inbound_emails rows have
+ * NULL intake_draft_id and don't surface here — they were already
+ * actioned through the V1 surface.
  */
 
 import { Mail } from 'lucide-react';
@@ -19,26 +20,38 @@ export async function StagedEmailsBanner({ projectId }: { projectId: string }) {
 
   const supabase = await createClient();
   const { data, count } = await supabase
-    .from('inbound_emails')
-    .select('id, from_address, from_name, subject, received_at, classification', {
-      count: 'exact',
-    })
+    .from('intake_drafts')
+    .select(
+      'id, created_at, source, inbound_emails!intake_draft_id ( id, from_address, from_name, subject )',
+      { count: 'exact' },
+    )
     .eq('tenant_id', tenant.id)
-    .eq('project_id', projectId)
-    .eq('status', 'needs_review')
-    .order('received_at', { ascending: false })
+    .eq('disposition', 'pending_review')
+    .eq('accepted_project_id', projectId)
+    .order('created_at', { ascending: false })
     .limit(3);
 
   const total = count ?? 0;
   if (total === 0) return null;
 
-  const items = (data ?? []).map((e) => ({
-    id: e.id as string,
-    from: (e.from_name as string | null) ?? (e.from_address as string),
-    subject: (e.subject as string | null) ?? '(no subject)',
-    receivedAt: e.received_at as string,
-    classification: e.classification as string,
-  }));
+  type EnvelopeRow = {
+    id: string;
+    from_address: string | null;
+    from_name: string | null;
+    subject: string | null;
+  } | null;
+
+  const items = (data ?? []).map((row) => {
+    const envRaw = (row.inbound_emails as EnvelopeRow | EnvelopeRow[]) ?? null;
+    const env = Array.isArray(envRaw) ? (envRaw[0] ?? null) : envRaw;
+    return {
+      id: (env?.id as string | undefined) ?? (row.id as string),
+      from: env?.from_name ?? env?.from_address ?? '(intake draft)',
+      subject: env?.subject ?? '(no subject)',
+      receivedAt: row.created_at as string,
+      classification: (row.source as string) ?? 'email',
+    };
+  });
 
   // Cache key — dismiss state expires the moment a newer forward arrives.
   const dismissKey = `staged-emails-banner:${projectId}:${items[0]?.receivedAt ?? ''}`;
@@ -57,7 +70,7 @@ export async function StagedEmailsBanner({ projectId }: { projectId: string }) {
           : `${total} forwarded items waiting on you`}
       </span>
       <Link
-        href={`/inbox/email?project=${projectId}`}
+        href={`/inbox/intake?source=email&project=${projectId}`}
         className="text-xs underline hover:no-underline"
       >
         See all

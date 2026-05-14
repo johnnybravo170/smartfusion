@@ -4,6 +4,7 @@ import {
 } from '@/components/features/projects/estimate-render';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { createAdminClient } from '@/lib/supabase/admin';
+import type { CustomerViewMode } from '@/lib/validators/project-customer-view';
 import { EstimateApprovalForm } from './approval-form';
 import { ViewLogger } from './view-logger';
 
@@ -23,6 +24,7 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
       `id, name, description, management_fee_rate, estimate_sent_at, tenant_id,
        estimate_status, estimate_approved_at, estimate_approved_by_name,
        estimate_declined_reason, terms_text, document_type,
+       customer_view_mode, customer_summary_md,
        customers:customer_id (name, address_line1, tax_exempt),
        tenants:tenant_id (name, logo_storage_path, gst_number, wcb_number, timezone)`,
     )
@@ -146,6 +148,10 @@ export default async function EstimatePage({ params }: { params: Promise<{ code:
         wcbNumber={(tenantRaw?.wcb_number as string | null) ?? null}
         termsText={(p.terms_text as string | null) ?? null}
         documentType={(p.document_type as 'estimate' | 'quote' | null) ?? 'estimate'}
+        customerViewMode={
+          ((p.customer_view_mode as CustomerViewMode | null) ?? 'detailed') as CustomerViewMode
+        }
+        customerSummaryMd={(p.customer_summary_md as string | null) ?? null}
       />
 
       {status === 'pending_approval' ? (

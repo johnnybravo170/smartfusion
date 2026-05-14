@@ -89,7 +89,7 @@ export function StagedEmailsBannerClient({
                 <span className="text-muted-foreground"> — {it.from}</span>
               </span>
               <Link
-                href={`/inbox/email?project=${projectId}`}
+                href={`/inbox/intake?source=email&project=${projectId}`}
                 className="shrink-0 underline hover:no-underline"
               >
                 Review

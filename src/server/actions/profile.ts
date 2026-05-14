@@ -18,7 +18,9 @@ import {
   type BusinessProfileInput,
   businessProfileSchema,
   emptyToNull,
+  type OperatorNameInput,
   type OperatorProfileInput,
+  operatorNameSchema,
   operatorProfileSchema,
   type SocialsInput,
   socialsSchema,
@@ -181,6 +183,45 @@ export async function updateOperatorProfileAction(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath('/settings/profile');
+  return { ok: true };
+}
+
+/**
+ * Sets just first + last name on the current operator's tenant_members
+ * row. Backs the signup catch-up prompt for existing operators whose name
+ * was never populated (signup didn't require it until 2026-05). Distinct
+ * from updateOperatorProfileAction so the prompt doesn't need to round-trip
+ * every other profile field.
+ */
+export async function setOperatorNameAction(
+  input: OperatorNameInput,
+): Promise<ProfileActionResult> {
+  const parsed = operatorNameSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: 'Please fix the errors below.',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const tenant = await getCurrentTenant();
+  const user = await getCurrentUser();
+  if (!tenant || !user) return { ok: false, error: 'Not signed in.' };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('tenant_members')
+    .update({
+      first_name: parsed.data.firstName,
+      last_name: parsed.data.lastName,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('tenant_id', tenant.id)
+    .eq('user_id', user.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/', 'layout');
   return { ok: true };
 }
 

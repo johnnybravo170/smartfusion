@@ -6,9 +6,11 @@
  * ambiguous senders get a polite bounce; we still persist a row with
  * status='bounced' for abuse visibility.
  *
- * Recognised senders → row in 'pending' status, processor runs inline,
- * row ends in 'needs_review' (or 'rejected' for classification='other').
- * Postmark tolerates up to 30s for the response.
+ * Recognised senders → row in 'pending' status, processor creates an
+ * intake_drafts row (universal inbox pipeline) + runs the classifier
+ * inline, envelope ends in 'routed_to_intake'. Postmark tolerates up to
+ * 30s for the response. The response surfaces draftId for downstream
+ * test / log visibility.
  */
 
 import { NextResponse } from 'next/server';
@@ -20,6 +22,7 @@ import {
 import { processInboundEmail } from '@/lib/inbound-email/processor';
 import { resolveSenderToTenant } from '@/lib/inbound-email/sender-resolver';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { claimWebhookEvent } from '@/lib/webhooks/idempotency';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -64,8 +67,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
+  // Idempotency: Postmark may retry on 5xx. MessageID is unique per
+  // inbound email; claim it before any side effects.
+  if (payload.MessageID) {
+    const claim = await claimWebhookEvent('postmark:inbound', payload.MessageID, payload);
+    if (claim.alreadyProcessed) {
+      return NextResponse.json({ ok: true, deduplicated: true });
+    }
+  }
+
   const tenantId = await resolveSenderToTenant(payload.From);
   const admin = createAdminClient();
+
+  // TEMP DEBUG — remove once happy-path smoke test confirmed
+  console.log(
+    '[inbound-debug]',
+    JSON.stringify({
+      rawFrom: payload.From,
+      resolvedTenantId: tenantId,
+      subject: payload.Subject,
+    }),
+  );
 
   // Sender isn't a tenant member — try the customer-reply branch
   // (Phase 2 of PROJECT_MESSAGING_PLAN.md). The handler resolves to a
@@ -163,11 +185,13 @@ export async function POST(request: Request) {
 
   // Await inline — Vercel serverless terminates fire-and-forget work the
   // moment we return. Postmark tolerates up to 30s.
+  let draftId: string | null = null;
   try {
-    await processInboundEmail(inserted.id as string);
+    const result = await processInboundEmail(inserted.id as string);
+    draftId = result.draftId;
   } catch (err) {
     console.error('[inbound-email] processing failed', inserted.id, err);
   }
 
-  return NextResponse.json({ ok: true, id: inserted.id });
+  return NextResponse.json({ ok: true, id: inserted.id, draftId });
 }

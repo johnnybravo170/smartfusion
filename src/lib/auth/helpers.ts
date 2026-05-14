@@ -79,6 +79,10 @@ export type CurrentTenant = {
   plan: Plan;
   subscriptionStatus: SubscriptionStatus;
   trialEndsAt: string | null;
+  /** Set when the owner has requested account deletion. The dashboard
+   *  layout uses this to redirect to /account/deletion-pending. Within
+   *  the 30-day retention window, the owner can abort. */
+  deletedAt: string | null;
   member: {
     id: string;
     role: string;
@@ -104,7 +108,7 @@ async function getCurrentTenantUncached(): Promise<CurrentTenant | null> {
   const { data: member } = await supabase
     .from('tenant_members')
     .select(
-      'id, role, phone, phone_verified_at, tenants(id, name, slug, timezone, vertical, plan, subscription_status, trial_ends_at)',
+      'id, role, phone, phone_verified_at, tenants(id, name, slug, timezone, vertical, plan, subscription_status, trial_ends_at, deleted_at)',
     )
     .eq('user_id', user.id)
     .eq('is_active_for_user', true)
@@ -134,6 +138,7 @@ async function getCurrentTenantUncached(): Promise<CurrentTenant | null> {
     plan: (tenant.plan ?? 'starter') as Plan,
     subscriptionStatus: (tenant.subscription_status ?? 'trialing') as SubscriptionStatus,
     trialEndsAt: (tenant.trial_ends_at as string | null) ?? null,
+    deletedAt: (tenant.deleted_at as string | null) ?? null,
     member: {
       id: member.id,
       role: member.role,

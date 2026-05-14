@@ -52,7 +52,8 @@ export default async function LaunchPage() {
           )}
         </div>
         <div className="mt-2 text-xs text-[var(--muted-foreground)]">
-          {rollup.blockerCardCount} cards / {rollup.totalPoints} points total
+          {rollup.remainingCardCount} of {rollup.blockerCardCount} cards remaining ·{' '}
+          {rollup.donePoints}/{rollup.totalPoints} pts done
           {rollup.unsizedCards > 0 ? (
             <> · {rollup.unsizedCards} cards unsized (not counted)</>
           ) : null}

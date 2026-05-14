@@ -94,9 +94,9 @@ export async function submitLeadAction(input: {
     return { ...s, price_cents };
   });
 
-  // Per-tenant rate (HST tenants get 13%/15%). Lead's customer doesn't
-  // exist yet, so no tax-exempt branching here.
-  const taxCtx = await canadianTax.getContext(tenant.id);
+  // Per-tenant customer-facing rate (HST tenants get 13%/15%; PST stripped).
+  // Lead's customer doesn't exist yet, so no tax-exempt branching here.
+  const taxCtx = await canadianTax.getCustomerFacingContext(tenant.id);
   const totals = calculateQuoteTotal(pricedSurfaces, taxCtx.totalRate);
 
   // 4. Create customer in the operator's tenant.

@@ -22,6 +22,7 @@ import { getPlatformStripe, mapSubscriptionStatus } from '@/lib/billing/stripe-s
 import { getPaymentProviderForRegion } from '@/lib/providers/factory';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { claimWebhookEvent } from '@/lib/webhooks/idempotency';
 
 const DEFAULT_REGION = 'ca-central-1';
 
@@ -44,6 +45,14 @@ export async function POST(request: Request) {
     return new Response(`Webhook signature verification failed: ${message}`, { status: 400 });
   }
 
+  // Idempotency: Stripe retries on 5xx for up to 3 days. Claim the event
+  // once so side-effects (invoice paid, worklog entry, subscription sync)
+  // never run twice for the same delivery.
+  const claim = await claimWebhookEvent('stripe', event.id, event);
+  if (claim.alreadyProcessed) {
+    return new Response('ok', { status: 200 });
+  }
+
   const supabase = await createClient();
 
   switch (event.type) {
@@ -60,38 +69,21 @@ export async function POST(request: Request) {
       const invoiceId = session.metadata?.invoice_id;
 
       if (invoiceId) {
-        const now = new Date().toISOString();
         const paymentIntentId =
           typeof session.payment_intent === 'string'
             ? session.payment_intent
             : (session.payment_intent?.id ?? null);
 
-        await supabase
-          .from('invoices')
-          .update({
-            status: 'paid',
-            paid_at: now,
-            stripe_payment_intent_id: paymentIntentId,
-            updated_at: now,
-          })
-          .eq('id', invoiceId);
-
-        // Load the invoice to get tenant_id and job_id for the worklog entry.
-        const { data: invoice } = await supabase
-          .from('invoices')
-          .select('tenant_id, job_id')
-          .eq('id', invoiceId)
-          .single();
-
-        if (invoice) {
-          await supabase.from('worklog_entries').insert({
-            tenant_id: invoice.tenant_id,
-            entry_type: 'system',
-            title: 'Invoice paid',
-            body: `Invoice #${invoiceId.slice(0, 8)} paid via Stripe Checkout.`,
-            related_type: 'job',
-            related_id: invoice.job_id,
-          });
+        // Atomic: status flip + worklog insert in one Postgres transaction.
+        // Idempotent — re-runs on an already-paid invoice are a no-op.
+        const admin = createAdminClient();
+        const { error: payErr } = await admin.rpc('mark_invoice_paid', {
+          p_invoice_id: invoiceId,
+          p_payment_intent_id: paymentIntentId,
+          p_source: 'stripe_checkout',
+        });
+        if (payErr) {
+          console.error('[stripe-webhook] mark_invoice_paid failed:', payErr.message);
         }
       }
       break;

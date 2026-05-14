@@ -57,6 +57,8 @@ function SignupForm() {
     const form = new FormData(e.currentTarget);
     const email = String(form.get('email') ?? '');
     const password = String(form.get('password') ?? '');
+    const firstName = String(form.get('firstName') ?? '');
+    const lastName = String(form.get('lastName') ?? '');
     const businessName = String(form.get('businessName') ?? '');
     const phone = String(form.get('phone') ?? '');
 
@@ -64,6 +66,8 @@ function SignupForm() {
       const result = await signupAction({
         email,
         password,
+        firstName,
+        lastName,
         businessName,
         phone,
         acceptedPolicies,
@@ -108,6 +112,30 @@ function SignupForm() {
               <span className="text-muted-foreground"> · 14-day free trial, no card required</span>
             </div>
           ) : null}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="firstName">First name</Label>
+              <Input
+                id="firstName"
+                name="firstName"
+                type="text"
+                autoComplete="given-name"
+                required
+                disabled={pending}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="lastName">Last name</Label>
+              <Input
+                id="lastName"
+                name="lastName"
+                type="text"
+                autoComplete="family-name"
+                required
+                disabled={pending}
+              />
+            </div>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="businessName">Business name</Label>
             <Input

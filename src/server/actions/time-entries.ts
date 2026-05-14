@@ -17,8 +17,18 @@ const timeEntrySchema = z.object({
   project_id: z.string().uuid().optional().or(z.literal('')),
   job_id: z.string().uuid().optional().or(z.literal('')),
   budget_category_id: z.string().uuid().optional().or(z.literal('')),
+  /** Optional cost line within the chosen budget category. When set,
+   *  the entry's labour rolls up to the line's per-line Spent column on
+   *  the Budget tab, not just the category total. */
+  cost_line_id: z.string().uuid().optional().or(z.literal('')),
   hours: z.coerce.number().positive({ message: 'Hours must be greater than 0.' }),
-  hourly_rate_cents: z.coerce.number().int().optional(),
+  // Required: without a rate the entry contributes $0 to the Budget tab's
+  // "Spent by source" rollup, so it looks like no labour was logged at all.
+  // Operators who want to track unbilled hours can set rate to 0 explicitly.
+  hourly_rate_cents: z.coerce
+    .number()
+    .int({ message: 'Rate must be a whole number of cents.' })
+    .min(0, { message: 'Rate cannot be negative.' }),
   notes: z.string().trim().max(2000).optional().or(z.literal('')),
   entry_date: z.string().min(1, { message: 'Date is required.' }),
   confirm_empty: z.boolean().optional(),
@@ -41,8 +51,9 @@ export async function logTimeAction(input: {
   project_id?: string;
   job_id?: string;
   budget_category_id?: string;
+  cost_line_id?: string;
   hours: number;
-  hourly_rate_cents?: number;
+  hourly_rate_cents: number;
   notes?: string;
   entry_date: string;
   confirm_empty?: boolean;
@@ -81,8 +92,9 @@ export async function logTimeAction(input: {
       project_id: projectId,
       job_id: jobId,
       budget_category_id: parsed.data.budget_category_id || null,
+      cost_line_id: parsed.data.cost_line_id || null,
       hours: parsed.data.hours,
-      hourly_rate_cents: parsed.data.hourly_rate_cents ?? null,
+      hourly_rate_cents: parsed.data.hourly_rate_cents,
       notes: parsed.data.notes?.trim() || null,
       entry_date: parsed.data.entry_date,
     })
@@ -103,8 +115,9 @@ export async function updateTimeEntryAction(input: {
   project_id?: string;
   job_id?: string;
   budget_category_id?: string;
+  cost_line_id?: string;
   hours: number;
-  hourly_rate_cents?: number;
+  hourly_rate_cents: number;
   notes?: string;
   entry_date: string;
   confirm_empty?: boolean;
@@ -129,8 +142,9 @@ export async function updateTimeEntryAction(input: {
       project_id: parsed.data.project_id || null,
       job_id: parsed.data.job_id || null,
       budget_category_id: parsed.data.budget_category_id || null,
+      cost_line_id: parsed.data.cost_line_id || null,
       hours: parsed.data.hours,
-      hourly_rate_cents: parsed.data.hourly_rate_cents ?? null,
+      hourly_rate_cents: parsed.data.hourly_rate_cents,
       notes: parsed.data.notes?.trim() || null,
       entry_date: parsed.data.entry_date,
       updated_at: new Date().toISOString(),
@@ -150,40 +164,85 @@ export async function deleteTimeEntryAction(id: string): Promise<TimeEntryAction
   if (!id) return { ok: false, error: 'Missing time entry id.' };
 
   const supabase = await createClient();
-  const { error } = await supabase.from('time_entries').delete().eq('id', id);
 
+  // Fetch the entry's project/job before deleting so we can revalidate the
+  // surfaces that show this entry. Without revalidatePath the Budget tab's
+  // "Spent by source" rollup stays stale and the deleted row stays visible
+  // until the operator navigates away.
+  const { data: existing } = await supabase
+    .from('time_entries')
+    .select('project_id, job_id')
+    .eq('id', id)
+    .maybeSingle();
+
+  const { error } = await supabase.from('time_entries').delete().eq('id', id);
   if (error) {
     return { ok: false, error: error.message };
   }
 
+  if (existing?.project_id) revalidatePath(`/projects/${existing.project_id}`);
+  if (existing?.job_id) revalidatePath(`/jobs/${existing.job_id}`);
   return { ok: true, id };
 }
 
-export async function listActiveProjectsAction(): Promise<
+export type ActiveProjectsResult =
   | {
       ok: true;
       projects: {
         id: string;
         name: string;
         categories: { id: string; name: string; section: string }[];
+        /** Priced cost lines on this project. Feeds the Quick Log
+         *  button's cascading "Line item" picker so labour can be
+         *  tagged to a specific line instead of just its category. */
+        costLines: { id: string; label: string; budget_category_id: string | null }[];
       }[];
     }
-  | { ok: false; error: string }
-> {
+  | { ok: false; error: string };
+
+export async function listActiveProjectsAction(): Promise<ActiveProjectsResult> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('projects')
-    .select(
-      'id, name, project_budget_categories(id, name, section, display_order, is_visible_in_report)',
-    )
-    .is('deleted_at', null)
-    .in('lifecycle_stage', ['planning', 'awaiting_approval', 'active'])
-    .order('created_at', { ascending: false })
-    .limit(100);
-  if (error) return { ok: false, error: error.message };
+  const [projectsRes, costLinesRes] = await Promise.all([
+    supabase
+      .from('projects')
+      .select(
+        'id, name, project_budget_categories(id, name, section, display_order, is_visible_in_report)',
+      )
+      .is('deleted_at', null)
+      .in('lifecycle_stage', ['planning', 'awaiting_approval', 'active'])
+      .order('created_at', { ascending: false })
+      .limit(100),
+    // Cost lines are loaded in one query and grouped client-side so we
+    // don't issue N+1 round-trips. Skip lines with line_price_cents=0
+    // (catalog stubs / not yet priced) to avoid surfacing meaningless
+    // picks in the dropdown.
+    supabase
+      .from('project_cost_lines')
+      .select('id, project_id, label, budget_category_id, line_price_cents')
+      .gt('line_price_cents', 0)
+      .order('sort_order')
+      .order('created_at'),
+  ]);
+
+  if (projectsRes.error) return { ok: false, error: projectsRes.error.message };
+
+  const linesByProject = new Map<
+    string,
+    { id: string; label: string; budget_category_id: string | null }[]
+  >();
+  for (const l of (costLinesRes.data ?? []) as Array<{
+    id: string;
+    project_id: string;
+    label: string;
+    budget_category_id: string | null;
+  }>) {
+    const list = linesByProject.get(l.project_id) ?? [];
+    list.push({ id: l.id, label: l.label, budget_category_id: l.budget_category_id });
+    linesByProject.set(l.project_id, list);
+  }
 
   const projects = (
-    (data ?? []) as Array<{
+    (projectsRes.data ?? []) as Array<{
       id: string;
       name: string;
       project_budget_categories:
@@ -206,6 +265,7 @@ export async function listActiveProjectsAction(): Promise<
           (a.section ?? '').localeCompare(b.section ?? '') || a.display_order - b.display_order,
       )
       .map((c) => ({ id: c.id, name: c.name, section: c.section })),
+    costLines: linesByProject.get(p.id) ?? [],
   }));
 
   return { ok: true, projects };

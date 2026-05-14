@@ -1,5 +1,7 @@
 import { brandingFooterHtml, brandingLogoHtml } from '@/lib/email/branding';
+import { escapeHtml, safeUrl } from '@/lib/email/escape';
 
+// TODO(email-shell): migrate to renderEmailShell on next touch
 export function changeOrderApprovalEmailHtml({
   businessName,
   logoUrl,
@@ -40,17 +42,17 @@ export function changeOrderApprovalEmailHtml({
 <html>
 <body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1a1a1a;">
   ${brandingLogoHtml(logoUrl, businessName)}
-  <h2 style="color: #0a0a0a; margin-bottom: 4px;">Change Order for ${projectName}</h2>
-  <p style="color: #666; font-size: 14px; margin-top: 0;">From ${businessName}</p>
+  <h2 style="color: #0a0a0a; margin-bottom: 4px;">Change Order for ${escapeHtml(projectName)}</h2>
+  <p style="color: #666; font-size: 14px; margin-top: 0;">From ${escapeHtml(businessName)}</p>
 
   <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 24px 0;">
-    <h3 style="margin-top: 0; font-size: 16px;">${changeOrderTitle}</h3>
-    <p style="font-size: 14px; line-height: 1.6;">${description}</p>
+    <h3 style="margin-top: 0; font-size: 16px;">${escapeHtml(changeOrderTitle)}</h3>
+    <p style="font-size: 14px; line-height: 1.6;">${escapeHtml(description)}</p>
 
     <div style="display: flex; gap: 24px; margin-top: 16px;">
       <div>
         <p style="font-size: 12px; color: #666; margin: 0;">Total Cost Impact</p>
-        <p style="font-size: 18px; font-weight: 600; margin: 4px 0 0;">${totalImpactFormatted}</p>
+        <p style="font-size: 18px; font-weight: 600; margin: 4px 0 0;">${escapeHtml(totalImpactFormatted)}</p>
       </div>
       <div>
         <p style="font-size: 12px; color: #666; margin: 0;">Timeline Impact</p>
@@ -63,15 +65,15 @@ export function changeOrderApprovalEmailHtml({
         ? `<table style="width: 100%; margin-top: 16px; border-top: 1px solid #e5e7eb; padding-top: 12px; font-size: 13px;">
       <tr>
         <td style="color: #666; padding: 2px 0;">Cost of work</td>
-        <td style="text-align: right; padding: 2px 0;">${costImpactFormatted}</td>
+        <td style="text-align: right; padding: 2px 0;">${escapeHtml(costImpactFormatted)}</td>
       </tr>
       <tr>
-        <td style="color: #666; padding: 2px 0;">Management fee (${managementFeePct}%)</td>
-        <td style="text-align: right; padding: 2px 0;">${managementFeeFormatted}</td>
+        <td style="color: #666; padding: 2px 0;">Management fee (${escapeHtml(managementFeePct)}%)</td>
+        <td style="text-align: right; padding: 2px 0;">${escapeHtml(managementFeeFormatted)}</td>
       </tr>
       <tr>
         <td style="font-weight: 600; padding: 4px 0 0; border-top: 1px solid #e5e7eb;">Total</td>
-        <td style="text-align: right; font-weight: 600; padding: 4px 0 0; border-top: 1px solid #e5e7eb;">${totalImpactFormatted}</td>
+        <td style="text-align: right; font-weight: 600; padding: 4px 0 0; border-top: 1px solid #e5e7eb;">${escapeHtml(totalImpactFormatted)}</td>
       </tr>
     </table>`
         : ''
@@ -81,7 +83,7 @@ export function changeOrderApprovalEmailHtml({
   <p style="font-size: 14px;">Please review and approve or decline this change order:</p>
 
   <p>
-    <a href="${approveUrl}" style="display: inline-block; padding: 12px 24px; background: #0a0a0a; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">
+    <a href="${safeUrl(approveUrl)}" style="display: inline-block; padding: 12px 24px; background: #0a0a0a; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">
       Review &amp; Respond
     </a>
   </p>

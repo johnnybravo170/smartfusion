@@ -51,6 +51,11 @@ export type InvoiceRow = {
   payment_instructions_override: string | null;
   terms_override: string | null;
   policies_override: string | null;
+  /** Per-invoice override of `projects.customer_view_mode`. Null = inherit. */
+  customer_view_mode: 'lump_sum' | 'sections' | 'categories' | 'detailed' | null;
+  /** When the customer-view materializer was last run with mgmt fee baked
+   *  into the headline. Only meaningful in lump_sum mode today. Null = inherit. */
+  customer_view_mgmt_fee_inline: boolean | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -72,7 +77,7 @@ export type InvoiceListFilters = {
 };
 
 const INVOICE_COLUMNS =
-  'id, tenant_id, job_id, project_id, customer_id, status, amount_cents, tax_cents, tax_inclusive, doc_type, stripe_invoice_id, stripe_payment_intent_id, pdf_url, sent_at, paid_at, payment_method, payment_reference, payment_notes, payment_receipt_paths, customer_note, line_items, payment_instructions_override, terms_override, policies_override, created_at, updated_at, deleted_at';
+  'id, tenant_id, job_id, project_id, customer_id, status, amount_cents, tax_cents, tax_inclusive, doc_type, stripe_invoice_id, stripe_payment_intent_id, pdf_url, sent_at, paid_at, payment_method, payment_reference, payment_notes, payment_receipt_paths, customer_note, line_items, payment_instructions_override, terms_override, policies_override, customer_view_mode, customer_view_mgmt_fee_inline, created_at, updated_at, deleted_at';
 
 /**
  * Re-export of the pure `invoiceTotalCents` helper.

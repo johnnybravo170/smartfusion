@@ -220,8 +220,9 @@ export default async function DashboardPage() {
           </span>
         </div>
         <div className="mt-1 text-xs text-[var(--muted-foreground)]">
-          {launchRollup.donePoints}/{launchRollup.totalPoints} pts · {launchRollup.blockerCardCount}{' '}
-          launch-blocker cards
+          {launchRollup.donePoints}/{launchRollup.totalPoints} pts ·{' '}
+          {launchRollup.remainingCardCount} of {launchRollup.blockerCardCount} launch-blocker cards
+          remaining
           {launchRollup.unsizedCards > 0 ? ` · ${launchRollup.unsizedCards} unsized` : ''}
         </div>
       </Link>

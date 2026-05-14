@@ -4,19 +4,14 @@
  * Sent from `henry@inbound.heyhenry.io` so the conversational voice
  * matches the address the operator forwarded to, AND so any reply lands
  * back at the inbound parser (inbound.heyhenry.io has the MX → Postmark).
+ *
+ * HTML body lives in `src/lib/email/templates/inbound-bounce.ts`.
  */
 
 import { sendEmail } from '@/lib/email/send';
+import { inboundBounceEmailHtml } from '@/lib/email/templates/inbound-bounce';
 
 const HENRY_FROM = 'Henry <henry@inbound.heyhenry.io>';
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 export async function sendUnknownSenderBounce(args: {
   to: string;
@@ -26,19 +21,10 @@ export async function sendUnknownSenderBounce(args: {
     ? args.originalSubject
     : `Re: ${args.originalSubject || '(no subject)'}`;
 
-  const safeSubject = escapeHtml(args.originalSubject || '(no subject)');
-
-  const html = `
-    <p>Hi,</p>
-    <p>I didn't recognise this sender address, so I haven't filed your forward
-    (subject: <em>${safeSubject}</em>).</p>
-    <p>Forward from the email address you signed up to HeyHenry with — that's
-    the only address I currently accept attachments from.</p>
-    <p>If you want a second address allowlisted, that's coming soon. Reply to
-    <a href="mailto:support@heyhenry.io">support@heyhenry.io</a> and we'll sort
-    it.</p>
-    <p>— Henry</p>
-  `.trim();
+  const html = inboundBounceEmailHtml({
+    originalSubject: args.originalSubject || '(no subject)',
+    fromAddress: args.to,
+  });
 
   const result = await sendEmail({
     to: args.to,

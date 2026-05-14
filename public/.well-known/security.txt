@@ -1,0 +1,16 @@
+# HeyHenry security disclosure policy
+#
+# This file follows RFC 9116 (https://datatracker.ietf.org/doc/html/rfc9116).
+# If you've found a vulnerability in app.heyhenry.io, the API, or any
+# HeyHenry-owned property, please get in touch using the contact below.
+# We aim to acknowledge within one business day and to remediate
+# critical issues as quickly as we can — typically within days.
+
+Contact: mailto:security@heyhenry.io
+Expires: 2027-05-13T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://app.heyhenry.io/.well-known/security.txt
+Policy: https://app.heyhenry.io/security
+# We don't run a paid bug bounty (yet). Coordinated disclosure with
+# credit on a public acknowledgements page is something we're happy
+# to do. Please give us a reasonable window before publishing.

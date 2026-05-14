@@ -17,11 +17,8 @@ import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { formatDate } from '@/lib/date/format';
 import type { InvoiceWithCustomer } from '@/lib/db/queries/invoices';
 import { invoiceTotalCents } from '@/lib/invoices/totals';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
-
-function formatCad(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 export function InvoiceTable({ invoices }: { invoices: InvoiceWithCustomer[] }) {
   const timezone = useTenantTimezone();
@@ -55,11 +52,11 @@ export function InvoiceTable({ invoices }: { invoices: InvoiceWithCustomer[] }) 
                   <p className="font-mono text-xs text-muted-foreground">#{inv.id.slice(0, 8)}</p>
                 </TableCell>
                 <TableCell className="text-right">
-                  <span className="font-medium">{formatCad(total)}</span>
+                  <span className="font-medium">{formatCurrency(total)}</span>
                   <p className="text-xs text-muted-foreground">
                     {inv.tax_inclusive
-                      ? `incl. ${formatCad(inv.tax_cents)} GST`
-                      : `${formatCad(inv.amount_cents)} + ${formatCad(inv.tax_cents)} GST`}
+                      ? `incl. ${formatCurrency(inv.tax_cents)} GST`
+                      : `${formatCurrency(inv.amount_cents)} + ${formatCurrency(inv.tax_cents)} GST`}
                   </p>
                 </TableCell>
                 <TableCell>

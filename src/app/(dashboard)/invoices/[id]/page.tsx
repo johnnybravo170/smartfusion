@@ -8,23 +8,22 @@ import { InvoiceLineItems } from '@/components/features/invoices/invoice-line-it
 import { InvoiceNote } from '@/components/features/invoices/invoice-note';
 import { InvoiceOverridesEditor } from '@/components/features/invoices/invoice-overrides-editor';
 import { InvoiceStatusBadge } from '@/components/features/invoices/invoice-status-badge';
+import { InvoiceViewModePreview } from '@/components/features/invoices/invoice-view-mode-preview';
 import { MissingGstNotice } from '@/components/features/invoices/missing-gst-notice';
 import { PrintButton } from '@/components/features/shared/print-button';
 import { DetailPageNav } from '@/components/layout/detail-page-nav';
 import { Button } from '@/components/ui/button';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import { formatDateTime } from '@/lib/date/format';
+import { loadInvoiceCustomerViewInputs } from '@/lib/db/queries/invoice-customer-view-inputs';
 import { getInvoice } from '@/lib/db/queries/invoices';
 import { getProjectCostBasisRollup } from '@/lib/db/queries/project-cost-basis';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import { getSignedUrls } from '@/lib/storage/photos';
 import { createClient } from '@/lib/supabase/server';
 import type { InvoiceStatus } from '@/lib/validators/invoice';
 import { duplicateInvoiceAction } from '@/server/actions/invoices';
-
-function formatCad(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 function shortId(id: string) {
   return id.slice(0, 8);
@@ -128,6 +127,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     }
   }
 
+  // Customer-view preview — only for draft, tax-exclusive invoices with a
+  // project. Tax-inclusive drafts encode customer total in amount_cents
+  // (different line_items semantics); the preview helper assumes
+  // tax-exclusive shape and would silently produce wrong totals.
+  const showViewPreview = isDraft && !taxInclusive && Boolean(invoice.project_id);
+  const viewPreviewInputs = showViewPreview
+    ? await loadInvoiceCustomerViewInputs(invoice.id)
+    : null;
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <DetailPageNav homeHref="/invoices" homeLabel="All invoices" />
@@ -149,31 +157,57 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         )}
       </header>
 
-      {/* Amount breakdown */}
-      <section className="rounded-xl border bg-card p-5">
-        <div className="flex flex-col gap-2">
-          {showSubtotalRow ? (
+      {/* Customer-view preview — drafts only */}
+      {viewPreviewInputs ? (
+        <InvoiceViewModePreview
+          invoiceId={invoice.id}
+          initialMode={invoice.customer_view_mode ?? viewPreviewInputs.projectDefaultMode}
+          initialMgmtFeeInline={invoice.customer_view_mgmt_fee_inline ?? false}
+          projectDefaultMode={viewPreviewInputs.projectDefaultMode}
+          inputs={{
+            projectName: viewPreviewInputs.projectName,
+            customerSummaryMd: viewPreviewInputs.customerSummaryMd,
+            costLines: viewPreviewInputs.costLines,
+            categories: viewPreviewInputs.categories,
+            priorBilledCents: viewPreviewInputs.priorBilledCents,
+            mgmtRate: viewPreviewInputs.mgmtRate,
+            isCostPlus: viewPreviewInputs.isCostPlus,
+            costPlusBreakdown: viewPreviewInputs.costPlusBreakdown,
+          }}
+          taxRate={taxCtx ? taxCtx.totalRate : 0.05}
+          taxLabel={taxLabel}
+        />
+      ) : null}
+
+      {/* Amount breakdown — suppressed on drafts while the preview surface
+       *  is showing, since the preview IS the breakdown there. Sent / paid
+       *  / void invoices always show the persisted breakdown. */}
+      {!viewPreviewInputs ? (
+        <section className="rounded-xl border bg-card p-5">
+          <div className="flex flex-col gap-2">
+            {showSubtotalRow ? (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span>{formatCurrency(subtotalCents)}</span>
+              </div>
+            ) : null}
+            <InvoiceLineItems invoiceId={invoice.id} lineItems={lineItems} isDraft={isDraft} />
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatCad(subtotalCents)}</span>
+              <span className="text-muted-foreground">{taxLabel}</span>
+              <span>{formatCurrency(invoice.tax_cents)}</span>
             </div>
-          ) : null}
-          <InvoiceLineItems invoiceId={invoice.id} lineItems={lineItems} isDraft={isDraft} />
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">{taxLabel}</span>
-            <span>{formatCad(invoice.tax_cents)}</span>
-          </div>
-          <div className="border-t pt-2">
-            <div className="flex items-center justify-between text-base font-semibold">
-              <span>Total</span>
-              <span>{formatCad(totalCents)}</span>
+            <div className="border-t pt-2">
+              <div className="flex items-center justify-between text-base font-semibold">
+                <span>Total</span>
+                <span>{formatCurrency(totalCents)}</span>
+              </div>
             </div>
+            {regParts.length > 0 ? (
+              <p className="mt-1 text-xs text-muted-foreground">{regParts.join('  ·  ')}</p>
+            ) : null}
           </div>
-          {regParts.length > 0 ? (
-            <p className="mt-1 text-xs text-muted-foreground">{regParts.join('  ·  ')}</p>
-          ) : null}
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       {/* Customer note */}
       <InvoiceNote invoiceId={invoice.id} note={invoice.customer_note} isDraft={isDraft} />

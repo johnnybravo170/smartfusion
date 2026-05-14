@@ -19,7 +19,7 @@ import { allTools } from '@/lib/ai/tools';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { clientRealtimeTools, toOpenAIRealtimeTools } from '@/lib/henry/openai-tools';
 
-const REALTIME_MODEL = 'gpt-realtime';
+const REALTIME_MODEL = process.env.HENRY_OPENAI_REALTIME_MODEL ?? 'gpt-realtime-2';
 
 export async function POST() {
   try {
@@ -93,7 +93,7 @@ async function tryMintOpenAI(
           audio: {
             input: {
               format: { type: 'audio/pcm', rate: 24000 },
-              transcription: { model: 'gpt-4o-transcribe' },
+              transcription: { model: 'gpt-4o-transcribe', language: 'en' },
               turn_detection: {
                 type: 'server_vad',
                 threshold: 0.5,

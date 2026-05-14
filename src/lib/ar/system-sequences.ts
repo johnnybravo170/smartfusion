@@ -179,15 +179,30 @@ export async function ensureQuoteFollowupSequence(tenantId: string): Promise<str
  * Defaults to **true** when no row exists (new tenants opt in by default).
  * Existing tenants are seeded to false in migration 0140 so their backlog
  * isn't auto-enrolled.
+ *
+ * Defensive: this lookup feeds a non-critical UI checkbox (the
+ * auto-followup default on the estimate preview). A transient DB error
+ * here should not crash the entire estimate preview — surface it as
+ * "the default opt-in" and let the operator override as needed. Sentry
+ * still captures the underlying error from the `try` block for triage.
  */
 export async function resolveTenantAutoFollowupEnabled(tenantId: string): Promise<boolean> {
-  const db = getDb();
-  const rows = await db.execute(
-    sql`SELECT data->>'quote_followup_enabled' AS v FROM public.tenant_prefs WHERE tenant_id = ${tenantId} AND namespace = 'automation' LIMIT 1`,
-  );
-  const value = (rows as unknown as Array<{ v: string | null }>)[0]?.v;
-  if (value === null || value === undefined) return true;
-  return value === 'true';
+  try {
+    const db = getDb();
+    const rows = await db.execute(
+      sql`SELECT data->>'quote_followup_enabled' AS v FROM public.tenant_prefs WHERE tenant_id = ${tenantId} AND namespace = 'automation' LIMIT 1`,
+    );
+    const value = (rows as unknown as Array<{ v: string | null }>)[0]?.v;
+    if (value === null || value === undefined) return true;
+    return value === 'true';
+  } catch (err) {
+    // Log but don't propagate — the caller is rendering a page, not
+    // making a billing decision. Worst case is the default-on checkbox
+    // shows opt-in when the tenant has explicitly opted out, which the
+    // operator will catch on the preview before sending.
+    console.error('resolveTenantAutoFollowupEnabled failed; defaulting to true', err);
+    return true;
+  }
 }
 
 /**

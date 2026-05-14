@@ -27,6 +27,7 @@
 import { Check, Pencil, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
+import { formatCurrency } from '@/lib/pricing/calculator';
 
 export type TaxSplitMode = 'auto' | 'ocr' | 'manual';
 
@@ -46,10 +47,6 @@ type Props = {
   onReset: () => void;
   disabled?: boolean;
 };
-
-function fmt(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 function pct(rate: number): string {
   return `${Math.round(rate * 1000) / 10}%`;
@@ -139,9 +136,10 @@ export function ExpenseTaxSplitChip(props: Props) {
     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
       <Check className="size-3 text-emerald-600" />
       <span>
-        Pre-tax <span className="font-medium text-foreground">{fmt(props.preTaxCents)}</span> +{' '}
+        Pre-tax{' '}
+        <span className="font-medium text-foreground">{formatCurrency(props.preTaxCents)}</span> +{' '}
         {pct(props.rate)} tax{' '}
-        <span className="font-medium text-foreground">{fmt(props.taxCents)}</span>
+        <span className="font-medium text-foreground">{formatCurrency(props.taxCents)}</span>
       </span>
       {props.mode === 'ocr' ? <span className="text-[10px] uppercase">from receipt</span> : null}
       {props.mode === 'manual' ? (

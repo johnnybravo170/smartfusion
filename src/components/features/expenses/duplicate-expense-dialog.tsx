@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useTenantTimezone } from '@/lib/auth/tenant-context';
+import { formatCurrency } from '@/lib/pricing/calculator';
 
 export type DuplicateExpense = {
   existing_id: string;
@@ -59,7 +60,7 @@ export function DuplicateExpenseDialog({ duplicate, onClose, onForceSave, busy }
               <>
                 You already logged{' '}
                 <span className="font-medium text-foreground">
-                  ${(duplicate.amount_cents / 100).toFixed(2)}
+                  {formatCurrency(duplicate.amount_cents)}
                 </span>{' '}
                 at <span className="font-medium text-foreground">{duplicate.vendor}</span> on{' '}
                 <span className="font-medium text-foreground">

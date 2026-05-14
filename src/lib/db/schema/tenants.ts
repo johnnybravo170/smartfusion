@@ -37,7 +37,7 @@ export const tenants = pgTable('tenants', {
   logoStoragePath: text('logo_storage_path'),
   gstNumber: text('gst_number'),
   wcbNumber: text('wcb_number'),
-  autoAssignCrew: boolean('auto_assign_crew').default(false).notNull(),
+  autoAssignCrew: boolean('auto_assign_crew').default(true).notNull(),
   requireMfaForAllMembers: boolean('require_mfa_for_all_members').default(false).notNull(),
   plan: text('plan').default('starter').notNull(),
   subscriptionStatus: text('subscription_status').default('trialing').notNull(),

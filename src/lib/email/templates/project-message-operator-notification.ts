@@ -5,6 +5,9 @@
  * feedback notification (-apple-system stack, 520px, emerald CTA).
  */
 
+import { escapeHtml, safeUrl } from '@/lib/email/escape';
+
+// TODO(email-shell): migrate to renderEmailShell on next touch
 export function projectMessageOperatorNotificationHtml(params: {
   customerName: string;
   projectName: string;
@@ -22,7 +25,7 @@ export function projectMessageOperatorNotificationHtml(params: {
     <p style="font-size:14px;color:#222;margin:0;white-space:pre-wrap;line-height:1.45;">${escapeHtml(params.body)}</p>
   </div>
   <p style="margin:20px 0 24px 0;">
-    <a href="${params.projectUrl}" style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;text-decoration:none;border-radius:6px;font-weight:500;">
+    <a href="${safeUrl(params.projectUrl)}" style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;text-decoration:none;border-radius:6px;font-weight:500;">
       Reply in HeyHenry
     </a>
   </p>
@@ -31,13 +34,4 @@ export function projectMessageOperatorNotificationHtml(params: {
   </p>
 </body>
 </html>`;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }

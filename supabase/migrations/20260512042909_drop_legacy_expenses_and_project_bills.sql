@@ -18,27 +18,30 @@
 -- recover the legacy tables, restore from a point-in-time backup taken
 -- before this migration runs.
 
--- Sanity: confirm `project_costs` still has at least as many rows as
--- the legacy `expenses` table (the backfill is supposed to have
--- copied them all). On a fresh DB (CI, a new dev environment) both
--- tables are empty — the drop is then a no-op and we let it proceed.
--- The hard floor of 300 was specific to the prod row count at PR #6
--- verification time; it doesn't apply to fresh DBs.
+-- Sanity: confirm `project_costs` still has the union of rows that the
+-- legacy tables held immediately before the drop. Aborts the migration
+-- only if there's actual data we would lose — i.e. legacy tables hold
+-- rows but project_costs doesn't have at least as many. A fresh DB
+-- (CI, local dev, brand-new tenant install) has 0 rows in all three,
+-- which is trivially safe to drop.
 DO $$
 DECLARE
-  expenses_count BIGINT;
-  costs_count    BIGINT;
+  expenses_count      BIGINT;
+  project_bills_count BIGINT;
+  legacy_count        BIGINT;
+  costs_count         BIGINT;
 BEGIN
-  SELECT COUNT(*) INTO expenses_count FROM public.expenses;
-  SELECT COUNT(*) INTO costs_count    FROM public.project_costs;
+  SELECT COUNT(*) INTO expenses_count      FROM public.expenses;
+  SELECT COUNT(*) INTO project_bills_count FROM public.project_bills;
+  SELECT COUNT(*) INTO costs_count         FROM public.project_costs;
+  legacy_count := expenses_count + project_bills_count;
 
-  -- Fresh DB / never-used environment: nothing to lose, allow the drop.
-  IF expenses_count = 0 THEN
-    RAISE NOTICE 'expenses is empty; legacy drop is a no-op on this DB.';
-  ELSIF costs_count < expenses_count THEN
+  -- Empty legacy → empty project_costs is fine (fresh DB). The dangerous
+  -- case is "legacy has rows, but the backfill didn't replicate them."
+  IF legacy_count > 0 AND costs_count < legacy_count THEN
     RAISE EXCEPTION
-      'project_costs has % rows but expenses has % rows — backfill missing. Run the project_costs backfill migration first.',
-      costs_count, expenses_count;
+      'project_costs has % rows but legacy expenses+project_bills holds % — refusing to drop. The backfill migration must complete first.',
+      costs_count, legacy_count;
   END IF;
 END $$;
 

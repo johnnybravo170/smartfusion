@@ -10,6 +10,7 @@ import { revalidatePath } from 'next/cache';
 import { HUMAN_VOICE_RULES } from '@/lib/ai/human-voice';
 import { gateway, isAiError } from '@/lib/ai-gateway';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { createClient } from '@/lib/supabase/server';
 
 export type NoteResult = { ok: true; id: string } | { ok: false; error: string };
@@ -149,7 +150,7 @@ export async function askHenryAboutProjectAction(input: {
         ? lines
             .map(
               (l) =>
-                `      • ${l.label} — ${l.qty} ${l.unit} @ $${(l.unit_price_cents / 100).toFixed(2)} = $${(l.line_price_cents / 100).toFixed(2)}${l.notes ? ` (${l.notes.slice(0, 80)})` : ''}`,
+                `      • ${l.label} — ${l.qty} ${l.unit} @ ${formatCurrency(l.unit_price_cents)} = ${formatCurrency(l.line_price_cents)}${l.notes ? ` (${l.notes.slice(0, 80)})` : ''}`,
             )
             .join('\n')
         : '      (no lines)';

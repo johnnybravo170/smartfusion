@@ -155,15 +155,17 @@ export async function confirmBankMatchesAction(
 
   // 3c. Expenses don't have a status; just the bank_tx linkage below.
 
-  // 4. Stamp bank_transactions.
+  // 4. Stamp bank_transactions. Receipts + vendor bills both live on
+  //    project_costs now, so the two legacy columns (matched_expense_id,
+  //    matched_bill_id) collapse into matched_cost_id; the candidate's
+  //    `kind` discriminator survives indirectly via
+  //    project_costs.source_type for any reader that needs it.
   const nowIso = new Date().toISOString();
   for (const r of resolved) {
     const matchedField =
       r.candidate.kind === 'invoice'
         ? { matched_invoice_id: r.candidate.id }
-        : r.candidate.kind === 'bill'
-          ? { matched_bill_id: r.candidate.id }
-          : { matched_expense_id: r.candidate.id };
+        : { matched_cost_id: r.candidate.id };
     const { error } = await supabase
       .from('bank_transactions')
       .update({

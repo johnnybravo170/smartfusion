@@ -7,11 +7,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { InvoiceLineItem } from '@/lib/db/queries/invoices';
+import { formatCurrency } from '@/lib/pricing/calculator';
 import { addInvoiceLineItemAction, removeInvoiceLineItemAction } from '@/server/actions/invoices';
-
-function formatCad(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 export function InvoiceLineItems({
   invoiceId,
@@ -90,12 +87,12 @@ export function InvoiceLineItems({
                   </button>
                 )}
               </div>
-              <span>{formatCad(item.total_cents)}</span>
+              <span>{formatCurrency(item.total_cents)}</span>
             </div>
           ))}
           <div className="flex items-center justify-between border-t pt-1 text-sm font-medium">
             <span className="text-muted-foreground">Add-ons subtotal</span>
-            <span>{formatCad(lineItemsTotal)}</span>
+            <span>{formatCurrency(lineItemsTotal)}</span>
           </div>
         </div>
       )}

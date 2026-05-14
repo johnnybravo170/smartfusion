@@ -6,8 +6,8 @@
  * server context. Used by the Gemini Live WebSocket proxy.
  */
 
+import type { IncomingMessage } from 'node:http';
 import { createServerClient } from '@supabase/ssr';
-import type { IncomingMessage } from 'http';
 import type { CurrentTenant } from '@/lib/auth/helpers';
 
 function parseCookies(header: string | undefined): Record<string, string> {
@@ -50,7 +50,7 @@ export async function getCurrentTenantFromReq(req: IncomingMessage): Promise<Cur
   const { data: member } = await supabase
     .from('tenant_members')
     .select(
-      'id, role, phone, phone_verified_at, tenants(id, name, slug, timezone, vertical, plan, subscription_status, trial_ends_at)',
+      'id, role, phone, phone_verified_at, tenants(id, name, slug, timezone, vertical, plan, subscription_status, trial_ends_at, deleted_at)',
     )
     .eq('user_id', user.id)
     .eq('is_active_for_user', true)
@@ -71,6 +71,7 @@ export async function getCurrentTenantFromReq(req: IncomingMessage): Promise<Cur
     subscriptionStatus: (tenant.subscription_status ??
       'trialing') as CurrentTenant['subscriptionStatus'],
     trialEndsAt: (tenant.trial_ends_at as string | null) ?? null,
+    deletedAt: (tenant.deleted_at as string | null) ?? null,
     member: {
       id: member.id,
       role: member.role,

@@ -143,7 +143,11 @@ export async function GET(req: NextRequest) {
       const skipped = result.skipped ?? 0;
       const failed = result.failed ?? 0;
       await finishAgentRun(run.id, {
-        outcome: failed > 0 ? 'failure' : drafted === 0 ? 'skipped' : 'success',
+        // Per-item failures are surfaced in the summary; only mark the whole
+        // run failed if nothing was drafted AND something failed (= total
+        // collapse). A noisy day with 5 drafts + 9 per-item failures is
+        // still a successful run.
+        outcome: drafted > 0 ? 'success' : failed > 0 ? 'failure' : 'skipped',
         items_scanned: result.candidates ?? 0,
         items_acted: drafted,
         summary: `${drafted} drafted, ${skipped} skipped${failed ? `, ${failed} failed` : ''}`,

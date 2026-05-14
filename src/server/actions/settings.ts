@@ -7,7 +7,8 @@
  */
 
 import { revalidatePath } from 'next/cache';
-import { getCurrentTenant } from '@/lib/auth/helpers';
+import { audit } from '@/lib/audit';
+import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
 import { slugSchema } from '@/lib/validators/lead';
 
@@ -69,6 +70,13 @@ export async function updateTenantSlugAction(
     return { ok: false, error: 'This URL is already taken. Try a different one.' };
   }
 
+  // Read prior slug for the audit trail BEFORE we overwrite it.
+  const { data: prior } = await supabase
+    .from('tenants')
+    .select('slug')
+    .eq('id', tenant.id)
+    .single();
+
   const { error } = await supabase
     .from('tenants')
     .update({ slug: parsed.data, updated_at: new Date().toISOString() })
@@ -77,6 +85,16 @@ export async function updateTenantSlugAction(
   if (error) {
     return { ok: false, error: error.message };
   }
+
+  const user = await getCurrentUser();
+  await audit({
+    tenantId: tenant.id,
+    userId: user?.id ?? null,
+    action: 'tenant.slug_updated',
+    resourceType: 'tenant',
+    resourceId: tenant.id,
+    metadata: { from: (prior?.slug as string | null) ?? null, to: parsed.data },
+  });
 
   revalidatePath('/settings');
   return { ok: true };

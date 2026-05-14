@@ -20,14 +20,28 @@
 
 import { canadianTax } from '@/lib/providers/tax/canadian';
 import type { createAdminClient } from '@/lib/supabase/admin';
+import type { CustomerViewMode } from '@/lib/validators/project-customer-view';
 
 export type PortalBudgetCategory = {
   id: string;
   name: string;
   display_order: number;
+  /** Customer-facing section this category rolls up into when view mode = 'sections'. */
+  customer_section_id: string | null;
   /** Original estimate + approved CO impact attributed to this bucket. */
   total_cents: number;
   /** Actual spend (labor + expenses + bills) for this bucket. */
+  spent_cents: number;
+};
+
+export type PortalBudgetSection = {
+  id: string;
+  name: string;
+  description_md: string | null;
+  sort_order: number;
+  /** Sum of total_cents for assigned categories. */
+  total_cents: number;
+  /** Sum of spent_cents for assigned categories. */
   spent_cents: number;
 };
 
@@ -53,6 +67,18 @@ export type PortalBudgetSummary = {
   customer_contract_total_cents: number;
   /** Tax label like "GST" or "HST" or "GST + HST" for the contract-total footnote. */
   tax_label: string;
+  /**
+   * How much of the breakdown the customer sees. Set on the project
+   * via the Portal tab's "Customer view" picker; defaults to 'detailed'.
+   * Variance display is derived from this — lump_sum and sections
+   * suppress per-bucket "spent so far" bars; categories and detailed
+   * show them. (Decision 73775c8e in ops.)
+   */
+  customer_view_mode: CustomerViewMode;
+  /** Optional project-level narrative — especially load-bearing in lump_sum mode. */
+  customer_summary_md: string | null;
+  /** Customer-facing groupings with category-rollup totals. Empty when none defined. */
+  sections: PortalBudgetSection[];
 };
 
 export async function getPortalBudgetSummary(
@@ -67,10 +93,11 @@ export async function getPortalBudgetSummary(
     { data: cos },
     drawsResult,
     { data: project },
+    { data: sectionRows },
   ] = await Promise.all([
     admin
       .from('project_budget_categories')
-      .select('id, name, estimate_cents, display_order, is_visible_in_report')
+      .select('id, name, estimate_cents, display_order, is_visible_in_report, customer_section_id')
       .eq('project_id', projectId)
       .order('display_order', { ascending: true })
       .order('name', { ascending: true }),
@@ -107,9 +134,17 @@ export async function getPortalBudgetSummary(
       .in('status', ['sent', 'paid']),
     admin
       .from('projects')
-      .select('tenant_id, management_fee_rate, customers:customer_id (tax_exempt)')
+      .select(
+        'tenant_id, management_fee_rate, customer_view_mode, customer_summary_md, customers:customer_id (tax_exempt)',
+      )
       .eq('id', projectId)
       .maybeSingle(),
+    admin
+      .from('project_customer_sections')
+      .select('id, name, description_md, sort_order')
+      .eq('project_id', projectId)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true }),
   ]);
 
   const sumByCategory = (
@@ -174,6 +209,7 @@ export async function getPortalBudgetSummary(
     estimate_cents: number;
     display_order: number;
     is_visible_in_report: boolean;
+    customer_section_id: string | null;
   };
   const allRows = (categories ?? []) as CategoryRow[];
 
@@ -194,6 +230,7 @@ export async function getPortalBudgetSummary(
         id: cat.id,
         name: cat.name,
         display_order: cat.display_order,
+        customer_section_id: cat.customer_section_id,
         total_cents: total,
         spent_cents: spent,
       });
@@ -204,6 +241,29 @@ export async function getPortalBudgetSummary(
       projectTotalFromBuckets += total;
     }
   }
+
+  // Roll visible categories up into customer-facing sections. Categories
+  // without a section assignment are dropped from the sections list (the
+  // renderer can still show them in non-sections modes from `categories`).
+  type SectionRow = {
+    id: string;
+    name: string;
+    description_md: string | null;
+    sort_order: number;
+  };
+  const sectionsList: PortalBudgetSection[] = ((sectionRows ?? []) as SectionRow[]).map((s) => {
+    const inSection = visibleCategories.filter((c) => c.customer_section_id === s.id);
+    const sectionTotal = inSection.reduce((acc, c) => acc + c.total_cents, 0);
+    const sectionSpent = inSection.reduce((acc, c) => acc + c.spent_cents, 0);
+    return {
+      id: s.id,
+      name: s.name,
+      description_md: s.description_md,
+      sort_order: s.sort_order,
+      total_cents: sectionTotal,
+      spent_cents: sectionSpent,
+    };
+  });
 
   // Draws — sent + paid sums on doc_type='draw' invoices for this project.
   let drawsInvoiced = 0;
@@ -249,6 +309,10 @@ export async function getPortalBudgetSummary(
   const beforeTax = Math.round(projectTotal * (1 + mgmtRate));
   const customerContractTotal = Math.round(beforeTax * (1 + taxRate));
 
+  const viewMode = ((project?.customer_view_mode as string | null | undefined) ??
+    'detailed') as CustomerViewMode;
+  const summaryMd = (project?.customer_summary_md as string | null | undefined) ?? null;
+
   return {
     categories: visibleCategories,
     project_total_cents: projectTotal,
@@ -258,6 +322,9 @@ export async function getPortalBudgetSummary(
     has_draws: hasDraws,
     customer_contract_total_cents: customerContractTotal,
     tax_label: taxLabel || 'tax',
+    customer_view_mode: viewMode,
+    customer_summary_md: summaryMd,
+    sections: sectionsList,
   };
 }
 

@@ -118,6 +118,8 @@ const ARTIFACT_KINDS = [
   'spec_drawing_pdf',
   'receipt',
   'inspiration_photo',
+  'customer_message',
+  'text_body',
   'other',
 ] as const;
 export type IntakeArtifactKind = (typeof ARTIFACT_KINDS)[number];
@@ -226,11 +228,18 @@ const ARTIFACT_CLASSIFY_PROMPT = `You're inspecting artifacts the operator dropp
 - screenshot (text-thread, email, or messaging-app capture)
 - sub_quote_pdf (PDF quote from a sub-trade)
 - spec_drawing_pdf (architectural drawing, floor plan, or technical spec PDF)
-- receipt (invoice or receipt for materials / supplies)
+- receipt (invoice or receipt for materials / supplies — includes screenshots of receipts, not just PDFs)
 - inspiration_photo (Pinterest-style aesthetic shot — what the customer wants it to look like)
+- customer_message (email or text FROM a customer that the operator is forwarding — scope question, complaint, change request, etc.)
+- text_body (the body of a forwarded email itself, as text — never from an attachment, only from the email envelope)
 - other (when nothing fits)
 
 Also produce a short label (max 80 chars) describing what's IN the artifact specifically. Examples: "Water-damaged hardwood near the back door", "Text thread — kitchen reno scope", "Sub-trade quote — electrical, 4 lines".
+
+CONTEXT HINTS (especially when artifacts arrive via forwarded email):
+- The email subject and the leading paragraph of the body are USUALLY the operator's intent hint — "Fwd: Receipt for Glenwood" strongly suggests the attachment is a receipt for the Glenwood project. Treat as a possible-intent signal, not a directive: if the subject says "receipt" but the attachment is clearly a permit, classify as spec_drawing_pdf and note the discrepancy in the label.
+- A text_body artifact is the email's text content. It informs the OTHER artifacts' classification but is itself classified as text_body.
+- Screenshots-of-receipts: the artifact is visually a screenshot (PNG/JPG), but its CONTENT is a receipt — classify as receipt, not screenshot. Same logic for screenshots of permits (spec_drawing_pdf), text threads from customers (customer_message if the customer is the speaker), etc. Classify by what it IS, not by how it was captured.
 
 Return one row per artifact. The "index" must match the artifact's position in the order they were attached.`;
 

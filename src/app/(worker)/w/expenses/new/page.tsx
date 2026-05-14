@@ -25,7 +25,9 @@ export default async function WorkerLogExpensePage() {
 
   const [projects, taxCtx] = await Promise.all([
     listWorkerProjectsWithBudgetCategories(tenant.id, profile.id),
-    canadianTax.getCustomerFacingContext(tenant.id),
+    // Expense entry needs the full provincial rate (PST included) to match
+    // real receipts — internal accounting, not a customer-facing total.
+    canadianTax.getContext(tenant.id),
   ]);
 
   return (

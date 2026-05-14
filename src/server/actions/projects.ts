@@ -9,7 +9,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { getCurrentTenant } from '@/lib/auth/helpers';
+import { audit } from '@/lib/audit';
+import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
 import { createClient } from '@/lib/supabase/server';
 import {
   emptyToNull,
@@ -366,6 +367,16 @@ export async function transitionLifecycleStageAction(input: {
     body: `Project "${current.name}" moved from ${lifecycleStageLabels[oldStage]} to ${lifecycleStageLabels[newStage]}.`,
     related_type: 'project',
     related_id: parsed.data.id,
+  });
+
+  const user = await getCurrentUser();
+  await audit({
+    tenantId: tenant.id,
+    userId: user?.id ?? null,
+    action: 'project.lifecycle_transitioned',
+    resourceType: 'project',
+    resourceId: parsed.data.id,
+    metadata: { from: oldStage, to: newStage },
   });
 
   revalidatePath('/projects');

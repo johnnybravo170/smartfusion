@@ -36,7 +36,8 @@ export default async function NewQuotePage({
   const [customers, catalog, taxCtx] = await Promise.all([
     listCustomers({ limit: 500 }),
     listMapQuoteCatalog(),
-    canadianTax.getContext(tenant.id),
+    // Customer-facing: the rate here must match the total the customer signs.
+    canadianTax.getCustomerFacingContext(tenant.id),
   ]);
 
   return (
