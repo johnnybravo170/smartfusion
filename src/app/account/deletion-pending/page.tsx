@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { DeletionPendingPanel } from '@/components/features/account/deletion-pending-panel';
 import { getCurrentTenant, getCurrentUser } from '@/lib/auth/helpers';
+import { formatDate } from '@/lib/date/format';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -31,12 +32,21 @@ export default async function DeletionPendingPage() {
     .limit(1)
     .maybeSingle();
 
+  const requestedAt = (request?.requested_at as string | undefined) ?? tenant.deletedAt;
+  const effectiveAt = (request?.effective_at as string | undefined) ?? null;
+  const daysRemaining = effectiveAt
+    ? Math.max(0, Math.ceil((new Date(effectiveAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+    : null;
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <DeletionPendingPanel
         businessName={tenant.name}
-        requestedAt={(request?.requested_at as string | undefined) ?? tenant.deletedAt}
-        effectiveAt={(request?.effective_at as string | undefined) ?? null}
+        requestedAtDisplay={formatDate(requestedAt, { timezone: tenant.timezone, style: 'long' })}
+        effectiveAtDisplay={
+          effectiveAt ? formatDate(effectiveAt, { timezone: tenant.timezone, style: 'long' }) : null
+        }
+        daysRemaining={daysRemaining}
         isOwner={tenant.member.role === 'owner'}
       />
     </div>
