@@ -10,20 +10,18 @@ import { abortTenantDeletionAction } from '@/server/actions/tenant-deletion';
 
 export function DeletionPendingPanel({
   businessName,
-  requestedAt,
-  effectiveAt,
+  requestedAtDisplay,
+  effectiveAtDisplay,
+  daysRemaining,
   isOwner,
 }: {
   businessName: string;
-  requestedAt: string;
-  effectiveAt: string | null;
+  requestedAtDisplay: string;
+  effectiveAtDisplay: string | null;
+  daysRemaining: number | null;
   isOwner: boolean;
 }) {
   const [pending, startTransition] = useTransition();
-
-  const daysRemaining = effectiveAt
-    ? Math.max(0, Math.ceil((new Date(effectiveAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
-    : null;
 
   function handleAbort() {
     startTransition(async () => {
@@ -66,19 +64,8 @@ export function DeletionPendingPanel({
                 : 'Reversibility window active'}
             </p>
             <p className="text-muted-foreground">
-              Requested on{' '}
-              {new Date(requestedAt).toLocaleDateString(undefined, {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              })}
-              {effectiveAt
-                ? `. Hard-deletes after ${new Date(effectiveAt).toLocaleDateString(undefined, {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}.`
-                : '.'}
+              Requested on {requestedAtDisplay}
+              {effectiveAtDisplay ? `. Hard-deletes after ${effectiveAtDisplay}.` : '.'}
             </p>
           </div>
         </div>
