@@ -36,7 +36,5 @@ export default async function InboxLandingPage({
     redirect('/inbox/todos');
   }
 
-  // TODO(inbox-v2): once `/inbox/intake` ships in Phase C, change this to
-  // redirect there instead — that's the most active surface for ops sessions.
-  redirect('/inbox/todos');
+  redirect('/inbox/intake');
 }
