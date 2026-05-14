@@ -1,166 +1,42 @@
 /**
- * Inbox — Todos + Work log.
+ * Inbox landing — redirects to the most active sub-tab.
  *
- * Two-tab page driven by URL state: `?tab=todos` or `?tab=worklog`.
- * The server component fetches counts for both tabs (so the labels render
- * with numbers) and the list data for whichever tab is active. Search +
- * filter params only apply to the worklog tab but stay in the URL so
- * deep links work.
+ * The inbox is now path-based (Intake / Todos / Work log are real
+ * routes under `/inbox/*`). Anyone landing on bare `/inbox` is sent
+ * to `/inbox/intake` since that's the most active surface for
+ * everyday operator sessions.
  *
- * Spec: PHASE_1_PLAN.md §8 Track E.
+ * Old query-param state (`?tab=worklog`, etc) is honoured for one
+ * cycle: routes through to the corresponding sub-route so existing
+ * bookmarks don't break.
  */
 
-import { Mail } from 'lucide-react';
-import Link from 'next/link';
-import { AddNoteDialog } from '@/components/features/inbox/add-note-dialog';
-import { InboxTabs } from '@/components/features/inbox/inbox-tabs';
-import { TodoEmptyState } from '@/components/features/inbox/todo-empty-state';
-import { TodoForm } from '@/components/features/inbox/todo-form';
-import { TodoList } from '@/components/features/inbox/todo-list';
-import { WorklogFilters } from '@/components/features/inbox/worklog-filters';
-import { WorklogList } from '@/components/features/inbox/worklog-list';
-import { getCurrentTenant } from '@/lib/auth/helpers';
-import { countTodos, listTodos } from '@/lib/db/queries/todos';
-import { countWorklog, listWorklog, searchWorklog } from '@/lib/db/queries/worklog';
-import {
-  type WorklogEntryType,
-  type WorklogRelatedType,
-  worklogEntryTypes,
-  worklogRelatedTypes,
-} from '@/lib/validators/worklog';
+import { redirect } from 'next/navigation';
 
 type RawSearchParams = Record<string, string | string[] | undefined>;
 
-function parseString(value: string | string[] | undefined): string {
-  if (typeof value !== 'string') return '';
-  return value.trim();
-}
-
-function parseEntryType(value: string | string[] | undefined): WorklogEntryType | undefined {
-  if (typeof value !== 'string') return undefined;
-  return (worklogEntryTypes as readonly string[]).includes(value)
-    ? (value as WorklogEntryType)
-    : undefined;
-}
-
-function parseRelatedType(value: string | string[] | undefined): WorklogRelatedType | undefined {
-  if (typeof value !== 'string') return undefined;
-  return (worklogRelatedTypes as readonly string[]).includes(value)
-    ? (value as WorklogRelatedType)
-    : undefined;
-}
-
-function parseTab(value: string | string[] | undefined): 'todos' | 'worklog' {
-  if (value === 'worklog') return 'worklog';
-  return 'todos';
-}
-
-export const metadata = {
-  title: 'Inbox — HeyHenry',
-};
-
-export default async function InboxPage({
+export default async function InboxLandingPage({
   searchParams,
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
   const sp = await searchParams;
-  const tab = parseTab(sp.tab);
-  const query = parseString(sp.q);
-  const entryType = parseEntryType(sp.entry_type);
-  const relatedType = parseRelatedType(sp.related_type);
+  const tab = typeof sp.tab === 'string' ? sp.tab : null;
 
-  const tenant = await getCurrentTenant();
-  const timezone = tenant?.timezone || 'America/Vancouver';
-
-  // Always fetch todo + worklog counts so the tab labels are accurate.
-  const [todos, todoCount, worklogCountAll, inboundReview] = await Promise.all([
-    listTodos({ limit: 200 }),
-    countTodos(),
-    countWorklog(),
-    tenant
-      ? (await import('@/lib/supabase/server'))
-          .createClient()
-          .then((c) =>
-            c
-              .from('inbound_emails')
-              .select('id', { count: 'exact', head: true })
-              .eq('tenant_id', tenant.id)
-              .in('status', ['needs_review', 'pending', 'processing', 'error']),
-          )
-          .then((r) => r.count ?? 0)
-      : Promise.resolve(0),
-  ]);
-
-  // Work-log entries: only fetched when the tab is active (tiny optimisation;
-  // the count is cheap so we always load it).
-  let worklogEntries: Awaited<ReturnType<typeof listWorklog>> = [];
   if (tab === 'worklog') {
-    if (query) {
-      worklogEntries = await searchWorklog(query, 100);
-      // Apply entry_type / related_type filters client-side for the search
-      // path — FTS already narrowed the set.
-      if (entryType) worklogEntries = worklogEntries.filter((e) => e.entry_type === entryType);
-      if (relatedType)
-        worklogEntries = worklogEntries.filter((e) => e.related_type === relatedType);
-    } else {
-      worklogEntries = await listWorklog({
-        entry_type: entryType,
-        related_type: relatedType,
-        limit: 100,
-      });
+    const params = new URLSearchParams();
+    for (const k of ['q', 'entry_type', 'related_type'] as const) {
+      const v = sp[k];
+      if (typeof v === 'string') params.set(k, v);
     }
+    const qs = params.toString();
+    redirect(qs ? `/inbox/worklog?${qs}` : '/inbox/worklog');
+  }
+  if (tab === 'todos') {
+    redirect('/inbox/todos');
   }
 
-  return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Inbox</h1>
-          <p className="text-sm text-muted-foreground">Your working memory and task list.</p>
-        </div>
-        <Link
-          href="/inbox/email"
-          className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm hover:bg-muted/50"
-        >
-          <Mail className="size-4" />
-          <span>Email inbox</span>
-          {inboundReview > 0 && (
-            <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs font-medium">
-              {inboundReview}
-            </span>
-          )}
-        </Link>
-      </header>
-
-      <InboxTabs
-        active={tab}
-        todoCount={todoCount}
-        worklogCount={worklogCountAll}
-        todosContent={
-          <>
-            <TodoForm />
-            {todos.length === 0 ? <TodoEmptyState /> : <TodoList todos={todos} />}
-          </>
-        }
-        worklogContent={
-          <>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <WorklogFilters
-                defaultQuery={query}
-                defaultEntryType={entryType}
-                defaultRelatedType={relatedType}
-              />
-              <AddNoteDialog />
-            </div>
-            <WorklogList
-              entries={worklogEntries}
-              highlight={query || undefined}
-              timezone={timezone}
-            />
-          </>
-        }
-      />
-    </div>
-  );
+  // TODO(inbox-v2): once `/inbox/intake` ships in Phase C, change this to
+  // redirect there instead — that's the most active surface for ops sessions.
+  redirect('/inbox/todos');
 }
