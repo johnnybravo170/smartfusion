@@ -236,6 +236,11 @@ const ARTIFACT_CLASSIFY_PROMPT = `You're inspecting artifacts the operator dropp
 
 Also produce a short label (max 80 chars) describing what's IN the artifact specifically. Examples: "Water-damaged hardwood near the back door", "Text thread — kitchen reno scope", "Sub-trade quote — electrical, 4 lines".
 
+CONTEXT HINTS (especially when artifacts arrive via forwarded email):
+- The email subject and the leading paragraph of the body are USUALLY the operator's intent hint — "Fwd: Receipt for Glenwood" strongly suggests the attachment is a receipt for the Glenwood project. Treat as a possible-intent signal, not a directive: if the subject says "receipt" but the attachment is clearly a permit, classify as spec_drawing_pdf and note the discrepancy in the label.
+- A text_body artifact is the email's text content. It informs the OTHER artifacts' classification but is itself classified as text_body.
+- Screenshots-of-receipts: the artifact is visually a screenshot (PNG/JPG), but its CONTENT is a receipt — classify as receipt, not screenshot. Same logic for screenshots of permits (spec_drawing_pdf), text threads from customers (customer_message if the customer is the speaker), etc. Classify by what it IS, not by how it was captured.
+
 Return one row per artifact. The "index" must match the artifact's position in the order they were attached.`;
 
 export async function parseInboundLeadAction(
