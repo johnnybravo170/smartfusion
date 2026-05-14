@@ -12,12 +12,14 @@
 import { Mail } from 'lucide-react';
 import { IntakeFilters } from '@/components/features/inbox/intake-filters';
 import { IntakeRow } from '@/components/features/inbox/intake-row';
+import { IntakeRowActions } from '@/components/features/inbox/intake-row-actions';
 import { getCurrentTenant } from '@/lib/auth/helpers';
 import {
   type IntakeDisposition,
   type IntakeSource,
   listInboxIntake,
 } from '@/lib/db/queries/intake-drafts';
+import { createClient } from '@/lib/supabase/server';
 
 const VALID_SOURCES: readonly IntakeSource[] = [
   'email',
@@ -65,12 +67,26 @@ export default async function InboxIntakePage({
     return <p className="text-sm text-muted-foreground">Not signed in.</p>;
   }
 
-  const rows = await listInboxIntake({
-    source,
-    disposition,
-    search: search || undefined,
-    projectId,
-  });
+  const supabase = await createClient();
+  const [rows, projectsRaw] = await Promise.all([
+    listInboxIntake({
+      source,
+      disposition,
+      search: search || undefined,
+      projectId,
+    }),
+    supabase
+      .from('projects')
+      .select('id, name')
+      .eq('tenant_id', tenant.id)
+      .is('deleted_at', null)
+      .in('lifecycle_stage', ['planning', 'awaiting_approval', 'active'])
+      .order('name'),
+  ]);
+  const projects = (projectsRaw.data ?? []).map((p) => ({
+    id: p.id as string,
+    name: p.name as string,
+  }));
 
   const showForwardCallout = !source || source === 'email';
 
@@ -104,7 +120,11 @@ export default async function InboxIntakePage({
       ) : (
         <div className="space-y-2">
           {rows.map((row) => (
-            <IntakeRow key={row.id} row={row} />
+            <IntakeRow
+              key={row.id}
+              row={row}
+              actions={<IntakeRowActions row={row} projects={projects} />}
+            />
           ))}
         </div>
       )}

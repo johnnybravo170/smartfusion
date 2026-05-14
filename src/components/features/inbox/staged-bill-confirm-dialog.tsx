@@ -1,14 +1,13 @@
 'use client';
 
 /**
- * Confirm dialog for a vendor bill staged from a forwarded email.
+ * Confirm dialog for a vendor bill staged in the universal inbox.
  *
- * Pre-fills from `email.extracted` (the AI-parsed bill JSON), lets the
- * operator edit anything that looks off, and writes a project_bills row +
- * links the inbound_emails row on save.
- *
- * Mirrors SubQuoteForm's shape but without the allocation editor — bills
- * are single-category at most, no splitting.
+ * Pre-fills from a hint (V1 used `email.extracted`; V2 passes through the
+ * existing prop until per-kind extraction lands in V3), lets the operator
+ * edit anything that looks off, and calls applyIntakeIntentAction so a
+ * project_costs row is inserted and the intake_drafts row is stamped
+ * applied + linked to the new destination.
  */
 
 import { useEffect, useState, useTransition } from 'react';
@@ -33,7 +32,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { useTenantTimezone } from '@/lib/auth/tenant-context';
 import { createClient } from '@/lib/supabase/client';
-import { confirmStagedBillAction } from '@/server/actions/inbound-email';
+import { applyIntakeIntentAction } from '@/server/actions/inbox-intake';
 
 export type StagedBillExtracted = {
   vendor?: string;
@@ -66,7 +65,7 @@ function todayISO(tz: string): string {
 export function StagedBillConfirmDialog({
   open,
   onOpenChange,
-  emailId,
+  draftId,
   extracted,
   projects,
   defaultProjectId,
@@ -74,7 +73,8 @@ export function StagedBillConfirmDialog({
 }: {
   open: boolean;
   onOpenChange: (next: boolean) => void;
-  emailId: string;
+  /** intake_drafts.id — V2 universal apply path. */
+  draftId: string;
   extracted: StagedBillExtracted | null;
   projects: ProjectOption[];
   /** Pre-selected from project_match; operator can override. */
@@ -136,16 +136,19 @@ export function StagedBillConfirmDialog({
     }
 
     startTransition(async () => {
-      const result = await confirmStagedBillAction({
-        emailId,
+      const result = await applyIntakeIntentAction({
+        draftId,
+        intent: 'vendor_bill',
         projectId,
-        vendor: vendor.trim(),
-        vendorGstNumber: vendorGst.trim() || undefined,
-        billDate,
-        amountCents,
-        gstCents: dollarsToCents(gst),
-        description: description.trim() || undefined,
-        budgetCategoryId: categoryId || undefined,
+        fields: {
+          vendor: vendor.trim(),
+          vendorGstNumber: vendorGst.trim() || undefined,
+          billDate,
+          amountCents,
+          gstCents: dollarsToCents(gst),
+          description: description.trim() || undefined,
+          budgetCategoryId: categoryId || undefined,
+        },
       });
       if (!result.ok) {
         toast.error(result.error);

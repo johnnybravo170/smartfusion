@@ -117,12 +117,19 @@ export type InboxIntakeRow = {
   status: IntakeDraftStatus;
   customer_name: string | null;
   primary_kind: IntakeArtifactKind | null;
+  /** First artifact path (in intake-audio bucket). Used by per-intent
+   * apply dialogs that need to copy the file into a destination bucket. */
+  primary_artifact_path: string | null;
+  primary_artifact_mime: string | null;
+  primary_artifact_bytes: number | null;
   thumbnail_url: string | null;
   artifact_count: number;
   email_subject: string | null;
   email_from: string | null;
   accepted_project_id: string | null;
   recognized_customer_id: string | null;
+  applied_destination_kind: string | null;
+  applied_destination_id: string | null;
   applied_at: string | null;
   created_at: string;
 };
@@ -153,6 +160,7 @@ export async function listInboxIntake(filter: InboxIntakeFilter = {}): Promise<I
     .select(
       `id, source, disposition, status, customer_name, pasted_text,
        artifacts, accepted_project_id, recognized_customer_id,
+       applied_destination_kind, applied_destination_id,
        applied_at, created_at,
        inbound_emails!intake_draft_id ( subject, from_address, from_name )`,
     )
@@ -218,6 +226,9 @@ export async function listInboxIntake(filter: InboxIntakeFilter = {}): Promise<I
       status: row.status as IntakeDraftStatus,
       customer_name: (row.customer_name as string | null) ?? null,
       primary_kind: (primaryArtifact?.kind as IntakeArtifactKind | null) ?? null,
+      primary_artifact_path: (primaryArtifact?.path as string | null) ?? null,
+      primary_artifact_mime: (primaryArtifact?.mime as string | null) ?? null,
+      primary_artifact_bytes: (primaryArtifact?.size as number | null) ?? null,
       thumbnail_url: visualPath ? (urlByPath.get(visualPath) ?? null) : null,
       artifact_count: artifacts.length,
       email_subject: env?.subject ?? null,
@@ -226,6 +237,8 @@ export async function listInboxIntake(filter: InboxIntakeFilter = {}): Promise<I
         : (env?.from_address ?? null),
       accepted_project_id: (row.accepted_project_id as string | null) ?? null,
       recognized_customer_id: (row.recognized_customer_id as string | null) ?? null,
+      applied_destination_kind: (row.applied_destination_kind as string | null) ?? null,
+      applied_destination_id: (row.applied_destination_id as string | null) ?? null,
       applied_at: (row.applied_at as string | null) ?? null,
       created_at: row.created_at as string,
     };

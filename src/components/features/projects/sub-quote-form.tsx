@@ -97,11 +97,11 @@ export function SubQuoteForm({
   /** When set, the form updates this quote instead of creating a new one. */
   editingQuoteId?: string;
   /**
-   * When set, the form was opened from a forwarded inbound email. After
-   * a successful create we mark that email applied + link it to the new
-   * sub_quote via linkInboundEmailToSubQuoteAction.
+   * When set, the form was opened from a forwarded intake draft. After
+   * a successful create we stamp the draft applied + link it to the new
+   * sub_quote via applyIntakeIntentAction({ intent: 'sub_quote', ... }).
    */
-  linkToInboundEmail?: { emailId: string };
+  linkToInboundEmail?: { draftId: string };
   onDone: () => void;
 }) {
   const [categories, setCategories] = useState<Category[]>(initialCategories);
@@ -295,18 +295,20 @@ export function SubQuoteForm({
         return;
       }
 
-      // If this form was opened from a forwarded email, link the email
-      // row to the new sub_quote so the inbox marks it applied. We don't
-      // surface failures to the user — the quote is saved either way.
+      // If this form was opened from a forwarded intake draft, stamp the
+      // draft applied + link it to the new sub_quote so the inbox marks
+      // it applied. We don't surface failures to the user — the quote is
+      // saved either way.
       if (linkToInboundEmail) {
-        const { linkInboundEmailToSubQuoteAction } = await import('@/server/actions/inbound-email');
-        const linkResult = await linkInboundEmailToSubQuoteAction({
-          emailId: linkToInboundEmail.emailId,
-          subQuoteId: result.id,
+        const { applyIntakeIntentAction } = await import('@/server/actions/inbox-intake');
+        const linkResult = await applyIntakeIntentAction({
+          draftId: linkToInboundEmail.draftId,
+          intent: 'sub_quote',
           projectId,
+          fields: { subQuoteId: result.id },
         });
         if (!linkResult.ok) {
-          console.warn('[sub-quote-form] inbound email link failed', linkResult.error);
+          console.warn('[sub-quote-form] intake draft link failed', linkResult.error);
         }
       }
 

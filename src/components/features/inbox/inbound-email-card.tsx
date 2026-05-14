@@ -17,10 +17,8 @@ import {
 } from '@/components/ui/dialog';
 import { formatCurrency } from '@/lib/pricing/calculator';
 import { createClient } from '@/lib/supabase/client';
-import {
-  reclassifyInboundEmailAction,
-  rejectInboundEmailAction,
-} from '@/server/actions/inbound-email';
+import { rejectInboundEmailAction } from '@/server/actions/inbound-email';
+import { parseIntakeDraftAction } from '@/server/actions/intake';
 import { StagedBillConfirmDialog, type StagedBillExtracted } from './staged-bill-confirm-dialog';
 
 export type InboundEmailRow = {
@@ -38,6 +36,10 @@ export type InboundEmailRow = {
   status: string;
   error_message: string | null;
   attachment_names: string[];
+  /** V2: the intake_drafts row created by the processor for this email.
+   * Required to drive the bill / sub-quote confirm flows; null on V1
+   * legacy rows that pre-date the FLIP. */
+  intake_draft_id: string | null;
 };
 
 export type ProjectOption = { id: string; name: string };
@@ -127,8 +129,12 @@ export function InboundEmailCard({
   }
 
   function handleReclassify() {
+    if (!email.intake_draft_id) {
+      toast.error('This legacy email has no intake draft — re-forward to reclassify.');
+      return;
+    }
     startTransition(async () => {
-      const res = await reclassifyInboundEmailAction(email.id);
+      const res = await parseIntakeDraftAction(email.intake_draft_id as string);
       if (res.ok) {
         toast.success('Reclassified.');
         router.refresh();
@@ -263,12 +269,15 @@ export function InboundEmailCard({
         )}
       </div>
 
-      {/* Bill confirm dialog */}
-      {email.classification === 'vendor_bill' && (
+      {/* Bill confirm dialog — requires the V2 intake_draft_id linkage.
+          Legacy V1 rows that pre-date the FLIP have no draft and can't
+          be confirmed through this card; re-forwarding creates a fresh
+          draft on the universal /inbox/intake surface. */}
+      {email.classification === 'vendor_bill' && email.intake_draft_id && (
         <StagedBillConfirmDialog
           open={billDialogOpen}
           onOpenChange={setBillDialogOpen}
-          emailId={email.id}
+          draftId={email.intake_draft_id}
           extracted={extracted as StagedBillExtracted | null}
           projects={projects}
           defaultProjectId={selectedProject || email.project_id}
@@ -276,37 +285,41 @@ export function InboundEmailCard({
         />
       )}
 
-      {/* Sub-quote confirm dialog (re-uses the canonical SubQuoteForm) */}
-      {email.classification === 'sub_quote' && subQuoteDialogOpen && subQuoteProjectId && (
-        <Dialog
-          open={subQuoteDialogOpen}
-          onOpenChange={(next) => {
-            setSubQuoteDialogOpen(next);
-            if (!next) setSubQuoteProjectId(null);
-          }}
-        >
-          <DialogContent className="sm:max-w-2xl lg:max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Confirm vendor quote</DialogTitle>
-              <DialogDescription>
-                Henry pre-filled this from the forwarded email. Adjust anything that looks off, then
-                save.
-              </DialogDescription>
-            </DialogHeader>
-            <SubQuoteForm
-              projectId={subQuoteProjectId}
-              categories={subQuoteCategories}
-              initialValues={subQuoteInitialValues ?? undefined}
-              linkToInboundEmail={{ emailId: email.id }}
-              onDone={() => {
-                setSubQuoteDialogOpen(false);
-                setSubQuoteProjectId(null);
-                router.refresh();
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
+      {/* Sub-quote confirm dialog (re-uses the canonical SubQuoteForm).
+          Requires the V2 intake_draft_id linkage. */}
+      {email.classification === 'sub_quote' &&
+        subQuoteDialogOpen &&
+        subQuoteProjectId &&
+        email.intake_draft_id && (
+          <Dialog
+            open={subQuoteDialogOpen}
+            onOpenChange={(next) => {
+              setSubQuoteDialogOpen(next);
+              if (!next) setSubQuoteProjectId(null);
+            }}
+          >
+            <DialogContent className="sm:max-w-2xl lg:max-w-4xl">
+              <DialogHeader>
+                <DialogTitle>Confirm vendor quote</DialogTitle>
+                <DialogDescription>
+                  Henry pre-filled this from the forwarded email. Adjust anything that looks off,
+                  then save.
+                </DialogDescription>
+              </DialogHeader>
+              <SubQuoteForm
+                projectId={subQuoteProjectId}
+                categories={subQuoteCategories}
+                initialValues={subQuoteInitialValues ?? undefined}
+                linkToInboundEmail={{ draftId: email.intake_draft_id }}
+                onDone={() => {
+                  setSubQuoteDialogOpen(false);
+                  setSubQuoteProjectId(null);
+                  router.refresh();
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
     </div>
   );
 }

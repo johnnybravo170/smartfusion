@@ -30,7 +30,7 @@ export default async function InboundEmailInboxPage({
   let query = supabase
     .from('inbound_emails')
     .select(
-      'id, from_address, from_name, subject, received_at, classification, confidence, extracted, classifier_notes, project_id, project_match_confidence, status, error_message, attachments',
+      'id, from_address, from_name, subject, received_at, classification, confidence, extracted, classifier_notes, project_id, project_match_confidence, status, error_message, attachments, intake_draft_id',
     )
     .eq('tenant_id', tenant.id)
     .order('received_at', { ascending: false })
@@ -65,6 +65,7 @@ export default async function InboundEmailInboxPage({
     attachment_names: ((e.attachments as { filename: string }[] | null) ?? []).map(
       (a) => a.filename,
     ),
+    intake_draft_id: (e.intake_draft_id as string | null) ?? null,
   }));
 
   const { data: projectsRaw } = await supabase
