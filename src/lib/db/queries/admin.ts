@@ -6,6 +6,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { demoExclusionList, getDemoTenantIds } from '@/lib/tenants/demo';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,6 +28,7 @@ export type TenantListRow = {
   revenueCents: number;
   lastActive: string | null;
   stripeConnected: boolean;
+  isDemo: boolean;
 };
 
 export type TenantDetailData = {
@@ -85,20 +87,42 @@ export async function getPlatformStats(): Promise<PlatformStats> {
   const admin = createAdminClient();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
+  // QA / demo tenants are excluded from every platform aggregate. Tables
+  // with a tenant_id get a `not in (...)` filter; the tenants table itself
+  // filters on is_demo directly.
+  const exclude = demoExclusionList(await getDemoTenantIds());
+
+  const tenantsQ = admin
+    .from('tenants')
+    .select('*', { count: 'exact', head: true })
+    .is('deleted_at', null)
+    .not('is_demo', 'is', true);
+  let jobsQ = admin.from('jobs').select('*', { count: 'exact', head: true }).is('deleted_at', null);
+  let paidInvoicesQ = admin
+    .from('invoices')
+    .select('amount_cents')
+    .eq('status', 'paid')
+    .is('deleted_at', null);
+  // Active tenants: had a job created in last 30 days
+  let activeJobsQ = admin
+    .from('jobs')
+    .select('tenant_id')
+    .gte('created_at', thirtyDaysAgo)
+    .is('deleted_at', null);
+  // Active tenants: had a worklog entry in last 30 days
+  let activeWorklogQ = admin
+    .from('worklog_entries')
+    .select('tenant_id')
+    .gte('created_at', thirtyDaysAgo);
+  if (exclude) {
+    jobsQ = jobsQ.not('tenant_id', 'in', exclude);
+    paidInvoicesQ = paidInvoicesQ.not('tenant_id', 'in', exclude);
+    activeJobsQ = activeJobsQ.not('tenant_id', 'in', exclude);
+    activeWorklogQ = activeWorklogQ.not('tenant_id', 'in', exclude);
+  }
+
   const [tenantsRes, jobsRes, paidInvoicesRes, activeJobsRes, activeWorklogRes] = await Promise.all(
-    [
-      admin.from('tenants').select('*', { count: 'exact', head: true }).is('deleted_at', null),
-      admin.from('jobs').select('*', { count: 'exact', head: true }).is('deleted_at', null),
-      admin.from('invoices').select('amount_cents').eq('status', 'paid').is('deleted_at', null),
-      // Active tenants: had a job created in last 30 days
-      admin
-        .from('jobs')
-        .select('tenant_id')
-        .gte('created_at', thirtyDaysAgo)
-        .is('deleted_at', null),
-      // Active tenants: had a worklog entry in last 30 days
-      admin.from('worklog_entries').select('tenant_id').gte('created_at', thirtyDaysAgo),
-    ],
+    [tenantsQ, jobsQ, paidInvoicesQ, activeJobsQ, activeWorklogQ],
   );
 
   const totalRevenueCents = (paidInvoicesRes.data ?? []).reduce(
@@ -123,9 +147,11 @@ export async function listTenantsWithStats(): Promise<TenantListRow[]> {
   const admin = createAdminClient();
 
   // Fetch all tenants
+  // Demo tenants stay in the list (you need to find the QA account) but
+  // are flagged so the UI can badge them and skip them in any rollup.
   const { data: tenants, error: tenantErr } = await admin
     .from('tenants')
-    .select('id, name, stripe_account_id, created_at')
+    .select('id, name, stripe_account_id, created_at, is_demo')
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -202,6 +228,7 @@ export async function listTenantsWithStats(): Promise<TenantListRow[]> {
       revenueCents: revenueMap.get(t.id) ?? 0,
       lastActive: lastActivityMap.get(t.id) ?? null,
       stripeConnected: !!t.stripe_account_id,
+      isDemo: !!t.is_demo,
     };
   });
 

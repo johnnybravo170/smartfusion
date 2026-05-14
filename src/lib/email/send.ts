@@ -1,6 +1,7 @@
 import { Models } from 'postmark';
 import type { CaslCategory } from '@/lib/db/schema/casl';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { isDemoTenant } from '@/lib/tenants/demo';
 import {
   FROM_EMAIL,
   FROM_EMAIL_MARKETING,
@@ -186,6 +187,14 @@ export async function sendEmail({
 
   if (insertErr || !row) {
     return { ok: false, error: `email_send_log insert failed: ${insertErr?.message ?? 'unknown'}` };
+  }
+
+  // QA / demo tenants: keep the audit row (so QA can inspect what would
+  // have gone out) but never hand it to Postmark. Test invoices and
+  // estimates must not reach real inboxes. See src/lib/tenants/demo.ts.
+  if (await isDemoTenant(tenantId)) {
+    await supabase.from('email_send_log').update({ status: 'suppressed_demo' }).eq('id', row.id);
+    return { ok: true, id: `demo-suppressed-${row.id}` };
   }
 
   // 2. Fire the Postmark API call.

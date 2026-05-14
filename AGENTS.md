@@ -36,6 +36,19 @@ The runtime tz on Vercel is UTC. Bare `Date.toLocaleDateString(...)` / `toLocale
 
 `tests/unit/timezone-no-bare-tolocale.test.ts` blocks bare `toLocale*` and bare `new Intl.DateTimeFormat(...)` calls in CI. See PATTERNS.md §23 for the full convention including adjacent gotchas (`Date.getHours()`, `Date.toLocaleString` on Dates) the lint rule doesn't catch.
 
+# QA tenant
+
+There is one designated QA / demo tenant on production — **Overflow Test Co**
+(`7098bd96-9cdd-47af-a412-3679af4cb536`) — for manual click-through testing of
+login, dashboards, the worker/bookkeeper layouts, and send flows. It's flagged
+`tenants.is_demo = true`, which suppresses all its outbound email + SMS and
+excludes it from platform metrics. Logins (owner / worker / bookkeeper) and the
+full convention are in `docs/qa-tenant.md`; the shared password is in the ops
+knowledge vault.
+
+Any new cross-tenant aggregate query must exclude demo tenants — see
+`src/lib/tenants/demo.ts`.
+
 # Working in a worktree
 
 Worktrees under `.claude/worktrees/<name>/` start without gitignored config files (`.env.local`, `.env.sentry-build-plugin`), so `pnpm dev` boots but every server-rendered route throws on Supabase init. Before doing anything else in a new worktree:

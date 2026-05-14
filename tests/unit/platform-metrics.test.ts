@@ -11,6 +11,7 @@ function makeChain() {
   chain.eq = vi.fn(() => chain);
   chain.gte = vi.fn(() => chain);
   chain.is = vi.fn(() => chain);
+  chain.not = vi.fn(() => chain);
   chain.order = vi.fn(() => chain);
   chain.limit = vi.fn(() => chain);
   chain.maybeSingle = vi.fn(() => chain);

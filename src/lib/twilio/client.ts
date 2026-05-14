@@ -18,6 +18,7 @@
 import twilio, { type Twilio } from 'twilio';
 import type { CaslCategory } from '@/lib/db/schema/casl';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { isDemoTenant } from '@/lib/tenants/demo';
 
 export type SendIdentity = 'operator' | 'platform';
 
@@ -287,6 +288,13 @@ export async function sendSms(input: SendSmsInput): Promise<SendSmsResult> {
 
   if (insertErr || !row) {
     return { ok: false, error: `DB insert failed: ${insertErr?.message ?? 'unknown'}` };
+  }
+
+  // QA / demo tenants: keep the audit row but never hand it to Twilio.
+  // Test sends must not reach real phones. See src/lib/tenants/demo.ts.
+  if (await isDemoTenant(tenantId)) {
+    await supabase.from('twilio_messages').update({ status: 'suppressed_demo' }).eq('id', row.id);
+    return { ok: true, id: row.id, sid: `demo-suppressed-${row.id}` };
   }
 
   // 2. Fire the Twilio API call.

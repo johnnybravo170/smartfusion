@@ -68,7 +68,16 @@ export function TenantTable({ tenants }: Props) {
         <TableBody>
           {tenants.map((t) => (
             <TableRow key={t.id}>
-              <TableCell className="font-medium">{t.name}</TableCell>
+              <TableCell className="font-medium">
+                <span className="flex items-center gap-2">
+                  {t.name}
+                  {t.isDemo ? (
+                    <Badge variant="secondary" className="text-[10px]">
+                      QA / demo
+                    </Badge>
+                  ) : null}
+                </span>
+              </TableCell>
               <TableCell className="text-muted-foreground text-sm">{t.ownerEmail ?? '—'}</TableCell>
               <TableCell className="text-sm">{formatDate(t.createdAt)}</TableCell>
               <TableCell className="text-right tabular-nums">{t.jobCount}</TableCell>

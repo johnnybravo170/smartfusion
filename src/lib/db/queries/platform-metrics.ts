@@ -9,6 +9,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { demoExclusionList, getDemoTenantIds } from '@/lib/tenants/demo';
 
 export type TimeseriesPoint = { day: string; count: number };
 export type TimeseriesMetric = 'signups' | 'interactions' | 'voice_minutes' | 'sms';
@@ -49,7 +50,8 @@ export async function getTotalTenants(): Promise<number> {
   const { count } = await admin
     .from('tenants')
     .select('*', { count: 'exact', head: true })
-    .is('deleted_at', null);
+    .is('deleted_at', null)
+    .not('is_demo', 'is', true);
   return count ?? 0;
 }
 
@@ -59,7 +61,8 @@ export async function getSignupsInWindow(days: number): Promise<number> {
     .from('tenants')
     .select('*', { count: 'exact', head: true })
     .gte('created_at', windowStart(days))
-    .is('deleted_at', null);
+    .is('deleted_at', null)
+    .not('is_demo', 'is', true);
   return count ?? 0;
 }
 
@@ -71,6 +74,7 @@ export async function getSignupsInWindow(days: number): Promise<number> {
 export async function getActiveTenants(days: number): Promise<number> {
   const admin = createAdminClient();
   const since = windowStart(days);
+  const demoIds = new Set(await getDemoTenantIds());
 
   const [interactions, jobs, worklog] = await Promise.all([
     admin.from('henry_interactions').select('tenant_id').gte('created_at', since),
@@ -82,15 +86,19 @@ export async function getActiveTenants(days: number): Promise<number> {
   for (const row of interactions.data ?? []) active.add(row.tenant_id);
   for (const row of jobs.data ?? []) active.add(row.tenant_id);
   for (const row of worklog.data ?? []) active.add(row.tenant_id);
+  for (const id of demoIds) active.delete(id);
   return active.size;
 }
 
 export async function getVoiceMinutesInWindow(days: number): Promise<number> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const exclude = demoExclusionList(await getDemoTenantIds());
+  let q = admin
     .from('henry_interactions')
     .select('audio_input_seconds, audio_output_seconds')
     .gte('created_at', windowStart(days));
+  if (exclude) q = q.not('tenant_id', 'in', exclude);
+  const { data } = await q;
   let totalSeconds = 0;
   for (const row of data ?? []) {
     totalSeconds += Number(row.audio_input_seconds ?? 0);
@@ -101,20 +109,26 @@ export async function getVoiceMinutesInWindow(days: number): Promise<number> {
 
 export async function getInteractionsInWindow(days: number): Promise<number> {
   const admin = createAdminClient();
-  const { count } = await admin
+  const exclude = demoExclusionList(await getDemoTenantIds());
+  let q = admin
     .from('henry_interactions')
     .select('*', { count: 'exact', head: true })
     .gte('created_at', windowStart(days));
+  if (exclude) q = q.not('tenant_id', 'in', exclude);
+  const { count } = await q;
   return count ?? 0;
 }
 
 export async function getSmsInWindow(days: number): Promise<number> {
   const admin = createAdminClient();
-  const { count } = await admin
+  const exclude = demoExclusionList(await getDemoTenantIds());
+  let q = admin
     .from('twilio_messages')
     .select('*', { count: 'exact', head: true })
     .eq('direction', 'outbound')
     .gte('created_at', windowStart(days));
+  if (exclude) q = q.not('tenant_id', 'in', exclude);
+  const { count } = await q;
   return count ?? 0;
 }
 
@@ -133,29 +147,33 @@ export async function getDailyTimeseries(
 ): Promise<TimeseriesPoint[]> {
   const admin = createAdminClient();
   const since = windowStart(days);
+  const exclude = demoExclusionList(await getDemoTenantIds());
   const buckets = new Map<string, number>();
   for (const d of lastNDays(days, tz)) buckets.set(d, 0);
 
   if (metric === 'signups') {
-    const { data } = await admin.from('tenants').select('created_at').gte('created_at', since);
+    let q = admin.from('tenants').select('created_at').gte('created_at', since);
+    q = q.not('is_demo', 'is', true);
+    const { data } = await q;
     for (const row of data ?? []) {
       const day = isoDateInTz(row.created_at as string, tz);
       if (buckets.has(day)) buckets.set(day, (buckets.get(day) ?? 0) + 1);
     }
   } else if (metric === 'interactions') {
-    const { data } = await admin
-      .from('henry_interactions')
-      .select('created_at')
-      .gte('created_at', since);
+    let q = admin.from('henry_interactions').select('created_at').gte('created_at', since);
+    if (exclude) q = q.not('tenant_id', 'in', exclude);
+    const { data } = await q;
     for (const row of data ?? []) {
       const day = isoDateInTz(row.created_at as string, tz);
       if (buckets.has(day)) buckets.set(day, (buckets.get(day) ?? 0) + 1);
     }
   } else if (metric === 'voice_minutes') {
-    const { data } = await admin
+    let q = admin
       .from('henry_interactions')
       .select('created_at, audio_input_seconds, audio_output_seconds')
       .gte('created_at', since);
+    if (exclude) q = q.not('tenant_id', 'in', exclude);
+    const { data } = await q;
     for (const row of data ?? []) {
       const day = isoDateInTz(row.created_at as string, tz);
       if (!buckets.has(day)) continue;
@@ -164,11 +182,13 @@ export async function getDailyTimeseries(
       buckets.set(day, (buckets.get(day) ?? 0) + mins);
     }
   } else if (metric === 'sms') {
-    const { data } = await admin
+    let q = admin
       .from('twilio_messages')
       .select('created_at')
       .eq('direction', 'outbound')
       .gte('created_at', since);
+    if (exclude) q = q.not('tenant_id', 'in', exclude);
+    const { data } = await q;
     for (const row of data ?? []) {
       const day = isoDateInTz(row.created_at as string, tz);
       if (buckets.has(day)) buckets.set(day, (buckets.get(day) ?? 0) + 1);

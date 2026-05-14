@@ -175,7 +175,7 @@ async function main() {
       notes: 'Monthly lot wash, net-30',
     },
     {
-      type: 'agent',
+      type: 'commercial',
       name: 'Helen Fraser (ReMax)',
       email: 'hfraser@remax.ca',
       phone: '604-555-0155',
@@ -186,7 +186,7 @@ async function main() {
       notes: 'Pre-listing rush jobs, bill to brokerage',
     },
     {
-      type: 'agent',
+      type: 'commercial',
       name: 'Dave Hoang (Royal LePage)',
       email: 'dhoang@royallepage.ca',
       phone: '778-555-0188',
