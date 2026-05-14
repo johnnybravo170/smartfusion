@@ -141,7 +141,10 @@ export type RollbackJobResult =
  * table"; current epic doesn't hit that branch.
  */
 const ROLLBACK_ORDER: Array<{ kind: string; table: string }> = [
-  { kind: 'expenses', table: 'expenses' },
+  // 'expenses' batch_id now lands in project_costs (PR #200 retired
+  // the legacy expenses table). Kind stays 'expenses' so existing job
+  // batch_ids keep resolving.
+  { kind: 'expenses', table: 'project_costs' },
   { kind: 'bills', table: 'bills' },
   { kind: 'payments', table: 'payments' },
   { kind: 'quotes', table: 'quotes' },

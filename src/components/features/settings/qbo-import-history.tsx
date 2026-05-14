@@ -9,7 +9,7 @@
  * AlertDialog with an explicit confirm.
  */
 
-import { History, Loader2, Undo2 } from 'lucide-react';
+import { History, Loader2, Undo2, XCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -27,6 +27,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { cancelQboImportAction } from '@/server/actions/qbo-import';
 import {
   type ImportHistoryEntry,
   rollbackImportJobAction,
@@ -81,6 +82,20 @@ export function QboImportHistory({ jobs }: Props) {
     });
   }
 
+  function cancel(jobId: string) {
+    setActiveJob(jobId);
+    startTransition(async () => {
+      const result = await cancelQboImportAction(jobId);
+      if (result.ok) {
+        toast.success('Import cancelled.');
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
+      setActiveJob(null);
+    });
+  }
+
   if (jobs.length === 0) {
     return (
       <Card>
@@ -103,6 +118,7 @@ export function QboImportHistory({ jobs }: Props) {
       {jobs.map((job) => {
         const isPending = pending && activeJob === job.id;
         const canRollback = job.active_batch_count > 0;
+        const isInFlight = job.status === 'running' || job.status === 'queued';
         return (
           <Card key={job.id}>
             <CardHeader>
@@ -133,6 +149,21 @@ export function QboImportHistory({ jobs }: Props) {
                     {job.api_calls_used === 1 ? '' : 's'}
                   </CardDescription>
                 </div>
+                {isInFlight && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => cancel(job.id)}
+                    disabled={isPending}
+                  >
+                    {isPending ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <XCircle className="size-3.5" />
+                    )}
+                    Cancel
+                  </Button>
+                )}
                 {canRollback && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
