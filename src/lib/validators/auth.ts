@@ -22,6 +22,16 @@ const passwordRule = z
 export const signupSchema = z.object({
   email: z.string().trim().toLowerCase().email({ message: 'Enter a valid email address.' }),
   password: passwordRule,
+  firstName: z
+    .string()
+    .trim()
+    .min(1, { message: 'Enter your first name.' })
+    .max(60, { message: 'First name is too long.' }),
+  lastName: z
+    .string()
+    .trim()
+    .min(1, { message: 'Enter your last name.' })
+    .max(60, { message: 'Last name is too long.' }),
   businessName: z
     .string()
     .trim()

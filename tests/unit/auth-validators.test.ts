@@ -13,6 +13,8 @@ describe('signupSchema', () => {
     const result = signupSchema.safeParse({
       email: 'will@example.com',
       password: 'correct-horse-9',
+      firstName: 'Will',
+      lastName: 'Smith',
       businessName: "Will's Painting Co",
       phone: '+1 604 555 1234',
       acceptedPolicies: true,
@@ -24,11 +26,38 @@ describe('signupSchema', () => {
     const result = signupSchema.parse({
       email: '  Will@Example.COM  ',
       password: 'abc12345',
+      firstName: 'Will',
+      lastName: 'Smith',
       businessName: 'Acme',
       phone: '+1 604 555 1234',
       acceptedPolicies: true,
     });
     expect(result.email).toBe('will@example.com');
+  });
+
+  it('rejects a blank first name', () => {
+    const result = signupSchema.safeParse({
+      email: 'a@b.co',
+      password: 'abc12345',
+      firstName: '  ',
+      lastName: 'Smith',
+      businessName: 'Acme',
+      phone: '+1 604 555 1234',
+      acceptedPolicies: true,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a missing last name', () => {
+    const result = signupSchema.safeParse({
+      email: 'a@b.co',
+      password: 'abc12345',
+      firstName: 'Will',
+      businessName: 'Acme',
+      phone: '+1 604 555 1234',
+      acceptedPolicies: true,
+    });
+    expect(result.success).toBe(false);
   });
 
   it('rejects a payload that has not accepted policies', () => {

@@ -42,6 +42,8 @@ async function originFromHeaders(): Promise<string> {
 export async function signupAction(input: {
   email: string;
   password: string;
+  firstName: string;
+  lastName: string;
   businessName: string;
   phone: string;
   acceptedPolicies: boolean;
@@ -57,7 +59,7 @@ export async function signupAction(input: {
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
     };
   }
-  const { email, password, businessName, phone } = parsed.data;
+  const { email, password, firstName, lastName, businessName, phone } = parsed.data;
 
   // Rate limit: per-IP (burst control) + per-email (account-enumeration
   // control). Enforce IP first so an attacker can't cycle emails to map
@@ -144,6 +146,8 @@ export async function signupAction(input: {
       p_accepted_at: acceptedAt,
       p_referral_code: newReferralCode,
       p_referred_by_code: referralCode ?? null,
+      p_first_name: firstName,
+      p_last_name: lastName,
     });
     if (rpcErr || !tenantId) {
       throw new Error(rpcErr?.message ?? 'Could not create tenant.');

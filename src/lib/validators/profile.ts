@@ -54,6 +54,18 @@ export const operatorProfileSchema = z.object({
 
 export type OperatorProfileInput = z.infer<typeof operatorProfileSchema>;
 
+/**
+ * First + last name only — used by the signup catch-up prompt that
+ * soft-blocks existing operators whose `tenant_members` name is still
+ * blank. Both required (this is the whole point of the prompt).
+ */
+export const operatorNameSchema = z.object({
+  firstName: z.string().trim().min(1, 'Enter your first name.').max(60, 'First name is too long.'),
+  lastName: z.string().trim().min(1, 'Enter your last name.').max(60, 'Last name is too long.'),
+});
+
+export type OperatorNameInput = z.infer<typeof operatorNameSchema>;
+
 export function emptyToNull(value: string | undefined | null): string | null {
   if (value === undefined || value === null) return null;
   const trimmed = value.trim();
