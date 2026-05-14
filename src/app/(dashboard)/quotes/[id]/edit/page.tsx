@@ -21,7 +21,8 @@ export default async function EditQuotePage({ params }: { params: Promise<{ id: 
     getQuote(id),
     listCustomers({ limit: 500 }),
     listMapQuoteCatalog(),
-    canadianTax.getContext(tenant.id),
+    // Customer-facing: the rate here must match the total the customer signs.
+    canadianTax.getCustomerFacingContext(tenant.id),
   ]);
 
   if (!quote) notFound();

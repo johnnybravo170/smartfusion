@@ -51,9 +51,9 @@ export type QuoteActionResult =
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 /**
- * Resolve the GST rate to apply to a quote: per-tenant rate from the tax
- * provider (so HST tenants get 13%/15%), zeroed when the customer is
- * tax-exempt.
+ * Resolve the tax rate to apply to a quote: per-tenant customer-facing rate
+ * from the tax provider (so HST tenants get 13%/15%, PST/RST/QST stripped
+ * since the customer never sees it), zeroed when the customer is tax-exempt.
  */
 async function resolveQuoteTaxRate(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -62,7 +62,7 @@ async function resolveQuoteTaxRate(
 ): Promise<number> {
   const [{ data: cust }, taxCtx] = await Promise.all([
     supabase.from('customers').select('tax_exempt').eq('id', customerId).maybeSingle(),
-    canadianTax.getContext(tenantId),
+    canadianTax.getCustomerFacingContext(tenantId),
   ]);
   return cust?.tax_exempt ? 0 : taxCtx.totalRate;
 }

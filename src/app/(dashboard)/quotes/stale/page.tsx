@@ -36,7 +36,8 @@ export default async function StaleQuotesPage() {
     .order('estimate_sent_at', { ascending: true });
 
   // Pull cost lines for total; cheap loop, low row count.
-  const taxCtx = await canadianTax.getContext(tenant.id);
+  // Customer-facing: this total mirrors the quote the customer signed.
+  const taxCtx = await canadianTax.getCustomerFacingContext(tenant.id);
   const rows = await Promise.all(
     (projects ?? []).map(async (p) => {
       const proj = p as Record<string, unknown>;

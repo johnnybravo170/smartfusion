@@ -105,7 +105,7 @@ export default async function PublicQuotePage({ params }: Props) {
         tenantId={tenant.id as string}
         businessName={tenant.name as string}
         catalog={catalogEntries}
-        taxRate={(await canadianTax.getContext(tenant.id as string)).totalRate}
+        taxRate={(await canadianTax.getCustomerFacingContext(tenant.id as string)).totalRate}
       />
     </div>
   );
