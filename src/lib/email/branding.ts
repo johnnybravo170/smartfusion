@@ -31,6 +31,7 @@ export type EmailTemplateKey =
   | 'portal_invite'
   | 'job_booking'
   | 'lead_notification'
+  | 'widget_lead_notification'
   | 'referral_invite'
   | 'pulse_update'
   | 'refund_confirmation'
