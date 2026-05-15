@@ -548,16 +548,45 @@ export async function parseIntakeDraftAction(
   draftId: string,
   options?: { model?: ParseModelChoice },
 ): Promise<ParseInboundResult> {
-  const tenant = await getCurrentTenant();
-  if (!tenant) return { ok: false, error: 'Not signed in.' };
-
-  const supabase = await createClient();
-  const { data: row, error: loadErr } = await supabase
+  // Load the draft via the admin client because this action is invoked
+  // from BOTH UI contexts (operator clicked "reparse" on /inbox/intake —
+  // has a session cookie) and service-role contexts (Postmark inbound
+  // webhook, /api/widget/submit — public-token-authenticated, no
+  // session). The RLS-scoped client returns no row in the service path,
+  // which silently breaks classification of every email- and form-sourced
+  // lead. Tenant authz is enforced explicitly below for session callers.
+  const admin = createAdminClient();
+  const { data: row, error: loadErr } = await admin
     .from('intake_drafts')
     .select('id, tenant_id, status, customer_name, pasted_text, transcript, ai_extraction')
     .eq('id', draftId)
     .maybeSingle();
   if (loadErr || !row) return { ok: false, error: 'Draft not found.' };
+
+  const draftTenantId = row.tenant_id as string;
+  const sessionTenant = await getCurrentTenant();
+  if (sessionTenant && sessionTenant.id !== draftTenantId) {
+    // A logged-in user trying to operate on a draft from a different
+    // tenant. RLS would have hidden the row before this refactor; the
+    // explicit check preserves that boundary.
+    return { ok: false, error: 'Not authorized for this draft.' };
+  }
+
+  // Resolve the tenant name for the prompt. Session caller already has
+  // it; service caller looks it up.
+  let tenantName: string | null;
+  if (sessionTenant) {
+    tenantName = sessionTenant.name;
+  } else {
+    const { data: t } = await admin
+      .from('tenants')
+      .select('name')
+      .eq('id', draftTenantId)
+      .maybeSingle();
+    if (!t) return { ok: false, error: 'Tenant not found.' };
+    tenantName = (t.name as string | null) ?? null;
+  }
+  const tenant = { id: draftTenantId, name: tenantName };
 
   const customerName = (row.customer_name as string | null)?.trim() ?? '';
   const transcript = (row.transcript as string | null)?.trim() ?? '';
@@ -574,14 +603,16 @@ export async function parseIntakeDraftAction(
   const provider_override = modelChoice === 'claude-sonnet' ? 'anthropic' : 'openai';
   const model_override = modelChoice === 'claude-sonnet' ? CLAUDE_PARSE_MODEL : PARSE_MODEL;
 
-  // Re-load customer context for the retry — same logic as the
-  // initial parse. Stamps recognized_customer_id alongside the
-  // status flip in case the customer name has been edited since
-  // the original run (or recognition was missed first time).
-  const customerContext = customerName ? await loadIntakeCustomerContext(customerName) : null;
+  // Customer recognition uses the RLS-scoped client (it's the operator's
+  // address book). In the service path there's no session, so this
+  // degrades to `null` — emails / widget submits won't auto-recognize a
+  // returning customer on first parse. Operators can still reparse from
+  // the inbox to pick that up. Acceptable trade for V1.
+  const customerContext =
+    sessionTenant && customerName ? await loadIntakeCustomerContext(customerName) : null;
   const customerContextBlock = renderCustomerContextForPrompt(customerContext);
 
-  await supabase
+  await admin
     .from('intake_drafts')
     .update({
       status: 'extracting',
@@ -628,7 +659,7 @@ export async function parseIntakeDraftAction(
         : isAiError(err) && (err.kind === 'overload' || err.kind === 'rate_limit')
           ? 'Intake parsing is busy right now. Try again in a moment.'
           : `Intake parse failed: ${err instanceof Error ? err.message : String(err)}`;
-    await supabase
+    await admin
       .from('intake_drafts')
       .update({ status: 'failed', error_message: message })
       .eq('id', draftId);
@@ -641,7 +672,7 @@ export async function parseIntakeDraftAction(
   // on failure. The previous augmentations are stale once the parse
   // changes, so overwrite rather than merge.
   const augmentations = await augmentScope(draft, transcript || null, tenant.id);
-  await supabase
+  await admin
     .from('intake_drafts')
     .update({
       status: 'ready',
