@@ -113,14 +113,6 @@ export function ContactForm() {
         {status === 'sending' ? 'Sending…' : 'Send message'}
       </button>
 
-      {/* Tiny "Powered by Henry" caption — Jonathan's V1 call */}
-      <p style={{ marginTop: 12, fontSize: 12, color: '#999' }}>
-        Powered by{' '}
-        <a href="https://heyhenry.io" style={{ color: 'inherit' }}>
-          Henry
-        </a>
-      </p>
-
       {status === 'error' && (
         <p role="alert" style={{ color: '#c33' }}>
           {errorMessage}
